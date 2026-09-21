@@ -26,8 +26,10 @@ def test_config_loader(tmp_path):
     assert "true" in nf_args
 
 def test_sbdd_init(tmp_path):
+    import shutil
     target = tmp_path / "new_project"
-    cmd = ["sbdd", "init", str(target)]
+    sbdd_bin = shutil.which("sbdd") or str(Path(sys.prefix) / "bin" / "sbdd")
+    cmd = [sbdd_bin, "init", str(target)]
     res = subprocess.run(cmd, capture_output=True, text=True)
     assert res.returncode == 0, f"sbdd init failed: {res.stderr}"
 
