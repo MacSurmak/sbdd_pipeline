@@ -1,0 +1,36 @@
+/*
+ * modules/membrane/declash.nf
+ * Relieves steric overlaps in lipid/water/protein systems
+ */
+
+process DECLASH {
+    tag "${meta.id}"
+    label 'process_medium'
+
+    input:
+    tuple val(meta), path(input_gro), path(topol_top)
+
+    output:
+    tuple val(meta), path("${meta.id}_declashed.gro"), emit: declashed_gro
+
+    script:
+    """
+    python3 ${projectDir}/bin/declash_gmx.py \
+        -f ${input_gro} \
+        -p ${topol_top} \
+        -o ${meta.id}_declashed.gro \
+        --fix-moltype system1 \
+        --fix-moltype UNK \
+        --no-heavy-only \
+        --cutoff 0.10 \
+        --niter 300 \
+        --max-move 0.05 \
+        -v
+    """
+
+    stub:
+    """
+    touch ${meta.id}_declashed.gro
+    """
+}
+

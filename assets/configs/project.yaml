@@ -1,0 +1,7 @@
+project:
+  name: "SBDD_Project"
+  mode: "screening"                  # Options: screening, redocking, single
+  cluster:
+    queue: "main"                    # Options: main (default, 7 days), urgent (2 hours)
+    urgent_quick_tasks: true         # Automatically route fast single tasks to urgent
+

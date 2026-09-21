@@ -1,0 +1,9 @@
+mmpbsa:
+  enabled: true
+  cores: 16                          # CPU cores for MPI / OpenMP
+  start_ns: 20.0                     # Sample after RMSD equilibration plateau (ns)
+  step_frames: 40                    # Stride interval for trajectory frame sampling
+  per_residue_decomp: true           # Enable per-residue binding energy decomposition
+  temperature: 310.15
+  salt_conc: 0.15
+

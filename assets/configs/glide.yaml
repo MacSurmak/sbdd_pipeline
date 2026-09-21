@@ -1,0 +1,19 @@
+glide:
+  enabled: false
+  precision: "SP"                    # HTVS, SP, XP
+  poses_per_lig: 1
+  sample_rings: true
+  epik_penalties: true
+  forcefield: "OPLS4"
+  postdock: true
+  write_csv: true
+  grid:
+    inner_box: [10, 10, 10]
+    outer_box: [26, 26, 26]
+    forcefield: "OPLS4"
+  ligprep:
+    target_ph: 7.4
+    ph_tolerance: 2.0
+    force_field: 16                  # 16 = OPLS4, 14 = OPLS_2005
+    max_states: 32
+

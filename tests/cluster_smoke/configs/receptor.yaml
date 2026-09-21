@@ -1,0 +1,4 @@
+receptor:
+  input_file: "smoke_receptor.pdb"
+  native_ligand_resname: "PKA"
+

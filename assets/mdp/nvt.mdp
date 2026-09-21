@@ -1,0 +1,35 @@
+; Universal NVT Equilibration Template
+define                   = {DEFINE}
+integrator               = md
+dt                       = {DT}
+nsteps                   = {NSTEPS}
+
+nstxout                  = 5000
+nstvout                  = 5000
+nstenergy                = 1000
+nstlog                   = 1000
+nstxout-compressed       = 1000
+
+cutoff-scheme            = Verlet
+coulombtype              = PME
+rcoulomb                 = 1.0
+vdwtype                  = cutoff
+rvdw                     = 1.0
+pbc                      = xyz
+
+tcoupl                   = V-rescale
+tc-grps                  = {TC_GRPS}
+tau-t                    = 0.1 0.1
+ref-t                    = {TEMP} {TEMP}
+
+pcoupl                   = no
+
+constraints              = h-bonds
+constraint-algorithm     = lincs
+lincs-order              = 4
+lincs-iter               = 1
+
+continuation             = {CONTINUATION}
+gen_vel                  = {GEN_VEL}
+gen_temp                 = {TEMP}
+gen_seed                 = -1

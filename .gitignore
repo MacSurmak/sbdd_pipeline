@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+
+# Nextflow
+.nextflow/
+.nextflow.log*
+work/
+
+# AmberTools & Antechamber
+ANTECHAMBER*
+ATOMTYPE*
+PREP*
+NEWPDB*
+frcmod*
+leap.log
+
+# Temporary test and smoke outputs
+/tmp/cluster_smoke_*
+/tmp/pytest-*

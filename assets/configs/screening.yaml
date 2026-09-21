@@ -1,0 +1,7 @@
+screening:
+  library_file: "pyrrolo_pyrazine_library.sdf" # Library file in project root
+  funnel:
+    top_frames_per_ligand: 3         # Retain top K ensemble frames per ligand
+    library_percentile_cutoff: 0.50  # Top 50% advance to MM-GBSA
+    benchmark_ligands: ["PPZ_1H_Ph_BnMe", "PPZ_1H_Ph_BuMe", "PPZ_1Br_Ph_BnMe"]
+

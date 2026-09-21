@@ -1,0 +1,7 @@
+gnina:
+  exhaustiveness: 1
+  cnn_scoring: "rescore"
+  num_modes: 1
+  autobox_add: 4.0
+  batch_size: 1
+

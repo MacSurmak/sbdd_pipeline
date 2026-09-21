@@ -1,0 +1,4 @@
+project:
+  name: "cluster_smoke_test"
+  description: "Automated cluster HPC integration smoke test"
+
