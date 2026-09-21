@@ -25,5 +25,11 @@ process GNINA_RESCORE {
         ${cnn_flag} \
         -o ${meta.id}_rescored.sdf > ${meta.id}_gnina_rescore.log
     """
+
+    stub:
+    """
+    touch ${meta.id}_rescored.sdf
+    touch ${meta.id}_gnina_rescore.log
+    """
 }
 

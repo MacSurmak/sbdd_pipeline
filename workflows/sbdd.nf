@@ -1,16 +1,19 @@
 /*
  * workflows/sbdd.nf
  * Complete end-to-end SBDD pipeline
+ * Complete end-to-end SBDD pipeline with multi-engine docking, rescoring,
+ * Prime MM-GBSA, automated hit selection, and chunked GROMACS MD.
  */
 
-include { STAGE_INPUTS     } from '../modules/common/stage_inputs'
-include { PREPARE_RECEPTOR } from '../subworkflows/prepare_receptor'
-include { PREPARE_LIGANDS  } from '../subworkflows/prepare_ligands'
-include { DOCK_LIBRARY     } from '../subworkflows/dock_library'
-include { SETUP_MD_SYSTEM  } from '../subworkflows/setup_md_system'
-include { RUN_CHUNKED_MD   } from '../subworkflows/run_chunked_md'
-include { ANALYZE_MD_TRAJ  } from '../subworkflows/analyze_md_traj'
+include { STAGE_INPUTS      } from '../modules/common/stage_inputs'
+include { PREPARE_RECEPTOR  } from '../subworkflows/prepare_receptor'
+include { PREPARE_LIGANDS   } from '../subworkflows/prepare_ligands'
+include { DOCK_LIBRARY      } from '../subworkflows/dock_library'
+include { SETUP_MD_SYSTEM   } from '../subworkflows/setup_md_system'
+include { RUN_CHUNKED_MD    } from '../subworkflows/run_chunked_md'
+include { ANALYZE_MD_TRAJ   } from '../subworkflows/analyze_md_traj'
 include { SUMMARIZE_DOCKING } from '../modules/reporting/summarize'
+include { SELECT_HITS       } from '../modules/reporting/select_hits'
 
 workflow SBDD_WF {
     def rec_file = file(params.receptor)
@@ -51,12 +54,14 @@ workflow SBDD_WF {
             32
         )
 
-        // 3. Docking
-        def ch_ref_dock = (params.dock_engine == "glide") ? PREPARE_RECEPTOR.out.ref_native_mae : PREPARE_RECEPTOR.out.ref_native_sdf
+        // 3. Multi-Engine Docking & MM-GBSA
         DOCK_LIBRARY(
             PREPARE_RECEPTOR.out.prepared_pdb,
-            ch_ref_dock,
+            PREPARE_RECEPTOR.out.ref_native_sdf,
             PREPARE_LIGANDS.out.chunks,
+            PREPARE_RECEPTOR.out.prepared_mae,
+            PREPARE_RECEPTOR.out.ref_native_mae,
+            PREPARE_LIGANDS.out.prepared_ligands,
             params.dock_engine ?: "gnina",
             params.exhaustiveness ?: 16,
             params.cnn_scoring ?: "rescore",
@@ -64,21 +69,29 @@ workflow SBDD_WF {
             params.autobox_add ?: 4.0
         )
 
-        // 4. Reporting
+        // 4. Summarize results into master ranking table
         SUMMARIZE_DOCKING(
-            DOCK_LIBRARY.out.docked_poses
+            DOCK_LIBRARY.out.summary_bundle
         )
 
-        // 5. Optional downstream MD simulation
+        // 5. Automated Hit Selection for Molecular Dynamics
+        SELECT_HITS(
+            SUMMARIZE_DOCKING.out.ranking_csv,
+            params.top_n_hits ?: 1,
+            true
+        )
+
+        // 6. Downstream MD simulation
         if (params.run_md) {
             def mdp_minim = file("${projectDir}/assets/mdp/minim.mdp")
             def mdp_nvt   = file("${projectDir}/assets/mdp/nvt.mdp")
             def mdp_npt   = file("${projectDir}/assets/mdp/npt.mdp")
             def mdp_md    = file("${projectDir}/assets/mdp/md.mdp")
 
-            def hits = params.md_hits ? params.md_hits.split(",").collect { it.trim() } : ["native"]
-
-            ch_md_targets = Channel.fromList(hits)
+            ch_md_targets = SELECT_HITS.out.hits_file
+                .flatMap { meta, file -> file.readLines() }
+                .map { line -> line.trim() }
+                .filter { it.length() > 0 }
                 .combine(DOCK_LIBRARY.out.docked_poses)
                 .combine(PREPARE_RECEPTOR.out.prepared_pdb)
                 .map { hit_name, meta_dock, pose_file, meta_rec, rec_pdb ->
@@ -89,10 +102,10 @@ workflow SBDD_WF {
             SETUP_MD_SYSTEM(
                 ch_md_targets,
                 params.membrane ?: false,
-                "POPC:POPE:CHL1",
-                "5:4:1",
-                "POPC:POPE:POPS:CHL1",
-                "4:4:1:1",
+                params.upper_lipids ?: "POPC:POPE:CHL1",
+                params.upper_ratio ?: "5:4:1",
+                params.lower_lipids ?: "POPC:POPE:POPS:CHL1",
+                params.lower_ratio ?: "4:4:1:1",
                 10.0,
                 15.0,
                 params.md_salt_conc ?: 0.15,

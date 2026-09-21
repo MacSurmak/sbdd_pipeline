@@ -88,6 +88,10 @@ def main():
                     if "r_i_glide_gscore" in r: master_rows[title]["GlideScore"] = float(r["r_i_glide_gscore"])
                     if "r_i_glide_docking_score" in r: master_rows[title]["DockingScore"] = float(r["r_i_glide_docking_score"])
                     if "RMSD_Heavy" in r: master_rows[title]["RMSD_A"] = float(r["RMSD_Heavy"])
+                    for k in ["r_psp_MMGBSA_dG_Bind", "MMGBSA_dG_Bind", "dG_Bind"]:
+                        if k in r and pd.notna(r[k]):
+                            master_rows[title]["Prime_dG_Bind_kcal"] = float(r[k])
+                            break
             except Exception:
                 pass
 

@@ -38,5 +38,12 @@ EOF
 
     pv_to_sdf.py --pv ${meta.id}_dock_pv.maegz --sdf ${meta.id}_dock.sdf
     """
+
+    stub:
+    """
+    touch ${meta.id}_dock_pv.maegz
+    touch ${meta.id}_dock.csv
+    touch ${meta.id}_dock.sdf
+    """
 }
 

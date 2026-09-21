@@ -1,6 +1,6 @@
 /*
  * subworkflows/prepare_ligands.nf
- * Splits SDF library into parallel chunks or runs Schrodinger LigPrep
+ * Splits SDF library into parallel chunks and/or runs Schrodinger LigPrep
  */
 
 include { LIGPREP } from '../modules/schrodinger/ligprep'
@@ -36,7 +36,7 @@ process SPLIT_SDF {
 workflow PREPARE_LIGANDS {
     take:
     ch_library    // channel: [ val(meta), path(library_file) ]
-    dock_engine   // val: "gnina" or "glide"
+    dock_engine   // val: "both", "gnina", "glide"
     batch_size    // val: 15
     target_ph     // val: 7.4
     ph_tol        // val: 2.0
@@ -44,22 +44,23 @@ workflow PREPARE_LIGANDS {
     max_states    // val: 32
 
     main:
-    if (dock_engine == "glide") {
+    ch_prepared_mae = Channel.empty()
+    ch_chunks       = Channel.empty()
+
+    if (dock_engine in ["glide", "both"]) {
         LIGPREP(ch_library, target_ph, ph_tol, ff_version, max_states)
-        ch_prepared = LIGPREP.out.prepared_maegz
-        ch_chunks = Channel.empty()
-    } else {
+        ch_prepared_mae = LIGPREP.out.prepared_maegz
+    }
+
+    if (dock_engine in ["gnina", "both"]) {
         SPLIT_SDF(ch_library, batch_size)
-        // Transpose chunks to emit [ meta, chunk_path, chunk_idx ]
         ch_chunks = SPLIT_SDF.out.chunks.flatMap { meta, files ->
             def fileList = files instanceof List ? files : [files]
             fileList.withIndex().collect { f, idx -> [ meta, f, idx ] }
         }
-        ch_prepared = ch_library
     }
 
     emit:
-    prepared_ligands = ch_prepared
+    prepared_ligands = ch_prepared_mae
     chunks           = ch_chunks
 }
-

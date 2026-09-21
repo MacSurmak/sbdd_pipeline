@@ -34,5 +34,11 @@ process PRIME_MMGBSA {
         mv "\${base}-out.maegz" "${meta.id}_mmgbsa-out.maegz"
     fi
     """
+
+    stub:
+    """
+    touch ${meta.id}_mmgbsa-out.csv
+    touch ${meta.id}_mmgbsa-out.maegz
+    """
 }
 
