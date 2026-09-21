@@ -89,6 +89,7 @@ workflow SBDD_WF {
             def mdp_md    = file("${projectDir}/assets/mdp/md.mdp")
 
             ch_md_targets = SELECT_HITS.out.hits_file
+                .splitText()
                 .flatMap { meta, file -> file.readLines() }
                 .map { line -> line.trim() }
                 .filter { it.length() > 0 }

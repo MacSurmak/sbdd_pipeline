@@ -104,15 +104,15 @@ def main():
         p.add_argument("--keep-scratch", action="store_true", help="Do not delete /shared/work upon completion")
         p.add_argument("--urgent", action="store_true", help="Route tasks to urgent Slurm partition")
 
-    # 2. prep
-    p_prep = subparsers.add_parser("prep", help="Run receptor & ligand preparation")
+    # 2. prep / prepare
+    p_prep = subparsers.add_parser("prep", aliases=["prepare"], help="Run receptor & ligand preparation")
     p_prep.add_argument("--receptor", help="Path to input structure (.cif/.pdb)")
     p_prep.add_argument("--library", help="Path to ligand library (.sdf)")
     add_common_wf_args(p_prep)
 
-    # 3. dock
-    p_dock = subparsers.add_parser("dock", help="Run distributed docking across GPU nodes")
-    p_dock.add_argument("--engine", choices=["gnina", "glide"], help="Docking engine choice")
+    # 3. dock / screen
+    p_dock = subparsers.add_parser("dock", aliases=["screen"], help="Run distributed docking across GPU nodes")
+    p_dock.add_argument("--engine", choices=["gnina", "glide", "both"], default="gnina", help="Docking engine choice")
     p_dock.add_argument("--library", help="Path to ligand library (.sdf)")
     add_common_wf_args(p_dock)
 
@@ -120,31 +120,29 @@ def main():
     p_rescore = subparsers.add_parser("rescore", help="Run MM-GBSA and CNN rescoring")
     add_common_wf_args(p_rescore)
 
-    # 5. md-setup
-    p_mds = subparsers.add_parser("md-setup", help="Build MD systems for chosen hits")
-    p_mds.add_argument("--hits", default="native", help="Comma-separated hit titles (e.g. 'native,ZINC01')")
-    add_common_wf_args(p_mds)
+    # 5. md / dynamics
+    p_dyn = subparsers.add_parser("dynamics", aliases=["md", "md-run", "md-setup"], help="Execute chunked MD simulations on Slurm GPUs")
+    p_dyn.add_argument("--hits", help="Comma-separated hits to simulate")
+    p_dyn.add_argument("--replicates", type=int, help="Number of MD replicates")
+    add_common_wf_args(p_dyn)
 
-    # 6. md-run
-    p_mdr = subparsers.add_parser("md-run", help="Execute chunked MD simulations on Slurm GPUs")
-    p_mdr.add_argument("--hits", help="Comma-separated hits to simulate")
-    add_common_wf_args(p_mdr)
-
-    # 7. md-analyze
+    # 6. md-analyze
     p_mda = subparsers.add_parser("md-analyze", help="Run trajectory PBC fix, metrics, and MM-PBSA")
     p_mda.add_argument("--traj", help="Direct path to custom .xtc file")
     p_mda.add_argument("--topol", help="Direct path to custom topol.top or PDB")
     add_common_wf_args(p_mda)
 
-    # 8. all
-    p_all = subparsers.add_parser("all", help="Execute end-to-end pipeline")
+    # 7. all / run
+    p_all = subparsers.add_parser("all", aliases=["run"], help="Execute end-to-end pipeline")
+    p_all.add_argument("--engine", choices=["gnina", "glide", "both"], help="Docking engine choice")
     p_all.add_argument("--hits", help="Comma-separated hit titles for MD")
+    p_all.add_argument("--top-n", dest="top_n", type=int, help="Number of top hits for MD")
     add_common_wf_args(p_all)
 
-    # 9. clean
+    # 8. clean
     p_clean = subparsers.add_parser("clean", help="Clean /shared/work scratch directory for current project")
 
-    # 10. status
+    # 9. status
     p_stat = subparsers.add_parser("status", help="Inspect Slurm queue and Nextflow job status")
 
     args = parser.parse_args()
@@ -153,21 +151,20 @@ def main():
         parser.print_help()
         sys.exit(0)
 
-    if args.subcommand == "init":
+    subcmd = args.subcommand
+    if subcmd == "init":
         cmd_init(args)
-    elif args.subcommand == "status":
+    elif subcmd == "status":
         cmd_status(args)
-    elif args.subcommand == "clean":
+    elif subcmd == "clean":
         cmd_clean(args)
-    elif args.subcommand == "prep":
+    elif subcmd in ["prep", "prepare"]:
         sys.exit(run_workflow("prepare", args))
-    elif args.subcommand == "dock":
+    elif subcmd in ["dock", "screen"]:
         sys.exit(run_workflow("screen", args))
-    elif args.subcommand == "md-setup" or args.subcommand == "md-run":
+    elif subcmd in ["dynamics", "md", "md-run", "md-setup", "md-analyze"]:
         sys.exit(run_workflow("dynamics", args))
-    elif args.subcommand == "md-analyze":
-        sys.exit(run_workflow("dynamics", args))
-    elif args.subcommand == "all":
+    elif subcmd in ["all", "run"]:
         sys.exit(run_workflow("all", args))
 
 if __name__ == "__main__":
