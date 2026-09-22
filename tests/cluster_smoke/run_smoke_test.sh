@@ -20,6 +20,8 @@ SMOKE_DIR="/tmp/cluster_smoke_$(date +%s)"
 mkdir -p "${SMOKE_DIR}"
 trap "rm -rf ${SMOKE_DIR} /shared/work/cluster_smoke_test 2>/dev/null || true" EXIT
 
+export NXF_HOME="${SMOKE_DIR}/.nextflow"
+
 # Copy smoke data and configs
 cp -r "${SCRIPT_DIR}/configs" "${SMOKE_DIR}/"
 cp "${SCRIPT_DIR}/data/smoke_receptor.pdb" "${SMOKE_DIR}/"

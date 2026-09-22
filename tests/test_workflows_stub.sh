@@ -19,6 +19,11 @@ TMP_OUT="/shared/work/sbdd_stub_tests_$(date +%s)"
 mkdir -p "${TMP_OUT}"
 trap "rm -rf ${TMP_OUT}" EXIT
 
+export NXF_HOME="${TMP_OUT}/.nextflow"
+
+SAMPLE_REC="${ROOT_DIR}/tests/cluster_smoke/data/smoke_receptor.pdb"
+SAMPLE_LIB="${ROOT_DIR}/tests/cluster_smoke/data/smoke_ligand.sdf"
+
 # 1. Test PREPARE workflow
 echo -e "\n[1/5] Testing PREPARE workflow on Slurm cluster (-stub)..."
 nextflow -log "${TMP_OUT}/nextflow_prep.log" run "${MAIN_NF}" \
@@ -27,8 +32,8 @@ nextflow -log "${TMP_OUT}/nextflow_prep.log" run "${MAIN_NF}" \
     --entry prepare \
     --total_models 2 \
     --project_name test_stub_prep \
-    --receptor "${SCRIPT_DIR}/../tests/fixtures/dummy_rec.pdb" \
-    --library "${SCRIPT_DIR}/../tests/fixtures/dummy_lib.sdf" \
+    --receptor "${SAMPLE_REC}" \
+    --library "${SAMPLE_LIB}" \
     --outdir "${TMP_OUT}/prep" \
     -profile slurm
 
@@ -41,8 +46,8 @@ nextflow -log "${TMP_OUT}/nextflow_screen_gnina.log" run "${MAIN_NF}" \
     --total_models 2 \
     --dock_engine gnina \
     --project_name test_stub_screen_gnina \
-    --receptor "${SCRIPT_DIR}/../tests/fixtures/dummy_rec.pdb" \
-    --library "${SCRIPT_DIR}/../tests/fixtures/dummy_lib.sdf" \
+    --receptor "${SAMPLE_REC}" \
+    --library "${SAMPLE_LIB}" \
     --outdir "${TMP_OUT}/screen_gnina" \
     -profile slurm
 
@@ -55,8 +60,8 @@ nextflow -log "${TMP_OUT}/nextflow_screen_both.log" run "${MAIN_NF}" \
     --total_models 2 \
     --dock_engine both \
     --project_name test_stub_screen_both \
-    --receptor "${SCRIPT_DIR}/../tests/fixtures/dummy_rec.pdb" \
-    --library "${SCRIPT_DIR}/../tests/fixtures/dummy_lib.sdf" \
+    --receptor "${SAMPLE_REC}" \
+    --library "${SAMPLE_LIB}" \
     --outdir "${TMP_OUT}/screen_both" \
     -profile slurm
 
@@ -68,8 +73,8 @@ nextflow -log "${TMP_OUT}/nextflow_dyn.log" run "${MAIN_NF}" \
     --entry dynamics \
     --md_replicates 1 \
     --project_name test_stub_dyn \
-    --receptor "${SCRIPT_DIR}/../tests/fixtures/dummy_rec.pdb" \
-    --docked_poses "${SCRIPT_DIR}/../tests/fixtures/dummy_lib.sdf" \
+    --receptor "${SAMPLE_REC}" \
+    --docked_poses "${SAMPLE_LIB}" \
     --outdir "${TMP_OUT}/dynamics" \
     -profile slurm
 
@@ -82,8 +87,8 @@ nextflow -log "${TMP_OUT}/nextflow_all.log" run "${MAIN_NF}" \
     --total_models 2 \
     --md_replicates 1 \
     --project_name test_stub_all \
-    --receptor "${SCRIPT_DIR}/../tests/fixtures/dummy_rec.pdb" \
-    --library "${SCRIPT_DIR}/../tests/fixtures/dummy_lib.sdf" \
+    --receptor "${SAMPLE_REC}" \
+    --library "${SAMPLE_LIB}" \
     --outdir "${TMP_OUT}/all" \
     -profile slurm
 

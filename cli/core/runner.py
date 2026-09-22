@@ -2,6 +2,7 @@
 File: cli/core/runner.py
 Description: Nextflow orchestrator execution wrapper with Slurm monitoring and /shared scratch lifecycle.
 """
+
 import subprocess
 import shutil
 import sys
@@ -11,12 +12,15 @@ from rich.console import Console
 console = Console()
 FRAMEWORK_DIR = Path(__file__).resolve().parent.parent.parent
 
+
 def clean_shared_scratch(project_name: str, verbose: bool = True):
     """Safely cleans the project's scratch workspace on /shared."""
     scratch_dir = Path(f"/shared/work/{project_name}")
     if scratch_dir.exists():
         if verbose:
-            console.print(f"[yellow]Cleaning temporary files in {scratch_dir}...[/yellow]")
+            console.print(
+                f"[yellow]Cleaning temporary files in {scratch_dir}...[/yellow]"
+            )
         try:
             shutil.rmtree(scratch_dir)
             if verbose:
@@ -27,28 +31,52 @@ def clean_shared_scratch(project_name: str, verbose: bool = True):
         if verbose:
             console.print(f"[dim]No scratch directory found at {scratch_dir}[/dim]")
 
-def execute_nextflow(entrypoint: str, extra_args: list, project_dir: Path,
-                     profile: str = "slurm", resume: bool = True,
-                     auto_clean: bool = True) -> int:
-    """Invokes Nextflow orchestrator for a given subworkflow."""
+
+def execute_nextflow(
+    entrypoint: str,
+    extra_args: list,
+    project_dir: Path,
+    profile: str = "slurm",
+    resume: bool = True,
+    auto_clean: bool = True,
+) -> int:
+    """Invokes Nextflow orchestrator with complete isolation from project directory."""
+    import os
+
     main_nf = FRAMEWORK_DIR / "main.nf"
-    
+
     project_name = project_dir.name
-    # Extract project_name from extra_args if present
     if "--project_name" in extra_args:
         idx = extra_args.index("--project_name")
         if idx + 1 < len(extra_args):
             project_name = extra_args[idx + 1]
 
-    log_file = project_dir / "logs" / f"nextflow_{entrypoint}.log"
-    (project_dir / "logs").mkdir(parents=True, exist_ok=True)
+    scratch_base = Path(f"/shared/work/{project_name}")
+    scratch_nxf_home = scratch_base / ".nextflow"
+    scratch_work = scratch_base / "work"
+    scratch_nxf_home.mkdir(parents=True, exist_ok=True)
+    scratch_work.mkdir(parents=True, exist_ok=True)
+
+    reports_dir = project_dir / "reports"
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    log_file = reports_dir / f"nextflow_{entrypoint}.log"
+
+    env = os.environ.copy()
+    env["NXF_HOME"] = str(scratch_nxf_home.resolve())
+    env["NXF_WORK"] = str(scratch_work.resolve())
 
     cmd = [
         "nextflow",
-        "-log", str(log_file.resolve()),
-        "run", str(main_nf.resolve()),
-        "-profile", profile,
-        "--entry", entrypoint
+        "-log",
+        str(log_file.resolve()),
+        "run",
+        str(main_nf.resolve()),
+        "-work-dir",
+        str(scratch_work.resolve()),
+        "-profile",
+        profile,
+        "--entry",
+        entrypoint,
     ]
 
     if resume:
@@ -56,29 +84,38 @@ def execute_nextflow(entrypoint: str, extra_args: list, project_dir: Path,
 
     cmd.extend(extra_args)
 
-    console.rule(f"[bold cyan]Nextflow Orchestrator: {entrypoint.upper()} ({profile.upper()})[/bold cyan]")
+    console.rule(
+        f"[bold cyan]Nextflow Orchestrator: {entrypoint.upper()} ({profile.upper()})[/bold cyan]"
+    )
     console.print(f"[dim]Project Scratch: /shared/work/{project_name}[/dim]")
     console.print(f"[dim]Deliverables:    {project_dir.resolve()}[/dim]")
     console.print(f"[bold blue]Command:[/bold blue] {' '.join(cmd)}\n")
 
     try:
-        proc = subprocess.Popen(cmd, cwd=project_dir)
+        proc = subprocess.Popen(cmd, cwd=project_dir, env=env)
         ret = proc.wait()
 
         if ret == 0:
-            console.print(f"\n[bold green]✓ Subworkflow '{entrypoint}' finished successfully![/bold green]")
+            console.print(
+                f"\n[bold green]✓ Subworkflow '{entrypoint}' finished successfully![/bold green]"
+            )
             if auto_clean:
                 clean_shared_scratch(project_name, verbose=True)
             return 0
         else:
-            console.print(f"\n[bold red]✗ Nextflow failed with exit code {ret}[/bold red]")
-            console.print(f"[yellow]Scratch directory /shared/work/{project_name} preserved for '-resume'.[/yellow]")
+            console.print(
+                f"\n[bold red]✗ Nextflow failed with exit code {ret}[/bold red]"
+            )
+            console.print(
+                f"[yellow]Scratch directory /shared/work/{project_name} preserved for '-resume'.[/yellow]"
+            )
             return ret
 
     except KeyboardInterrupt:
-        console.print("\n[bold yellow]Execution canceled by user. Scratch preserved for resume.[/bold yellow]")
+        console.print(
+            "\n[bold yellow]Execution canceled by user. Scratch preserved for resume.[/bold yellow]"
+        )
         return 130
     except Exception as e:
         console.print(f"\n[bold red]Failed to launch Nextflow: {e}[/bold red]")
         return 1
-
