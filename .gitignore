@@ -1,4 +1,4 @@
-# Python
+# Python bytecode and packaging
 __pycache__/
 *.py[cod]
 *$py.class
@@ -7,10 +7,14 @@ build/
 dist/
 .pytest_cache/
 
-# Nextflow
+# Nextflow execution caches and logs
 .nextflow/
 .nextflow.log*
 work/
+/work/
+logs/
+reports/nextflow_execution_report.html
+reports/nextflow_execution_timeline.html
 
 # AmberTools & Antechamber
 ANTECHAMBER*

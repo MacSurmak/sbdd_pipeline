@@ -169,8 +169,12 @@ def compute_pose_consensus_rmsd(df: pd.DataFrame, dock_dir: Path):
         gnina_sdfs = list(dock_dir.glob(f"**/*f{frame_id}*gnina*.sdf"))
         # Search for glide and gnina poses in dock_dir with exact frame boundary
         patt = rf"_f{frame_id}(?:[^0-9]|$)"
-        glide_sdfs = [f for f in dock_dir.glob("**/*dock*.sdf") if re.search(patt, f.name)]
-        gnina_sdfs = [f for f in dock_dir.glob("**/*gnina*.sdf") if re.search(patt, f.name)]
+        glide_sdfs = [
+            f for f in dock_dir.glob("**/*dock*.sdf") if re.search(patt, f.name)
+        ]
+        gnina_sdfs = [
+            f for f in dock_dir.glob("**/*gnina*.sdf") if re.search(patt, f.name)
+        ]
 
         glide_sdf = glide_sdfs[0] if glide_sdfs else None
         gnina_sdf = gnina_sdfs[0] if gnina_sdfs else None
@@ -201,9 +205,13 @@ def calculate_consensus_score(df: pd.DataFrame) -> pd.DataFrame:
     if "MMGBSA" in df.columns:
         df["PR_MMGBSA"] = df["MMGBSA"].rank(ascending=False, pct=True).fillna(0.0)
     if "Resc_CNNaffinity" in df.columns:
-        df["PR_CNN_Resc"] = df["Resc_CNNaffinity"].rank(ascending=True, pct=True).fillna(0.0)
+        df["PR_CNN_Resc"] = (
+            df["Resc_CNNaffinity"].rank(ascending=True, pct=True).fillna(0.0)
+        )
     if "Dock_CNNaffinity" in df.columns:
-        df["PR_GNINA_Dock"] = df["Dock_CNNaffinity"].rank(ascending=True, pct=True).fillna(0.0)
+        df["PR_GNINA_Dock"] = (
+            df["Dock_CNNaffinity"].rank(ascending=True, pct=True).fillna(0.0)
+        )
 
     pr_cols = [c for c in ["PR_Glide", "PR_MMGBSA", "PR_CNN_Resc"] if c in df.columns]
     if not pr_cols:
@@ -217,8 +225,12 @@ def calculate_consensus_score(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Aggregate project results into master ranking")
-    parser.add_argument("--docking_dir", help="Directory containing docking poses and tables")
+    parser = argparse.ArgumentParser(
+        description="Aggregate project results into master ranking"
+    )
+    parser.add_argument(
+        "--docking_dir", help="Directory containing docking poses and tables"
+    )
     parser.add_argument("--analysis_dir", help="Directory containing MM-GBSA csv files")
     parser.add_argument("--outdir", required=True, help="Output reports directory")
     args = parser.parse_args()
@@ -230,9 +242,13 @@ def main():
     analysis_dir = Path(args.analysis_dir) if args.analysis_dir else dock_dir
 
     # Find frames by searching CSVs and SDFs
-    glide_csvs = list(dock_dir.glob("**/*glide*f*.csv")) or list(dock_dir.glob("**/*dock*.csv"))
+    glide_csvs = list(dock_dir.glob("**/*glide*f*.csv")) or list(
+        dock_dir.glob("**/*dock*.csv")
+    )
     mmgbsa_csvs = list(analysis_dir.glob("**/*mmgbsa*.csv"))
-    resc_sdfs = list(dock_dir.glob("**/*rescored*.sdf")) or list(dock_dir.glob("**/*gnina_score_only*.sdf"))
+    resc_sdfs = list(dock_dir.glob("**/*rescored*.sdf")) or list(
+        dock_dir.glob("**/*gnina_score_only*.sdf")
+    )
     dock_sdfs = list(dock_dir.glob("**/*gnina_dock*.sdf"))
 
     # Map by frame ID
@@ -282,7 +298,12 @@ def main():
         for f in d_files:
             dock_data.update(parse_gnina_sdf(f, prefix="Dock_"))
 
-        titles = set(list(glide_data.keys()) + list(prime_data.keys()) + list(resc_data.keys()) + list(dock_data.keys()))
+        titles = set(
+            list(glide_data.keys())
+            + list(prime_data.keys())
+            + list(resc_data.keys())
+            + list(dock_data.keys())
+        )
         for t in titles:
             r = {"Title": t, "Frame": frame_tag}
             r.update(glide_data.get(t, {}))
@@ -294,37 +315,62 @@ def main():
     df = pd.DataFrame(rows)
     if df.empty:
         print("Warning: No records found. Generating empty templates.")
-        pd.DataFrame(columns=["Rank", "Title", "Frame", "Ultimate_Score"]).to_csv(out_dir / "ranking.csv", index=False)
-        pd.DataFrame(columns=["Title"]).to_csv(out_dir / "cross_frame_matrix.csv", index=False)
+        pd.DataFrame(columns=["Rank", "Title", "Frame", "Ultimate_Score"]).to_csv(
+            out_dir / "ranking.csv", index=False
+        )
+        pd.DataFrame(columns=["Title"]).to_csv(
+            out_dir / "cross_frame_matrix.csv", index=False
+        )
         with open(out_dir / "summary.json", "w") as fj:
             json.dump([], fj)
         sys.exit(0)
+
+    # Export full raw multi-frame metrics before deduplication
+    df_raw = df.copy()
+    df_raw.to_csv(out_dir / "docking_combined_raw.csv", index=False)
 
     # Calculate Consensus Score
     df = calculate_consensus_score(df)
 
     # Pivot matrix: Ultimate_Score across all frames
     if "Ultimate_Score" in df.columns and "Frame" in df.columns:
-        matrix_df = df.pivot_table(index="Title", columns="Frame", values="Ultimate_Score", aggfunc="max")
+        matrix_df = df.pivot_table(
+            index="Title", columns="Frame", values="Ultimate_Score", aggfunc="max"
+        )
         matrix_df.to_csv(out_dir / "cross_frame_matrix.csv")
 
-    # Resolved top hit per ligand
-    df_resolved = df.sort_values("Ultimate_Score", ascending=False).drop_duplicates(subset="Title").copy()
+    # Resolved top hit per ligand (best conformational frame)
+    df_resolved = (
+        df.sort_values("Ultimate_Score", ascending=False)
+        .drop_duplicates(subset="Title")
+        .copy()
+    )
     df_resolved = compute_pose_consensus_rmsd(df_resolved, dock_dir)
+
+    # Delta score relative to native ligand if present
+    native_mask = df_resolved["Title"].str.lower().isin(["native", "ref", "pka"])
+    if native_mask.any():
+        native_score = df_resolved.loc[native_mask, "Ultimate_Score"].iloc[0]
+        df_resolved["Delta_to_Native"] = df_resolved["Ultimate_Score"] - native_score
 
     df_resolved.reset_index(drop=True, inplace=True)
     df_resolved.index += 1
     df_resolved.index.name = "Rank"
 
-    # Save ranking.csv
-    df_resolved.to_csv(out_dir / "ranking.csv")
+    # Save master tables without numbering prefixes
+    df_resolved.to_csv(out_dir / "consensus_ranking.csv")
 
-    # Save summary.json
+    # Save summary JSON
     with open(out_dir / "summary.json", "w") as fj:
         json.dump(df_resolved.reset_index().to_dict(orient="records"), fj, indent=2)
 
-    print(f"Master consensus ranking generated with {len(df_resolved)} compounds in {out_dir / 'ranking.csv'}")
+    print(
+        f"Master consensus ranking generated with {len(df_resolved)} compounds in {out_dir / 'consensus_ranking.csv'}"
+    )
     print(f"Cross-frame matrix saved in {out_dir / 'cross_frame_matrix.csv'}")
+    print(
+        f"Raw un-deduplicated metrics saved in {out_dir / 'docking_combined_raw.csv'}"
+    )
 
 
 if __name__ == "__main__":
