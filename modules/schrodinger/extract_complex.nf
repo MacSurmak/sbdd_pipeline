@@ -21,47 +21,7 @@ process EXTRACT_COMPLEX {
     script:
     def cof_arg = cofactors ? "--cofactors ${cofactors}" : ""
     """
-    cat << 'EOF' > extract_complex.py
-import argparse, sys, logging
-from pathlib import Path
-from schrodinger import structure
-from schrodinger.structutils import analyze
-
-logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s", stream=sys.stdout)
-
-parser = argparse.ArgumentParser()
-parser.add_argument("--input", required=True)
-parser.add_argument("--frame_index", type=int, default=1)
-parser.add_argument("--ligand", required=True)
-parser.add_argument("--cofactors", nargs="*", default=[])
-parser.add_argument("--out_protein", required=True)
-parser.add_argument("--out_ligand", required=True)
-args = parser.parse_args()
-
-st = structure.StructureReader.read(args.input, index=args.frame_index)
-cofactors_asl = " OR ".join([f"res.ptype '{c}'" for c in args.cofactors])
-keep_asl = f"(protein) OR ({cofactors_asl})" if cofactors_asl else "(protein)"
-rec_atoms = analyze.evaluate_asl(st, keep_asl)
-if not rec_atoms:
-    logging.error("No protein atoms found")
-    sys.exit(1)
-
-rec_st = st.extract(rec_atoms)
-rec_st.write(args.out_protein)
-
-lig_asl = f"res.ptype '{args.ligand}'"
-lig_atoms = analyze.evaluate_asl(st, lig_asl)
-sdf_out = str(Path(args.out_ligand).with_suffix(".sdf"))
-if not lig_atoms:
-    Path(args.out_ligand).touch()
-    Path(sdf_out).touch()
-else:
-    lig_st = st.extract(lig_atoms)
-    lig_st.write(args.out_ligand)
-    lig_st.write(sdf_out)
-EOF
-
-    schrodinger run python3 extract_complex.py \\
+    schrodinger run python3 ${projectDir}/bin/extract_complex.py \\
         --input ${complex_file} \\
         --frame_index ${frame_idx} \\
         --ligand ${native_ligand} \\

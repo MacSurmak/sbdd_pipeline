@@ -16,26 +16,17 @@ process DECLASH {
 
     script:
     """
-    python3 -c "
-import sys, math, re, argparse
-from pathlib import Path
-from dataclasses import dataclass
-import numpy as np
-
-# Simple robust steric overlap minimizer for gro coordinates
-gro_lines = Path('${input_gro}').read_text().splitlines()
-title = gro_lines[0]
-n_atoms = int(gro_lines[1].strip())
-box = gro_lines[-1]
-atoms = gro_lines[2:-1]
-
-# Write through
-with open('${meta.id}_declashed.gro', 'w') as f:
-    f.write(title + '\\n' + str(n_atoms) + '\\n')
-    for a in atoms:
-        f.write(a + '\\n')
-    f.write(box + '\\n')
-"
+    python3 ${projectDir}/bin/declash_gmx.py \\
+        -f ${input_gro} \\
+        -p ${topol_top} \\
+        -o ${meta.id}_declashed.gro \\
+        --fix-moltype system1 \\
+        --fix-moltype UNK \\
+        --no-heavy-only \\
+        --cutoff 0.10 \\
+        --niter 300 \\
+        --max-move 0.05 \\
+        --report declash_report.txt
     """
 
     stub:

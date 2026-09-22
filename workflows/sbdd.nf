@@ -154,6 +154,9 @@ workflow SBDD_WF {
                 params.mmpbsa_start_ns ?: 20.0,
                 params.mmpbsa_step_frames ?: 40,
                 params.md_temperature ?: 310.15,
+                params.md_salt_conc ?: 0.15,
+                params.membrane ?: false,
+                28.0,
                 true
             )
         }

@@ -22,40 +22,11 @@ process EXTRACT_MD_SYSTEM {
 
     script:
     """
-    cat << 'EOF' > extract_md.py
-import sys, shutil
-from pathlib import Path
-from rdkit import Chem
-from rdkit.Chem import AllChem
-import subprocess
-
-rec_path = Path("${rec_file}")
-shutil.copy(rec_path, "receptor.pdb")
-
-suppl = Chem.SDMolSupplier("${lig_file}", removeHs=False)
-target_mol = None
-for m in suppl:
-    if m:
-        target_mol = m
-        break
-if target_mol is None:
-    sys.exit(1)
-
-charge = Chem.GetFormalCharge(target_mol)
-target_mol = Chem.AddHs(target_mol, addCoords=True)
-if not target_mol.GetNumConformers() or all(target_mol.GetConformer().GetAtomPosition(i).z == 0 for i in range(target_mol.GetNumAtoms())):
-    AllChem.EmbedMolecule(target_mol)
-
-w = Chem.SDWriter("ligand.sdf")
-w.write(target_mol)
-w.close()
-
-subprocess.run(["antechamber", "-i", "ligand.sdf", "-fi", "sdf", "-o", "ligand.mol2", "-fo", "mol2"], check=True)
-with open("lig_charge.txt", "w") as f:
-    f.write(str(charge))
-EOF
-
-    python3 extract_md.py
+    python3 ${projectDir}/bin/extract_md_files.py \\
+        --lig_file ${lig_file} \\
+        --lig_title "${lig_title}" \\
+        --rec_file ${rec_file} \\
+        --out_dir .
     """
 
     stub:
@@ -78,20 +49,7 @@ process MERGE_AMBER_COMPLEX {
 
     script:
     """
-    python3 -c "
-import parmed as pmd
-prot = pmd.load_file('${rec_pdb}')
-lig = pmd.load_file('${unk_mol2}')
-if hasattr(lig, 'to_structure'):
-    lig = lig.to_structure()
-used_chains = {res.chain for res in prot.residues}
-lig_chain = next((c for c in 'ABCDEFGHIJKLMNOPQRSTUVWXYZ' if c not in used_chains), 'Z')
-for res in lig.residues:
-    res.chain = lig_chain
-    res.name = 'UNK'
-complex_struct = prot + lig
-complex_struct.save('complex.pdb', overwrite=True)
-"
+    python3 ${projectDir}/bin/merge_complex.py ${rec_pdb} ${unk_mol2} complex.pdb
     """
 
     stub:
