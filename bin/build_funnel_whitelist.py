@@ -127,10 +127,6 @@ def main():
     glide_by_frame = {}
     for f in args.glide_csvs:
         p = Path(f)
-        # expected format: ..._f<frame>... or ..._f<frame>.csv
-        stem = p.stem
-        parts = stem.split("_f")
-        frame_id = parts[-1].split("_")[0] if len(parts) > 1 else "1"
         m = re.search(r"_f(\d+)", p.stem)
         frame_id = m.group(1) if m else "1"
         glide_by_frame[frame_id] = p
@@ -138,8 +134,6 @@ def main():
     gnina_by_frame = {}
     for f in args.gnina_sdfs:
         p = Path(f)
-        parts = p.stem.split("_f")
-        frame_id = parts[-1].split("_")[0] if len(parts) > 1 else "1"
         m = re.search(r"_f(\d+)", p.stem)
         frame_id = m.group(1) if m else "1"
         gnina_by_frame[frame_id] = p

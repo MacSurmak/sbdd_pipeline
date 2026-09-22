@@ -36,7 +36,7 @@ def merge_complex(prot_pdb: str, lig_mol2: str, out_pdb: str):
 
     complex_struct = prot + lig
     complex_struct.save(out_pdb, overwrite=True)
-    logger.info(f"Complex saved to {out_pdb} (Ligand assigned to chain {lig_chain})")
+    logging.info(f"Complex saved to {out_pdb} (Ligand assigned to chain {lig_chain})")
 
 
 if __name__ == "__main__":

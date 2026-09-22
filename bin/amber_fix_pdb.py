@@ -100,7 +100,7 @@ def fix_for_amber(in_pdb: str, out_pdb: str):
                 struct.atoms.remove(hg_atom)
                 res.atoms.remove(hg_atom)
 
-    logger.info(f"Saving AMBER-compliant PDB to {out_pdb}...")
+    logging.info(f"Saving AMBER-compliant PDB to {out_pdb}...")
     struct.save(out_pdb, overwrite=True)
 
 

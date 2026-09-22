@@ -164,9 +164,6 @@ def compute_pose_consensus_rmsd(df: pd.DataFrame, dock_dir: Path):
         frame_id = str(row["Frame"]).replace("F", "").replace("f", "")
         title = row["Title"]
 
-        # Search for glide and gnina poses in dock_dir
-        glide_sdfs = list(dock_dir.glob(f"**/*f{frame_id}*dock*.sdf"))
-        gnina_sdfs = list(dock_dir.glob(f"**/*f{frame_id}*gnina*.sdf"))
         # Search for glide and gnina poses in dock_dir with exact frame boundary
         patt = rf"_f{frame_id}(?:[^0-9]|$)"
         glide_sdfs = [
@@ -266,11 +263,6 @@ def main():
     for fid in sorted(all_frames, key=lambda x: int(x) if x.isdigit() else x):
         frame_tag = f"F{fid}"
 
-        # Match files for frame
-        g_file = next((f for f in glide_csvs if f"_f{fid}" in f.name), None)
-        m_file = next((f for f in mmgbsa_csvs if f"_f{fid}" in f.name), None)
-        r_file = next((f for f in resc_sdfs if f"_f{fid}" in f.name), None)
-        d_file = next((f for f in dock_sdfs if f"_f{fid}" in f.name), None)
         # Match files for frame with exact regex boundary (avoid _f1 matching _f10)
         pattern = rf"_f{fid}(?:[^0-9]|$)"
         g_files = [f for f in glide_csvs if re.search(pattern, f.name)]
@@ -278,10 +270,6 @@ def main():
         r_files = [f for f in resc_sdfs if re.search(pattern, f.name)]
         d_files = [f for f in dock_sdfs if re.search(pattern, f.name)]
 
-        glide_data = parse_glide_csv(g_file) if g_file else {}
-        prime_data = parse_prime_csv(m_file) if m_file else {}
-        resc_data = parse_gnina_sdf(r_file, prefix="Resc_") if r_file else {}
-        dock_data = parse_gnina_sdf(d_file, prefix="Dock_") if d_file else {}
         glide_data = {}
         for f in g_files:
             glide_data.update(parse_glide_csv(f))
@@ -357,8 +345,9 @@ def main():
     df_resolved.index += 1
     df_resolved.index.name = "Rank"
 
-    # Save master tables without numbering prefixes
+    # Save master tables without numbering prefixes (both semantic and ranking aliases)
     df_resolved.to_csv(out_dir / "consensus_ranking.csv")
+    df_resolved.to_csv(out_dir / "ranking.csv")
 
     # Save summary JSON
     with open(out_dir / "summary.json", "w") as fj:

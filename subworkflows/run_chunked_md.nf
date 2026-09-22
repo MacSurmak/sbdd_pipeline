@@ -1,11 +1,5 @@
 /*
  * subworkflows/run_chunked_md.nf
- * Replicated production MD where each 10 ns chunk is an independent Slurm job,
- * allowing faster cluster nodes to dynamically pick up subsequent chunks.
- */
-
-/*
- * subworkflows/run_chunked_md.nf
  * Replicated production MD simulation with fully dynamic atomic chunk scheduling.
  * Supports any total simulation length and chunk interval (e.g. 500 ns / 1 ns chunks)
  * with zero hardcoded limits.

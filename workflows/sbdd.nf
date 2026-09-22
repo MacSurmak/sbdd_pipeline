@@ -166,10 +166,6 @@ workflow SBDD_WF {
                 params.membrane ?: false,
                 params.membrane_thickness ?: 28.0,
                 params.per_residue_decomp ?: true
-            )                params.md_salt_conc ?: 0.15,
-                params.membrane ?: false,
-                28.0,
-                true
             )
         }
     }

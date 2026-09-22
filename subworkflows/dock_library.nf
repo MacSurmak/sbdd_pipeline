@@ -281,7 +281,7 @@ workflow DOCK_LIBRARY {
             }
         }
 
-        PRIME_MMGBSA(ch_mmgbsa_in, "ENERGY", membrane_enabled)
+        PRIME_MMGBSA(ch_mmgbsa_in, prime_job, membrane_enabled)
 
         // Consolidate MM-GBSA chunk CSVs per frame
         ch_mmgbsa_to_merge = PRIME_MMGBSA.out.scores_csv

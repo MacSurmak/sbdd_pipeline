@@ -1,10 +1,5 @@
 /*
  * modules/gromacs/run_chunk.nf
- * Executes production MD chunks on Slurm GPU
- */
-
-/*
- * modules/gromacs/run_chunk.nf
  * Orchestrates dynamic atomic production MD simulation chunks (1 to N chunks)
  * Completely eliminates any hardcoded chunk limits or manual DAG unrolling.
  */
