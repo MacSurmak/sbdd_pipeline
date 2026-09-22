@@ -24,3 +24,6 @@ leap.log
 /tmp/cluster_smoke_*
 /tmp/pytest-*
 
+
+# AI DevTool workdir
+.ai/
