@@ -30,7 +30,7 @@ workflow DYNAMICS_WF {
             [ [id: target_id], staged_dock, hit_name, staged_rec ]
         }
 
-    // 1. Build systems
+    // 1. Build systems with dynamic padding and water model
     SETUP_MD_SYSTEM(
         ch_targets,
         params.membrane ?: false,
@@ -38,20 +38,21 @@ workflow DYNAMICS_WF {
         params.upper_ratio ?: "5:4:1",
         params.lower_lipids ?: "POPC:POPE:POPS:CHL1",
         params.lower_ratio ?: "4:4:1:1",
-        10.0,
-        15.0,
+        params.lipid_padding ?: 10.0,
+        params.box_padding ?: 15.0,
         params.md_salt_conc ?: 0.15,
-        "opc"
+        params.water_model ?: "opc"
     )
 
-    // 2. Equilibration & chunked production MD on Slurm GPU
+    // 2. Equilibration & dynamic atomic production MD
     RUN_CHUNKED_MD(
         SETUP_MD_SYSTEM.out.system_ready,
         params.membrane ?: false,
         params.md_temperature ?: 310.15,
         params.md_total_ns ?: 60,
         params.md_chunk_ns ?: 10,
-        params.md_replicates ? (params.md_replicates as int) : 3
+        params.md_replicates ? (params.md_replicates as int) : 3,
+        params.queue ?: "main"
     )
 
     // 3. Trajectory analysis & MM-PBSA
@@ -63,7 +64,7 @@ workflow DYNAMICS_WF {
         params.md_temperature ?: 310.15,
         params.md_salt_conc ?: 0.15,
         params.membrane ?: false,
-        28.0,
-        true
+        params.membrane_thickness ?: 28.0,
+        params.per_residue_decomp ?: true
     )
 }

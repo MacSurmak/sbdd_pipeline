@@ -87,10 +87,10 @@ workflow SCREEN_WF {
             params.membrane_type ?: "MOM",
             params.membrane_topo ?: "in",
             params.membrane_chains ?: "A",
-            7.4,
-            1.0,
-            0.3,
-            true
+            params.target_ph ?: 7.4,
+            params.ph_tolerance ?: 1.0,
+            params.minimize_rmsd ?: 0.3,
+            params.cap_termini ?: true
         )
 
         ch_rec_pdb = PREPARE_RECEPTOR.out.prepared_pdb
@@ -99,7 +99,7 @@ workflow SCREEN_WF {
         ch_ref_mae = PREPARE_RECEPTOR.out.ref_native_mae
     }
 
-    // Prepare ligands (LigPrep and/or SDF chunks)
+    // Prepare ligands dynamically
     ch_lib = STAGE_INPUTS.out.staged_library
         .map { staged_lib -> [ [id: params.project_name, project: params.project_name], staged_lib ] }
 
@@ -107,10 +107,10 @@ workflow SCREEN_WF {
         ch_lib,
         params.dock_engine ?: "gnina",
         params.batch_size ?: 15,
-        7.4,
-        2.0,
-        16,
-        32
+        params.ligand_ph ?: 7.4,
+        params.ligand_ph_tol ?: 2.0,
+        params.ligprep_ff ?: 16,
+        params.max_states ?: 32
     )
 
     // Parallel docking (Glide, GNINA, or Both)

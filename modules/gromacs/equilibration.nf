@@ -131,8 +131,17 @@ EOF
 
     python3 - << 'EOF'
     import os
+
+    def ps_to_steps(ps, dt):
+        return str(int(round(float(ps) / float(dt))))
+
     is_mem = "${is_membrane}".lower() == "true"
     temp = "${temperature}"
+
+    nvt_short_steps = ps_to_steps("${params.nvt_short_ps ?: 50}", 0.001)
+    nvt_long_steps = ps_to_steps("${params.nvt_long_ps ?: 500}", 0.002)
+    npt_berendsen_steps = ps_to_steps("${params.npt_berendsen_ps ?: 1000}", 0.002)
+    npt_pr_steps = ps_to_steps("${params.npt_pr_ps ?: 1000}", 0.002)
 
     base_replace = {
         "{TEMP}": temp,
@@ -147,19 +156,19 @@ EOF
             ("emA", "minim.mdp", {"{DEFINE}": "-DPOSRES -DPOSRES_LIG", "{EMSTEP}": "0.005", "{CONSTRAINTS}": "h-bonds"}),
             ("emB", "minim.mdp", {"{DEFINE}": "", "{EMSTEP}": "0.001", "{CONSTRAINTS}": "h-bonds"}),
             ("emC", "minim.mdp", {"{DEFINE}": "", "{EMSTEP}": "0.0001", "{CONSTRAINTS}": "none"}),
-            ("nvt_short", "nvt.mdp", {"{DEFINE}": "-DPOSRES -DPOSRES_LIG", "{NSTEPS}": "50000", "{DT}": "0.001", "{GEN_VEL}": "yes", "{CONTINUATION}": "no"}),
-            ("nvt_long", "nvt.mdp", {"{DEFINE}": "-DPOSRES -DPOSRES_LIG", "{NSTEPS}": "250000", "{DT}": "0.002", "{GEN_VEL}": "no", "{CONTINUATION}": "yes"}),
-            ("npt_berendsen", "npt.mdp", {"{DEFINE}": "-DPOSRES -DPOSRES_LIG", "{NSTEPS}": "500000", "{PCOUPL}": "C-rescale", "{TAU_P}": "5.0"}),
-            ("npt_pr_250", "npt.mdp", {"{DEFINE}": "-DPOSRES_250 -DPOSRES_LIG_250", "{NSTEPS}": "500000", "{PCOUPL}": "Parrinello-Rahman", "{TAU_P}": "5.0"}),
-            ("npt_pr_50", "npt.mdp", {"{DEFINE}": "-DPOSRES_50 -DPOSRES_LIG_50", "{NSTEPS}": "500000", "{PCOUPL}": "Parrinello-Rahman", "{TAU_P}": "5.0"}),
-            ("npt_unrestrained", "npt.mdp", {"{DEFINE}": "", "{NSTEPS}": "500000", "{PCOUPL}": "Parrinello-Rahman", "{TAU_P}": "5.0"})
+            ("nvt_short", "nvt.mdp", {"{DEFINE}": "-DPOSRES -DPOSRES_LIG", "{NSTEPS}": nvt_short_steps, "{DT}": "0.001", "{GEN_VEL}": "yes", "{CONTINUATION}": "no"}),
+            ("nvt_long", "nvt.mdp", {"{DEFINE}": "-DPOSRES -DPOSRES_LIG", "{NSTEPS}": nvt_long_steps, "{DT}": "0.002", "{GEN_VEL}": "no", "{CONTINUATION}": "yes"}),
+            ("npt_berendsen", "npt.mdp", {"{DEFINE}": "-DPOSRES -DPOSRES_LIG", "{NSTEPS}": npt_berendsen_steps, "{PCOUPL}": "C-rescale", "{TAU_P}": "5.0"}),
+            ("npt_pr_250", "npt.mdp", {"{DEFINE}": "-DPOSRES_250 -DPOSRES_LIG_250", "{NSTEPS}": npt_pr_steps, "{PCOUPL}": "Parrinello-Rahman", "{TAU_P}": "5.0"}),
+            ("npt_pr_50", "npt.mdp", {"{DEFINE}": "-DPOSRES_50 -DPOSRES_LIG_50", "{NSTEPS}": npt_pr_steps, "{PCOUPL}": "Parrinello-Rahman", "{TAU_P}": "5.0"}),
+            ("npt_unrestrained", "npt.mdp", {"{DEFINE}": "", "{NSTEPS}": npt_pr_steps, "{PCOUPL}": "Parrinello-Rahman", "{TAU_P}": "5.0"})
         ]
     else:
         stages = [
             ("emA", "minim.mdp", {"{DEFINE}": "-DPOSRES -DPOSRES_LIG", "{EMSTEP}": "0.01", "{CONSTRAINTS}": "h-bonds"}),
-            ("nvt_short", "nvt.mdp", {"{DEFINE}": "-DPOSRES -DPOSRES_LIG", "{NSTEPS}": "50000", "{DT}": "0.001", "{GEN_VEL}": "yes", "{CONTINUATION}": "no"}),
-            ("npt_pr_1000", "npt.mdp", {"{DEFINE}": "-DPOSRES -DPOSRES_LIG", "{NSTEPS}": "500000", "{PCOUPL}": "Parrinello-Rahman", "{TAU_P}": "5.0"}),
-            ("npt_unrestrained", "npt.mdp", {"{DEFINE}": "", "{NSTEPS}": "500000", "{PCOUPL}": "Parrinello-Rahman", "{TAU_P}": "5.0"})
+            ("nvt_short", "nvt.mdp", {"{DEFINE}": "-DPOSRES -DPOSRES_LIG", "{NSTEPS}": nvt_short_steps, "{DT}": "0.001", "{GEN_VEL}": "yes", "{CONTINUATION}": "no"}),
+            ("npt_pr_1000", "npt.mdp", {"{DEFINE}": "-DPOSRES -DPOSRES_LIG", "{NSTEPS}": npt_pr_steps, "{PCOUPL}": "Parrinello-Rahman", "{TAU_P}": "5.0"}),
+            ("npt_unrestrained", "npt.mdp", {"{DEFINE}": "", "{NSTEPS}": npt_pr_steps, "{PCOUPL}": "Parrinello-Rahman", "{TAU_P}": "5.0"})
         ]
 
     for name, tpl, macros in stages:

@@ -175,10 +175,17 @@ workflow DOCK_LIBRARY {
 
     // 1. GLIDE DOCKING & GNINA RESCORE & SCREENING FUNNEL -> PRIME MM-GBSA
     if (dock_engine in ["glide", "both"]) {
-        ch_grid_in = ch_receptor_mae.join(ch_ref_lig_mae, by: 0)
-        GLIDE_GRIDGEN(ch_grid_in, "10, 10, 10", "26, 26, 26", "OPLS4")
+        def inner_box = params.inner_box ?: "10, 10, 10"
+        def outer_box = params.outer_box ?: "26, 26, 26"
+        def ff_dock   = params.glide_forcefield ?: "OPLS4"
+        def prec      = params.glide_precision ?: "SP"
+        def poses_n   = params.poses_per_lig ?: 1
+        def cnn_resc  = params.cnn_model ?: "crossdock_default2018"
+        def prime_job = params.prime_job_type ?: "ENERGY"
 
-        // 2D PARALLELISM: N grids * M ligand chunks = N * M parallel Slurm jobs!
+        ch_grid_in = ch_receptor_mae.join(ch_ref_lig_mae, by: 0)
+        GLIDE_GRIDGEN(ch_grid_in, inner_box, outer_box, ff_dock)
+
         ch_glide_in = GLIDE_GRIDGEN.out.grid_zip.combine(ch_prepared_mae)
             .map { meta_g, grid_zip, meta_l, lib_chunk_mae ->
                 def comb_meta = [
@@ -190,9 +197,8 @@ workflow DOCK_LIBRARY {
                 ]
                 [ comb_meta, grid_zip, lib_chunk_mae ]
             }
-        GLIDE_DOCK(ch_glide_in, "SP", 1, "OPLS4")
+        GLIDE_DOCK(ch_glide_in, prec, poses_n, ff_dock)
 
-        // 2D PARALLELISM: GNINA Rescore across N * M tasks on GPU
         ch_rec_rescore = ch_receptor_pdb.join(ch_ref_lig_sdf, by: 0)
         ch_rescore_in = GLIDE_DOCK.out.poses_sdf
             .map { comb_meta, sdf -> [ comb_meta.frame_id, comb_meta, sdf ] }
@@ -200,7 +206,7 @@ workflow DOCK_LIBRARY {
             .map { frame_id, comb_meta, poses_sdf, rec_pdb, ref_sdf ->
                 [ comb_meta, rec_pdb, ref_sdf, poses_sdf ]
             }
-        GNINA_RESCORE(ch_rescore_in, "crossdock_default2018")
+        GNINA_RESCORE(ch_rescore_in, cnn_resc)
 
         // Consolidate Glide chunks per frame
         ch_to_merge_glide = GLIDE_DOCK.out.pv_maegz

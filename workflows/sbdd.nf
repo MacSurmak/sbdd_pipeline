@@ -52,10 +52,10 @@ workflow SBDD_WF {
         params.membrane_type ?: "MOM",
         params.membrane_topo ?: "in",
         params.membrane_chains ?: "A",
-        7.4,
-        1.0,
-        0.3,
-        true
+        params.target_ph ?: 7.4,
+        params.ph_tolerance ?: 1.0,
+        params.minimize_rmsd ?: 0.3,
+        params.cap_termini ?: true
     )
 
     // 2. Prepare Ligands & Docking
@@ -67,10 +67,10 @@ workflow SBDD_WF {
             ch_lib,
             params.dock_engine ?: "gnina",
             params.batch_size ?: 15,
-            7.4,
-            2.0,
-            16,
-            32
+            params.ligand_ph ?: 7.4,
+            params.ligand_ph_tol ?: 2.0,
+            params.ligprep_ff ?: 16,
+            params.max_states ?: 32
         )
 
         // 3. Multi-Engine Docking, Triage, and MM-GBSA
