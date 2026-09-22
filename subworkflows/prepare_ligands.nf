@@ -68,12 +68,9 @@ workflow PREPARE_LIGANDS {
     max_states    // val: 32
 
     main:
-    ch_prepared_mae = Channel.empty()
-    ch_chunks       = Channel.empty()
-
-    // 1. Split SDF library into chunks for distributed computing across Slurm
+    // 1. Split raw SDF library into chunks for distributed computing across Slurm
     SPLIT_SDF(ch_library, batch_size)
-    ch_chunks = SPLIT_SDF.out.chunks.flatMap { meta, files ->
+    ch_raw_chunks = SPLIT_SDF.out.chunks.flatMap { meta, files ->
         def fileList = files instanceof List ? files : [files]
         fileList.withIndex().collect { f, idx ->
             def chunk_meta = [
@@ -85,20 +82,22 @@ workflow PREPARE_LIGANDS {
         }
     }
 
-    // 2. Parallel LIGPREP across Slurm worker nodes
-    if (dock_engine in ["glide", "both"]) {
-        ch_ligprep_in = ch_chunks.map { chunk_meta, f, idx -> [ chunk_meta, f ] }
-        LIGPREP(ch_ligprep_in, target_ph, ph_tol, ff_version, max_states)
+    // 2. Always prepare 3D protonated / Epik states at physiological pH
+    ch_ligprep_in = ch_raw_chunks.map { chunk_meta, f, idx -> [ chunk_meta, f ] }
+    LIGPREP(ch_ligprep_in, target_ph, ph_tol, ff_version, max_states)
 
-        ch_all_maegz = LIGPREP.out.prepared_maegz
-            .map { chunk_meta, maegz -> maegz }
-            .collect()
-
-        MERGE_LIGPREP(params.project_name, ch_all_maegz)
-        ch_prepared_mae = LIGPREP.out.prepared_maegz
+    ch_prepared_mae = LIGPREP.out.prepared_maegz
+    ch_prepared_sdf = LIGPREP.out.prepared_sdf.map { chunk_meta, sdf ->
+        [ chunk_meta, sdf, chunk_meta.chunk_idx ]
     }
+
+    ch_all_maegz = LIGPREP.out.prepared_maegz
+        .map { chunk_meta, maegz -> maegz }
+        .collect()
+
+    MERGE_LIGPREP(params.project_name, ch_all_maegz)
 
     emit:
     prepared_ligands = ch_prepared_mae
-    chunks           = ch_chunks
+    chunks           = ch_prepared_sdf
 }

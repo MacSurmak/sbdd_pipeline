@@ -9,48 +9,74 @@ include { PREPARE_LIGANDS   } from "../subworkflows/prepare_ligands"
 include { DOCK_LIBRARY      } from "../subworkflows/dock_library"
 include { SUMMARIZE_DOCKING } from "../modules/reporting/summarize"
 
+include { COUNT_MODELS      } from "../modules/common/count_models"
+
 workflow SCREEN_WF {
     def rec_file = params.receptor ? file(params.receptor) : file('NO_FILE')
     def lib_file = params.library ? file(params.library) : file('NO_FILE')
 
-    // Discover or generate all ensemble frames
-    def requested_model = params.model_index ? (params.model_index as int) : 0
-    def num_models = requested_model > 0 ? requested_model : (params.total_models ? (params.total_models as int) : 20)
-    def model_list = requested_model > 0 ? [ requested_model ] : (1..num_models).toList()
+    STAGE_INPUTS(rec_file, lib_file, file('NO_FILE'))
+
+    // Dynamic determination of NMR ensemble frames
+    ch_rec_meta = STAGE_INPUTS.out.staged_receptor.map { rec ->
+        [ [id: params.project_name, project: params.project_name], rec ]
+    }
+    COUNT_MODELS(ch_rec_meta)
 
     def prep_check = file("${params.outdir}/receptor/${params.project_name}_f1_prepared.pdb")
 
     if (prep_check.exists()) {
-        ch_rec_pdb = Channel.fromList(model_list).map { idx ->
-            def meta = [id: "${params.project_name}_f${idx}", frame: idx, project: params.project_name]
-            [ meta, file("${params.outdir}/receptor/${params.project_name}_f${idx}_prepared.pdb") ]
+        ch_rec_pdb = COUNT_MODELS.out.count_file.flatMap { meta, count_txt ->
+            def total = count_txt.text.trim() as int
+            def req = params.model_index ? (params.model_index as int) : 0
+            def models = (req > 0 && req <= total) ? [ req ] : (1..total).toList()
+            models.collect { idx ->
+                def m = [id: "${params.project_name}_f${idx}", frame: idx, project: params.project_name]
+                [ m, file("${params.outdir}/receptor/${params.project_name}_f${idx}_prepared.pdb") ]
+            }
         }
-        ch_ref_sdf = Channel.fromList(model_list).map { idx ->
-            def meta = [id: "${params.project_name}_f${idx}", frame: idx, project: params.project_name]
-            [ meta, file("${params.outdir}/receptor/${params.project_name}_f${idx}_ref_native.sdf") ]
+        ch_ref_sdf = COUNT_MODELS.out.count_file.flatMap { meta, count_txt ->
+            def total = count_txt.text.trim() as int
+            def req = params.model_index ? (params.model_index as int) : 0
+            def models = (req > 0 && req <= total) ? [ req ] : (1..total).toList()
+            models.collect { idx ->
+                def m = [id: "${params.project_name}_f${idx}", frame: idx, project: params.project_name]
+                [ m, file("${params.outdir}/receptor/${params.project_name}_f${idx}_ref_native.sdf") ]
+            }
         }
-        ch_rec_mae = Channel.fromList(model_list).map { idx ->
-            def meta = [id: "${params.project_name}_f${idx}", frame: idx, project: params.project_name]
-            [ meta, file("${params.outdir}/receptor/${params.project_name}_f${idx}_prepared.mae") ]
+        ch_rec_mae = COUNT_MODELS.out.count_file.flatMap { meta, count_txt ->
+            def total = count_txt.text.trim() as int
+            def req = params.model_index ? (params.model_index as int) : 0
+            def models = (req > 0 && req <= total) ? [ req ] : (1..total).toList()
+            models.collect { idx ->
+                def m = [id: "${params.project_name}_f${idx}", frame: idx, project: params.project_name]
+                [ m, file("${params.outdir}/receptor/${params.project_name}_f${idx}_prepared.mae") ]
+            }
         }
-        ch_ref_mae = Channel.fromList(model_list).map { idx ->
-            def meta = [id: "${params.project_name}_f${idx}", frame: idx, project: params.project_name]
-            [ meta, file("${params.outdir}/receptor/${params.project_name}_f${idx}_ref_native.mae") ]
+        ch_ref_mae = COUNT_MODELS.out.count_file.flatMap { meta, count_txt ->
+            def total = count_txt.text.trim() as int
+            def req = params.model_index ? (params.model_index as int) : 0
+            def models = (req > 0 && req <= total) ? [ req ] : (1..total).toList()
+            models.collect { idx ->
+                def m = [id: "${params.project_name}_f${idx}", frame: idx, project: params.project_name]
+                [ m, file("${params.outdir}/receptor/${params.project_name}_f${idx}_ref_native.mae") ]
+            }
         }
-
-        STAGE_INPUTS(rec_file, lib_file, file('NO_FILE'))
     } else {
-        STAGE_INPUTS(rec_file, lib_file, file('NO_FILE'))
-
         ch_rec = STAGE_INPUTS.out.staged_receptor
-            .combine(Channel.fromList(model_list))
-            .map { staged_rec, idx ->
-                def meta = [
-                    id: "${params.project_name}_f${idx}",
-                    frame: idx,
-                    project: params.project_name
-                ]
-                [ meta, staged_rec, idx ]
+            .combine(COUNT_MODELS.out.count_file)
+            .flatMap { staged_rec, meta_cnt, count_txt ->
+                def total = count_txt.text.trim() as int
+                def req = params.model_index ? (params.model_index as int) : 0
+                def models = (req > 0 && req <= total) ? [ req ] : (1..total).toList()
+                models.collect { idx ->
+                    def meta = [
+                        id: "${params.project_name}_f${idx}",
+                        frame: idx,
+                        project: params.project_name
+                    ]
+                    [ meta, staged_rec, idx ]
+                }
             }
 
         PREPARE_RECEPTOR(

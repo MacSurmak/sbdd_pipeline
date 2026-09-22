@@ -7,29 +7,35 @@ include { STAGE_INPUTS     } from '../modules/common/stage_inputs'
 include { PREPARE_RECEPTOR } from '../subworkflows/prepare_receptor'
 include { PREPARE_LIGANDS  } from '../subworkflows/prepare_ligands'
 
+include { COUNT_MODELS     } from '../modules/common/count_models'
+
 workflow PREPARE_WF {
     def rec_file = params.receptor ? file(params.receptor) : file('NO_FILE')
     def lib_file = params.library ? file(params.library) : file('NO_FILE')
 
-    // 1. Stage input files from local home to /shared scratch
+    // 1. Stage input files to /shared scratch
     STAGE_INPUTS(rec_file, lib_file, file('NO_FILE'))
 
-    // 2. Determine models channel:
-    // If params.model_index > 0: run single specified model.
-    // If params.model_index == 0 or null: run all ensemble models.
-    def requested_model = params.model_index ? (params.model_index as int) : 0
-    def num_models = requested_model > 0 ? requested_model : (params.total_models ? (params.total_models as int) : 20)
-    def model_list = requested_model > 0 ? [ requested_model ] : (1..num_models).toList()
+    // 2. Dynamic determination of NMR ensemble frames
+    ch_rec_meta = STAGE_INPUTS.out.staged_receptor.map { rec ->
+        [ [id: params.project_name, project: params.project_name], rec ]
+    }
+    COUNT_MODELS(ch_rec_meta)
 
     ch_rec = STAGE_INPUTS.out.staged_receptor
-        .combine(Channel.fromList(model_list))
-        .map { staged_rec, idx ->
-            def meta = [
-                id: "${params.project_name}_f${idx}",
-                frame: idx,
-                project: params.project_name
-            ]
-            [ meta, staged_rec, idx ]
+        .combine(COUNT_MODELS.out.count_file)
+        .flatMap { staged_rec, meta_cnt, count_txt ->
+            def total = count_txt.text.trim() as int
+            def req = params.model_index ? (params.model_index as int) : 0
+            def models = (req > 0 && req <= total) ? [ req ] : (1..total).toList()
+            models.collect { idx ->
+                def meta = [
+                    id: "${params.project_name}_f${idx}",
+                    frame: idx,
+                    project: params.project_name
+                ]
+                [ meta, staged_rec, idx ]
+            }
         }
 
     PREPARE_RECEPTOR(
