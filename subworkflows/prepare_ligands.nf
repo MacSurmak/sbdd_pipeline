@@ -33,6 +33,30 @@ process SPLIT_SDF {
     """
 }
 
+process MERGE_LIGPREP {
+    tag "${project_name}"
+    executor 'local'
+    scratch false
+    label 'process_single'
+
+    input:
+    val(project_name)
+    path(chunk_maes)
+
+    output:
+    tuple val([id: project_name, project: project_name]), path("${project_name}_prepared.maegz"), emit: prepared_maegz
+
+    script:
+    """
+    schrodinger structcat ${chunk_maes} -omae ${project_name}_prepared.maegz
+    """
+
+    stub:
+    """
+    touch ${project_name}_prepared.maegz
+    """
+}
+
 workflow PREPARE_LIGANDS {
     take:
     ch_library    // channel: [ val(meta), path(library_file) ]
@@ -47,17 +71,31 @@ workflow PREPARE_LIGANDS {
     ch_prepared_mae = Channel.empty()
     ch_chunks       = Channel.empty()
 
-    if (dock_engine in ["glide", "both"]) {
-        LIGPREP(ch_library, target_ph, ph_tol, ff_version, max_states)
-        ch_prepared_mae = LIGPREP.out.prepared_maegz
+    // 1. Split SDF library into chunks for distributed computing across Slurm
+    SPLIT_SDF(ch_library, batch_size)
+    ch_chunks = SPLIT_SDF.out.chunks.flatMap { meta, files ->
+        def fileList = files instanceof List ? files : [files]
+        fileList.withIndex().collect { f, idx ->
+            def chunk_meta = [
+                id: "${meta.id}_c${idx}",
+                chunk_idx: idx,
+                project: meta.project ?: meta.id
+            ]
+            [ chunk_meta, f, idx ]
+        }
     }
 
-    if (dock_engine in ["gnina", "both"]) {
-        SPLIT_SDF(ch_library, batch_size)
-        ch_chunks = SPLIT_SDF.out.chunks.flatMap { meta, files ->
-            def fileList = files instanceof List ? files : [files]
-            fileList.withIndex().collect { f, idx -> [ meta, f, idx ] }
-        }
+    // 2. Parallel LIGPREP across Slurm worker nodes
+    if (dock_engine in ["glide", "both"]) {
+        ch_ligprep_in = ch_chunks.map { chunk_meta, f, idx -> [ chunk_meta, f ] }
+        LIGPREP(ch_ligprep_in, target_ph, ph_tol, ff_version, max_states)
+
+        ch_all_maegz = LIGPREP.out.prepared_maegz
+            .map { chunk_meta, maegz -> maegz }
+            .collect()
+
+        MERGE_LIGPREP(params.project_name, ch_all_maegz)
+        ch_prepared_mae = LIGPREP.out.prepared_maegz
     }
 
     emit:

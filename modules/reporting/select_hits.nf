@@ -29,8 +29,8 @@ process SELECT_HITS {
 
     stub:
     """
-    echo "PPZ_1H_Ph_BnMe" > selected_hits.txt
-    echo "native" >> selected_hits.txt
+    echo "PPZ_1H_Ph_BnMe,1" > selected_hits.txt
+    echo "native,1" >> selected_hits.txt
     """
 }
 

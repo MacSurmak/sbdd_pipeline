@@ -1,0 +1,37 @@
+; Universal NPT Equilibration Template
+define                   = {DEFINE}
+integrator               = md
+dt                       = 0.002
+nsteps                   = {NSTEPS}
+
+nstxout                  = 5000
+nstvout                  = 5000
+nstenergy                = 1000
+nstlog                   = 1000
+nstxout-compressed       = 1000
+
+cutoff-scheme            = Verlet
+coulombtype              = PME
+rcoulomb                 = 1.0
+vdwtype                  = cutoff
+rvdw                     = 1.0
+pbc                      = xyz
+
+tcoupl                   = V-rescale
+tc-grps                  = {TC_GRPS}
+tau-t                    = 1.0 1.0
+ref-t                    = {TEMP} {TEMP}
+
+pcoupl                   = {PCOUPL}
+pcoupltype               = {PCOUPL_TYPE}
+tau-p                    = {TAU_P}
+ref-p                    = {REF_P}
+compressibility          = {COMPRESSIBILITY}
+refcoord-scaling         = com
+
+constraints              = h-bonds
+constraint-algorithm     = lincs
+lincs-order              = 4
+lincs-iter               = 1
+
+continuation             = yes

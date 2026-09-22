@@ -40,8 +40,13 @@ def execute_nextflow(entrypoint: str, extra_args: list, project_dir: Path,
         if idx + 1 < len(extra_args):
             project_name = extra_args[idx + 1]
 
+    log_file = project_dir / "logs" / f"nextflow_{entrypoint}.log"
+    (project_dir / "logs").mkdir(parents=True, exist_ok=True)
+
     cmd = [
-        "nextflow", "run", str(main_nf.resolve()),
+        "nextflow",
+        "-log", str(log_file.resolve()),
+        "run", str(main_nf.resolve()),
         "-profile", profile,
         "--entry", entrypoint
     ]

@@ -90,16 +90,13 @@ def extract_via_rdkit(lig_file, lig_title, rec_file, out_dir):
     writer.write(target_mol)
     writer.close()
     
-    # Use antechamber to convert sdf to mol2
+    # Use antechamber to convert sdf to mol2 inside out_dir only
     import subprocess
-    cmd = ["antechamber", "-i", str(sdf_out), "-fi", "sdf", "-o", str(out_dir / "ligand.mol2"), "-fo", "mol2"]
     import shutil
     antechamber_bin = shutil.which("antechamber") or str(Path(sys.prefix) / "bin" / "antechamber")
-    cmd = [antechamber_bin, "-i", str(sdf_out), "-fi", "sdf", "-o", str(out_dir / "ligand.mol2"), "-fo", "mol2"]
-    subprocess.run(cmd, check=True)
     cmd = [antechamber_bin, "-i", "ligand.sdf", "-fi", "sdf", "-o", "ligand.mol2", "-fo", "mol2"]
     subprocess.run(cmd, check=True, cwd=str(out_dir))
-    # Clean up antechamber intermediate files
+    # Clean up antechamber intermediate files in out_dir
     for tmp_ac in out_dir.glob("ANTECHAMBER*"):
         tmp_ac.unlink(missing_ok=True)
     for tmp_info in out_dir.glob("ATOMTYPE*"):

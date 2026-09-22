@@ -2,6 +2,7 @@
 """
 bin/split_sdf.py
 Splits an SDF library into chunks of N molecules.
+Splits an SDF library into chunks of N molecules with minimal memory footprint (streaming).
 """
 import argparse
 import sys
@@ -17,11 +18,30 @@ def main():
     out_dir = Path(args.outdir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    total_mols = 0
+    chunk_idx = 0
+    current_chunk = []
+    current_mol_lines = []
+
     with open(args.input, "r", encoding="utf-8", errors="ignore") as f:
         content = f.read()
+        for line in f:
+            current_mol_lines.append(line)
+            if line.startswith("$$$$"):
+                mol_text = "".join(current_mol_lines).strip()
+                if mol_text:
+                    current_chunk.append(mol_text)
+                    total_mols += 1
+                current_mol_lines = []
 
     mols = [m.strip() for m in content.split("$$$$") if m.strip()]
     print(f"Detected {len(mols)} molecules in {args.input}")
+                if len(current_chunk) >= args.batch_size:
+                    out_file = out_dir / f"chunk_{chunk_idx:03d}.sdf"
+                    with open(out_file, "w", encoding="utf-8") as out:
+                        out.write("\n$$$$\n".join(current_chunk) + "\n$$$$\n")
+                    chunk_idx += 1
+                    current_chunk = []
 
     total_chunks = 0
     for idx, i in enumerate(range(0, len(mols), args.batch_size)):
@@ -30,8 +50,21 @@ def main():
         with open(out_file, "w", encoding="utf-8") as out:
             out.write("\n$$$$\n".join(chunk) + "\n$$$$\n")
         total_chunks += 1
+        # Handle any trailing molecule without $$$$
+        if current_mol_lines:
+            mol_text = "".join(current_mol_lines).strip()
+            if mol_text:
+                current_chunk.append(mol_text)
+                total_mols += 1
 
     print(f"Successfully created {total_chunks} chunks of size <= {args.batch_size}.")
+        if current_chunk:
+            out_file = out_dir / f"chunk_{chunk_idx:03d}.sdf"
+            with open(out_file, "w", encoding="utf-8") as out:
+                out.write("\n$$$$\n".join(current_chunk) + "\n$$$$\n")
+            chunk_idx += 1
+
+    print(f"Processed {total_mols} molecules across {chunk_idx} chunks (size <= {args.batch_size}).")
 
 if __name__ == "__main__":
     main()

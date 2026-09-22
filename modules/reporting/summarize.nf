@@ -1,20 +1,22 @@
 /*
  * modules/reporting/summarize.nf
- * Aggregates all raw docking, MM-GBSA, and MD metrics into ranking tables
+ * Aggregates all raw docking, MM-GBSA, and GNINA metrics into consensus ranking CSV tables
  */
 
 process SUMMARIZE_DOCKING {
-    tag "${meta.id}"
+    tag "${project_name}"
     executor 'local'
     scratch false
     label 'process_single'
 
     input:
-    tuple val(meta), path(docked_poses)
+    val(project_name)
+    path(summary_files)
 
     output:
-    tuple val(meta), path("ranking.csv"), emit: ranking_csv
-    tuple val(meta), path("summary.json"), emit: summary_json
+    path("ranking.csv"), emit: ranking_csv
+    path("cross_frame_matrix.csv"), emit: matrix_csv
+    path("summary.json"), emit: summary_json
 
     script:
     """
@@ -26,6 +28,7 @@ process SUMMARIZE_DOCKING {
     stub:
     """
     touch ranking.csv
+    touch cross_frame_matrix.csv
     touch summary.json
     """
 }

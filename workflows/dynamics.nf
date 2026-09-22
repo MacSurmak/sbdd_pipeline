@@ -9,17 +9,12 @@ include { RUN_CHUNKED_MD  } from '../subworkflows/run_chunked_md'
 include { ANALYZE_MD_TRAJ } from '../subworkflows/analyze_md_traj'
 
 workflow DYNAMICS_WF {
-    def mdp_minim = file("${projectDir}/assets/mdp/minim.mdp")
-    def mdp_nvt   = file("${projectDir}/assets/mdp/nvt.mdp")
-    def mdp_npt   = file("${projectDir}/assets/mdp/npt.mdp")
-    def mdp_md    = file("${projectDir}/assets/mdp/md.mdp")
-
     // Automatic resolution of inputs
     def prepared_pdb = file("${params.outdir}/receptor/${params.project_name}_prepared.pdb")
     def docked_sdf   = file("${params.outdir}/docking/${params.project_name}_docked_all.sdf")
     def ref_sdf      = file("${params.outdir}/receptor/${params.project_name}_ref_native.sdf")
 
-    def rec_file     = prepared_pdb.exists() ? prepared_pdb : file(params.receptor)
+    def rec_file     = prepared_pdb.exists() ? prepared_pdb : (params.receptor ? file(params.receptor) : file('NO_FILE'))
     def dock_file    = docked_sdf.exists() ? docked_sdf : (params.docked_poses ? file(params.docked_poses) : ref_sdf)
 
     STAGE_INPUTS(rec_file, dock_file, ref_sdf)
@@ -52,15 +47,11 @@ workflow DYNAMICS_WF {
     // 2. Equilibration & chunked production MD on Slurm GPU
     RUN_CHUNKED_MD(
         SETUP_MD_SYSTEM.out.system_ready,
-        mdp_minim,
-        mdp_nvt,
-        mdp_npt,
-        mdp_md,
         params.membrane ?: false,
         params.md_temperature ?: 310.15,
         params.md_total_ns ?: 60,
         params.md_chunk_ns ?: 10,
-        params.md_replicates ?: 3
+        params.md_replicates ? (params.md_replicates as int) : 3
     )
 
     // 3. Trajectory analysis & MM-PBSA

@@ -6,7 +6,6 @@
 process PREPWIZARD {
     tag "${meta.id}"
     label 'process_medium'
-    label 'process_master'
 
     input:
     tuple val(meta), path(raw_rec)

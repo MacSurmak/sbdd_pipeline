@@ -18,11 +18,11 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-  <meta name="description" content="Nextflow workflow report for run id [golden_koch]">
+  <meta name="description" content="Nextflow workflow report for run id [extravagant_leakey]">
   <meta name="author" content="Paolo Di Tommaso, Phil Ewels">
   <link rel="icon" type="image/png" href="https://www.nextflow.io/img/favicon.png" />
 
-  <title>[golden_koch] Nextflow Workflow Report</title>
+  <title>[extravagant_leakey] Nextflow Workflow Report</title>
 
   <style type="text/css">
   /*!
@@ -137,7 +137,7 @@ table.DTCR_clonedTable.dataTable{position:absolute !important;background-color:r
         <li class="nav-item"><a class="nav-link" href="#tasks">Tasks</a></li>
       </ul>
       <span class="navbar-text">
-        [golden_koch]
+        [extravagant_leakey]
       </span>
     </div>
   </nav>
@@ -146,22 +146,54 @@ table.DTCR_clonedTable.dataTable{position:absolute !important;background-color:r
     <div class="container">
 
       <h1 class="display-3">Nextflow workflow report</h1>
-      <h2 class="text-muted mb-4"><samp>[golden_koch]</samp> </h2>
+      <h2 class="text-muted mb-4"><samp>[extravagant_leakey]</samp> </h2>
 
       
           <div class="alert alert-danger mb-4">
               <h4>Workflow execution completed unsuccessfully!</h4>
-              <p>The exit status of the task that caused the workflow execution to fail was: <code>null</code>.</p>
+              <p>The exit status of the task that caused the workflow execution to fail was: <code>1</code>.</p>
               <p>The full error message was:</p>
-              <pre>Script compilation failed</pre>
+              <pre>Error executing process > 'SBDD_WF:STAGE_INPUTS'
+
+Caused by:
+  Process `SBDD_WF:STAGE_INPUTS` terminated with an error exit status (1)
+
+
+Command executed:
+
+  ext="$(basename "/home/user/macsurmak/sbdd_pipeline_new/NO_FILE" | awk -F. '{if (NF>1) print $NF; else print "pdb"}')"
+  cp -L "/home/user/macsurmak/sbdd_pipeline_new/NO_FILE" "receptor.${ext}"
+  
+  if [ -n "/home/user/macsurmak/sbdd_pipeline_new/NO_FILE" ] && [ "/home/user/macsurmak/sbdd_pipeline_new/NO_FILE" != "NO_FILE" ] && [ -f "/home/user/macsurmak/sbdd_pipeline_new/NO_FILE" ]; then
+      cp -L "/home/user/macsurmak/sbdd_pipeline_new/NO_FILE" library.sdf
+  fi
+  
+  if [ -n "/home/user/macsurmak/sbdd_pipeline_new/NO_FILE" ] && [ "/home/user/macsurmak/sbdd_pipeline_new/NO_FILE" != "NO_FILE" ] && [ "/home/user/macsurmak/sbdd_pipeline_new/NO_FILE" != "/home/user/macsurmak/sbdd_pipeline_new/NO_FILE" ] && [ -f "/home/user/macsurmak/sbdd_pipeline_new/NO_FILE" ]; then
+      ref_ext="$(basename "/home/user/macsurmak/sbdd_pipeline_new/NO_FILE" | awk -F. '{if (NF>1) print $NF; else print "sdf"}')"
+      cp -L "/home/user/macsurmak/sbdd_pipeline_new/NO_FILE" "ref_native.${ref_ext}"
+  fi
+
+Command exit status:
+  1
+
+Command output:
+  (empty)
+
+Command error:
+  cp: cannot stat '/home/user/macsurmak/sbdd_pipeline_new/NO_FILE': No such file or directory
+
+Work dir:
+  /shared/work/SBDD_Project/9b/b21b85a8ae6333f4568dc5578878e1
+
+Tip: you can try to figure out what's wrong by changing to the process work dir and showing the script file named `.command.sh`</pre>
           </div>
       
 
       <dl>
         <dt>Run times</dt>
         <dd>
-          <span id="workflow_start">21-Sep-2026 15:09:28</span> - <span id="workflow_complete">21-Sep-2026 15:09:30</span>
-          (<span id="completed_fromnow"></span>duration: <strong>2.2s</strong>)
+          <span id="workflow_start">22-Sep-2026 14:28:08</span> - <span id="workflow_complete">22-Sep-2026 14:28:16</span>
+          (<span id="completed_fromnow"></span>duration: <strong>8.5s</strong>)
         </dd>
 
         <dl>
@@ -169,12 +201,12 @@ table.DTCR_clonedTable.dataTable{position:absolute !important;background-color:r
             <div style="width: 0.0%" class="progress-bar bg-success" data-toggle="tooltip" data-placement="top" title="0 tasks succeeded"><span class="text-truncate">&nbsp; 0 succeeded &nbsp;</span></div>
             <div style="width: 0.0%" class="progress-bar bg-secondary" data-toggle="tooltip" data-placement="top" title="0 tasks were cached"><span class="text-truncate">&nbsp; 0 cached &nbsp;</span></div>
             <div style="width: 0.0%" class="progress-bar bg-warning" data-toggle="tooltip" data-placement="top" title="0 tasks failed and were ignored"><span class="text-truncate">&nbsp; 0 ignored &nbsp;</span></div>
-            <div style="width: 0.0%" class="progress-bar bg-danger" data-toggle="tooltip" data-placement="top" title="0 tasks failed"><span class="text-truncate">&nbsp; 0 failed (0 retries) &nbsp;</span></div>
+            <div style="width: 100.0%" class="progress-bar bg-danger" data-toggle="tooltip" data-placement="top" title="1 tasks failed"><span class="text-truncate">&nbsp; 1 failed (0 retries) &nbsp;</span></div>
           </div>
         </dl>
 
         <dt>Nextflow command</dt>
-        <dd><pre class="nfcommand"><code>nextflow run main.nf --help</code></pre></dd>
+        <dd><pre class="nfcommand"><code>nextflow -log /tmp/sbdd_stub_tests_1790076439/nextflow_screen.log run /home/user/macsurmak/sbdd_pipeline_new/main.nf</code></pre></dd>
       </dl>
 
       <dl class="row small">
@@ -197,7 +229,7 @@ table.DTCR_clonedTable.dataTable{position:absolute !important;background-color:r
 
         
           <dt class="col-sm-3">Script ID</dt>
-          <dd class="col-sm-9"><code>6224b93033a643a479aca37fdaa0e3e1</code></dd>
+          <dd class="col-sm-9"><code>b96d7b87cd4cf98c0e2f0f29e7064aca</code></dd>
         
 
         
@@ -213,7 +245,7 @@ table.DTCR_clonedTable.dataTable{position:absolute !important;background-color:r
         
 
         <dt class="col-sm-3">Workflow session</dt>
-        <dd class="col-sm-9"><code>7add2a02-3702-4423-a745-b88b240c7bca</code></dd>
+        <dd class="col-sm-9"><code>37b29fb7-564d-4ab7-b942-701abf1d0552</code></dd>
 
         
 
@@ -1094,7 +1126,7 @@ $(function() {
 
   // Nextflow report data
   window.data = { "trace":[
-], "summary":[] };
+{"task_id":"1","hash":"9b\/b21b85","native_id":"1171578","process":"SBDD_WF:STAGE_INPUTS","module":"-","container":"-","tag":"-","name":"SBDD_WF:STAGE_INPUTS","status":"FAILED","exit":"1","submit":"1790076496347","start":"1790076496414","complete":"1790076496504","duration":"157","realtime":"90","%cpu":"-","%mem":"-","rss":"-","vmem":"-","peak_rss":"-","peak_vmem":"-","rchar":"-","wchar":"-","syscr":"-","syscw":"-","read_bytes":"-","write_bytes":"-","attempt":"1","workdir":"\/shared\/work\/SBDD_Project\/9b\/b21b85a8ae6333f4568dc5578878e1","script":"\n    ext=\"$(basename \"\/home\/user\/macsurmak\/sbdd_pipeline_new\/NO_FILE\" | awk -F. \'{if (NF>1) print $NF; else print \"pdb\"}\')\"\n    cp -L \"\/home\/user\/macsurmak\/sbdd_pipeline_new\/NO_FILE\" \"receptor.${ext}\"\n\n    if [ -n \"\/home\/user\/macsurmak\/sbdd_pipeline_new\/NO_FILE\" ] && [ \"\/home\/user\/macsurmak\/sbdd_pipeline_new\/NO_FILE\" != \"NO_FILE\" ] && [ -f \"\/home\/user\/macsurmak\/sbdd_pipeline_new\/NO_FILE\" ]; then\n        cp -L \"\/home\/user\/macsurmak\/sbdd_pipeline_new\/NO_FILE\" library.sdf\n    fi\n\n    if [ -n \"\/home\/user\/macsurmak\/sbdd_pipeline_new\/NO_FILE\" ] && [ \"\/home\/user\/macsurmak\/sbdd_pipeline_new\/NO_FILE\" != \"NO_FILE\" ] && [ \"\/home\/user\/macsurmak\/sbdd_pipeline_new\/NO_FILE\" != \"\/home\/user\/macsurmak\/sbdd_pipeline_new\/NO_FILE\" ] && [ -f \"\/home\/user\/macsurmak\/sbdd_pipeline_new\/NO_FILE\" ]; then\n        ref_ext=\"$(basename \"\/home\/user\/macsurmak\/sbdd_pipeline_new\/NO_FILE\" | awk -F. \'{if (NF>1) print $NF; else print \"sdf\"}\')\"\n        cp -L \"\/home\/user\/macsurmak\/sbdd_pipeline_new\/NO_FILE\" \"ref_native.${ref_ext}\"\n    fi\n    ","scratch":"-","queue":"-","cpus":"1","memory":"2147483648","disk":"-","time":"1800000","env":"PATH=$PATH:\/home\/user\/macsurmak\/sbdd_pipeline_new\/bin\n","error_action":"TERMINATE","vol_ctxt":"-","inv_ctxt":"-","hostname":"-","cpu_model":"-","accelerator":"-","accelerator_type":"-"}], "summary":[{"cpuUsage":null,"process":"STAGE_INPUTS","gpuMemAvg":null,"vmem":null,"reads":null,"gpuUsage":null,"cpu":null,"gpuMemPeak":null,"mem":null,"memUsage":null,"timeUsage":{"mean":0.01,"min":0.01,"q1":0.01,"q2":0.01,"q3":0.01,"max":0.01,"minLabel":"SBDD_WF:STAGE_INPUTS","maxLabel":"SBDD_WF:STAGE_INPUTS","q1Label":"SBDD_WF:STAGE_INPUTS","q2Label":"SBDD_WF:STAGE_INPUTS","q3Label":"SBDD_WF:STAGE_INPUTS"},"time":{"mean":90,"min":90,"q1":90,"q2":90,"q3":90,"max":90,"minLabel":"SBDD_WF:STAGE_INPUTS","maxLabel":"SBDD_WF:STAGE_INPUTS","q1Label":"SBDD_WF:STAGE_INPUTS","q2Label":"SBDD_WF:STAGE_INPUTS","q3Label":"SBDD_WF:STAGE_INPUTS"},"writes":null}] };
 
   </script>
 

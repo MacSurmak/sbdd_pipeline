@@ -31,15 +31,9 @@ workflow PREPARE_RECEPTOR {
     cap_termini       // val: true
 
     main:
-    def extract_script = file("${projectDir}/bin/extract_complex.py")
-    def parse_script   = file("${projectDir}/bin/parse_immers.py")
-    def align_script   = file("${projectDir}/bin/align_ligand.py")
-    def apply_script   = file("${projectDir}/bin/apply_membrane.py")
-
     // 1. Structure extraction: Separate raw protein from native ligand/cofactors
     EXTRACT_COMPLEX(
         ch_input,
-        extract_script,
         native_ligand,
         cofactors
     )
@@ -48,7 +42,6 @@ workflow PREPARE_RECEPTOR {
         // 2. Pure PPM 3.0 membrane orientation calculation (standalone, no Schrödinger)
         IMMERS(
             EXTRACT_COMPLEX.out.raw_protein_pdb,
-            parse_script,
             membrane_type,
             membrane_topo,
             membrane_chains
@@ -58,7 +51,7 @@ workflow PREPARE_RECEPTOR {
         ch_align_in = EXTRACT_COMPLEX.out.raw_protein_pdb
             .join(IMMERS.out.oriented_pdb)
             .join(EXTRACT_COMPLEX.out.raw_native_mae)
-        ALIGN_LIGAND(ch_align_in, align_script)
+        ALIGN_LIGAND(ch_align_in)
 
         ch_prep_in          = IMMERS.out.oriented_pdb
         ch_final_ref_native = ALIGN_LIGAND.out.ref_native_mae
@@ -89,7 +82,6 @@ workflow PREPARE_RECEPTOR {
     if (membrane_enabled) {
         ch_apply_in = PREPWIZARD.out.prepared_mae
             .join(ch_mem_txt)
-            .map { meta, mae, txt -> [ meta, mae, txt, apply_script ] }
             
         APPLY_MEMBRANE(ch_apply_in)
         ch_final_mae = APPLY_MEMBRANE.out.membrane_mae

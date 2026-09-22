@@ -65,6 +65,9 @@ def build_nextflow_args(config: Dict[str, Any], project_dir: Path) -> list:
     if rec_cfg.get("model_index") is not None:
         args.extend(["--model_index", str(rec_cfg["model_index"])])
 
+    if rec_cfg.get("total_models"):
+        args.extend(["--total_models", str(rec_cfg["total_models"])])
+
     if rec_cfg.get("keep_cofactors"):
         cofactors = rec_cfg["keep_cofactors"]
         if isinstance(cofactors, list):
@@ -94,16 +97,26 @@ def build_nextflow_args(config: Dict[str, Any], project_dir: Path) -> list:
     # Docking Engine
     gnina_cfg = config.get("gnina", {})
     glide_cfg = config.get("glide", {})
-    if glide_cfg.get("enabled", False):
+    if glide_cfg.get("enabled", False) and gnina_cfg.get("enabled", False):
+        args.extend(["--dock_engine", "both"])
+    elif glide_cfg.get("enabled", False):
         args.extend(["--dock_engine", "glide"])
     else:
         args.extend(["--dock_engine", "gnina"])
-        if gnina_cfg.get("exhaustiveness"):
-            args.extend(["--exhaustiveness", str(gnina_cfg["exhaustiveness"])])
-        if gnina_cfg.get("cnn_scoring"):
-            args.extend(["--cnn_scoring", str(gnina_cfg["cnn_scoring"])])
-        if gnina_cfg.get("batch_size"):
-            args.extend(["--batch_size", str(gnina_cfg["batch_size"])])
+
+    if gnina_cfg.get("exhaustiveness"):
+        args.extend(["--exhaustiveness", str(gnina_cfg["exhaustiveness"])])
+    if gnina_cfg.get("cnn_scoring"):
+        args.extend(["--cnn_scoring", str(gnina_cfg["cnn_scoring"])])
+    if gnina_cfg.get("batch_size"):
+        args.extend(["--batch_size", str(gnina_cfg["batch_size"])])
+
+    # Analysis & Funnel Triage
+    funnel_cfg = config.get("analysis", {}).get("funnel", {}) or config.get("screening", {}).get("funnel", {})
+    if funnel_cfg.get("top_frames_per_ligand"):
+        args.extend(["--top_k_frames", str(funnel_cfg["top_frames_per_ligand"])])
+    if funnel_cfg.get("library_percentile_cutoff"):
+        args.extend(["--percentile_cutoff", str(funnel_cfg["library_percentile_cutoff"])])
 
     # MD Settings
     md_cfg = config.get("md_simulation", {})

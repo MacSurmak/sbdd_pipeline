@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>SBDD Consensus Hitlist Report</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f8fafc; color: #1e293b; margin: 0; padding: 30px;
+        }
+        .container {
+            width: fit-content; min-width: 1200px; max-width: 98%; margin: 0 auto; background: #ffffff;
+            border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); padding: 24px;
+            overflow-x: auto;
+        }
+        h1 { font-size: 24px; margin-top: 0; color: #0f172a; border-bottom: 2px solid #e2e8f0; padding-bottom: 12px; }
+        .report-meta { font-size: 13px; color: #64748b; margin-bottom: 20px; }
+        table { border-collapse: collapse; font-size: 13px; text-align: right; }
+        th { background-color: #f1f5f9; color: #334155; padding: 10px 12px; border-bottom: 2px solid #cbd5e1; white-space: nowrap; }
+        td { padding: 8px 12px; border-bottom: 1px solid #e2e8f0; vertical-align: middle; white-space: nowrap; }
+        th.col-center, td.col-rank, td.col-frame { text-align: center; width: 60px; }
+        th.col-mol, td.col-mol { text-align: center; width: 180px; }
+        th.col-left, td.col-title { text-align: left; padding-right: 24px; }
+        tr:hover { background-color: #f8fafc; }
+        .native-row { background-color: #f0fdf4 !important; border-left: 4px solid #22c55e; }
+        .control-row { background-color: #fffbeb !important; border-left: 4px solid #f59e0b; }
+        .col-mol svg { display: block; margin: 0 auto; max-width: 180px; max-height: 120px; }
+        .badge-rank { background: #e2e8f0; color: #475569; padding: 3px 8px; border-radius: 6px; font-weight: 600; font-size: 12px; }
+        .badge-native { background: #22c55e; color: #ffffff; padding: 3px 8px; border-radius: 6px; font-weight: 700; font-size: 11px; }
+        .badge-control { background: #f59e0b; color: #ffffff; padding: 3px 8px; border-radius: 6px; font-weight: 700; font-size: 11px; }
+        .frame-tag { background: #e0f2fe; color: #0369a1; padding: 2px 6px; border-radius: 4px; font-weight: 600; font-size: 12px; }
+        .col-score { color: #0f172a; font-size: 14px; }
+        .delta-pos { color: #16a34a; font-weight: 600; }
+        .delta-neutral { color: #64748b; }
+        .col-num { color: #475569; font-family: SFMono-Regular, monospace; }
+        .na { color: #cbd5e1; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Conformational Selection Hitlist</h1>
+        <div class="report-meta">Displaying Top Candidates</div>
+        <table>
+            <thead>
+                <tr>
+                    <th class="col-center">Rank</th>
+                    <th class="col-center">2D Structure</th>
+                    <th class="col-left">Compound ID</th>
+                    <th class="col-center">Best Frame</th>
+                    <th>Score<br><small>(0–100)</small></th>
+                    <th>Δ vs Ref<br><small>(pts)</small></th>
+                    <th>Pose RMSD<br><small>(Glide vs GNINA)</small></th>
+                    <th>PR Glide<br><small>(0–1)</small></th>
+                    <th>PR MM-GBSA<br><small>(0–1)</small></th>
+                    <th>PR Rescore<br><small>(0–1)</small></th>
+                    <th>PR GNINA<br><small>(0–1)</small></th>
+                    <th>Glide Score<br><small>(kcal/mol)</small></th>
+                    <th>Prime ΔG Bind<br><small>(kcal/mol)</small></th>
+                    <th>Internal Strain<br><small>(kcal/mol)</small></th>
+                    <th>Rescore Affinity<br><small>(pKd)</small></th>
+                    <th>GNINA Dock<br><small>(pKd)</small></th>
+                    <th>Pose Quality<br><small>(CNNscore 0–1)</small></th>
+                </tr>
+            </thead>
+            <tbody>
+                {table_body}
+            </tbody>
+        </table>
+    </div>
+</body>
+</html>

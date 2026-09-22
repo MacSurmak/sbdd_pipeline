@@ -9,9 +9,9 @@ process STAGE_INPUTS {
     label 'process_single'
 
     input:
-    path rec_file, stageAs: 'in_rec/*'
-    path lib_file, stageAs: 'in_lib/*'
-    path ref_file, stageAs: 'in_ref/*'
+    val rec_file
+    val lib_file
+    val ref_file
 
     output:
     path("receptor.*"), emit: staged_receptor
@@ -19,19 +19,24 @@ process STAGE_INPUTS {
     path("ref_native.*"), emit: staged_ref, optional: true
 
     script:
-    def lib_copy = (lib_file && lib_file.name != 'NO_FILE' && lib_file.name != '.nobackup') ? "cp -L ${lib_file} library.sdf" : ""
-    def ref_copy = (ref_file && ref_file.name != 'NO_FILE' && ref_file.name != '.nobackup' && ref_file.name != rec_file.name) ? "cp -L ${ref_file} ref_native.${ref_file.extension}" : ""
     """
-    cp -L ${rec_file} receptor.${rec_file.extension}
-    ${lib_copy}
-    ${ref_copy}
+    ext="\$(basename "${rec_file}" | awk -F. '{if (NF>1) print \$NF; else print "pdb"}')"
+    cp -L "${rec_file}" "receptor.\${ext}"
+
+    if [ -n "${lib_file}" ] && [ "${lib_file}" != "NO_FILE" ] && [ -f "${lib_file}" ]; then
+        cp -L "${lib_file}" library.sdf
+    fi
+
+    if [ -n "${ref_file}" ] && [ "${ref_file}" != "NO_FILE" ] && [ "${ref_file}" != "${rec_file}" ] && [ -f "${ref_file}" ]; then
+        ref_ext="\$(basename "${ref_file}" | awk -F. '{if (NF>1) print \$NF; else print "sdf"}')"
+        cp -L "${ref_file}" "ref_native.\${ref_ext}"
+    fi
     """
 
     stub:
     """
-    touch receptor.${rec_file.extension}
+    touch receptor.pdb
     touch library.sdf
     touch ref_native.sdf
     """
 }
-

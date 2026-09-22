@@ -1,8 +1,7 @@
 /*
  * workflows/sbdd.nf
- * Complete end-to-end SBDD pipeline
  * Complete end-to-end SBDD pipeline with multi-engine docking, rescoring,
- * Prime MM-GBSA, automated hit selection, and chunked GROMACS MD.
+ * Screening Funnel Triage (Physics + AI), Prime MM-GBSA, automated hit selection, and chunked GROMACS MD.
  */
 
 include { STAGE_INPUTS      } from '../modules/common/stage_inputs'
@@ -16,14 +15,26 @@ include { SUMMARIZE_DOCKING } from '../modules/reporting/summarize'
 include { SELECT_HITS       } from '../modules/reporting/select_hits'
 
 workflow SBDD_WF {
-    def rec_file = file(params.receptor)
+    def rec_file = params.receptor ? file(params.receptor) : file('NO_FILE')
     def lib_file = params.library ? file(params.library) : file('NO_FILE')
 
     STAGE_INPUTS(rec_file, lib_file, file('NO_FILE'))
 
-    // 1. Prepare Receptor
+    // 1. Prepare Receptor across ensemble models
+    def requested_model = params.model_index ? (params.model_index as int) : 0
+    def num_models = requested_model > 0 ? requested_model : (params.total_models ? (params.total_models as int) : 20)
+    def model_list = requested_model > 0 ? [ requested_model ] : (1..num_models).toList()
+
     ch_rec = STAGE_INPUTS.out.staged_receptor
-        .map { r -> [ [id: params.project_name], r, params.model_index ?: 1 ] }
+        .combine(Channel.fromList(model_list))
+        .map { staged_rec, idx ->
+            def meta = [
+                id: "${params.project_name}_f${idx}",
+                frame: idx,
+                project: params.project_name
+            ]
+            [ meta, staged_rec, idx ]
+        }
 
     PREPARE_RECEPTOR(
         ch_rec,
@@ -42,7 +53,7 @@ workflow SBDD_WF {
     // 2. Prepare Ligands & Docking
     if (params.library) {
         ch_lib = STAGE_INPUTS.out.staged_library
-            .map { l -> [ [id: params.project_name], l ] }
+            .map { staged_lib -> [ [id: params.project_name, project: params.project_name], staged_lib ] }
 
         PREPARE_LIGANDS(
             ch_lib,
@@ -54,7 +65,7 @@ workflow SBDD_WF {
             32
         )
 
-        // 3. Multi-Engine Docking & MM-GBSA
+        // 3. Multi-Engine Docking, Triage, and MM-GBSA
         DOCK_LIBRARY(
             PREPARE_RECEPTOR.out.prepared_pdb,
             PREPARE_RECEPTOR.out.ref_native_sdf,
@@ -66,38 +77,53 @@ workflow SBDD_WF {
             params.exhaustiveness ?: 16,
             params.cnn_scoring ?: "rescore",
             params.num_modes ?: 3,
-            params.autobox_add ?: 4.0
+            params.autobox_add ?: 4.0,
+            params.top_k_frames ?: 3,
+            params.percentile_cutoff ?: 0.50,
+            params.membrane ?: false
         )
 
-        // 4. Summarize results into master ranking table
+        // 4. Summarize results into master ranking table and cross-frame matrix
         SUMMARIZE_DOCKING(
-            DOCK_LIBRARY.out.summary_bundle
+            params.project_name,
+            DOCK_LIBRARY.out.summary_files
         )
 
         // 5. Automated Hit Selection for Molecular Dynamics
+        ch_ranking_tuple = SUMMARIZE_DOCKING.out.ranking_csv
+            .map { csv -> [ [id: params.project_name, project: params.project_name], csv ] }
+
         SELECT_HITS(
-            SUMMARIZE_DOCKING.out.ranking_csv,
+            ch_ranking_tuple,
             params.top_n_hits ?: 1,
             true
         )
 
         // 6. Downstream MD simulation
         if (params.run_md) {
-            def mdp_minim = file("${projectDir}/assets/mdp/minim.mdp")
-            def mdp_nvt   = file("${projectDir}/assets/mdp/nvt.mdp")
-            def mdp_npt   = file("${projectDir}/assets/mdp/npt.mdp")
-            def mdp_md    = file("${projectDir}/assets/mdp/md.mdp")
-
-            ch_md_targets = SELECT_HITS.out.hits_file
-                .splitText()
+            ch_hits = SELECT_HITS.out.hits_file
                 .flatMap { meta, file -> file.readLines() }
                 .map { line -> line.trim() }
                 .filter { it.length() > 0 }
-                .combine(DOCK_LIBRARY.out.docked_poses)
-                .combine(PREPARE_RECEPTOR.out.prepared_pdb)
-                .map { hit_name, meta_dock, pose_file, meta_rec, rec_pdb ->
+                .map { line ->
+                    def parts = line.split(',')
+                    def title = parts[0].trim()
+                    def fid = parts.size() > 1 ? (parts[1].trim() as int) : 1
+                    [ fid, title ]
+                }
+
+            ch_docked_by_frame = DOCK_LIBRARY.out.docked_poses
+                .map { meta, pose -> [ (meta.frame as int), pose ] }
+
+            ch_rec_by_frame = PREPARE_RECEPTOR.out.prepared_pdb
+                .map { meta, pdb -> [ (meta.frame as int), pdb ] }
+
+            ch_frame_data = ch_docked_by_frame.join(ch_rec_by_frame, by: 0)
+
+            ch_md_targets = ch_hits.join(ch_frame_data, by: 0)
+                .map { fid, hit_name, pose_file, rec_pdb ->
                     def target_id = hit_name.replaceAll("[^a-zA-Z0-9_-]", "_")
-                    [ [id: target_id], pose_file, hit_name, rec_pdb ]
+                    [ [id: target_id, frame: fid], pose_file, hit_name, rec_pdb ]
                 }
 
             SETUP_MD_SYSTEM(
@@ -115,15 +141,11 @@ workflow SBDD_WF {
 
             RUN_CHUNKED_MD(
                 SETUP_MD_SYSTEM.out.system_ready,
-                mdp_minim,
-                mdp_nvt,
-                mdp_npt,
-                mdp_md,
                 params.membrane ?: false,
                 params.md_temperature ?: 310.15,
                 params.md_total_ns ?: 60,
                 params.md_chunk_ns ?: 10,
-                params.md_replicates ?: 3
+                params.md_replicates ? (params.md_replicates as int) : 3
             )
 
             ANALYZE_MD_TRAJ(
