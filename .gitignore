@@ -1,32 +1,40 @@
-# Python bytecode and packaging
+# Python bytecode, builds and packaging
 __pycache__/
 *.py[cod]
 *$py.class
 *.egg-info/
+.eggs/
 build/
 dist/
 .pytest_cache/
 
-# Nextflow execution caches and logs
+# Nextflow caches, runtime databases and workdirs
 .nextflow/
 .nextflow.log*
+.nextflow/cache/
 work/
 /work/
 logs/
-reports/nextflow_execution_report.html
-reports/nextflow_execution_timeline.html
 
-# AmberTools & Antechamber
+# Project dumps and ad-hoc scripts
+dump.py
+project_dump.txt
+*.dump
+
+# AmberTools & Antechamber temporary files
 ANTECHAMBER*
 ATOMTYPE*
 PREP*
 NEWPDB*
 frcmod*
 leap.log
+esout
+punch
 
 # Temporary test and smoke outputs
 /tmp/cluster_smoke_*
 /tmp/pytest-*
+/tmp/sbdd_stub_tests_*
 
 
 # AI DevTool workdir
