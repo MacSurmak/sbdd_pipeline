@@ -133,7 +133,6 @@ workflow SBDD_WF {
                     def target_id = hit_name.replaceAll("[^a-zA-Z0-9_-]", "_")
                     [ [id: target_id, frame: fid], pose_file, hit_name, rec_pdb ]
                 }
-
             SETUP_MD_SYSTEM(
                 ch_md_targets,
                 params.membrane ?: false,
@@ -141,10 +140,10 @@ workflow SBDD_WF {
                 params.upper_ratio ?: "5:4:1",
                 params.lower_lipids ?: "POPC:POPE:POPS:CHL1",
                 params.lower_ratio ?: "4:4:1:1",
-                10.0,
-                15.0,
+                params.lipid_padding ?: 10.0,
+                params.box_padding ?: 15.0,
                 params.md_salt_conc ?: 0.15,
-                "opc"
+                params.water_model ?: "opc"
             )
 
             RUN_CHUNKED_MD(
@@ -153,7 +152,8 @@ workflow SBDD_WF {
                 params.md_temperature ?: 310.15,
                 params.md_total_ns ?: 60,
                 params.md_chunk_ns ?: 10,
-                params.md_replicates ? (params.md_replicates as int) : 3
+                params.md_replicates ? (params.md_replicates as int) : 3,
+                params.queue ?: "main"
             )
 
             ANALYZE_MD_TRAJ(
@@ -163,6 +163,10 @@ workflow SBDD_WF {
                 params.mmpbsa_step_frames ?: 40,
                 params.md_temperature ?: 310.15,
                 params.md_salt_conc ?: 0.15,
+                params.membrane ?: false,
+                params.membrane_thickness ?: 28.0,
+                params.per_residue_decomp ?: true
+            )                params.md_salt_conc ?: 0.15,
                 params.membrane ?: false,
                 28.0,
                 true

@@ -8,10 +8,18 @@ import argparse
 import sys
 from pathlib import Path
 
+
 def main():
     parser = argparse.ArgumentParser(description="Split SDF into batches")
     parser.add_argument("--input", required=True, help="Input SDF file")
-    parser.add_argument("--batch_size", "--chunk_size", dest="batch_size", type=int, default=15, help="Molecules per chunk")
+    parser.add_argument(
+        "--batch_size",
+        "--chunk_size",
+        dest="batch_size",
+        type=int,
+        default=15,
+        help="Molecules per chunk",
+    )
     parser.add_argument("--outdir", default=".", help="Output directory for chunks")
     args = parser.parse_args()
 
@@ -24,7 +32,6 @@ def main():
     current_mol_lines = []
 
     with open(args.input, "r", encoding="utf-8", errors="ignore") as f:
-        content = f.read()
         for line in f:
             current_mol_lines.append(line)
             if line.startswith("$$$$"):
@@ -33,9 +40,6 @@ def main():
                     current_chunk.append(mol_text)
                     total_mols += 1
                 current_mol_lines = []
-
-    mols = [m.strip() for m in content.split("$$$$") if m.strip()]
-    print(f"Detected {len(mols)} molecules in {args.input}")
                 if len(current_chunk) >= args.batch_size:
                     out_file = out_dir / f"chunk_{chunk_idx:03d}.sdf"
                     with open(out_file, "w", encoding="utf-8") as out:
@@ -43,28 +47,22 @@ def main():
                     chunk_idx += 1
                     current_chunk = []
 
-    total_chunks = 0
-    for idx, i in enumerate(range(0, len(mols), args.batch_size)):
-        chunk = mols[i:i + args.batch_size]
-        out_file = out_dir / f"chunk_{idx:03d}.sdf"
-        with open(out_file, "w", encoding="utf-8") as out:
-            out.write("\n$$$$\n".join(chunk) + "\n$$$$\n")
-        total_chunks += 1
-        # Handle any trailing molecule without $$$$
         if current_mol_lines:
             mol_text = "".join(current_mol_lines).strip()
             if mol_text:
                 current_chunk.append(mol_text)
                 total_mols += 1
 
-    print(f"Successfully created {total_chunks} chunks of size <= {args.batch_size}.")
         if current_chunk:
             out_file = out_dir / f"chunk_{chunk_idx:03d}.sdf"
             with open(out_file, "w", encoding="utf-8") as out:
                 out.write("\n$$$$\n".join(current_chunk) + "\n$$$$\n")
             chunk_idx += 1
 
-    print(f"Processed {total_mols} molecules across {chunk_idx} chunks (size <= {args.batch_size}).")
+    print(
+        f"Processed {total_mols} molecules across {chunk_idx} chunks (size <= {args.batch_size})."
+    )
+
 
 if __name__ == "__main__":
     main()

@@ -15,17 +15,20 @@ process BUILD_FUNNEL_WHITELIST {
     path(gnina_sdfs)
     val(top_k_frames)
     val(percentile_cutoff)
+    val(benchmark_ligands)
 
     output:
     path("funnel_whitelist.csv"), emit: whitelist_csv
 
     script:
+    def bench_arg = benchmark_ligands ? "--benchmark_ligands ${benchmark_ligands}" : ""
     """
     python3 ${projectDir}/bin/build_funnel_whitelist.py \\
         --glide_csvs ${glide_csvs} \\
         --gnina_sdfs ${gnina_sdfs} \\
         --top_k_frames ${top_k_frames} \\
         --percentile_cutoff ${percentile_cutoff} \\
+        ${bench_arg} \\
         --output funnel_whitelist.csv
     """
 

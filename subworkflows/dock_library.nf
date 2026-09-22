@@ -242,13 +242,16 @@ workflow DOCK_LIBRARY {
         ch_all_glide_csvs = MERGE_GLIDE_CHUNKS.out.scores_csv.map { meta, csv -> csv }.collect()
         ch_all_resc_sdfs  = MERGE_RESC_CHUNKS.out.rescored_sdf.map { meta, sdf -> sdf }.collect()
 
+        def bench_ligands = params.benchmark_ligands ? (params.benchmark_ligands instanceof List ? params.benchmark_ligands.join(" ") : params.benchmark_ligands) : ""
+
         // Build consensus triage whitelist (Top 50% ligands, Top 3 frames per ligand)
         BUILD_FUNNEL_WHITELIST(
             params.project_name,
             ch_all_glide_csvs,
             ch_all_resc_sdfs,
             top_k_frames,
-            percentile_cutoff
+            percentile_cutoff,
+            bench_ligands
         )
 
         // Filter consolidated PV files per frame and split into parallel chunks
@@ -256,10 +259,11 @@ workflow DOCK_LIBRARY {
             .combine(BUILD_FUNNEL_WHITELIST.out.whitelist_csv)
             .map { meta, pv, wl -> [ meta, pv ] }
 
+        def batch_pv = params.mmgbsa_batch_size ?: 25
         FILTER_PV(
             ch_filter_in,
             BUILD_FUNNEL_WHITELIST.out.whitelist_csv,
-            25
+            batch_pv
         )
 
         // 2D PARALLELISM: N frames * K PV chunks = N * K parallel Prime MM-GBSA Slurm jobs!

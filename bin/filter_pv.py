@@ -4,22 +4,39 @@ Filters a Pose Viewer file, keeping only ligands explicitly present in the white
 Supports splitting the filtered poses into chunks of N poses, each with the receptor prepended,
 enabling massive distributed Prime MM-GBSA across cluster nodes.
 """
+
 import argparse
 import sys
 import csv
 from schrodinger import structure
 
+
 def main():
-    parser = argparse.ArgumentParser()
-    parser = argparse.ArgumentParser(description="Filter Pose Viewer file by whitelist and optionally chunk")
+    parser = argparse.ArgumentParser(
+        description="Filter Pose Viewer file by whitelist and optionally chunk"
+    )
     parser.add_argument("--input", required=True, help="Input _pv.maegz file")
-    parser.add_argument("--output", required=True, help="Filtered output _pv.maegz file")
     parser.add_argument("--whitelist", required=True, help="Path to whitelist.csv")
     parser.add_argument("--frame", required=True, help="Current frame ID")
-    parser.add_argument("--max_poses", type=int, default=1, help="Maximum poses per ligand for MM-GBSA")
-    parser.add_argument("--out_prefix", default="", help="Prefix for chunked outputs, e.g. frame_filtered")
-    parser.add_argument("--batch_size", "--chunk_size", dest="batch_size", type=int, default=25, help="Poses per chunk")
-    parser.add_argument("--output", default="", help="Optional single output _pv.maegz file")
+    parser.add_argument(
+        "--max_poses", type=int, default=1, help="Maximum poses per ligand for MM-GBSA"
+    )
+    parser.add_argument(
+        "--out_prefix",
+        default="",
+        help="Prefix for chunked outputs, e.g. frame_filtered",
+    )
+    parser.add_argument(
+        "--batch_size",
+        "--chunk_size",
+        dest="batch_size",
+        type=int,
+        default=25,
+        help="Poses per chunk",
+    )
+    parser.add_argument(
+        "--output", default="", help="Optional single output _pv.maegz file"
+    )
     args = parser.parse_args()
 
     allowed_titles = set()
@@ -29,31 +46,24 @@ def main():
             if str(row["Frame"]) == str(args.frame):
                 allowed_titles.add(row["Title"])
 
-    kept = 0
     receptor = None
     whitelisted_poses = []
     pose_counts = {}
-    with structure.StructureReader(args.input) as reader, structure.StructureWriter(args.output) as writer:
 
     with structure.StructureReader(args.input) as reader:
         for i, st in enumerate(reader):
-            # Always keep the receptor (first structure)
-            if i == 0 and (st.property.get("b_glide_receptor", 0) == 1 or st.atom_total > 500):
-                writer.append(st)
             if i == 0:
                 receptor = st.copy()
                 continue
-                
+
             title = (st.property.get("s_m_title") or st.title or "").strip()
-            # Only keep top n poses for whitelisted ligands
             if title in allowed_titles and pose_counts.get(title, 0) < args.max_poses:
-                writer.append(st)
                 whitelisted_poses.append(st.copy())
                 pose_counts[title] = pose_counts.get(title, 0) + 1
-                kept += 1
 
-    print(f"SUCCESS: Extracted receptor and {kept} whitelisted poses for Frame {args.frame}.")
-    print(f"Frame {args.frame}: Identified receptor and {len(whitelisted_poses)} whitelisted poses.")
+    print(
+        f"Frame {args.frame}: Identified receptor and {len(whitelisted_poses)} whitelisted poses."
+    )
 
     # 1. Single file output if requested
     if args.output:
@@ -72,7 +82,9 @@ def main():
             with structure.StructureWriter(c0_file) as writer:
                 if receptor:
                     writer.append(receptor)
-            print(f"No whitelisted poses for frame {args.frame}. Wrote receptor-only chunk {c0_file}.")
+            print(
+                f"No whitelisted poses for frame {args.frame}. Wrote receptor-only chunk {c0_file}."
+            )
         else:
             chunk_idx = 0
             for i in range(0, len(whitelisted_poses), args.batch_size):
@@ -83,8 +95,11 @@ def main():
                         writer.append(receptor)
                     for p in chunk:
                         writer.append(p)
-                print(f"Wrote chunk {chunk_idx}: receptor + {len(chunk)} poses -> {chunk_file}")
+                print(
+                    f"Wrote chunk {chunk_idx}: receptor + {len(chunk)} poses -> {chunk_file}"
+                )
                 chunk_idx += 1
+
 
 if __name__ == "__main__":
     main()
