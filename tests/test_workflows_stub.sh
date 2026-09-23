@@ -19,7 +19,8 @@ TMP_OUT="/shared/work/sbdd_stub_tests_$(date +%s)"
 mkdir -p "${TMP_OUT}"
 trap "rm -rf ${TMP_OUT}" EXIT
 
-export NXF_HOME="${TMP_OUT}/.nextflow"
+export NXF_HOME="${SMOKE_DIR}/.nextflow" 2>/dev/null || export NXF_HOME="${TMP_OUT}/.nextflow"
+cd "${TMP_OUT}"
 
 SAMPLE_REC="${ROOT_DIR}/tests/cluster_smoke/data/smoke_receptor.pdb"
 SAMPLE_LIB="${ROOT_DIR}/tests/cluster_smoke/data/smoke_ligand.sdf"

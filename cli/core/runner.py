@@ -98,8 +98,10 @@ def execute_nextflow(
     console.print(f"[dim]Deliverables:    {project_dir.resolve()}[/dim]")
     console.print(f"[bold blue]Command:[/bold blue] {' '.join(cmd)}\n")
 
+    # Run Nextflow INSIDE the scratch directory.
+    # This prevents .nextflow/ caches and .nextflow.log from polluting the user's clean project folder.
     try:
-        proc = subprocess.Popen(cmd, cwd=project_dir, env=env)
+        proc = subprocess.Popen(cmd, cwd=scratch_base, env=env)
         ret = proc.wait()
 
         if ret == 0:
