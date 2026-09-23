@@ -68,6 +68,13 @@ def execute_nextflow(
     reports_dir.mkdir(parents=True, exist_ok=True)
     log_file = reports_dir / f"nextflow_{entrypoint}.log"
 
+    # Ensure all scripts in bin/ are executable so Nextflow stages them in $PATH
+    for script_file in (FRAMEWORK_DIR / "bin").glob("*.py"):
+        try:
+            script_file.chmod(script_file.stat().st_mode | 0o111)
+        except Exception:
+            pass
+
     env = os.environ.copy()
     env["NXF_HOME"] = str(scratch_nxf_home.resolve())
     env["NXF_WORK"] = str(scratch_work.resolve())

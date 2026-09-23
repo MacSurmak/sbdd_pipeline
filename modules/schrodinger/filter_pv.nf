@@ -21,7 +21,7 @@ process FILTER_PV {
     script:
     def frame_id = meta.frame ?: 1
     """
-    cp \$(which filter_pv.py) .
+    cp \$(command -v filter_pv.py) .
     schrodinger run filter_pv.py \\
         --input ${pv_maegz} \\
         --output ${meta.id}_filtered_pv.maegz \\

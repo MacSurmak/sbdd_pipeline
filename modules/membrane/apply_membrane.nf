@@ -17,7 +17,7 @@ process APPLY_MEMBRANE {
 
     script:
     """
-    cp \$(which apply_membrane.py) .
+    cp \$(command -v apply_membrane.py) .
     schrodinger run apply_membrane.py \\
         --input ${prepared_mae} \\
         --info ${membrane_info} \\
