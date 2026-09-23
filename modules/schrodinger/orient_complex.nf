@@ -19,14 +19,13 @@ process ORIENT_COMPLEX {
     tuple val(meta), path("${meta.id}_ref_native.sdf"), emit: ref_native_sdf
 
     script:
-    def cof_arg = cofactors ? "--cofactors ${cofactors}" : ""
+    def cof_arg = (cofactors && cofactors != 'null') ? "--cofactors ${cofactors}" : ""
     """
-    schrodinger run orient_complex.py \\
+    schrodinger run ${projectDir}/bin/orient_complex.py \\
         --raw_protein ${raw_protein} \\
         --oriented_protein ${oriented_protein} \\
         --complex_mae ${complex_mae} \\
-        --ligand ${native_ligand} \\
-        ${cof_arg} \\
+        --ligand ${native_ligand} ${cof_arg} \\
         --out_receptor ${meta.id}_receptor_raw.mae \\
         --out_ligand ${meta.id}_ref_native.mae
     """

@@ -22,24 +22,22 @@ process EXTRACT_COMPLEX {
     tuple val(meta), path("${meta.id}_ref_native.sdf"), emit: ref_native_sdf, optional: true
 
     script:
-    def cof_arg = cofactors ? "--cofactors ${cofactors}" : ""
+    def cof_arg = (cofactors && cofactors != 'null') ? "--cofactors ${cofactors}" : ""
     if (membrane_enabled.toString() == 'true') {
         """
-        schrodinger run extract_complex.py \\
+        schrodinger run ${projectDir}/bin/extract_complex.py \\
             --input ${complex_file} \\
             --frame_index ${frame_idx} \\
-            --ligand ${native_ligand} \\
-            ${cof_arg} \\
+            --ligand ${native_ligand} ${cof_arg} \\
             --out_pure_protein ${meta.id}_pure_protein.pdb \\
             --out_complex_mae ${meta.id}_complex.mae
         """
     } else {
         """
-        schrodinger run extract_complex.py \\
+        schrodinger run ${projectDir}/bin/extract_complex.py \\
             --input ${complex_file} \\
             --frame_index ${frame_idx} \\
-            --ligand ${native_ligand} \\
-            ${cof_arg} \\
+            --ligand ${native_ligand} ${cof_arg} \\
             --out_receptor_mae ${meta.id}_raw_receptor.mae \\
             --out_ligand ${meta.id}_ref_native.mae
         """

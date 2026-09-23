@@ -17,7 +17,7 @@ process APPLY_MEMBRANE {
 
     script:
     """
-    schrodinger run apply_membrane.py \\
+    schrodinger run ${projectDir}/bin/apply_membrane.py \\
         --input ${prepared_mae} \\
         --info ${membrane_info} \\
         --output tmp_${meta.id}_prepared.mae
