@@ -6,6 +6,7 @@
 include { SETUP_MD_SYSTEM } from '../subworkflows/setup_md_system'
 include { RUN_CHUNKED_MD  } from '../subworkflows/run_chunked_md'
 include { ANALYZE_MD_TRAJ } from '../subworkflows/analyze_md_traj'
+include { STAGE_ASSETS    } from '../modules/common/stage_assets'
 
 workflow DYNAMICS_WF {
     // Automatic resolution of inputs (supporting both single model and multi-frame ensemble naming)
@@ -49,6 +50,8 @@ workflow DYNAMICS_WF {
     )
 
     // 2. Equilibration & dynamic atomic production MD
+    STAGE_ASSETS(file("${projectDir}/assets/mdp", type: 'dir'))
+
     RUN_CHUNKED_MD(
         SETUP_MD_SYSTEM.out.system_ready,
         params.membrane ?: false,
@@ -61,7 +64,7 @@ workflow DYNAMICS_WF {
         params.nvt_long_ps ?: 500,
         params.npt_berendsen_ps ?: 1000,
         params.npt_pr_ps ?: 1000,
-        file("${projectDir}/assets/mdp", type: 'dir')
+        STAGE_ASSETS.out.mdp_templates
     )
 
     // 3. Trajectory analysis & MM-PBSA
