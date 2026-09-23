@@ -20,10 +20,6 @@ process LIGPREP {
 
     script:
     """
-    mkdir -p .jobdb .schrodinger_tmp
-    export SCHRODINGER_JOBDB_DIR=\$PWD/.jobdb
-    export SCHRODINGER_TMPDIR=\$PWD/.schrodinger_tmp
-
     schrodinger ligprep \\
         -isd ${chunk_sdf} \\
         -omae ${meta.id}_prepared.maegz \\
@@ -33,11 +29,9 @@ process LIGPREP {
         -s ${max_states} \\
         -bff ${ff_version} \\
         -g \\
-        -NOJOBID \\
         -WAIT
 
     schrodinger structconvert ${meta.id}_prepared.maegz ${meta.id}_prepared.sdf
-    rm -rf .jobdb .schrodinger_tmp
     """
 
     stub:

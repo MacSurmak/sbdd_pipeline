@@ -21,23 +21,15 @@ process PRIME_MMGBSA {
     """
     schrodinger prime_mmgbsa \\
         -job_type ${job_type} \\
-        -out_type CSV \\
+        -csv_output yes \\
+        -out_type PV \\
+        -jobname ${meta.id}_mmgbsa \\
         -HOST localhost:${task.cpus} \\
         -NJOBS ${task.cpus} \\
         -OVERWRITE \\
         -WAIT \\
         ${mem_flag} \\
         ${pv_maegz}
-
-    # Prime outputs <input_basename>-out.csv
-    base=\$(basename "${pv_maegz}" .maegz)
-    base=\$(basename "\${base}" .mae)
-    if [ -f "\${base}-out.csv" ]; then
-        mv "\${base}-out.csv" "${meta.id}_mmgbsa-out.csv"
-    fi
-    if [ -f "\${base}-out.maegz" ]; then
-        mv "\${base}-out.maegz" "${meta.id}_mmgbsa-out.maegz"
-    fi
     """
 
     stub:
