@@ -10,6 +10,7 @@ process APPLY_MEMBRANE {
 
     input:
     tuple val(meta), path(prepared_mae), path(membrane_info)
+    path script_file
 
     output:
     tuple val(meta), path("${meta.id}_prepared.mae"), emit: prepared_mae
@@ -17,8 +18,7 @@ process APPLY_MEMBRANE {
 
     script:
     """
-    cp \$(command -v apply_membrane.py) .
-    schrodinger run apply_membrane.py \\
+    schrodinger run ${script_file} \\
         --input ${prepared_mae} \\
         --info ${membrane_info} \\
         --output tmp_${meta.id}_prepared.mae

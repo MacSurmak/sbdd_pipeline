@@ -13,6 +13,7 @@ process EXTRACT_COMPLEX {
     val(native_ligand)
     val(cofactors)
     val(membrane_enabled)
+    path script_file
 
     output:
     tuple val(meta), path("${meta.id}_pure_protein.pdb"), emit: pure_protein_pdb, optional: true
@@ -25,8 +26,7 @@ process EXTRACT_COMPLEX {
     def cof_arg = cofactors ? "--cofactors ${cofactors}" : ""
     if (membrane_enabled) {
         """
-        cp \$(command -v extract_complex.py) .
-        schrodinger run extract_complex.py \\
+        schrodinger run ${script_file} \\
             --input ${complex_file} \\
             --frame_index ${frame_idx} \\
             --ligand ${native_ligand} \\
@@ -36,8 +36,7 @@ process EXTRACT_COMPLEX {
         """
     } else {
         """
-        cp \$(command -v extract_complex.py) .
-        schrodinger run extract_complex.py \\
+        schrodinger run ${script_file} \\
             --input ${complex_file} \\
             --frame_index ${frame_idx} \\
             --ligand ${native_ligand} \\

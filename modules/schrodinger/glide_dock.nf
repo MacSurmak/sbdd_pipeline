@@ -12,6 +12,7 @@ process GLIDE_DOCK {
     val(precision)
     val(poses_per_lig)
     val(forcefield)
+    path script_file
 
     output:
     tuple val(meta), path("${meta.id}_dock_pv.maegz"), emit: pv_maegz
@@ -36,8 +37,7 @@ EOF
     mv dock_pv.maegz ${meta.id}_dock_pv.maegz
     mv dock.csv ${meta.id}_dock.csv
 
-    cp \$(command -v pv_to_sdf.py) .
-    schrodinger run pv_to_sdf.py --pv ${meta.id}_dock_pv.maegz --sdf ${meta.id}_dock.sdf
+    schrodinger run ${script_file} --pv ${meta.id}_dock_pv.maegz --sdf ${meta.id}_dock.sdf
     """
 
     stub:

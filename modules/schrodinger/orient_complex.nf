@@ -12,6 +12,7 @@ process ORIENT_COMPLEX {
     tuple val(meta), path(raw_protein), path(oriented_protein), path(complex_mae)
     val(native_ligand)
     val(cofactors)
+    path script_file
 
     output:
     tuple val(meta), path("${meta.id}_receptor_raw.mae"), emit: receptor_raw_mae
@@ -21,8 +22,7 @@ process ORIENT_COMPLEX {
     script:
     def cof_arg = cofactors ? "--cofactors ${cofactors}" : ""
     """
-    cp \$(command -v orient_complex.py) .
-    schrodinger run orient_complex.py \\
+    schrodinger run ${script_file} \\
         --raw_protein ${raw_protein} \\
         --oriented_protein ${oriented_protein} \\
         --complex_mae ${complex_mae} \\
