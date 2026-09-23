@@ -1,0 +1,20 @@
+md_simulation:
+  enabled: true
+  system_build:
+    water_model: "opc"
+    box_padding: 8.0                 # Крошечный бокс = мало воды = сверхбыстрая MD
+    neutralize: true
+    salt_conc: 0.15
+  equilibration:
+    nvt_short_ps: 2
+    nvt_long_ps: 2
+    npt_berendsen_ps: 2
+    npt_pr_ps: 2
+  production:
+    temperature: 310.15
+    total_time_ns: 0.004             # 4 пикосекунды (очень быстро)
+    chunk_size_ns: 0.004
+    replicates: 1                    # Всего 1 реплика для теста
+  selection:
+    mode: "top_n"
+    top_n: 1

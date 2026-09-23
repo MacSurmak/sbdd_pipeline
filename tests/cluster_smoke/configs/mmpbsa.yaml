@@ -1,0 +1,8 @@
+mmpbsa:
+  enabled: true
+  cores: 4
+  start_ns: 0.0
+  step_frames: 1                     # Считать каждый фрейм (их все равно мало)
+  per_residue_decomp: false          # Отключить GB декомпозицию для скорости
+  temperature: 310.15
+  salt_conc: 0.15
