@@ -33,7 +33,6 @@ def main():
 
     with open(args.input, "r", encoding="utf-8", errors="ignore") as f:
         for line in f:
-            current_mol_lines.append(line)
             if line.startswith("$$$$"):
                 mol_text = "".join(current_mol_lines).strip()
                 if mol_text:
@@ -46,6 +45,8 @@ def main():
                         out.write("\n$$$$\n".join(current_chunk) + "\n$$$$\n")
                     chunk_idx += 1
                     current_chunk = []
+            else:
+                current_mol_lines.append(line)
 
         if current_mol_lines:
             mol_text = "".join(current_mol_lines).strip()
