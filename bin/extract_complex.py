@@ -94,7 +94,7 @@ def main():
         )
 
     if args.out_ligand_mae:
-        lig_asl = f"res.ptype '{args.ligand}'"
+        lig_asl = f"(res.name '{args.ligand}' OR res.ptype '{args.ligand}*' OR res.ptype '*{args.ligand}*')"
         lig_atoms = analyze.evaluate_asl(st, lig_asl)
         sdf_out = str(Path(args.out_ligand_mae).with_suffix(".sdf"))
         if not lig_atoms:

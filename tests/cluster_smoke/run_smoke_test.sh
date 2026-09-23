@@ -18,7 +18,16 @@ echo "=========================================================="
 
 SMOKE_DIR="/tmp/cluster_smoke_$(date +%s)"
 mkdir -p "${SMOKE_DIR}"
-trap "rm -rf ${SMOKE_DIR} /shared/work/cluster_smoke_test 2>/dev/null || true" EXIT
+
+cleanup() {
+    EXIT_STATUS=$?
+    if [ $EXIT_STATUS -eq 0 ]; then
+        rm -rf "${SMOKE_DIR}" /shared/work/cluster_smoke_test 2>/dev/null || true
+    else
+        echo -e "\n[DEBUG] Failure detected. Preserving workdir for inspection: /shared/work/cluster_smoke_test"
+    fi
+}
+trap cleanup EXIT
 
 export NXF_HOME="${SMOKE_DIR}/.nextflow"
 
