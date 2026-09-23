@@ -163,8 +163,7 @@ workflow SBDD_WF {
                 params.nvt_short_ps ?: 50,
                 params.nvt_long_ps ?: 500,
                 params.npt_berendsen_ps ?: 1000,
-                params.npt_pr_ps ?: 1000,
-                file("${params.workdir}/assets/mdp")
+                params.npt_pr_ps ?: 1000
             )
 
             ANALYZE_MD_TRAJ(

@@ -21,7 +21,7 @@ process ORIENT_COMPLEX {
     script:
     def cof_arg = cofactors ? "--cofactors ${cofactors}" : ""
     """
-    schrodinger run ${params.workdir}/bin/orient_complex.py \\
+    schrodinger run ${projectDir}/bin/orient_complex.py \\
         --raw_protein ${raw_protein} \\
         --oriented_protein ${oriented_protein} \\
         --complex_mae ${complex_mae} \\

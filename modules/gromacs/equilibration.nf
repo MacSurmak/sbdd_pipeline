@@ -15,7 +15,6 @@ process GMX_EQUILIBRATION {
     val(nvt_long_ps)
     val(npt_berendsen_ps)
     val(npt_pr_ps)
-    path(mdp_templates)
 
     output:
     tuple val(meta), path("eq_final.gro"), path("eq_final.cpt"), emit: equilibrated_state
@@ -27,8 +26,8 @@ process GMX_EQUILIBRATION {
     nvidia-smi --query-gpu=name,memory.total --format=csv,noheader || true
 
     # 1. Generate customized MDP files from templates
-    ${params.workdir}/bin/generate_mdp.py \\
-        --templates_dir ${mdp_templates} \\
+    ${projectDir}/bin/generate_mdp.py \\
+        --templates_dir ${projectDir}/assets/mdp \\
         --outdir . \\
         --is_membrane ${is_membrane} \\
         --temperature ${temperature} \\

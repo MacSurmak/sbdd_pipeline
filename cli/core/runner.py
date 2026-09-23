@@ -75,17 +75,6 @@ def execute_nextflow(
         except Exception:
             pass
 
-    # Copy code and assets to shared NFS scratch EXACTLY ONCE
-    shared_bin = scratch_base / "bin"
-    if shared_bin.exists():
-        shutil.rmtree(shared_bin)
-    shutil.copytree(FRAMEWORK_DIR / "bin", shared_bin)
-
-    shared_assets = scratch_base / "assets"
-    if shared_assets.exists():
-        shutil.rmtree(shared_assets)
-    shutil.copytree(FRAMEWORK_DIR / "assets", shared_assets)
-
     env = os.environ.copy()
     env["NXF_HOME"] = str(scratch_nxf_home.resolve())
     env["NXF_WORK"] = str(scratch_work.resolve())

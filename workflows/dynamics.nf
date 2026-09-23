@@ -89,7 +89,8 @@ workflow DYNAMICS_WF {
         )
 
         // 2. Equilibration & dynamic atomic production MD
-        RUN_CHUNKED_MD(        SETUP_MD_SYSTEM.out.system_ready,
+    RUN_CHUNKED_MD(
+        SETUP_MD_SYSTEM.out.system_ready,
         params.membrane ?: false,
         params.md_temperature ?: 310.15,
         params.md_total_ns ?: 60,
@@ -99,11 +100,8 @@ workflow DYNAMICS_WF {
         params.nvt_short_ps ?: 50,
         params.nvt_long_ps ?: 500,
         params.npt_berendsen_ps ?: 1000,
-        params.npt_pr_ps ?: 1000,
-        file("${params.workdir}/assets/mdp")
-    )
-
-    // 3. Trajectory analysis & MM-PBSA
+        params.npt_pr_ps ?: 1000
+    )    // 3. Trajectory analysis & MM-PBSA
     ANALYZE_MD_TRAJ(
         RUN_CHUNKED_MD.out.clean_trajectory,
         params.mmpbsa_cores ?: 16,

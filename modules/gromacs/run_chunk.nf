@@ -17,7 +17,6 @@ process RUN_PRODUCTION_MD {
     val(total_ns)
     val(chunk_ns)
     val(slurm_queue)
-    path(mdp_templates)
 
     output:
     tuple val(meta), path("md_*.xtc"), emit: all_xtcs
@@ -25,7 +24,7 @@ process RUN_PRODUCTION_MD {
 
     script:
     """
-    ${params.workdir}/bin/run_production_md.py \\
+    ${projectDir}/bin/run_production_md.py \\
         --meta_id ${meta.id} \\
         --rep ${meta.rep} \\
         --gro ${eq_gro} \\
@@ -37,7 +36,7 @@ process RUN_PRODUCTION_MD {
         --temp ${temperature} \\
         --is_membrane ${is_membrane} \\
         --queue ${slurm_queue} \\
-        --mdp_template ${mdp_templates}/md.mdp \\
+        --mdp_template ${projectDir}/assets/mdp/md.mdp \\
         --cpus ${task.cpus} \\
         --outdir .
     """

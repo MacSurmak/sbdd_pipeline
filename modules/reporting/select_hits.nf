@@ -20,7 +20,7 @@ process SELECT_HITS {
 
     script:
     """
-    ${params.workdir}/bin/select_hits.py \\
+    ${projectDir}/bin/select_hits.py \\
         --ranking_csv ${ranking_csv} \\
         --top_n ${top_n} \\
         --include_native ${include_native} \\
