@@ -22,8 +22,13 @@ trap "rm -rf ${TMP_OUT}" EXIT
 export NXF_HOME="${TMP_OUT}/.nextflow"
 cd "${TMP_OUT}"
 
-SAMPLE_REC="${ROOT_DIR}/tests/cluster_smoke/data/smoke_receptor.pdb"
-SAMPLE_LIB="${ROOT_DIR}/tests/cluster_smoke/data/smoke_ligand.sdf"
+mkdir -p "${TMP_OUT}/data"
+SAMPLE_REC="${TMP_OUT}/data/smoke_receptor.pdb"
+SAMPLE_LIB="${TMP_OUT}/data/smoke_ligand.sdf"
+
+# Create fake files so Nextflow has something to stage
+touch "${SAMPLE_REC}"
+echo '$$$$' > "${SAMPLE_LIB}"
 
 # 1. Test PREPARE workflow
 echo -e "\n[1/5] Testing PREPARE workflow on Slurm cluster (-stub)..."
