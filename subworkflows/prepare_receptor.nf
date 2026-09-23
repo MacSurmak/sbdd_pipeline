@@ -1,18 +1,22 @@
 /*
  * subworkflows/prepare_receptor.nf
- * Decoupled Receptor preparation pipeline:
- * 1. EXTRACT_COMPLEX (Schrödinger): complex (.cif/.pdb) -> raw_protein.pdb + raw_native.mae + raw_native.sdf
+ * High-throughput parallel receptor preparation across Slurm cluster:
+ * 1. EXTRACT_COMPLEX (Schrodinger): extracts pure protein PDB and full complex MAE (with cofactors & ligand).
  * 2. If membrane:
- *      IMMERS (Pure PPM 3.0 CLI): raw_protein.pdb -> oriented_protein.pdb + membrane_info
- *      ALIGN_LIGAND (Schrödinger): raw_protein.pdb + oriented_protein.pdb + raw_native.mae -> ref_native.mae + ref_native.sdf
- * 3. PREPWIZARD (Schrödinger): oriented (or raw) protein -> prepared_mae + prepared_pdb
+ *      IMMERS (Pure PPM 3.0 CLI): pure protein PDB -> oriented protein PDB + membrane_info.
+ *      ORIENT_COMPLEX (Schrodinger): applies CA superposition matrix to the FULL complex structure,
+ *          preserving all cofactors, bond orders, and relative native ligand geometry.
+ *          Emits oriented receptor_raw.mae and ref_native.mae / ref_native.sdf.
+ *    Else:
+ *      Directly extracts receptor_raw.mae and ref_native.mae / ref_native.sdf.
+ * 3. PREPWIZARD (Schrodinger): runs on receptor_raw.mae (protein + cofactors).
  * 4. If membrane:
- *      APPLY_MEMBRANE (Schrödinger Prime): prepared_mae + membrane_info -> membrane_mae
+ *      APPLY_MEMBRANE (Schrodinger Prime): injects implicit membrane slab properties for MM-GBSA.
  */
 
 include { EXTRACT_COMPLEX } from "../modules/schrodinger/extract_complex"
 include { IMMERS          } from "../modules/membrane/immers"
-include { ALIGN_LIGAND    } from "../modules/schrodinger/align_ligand"
+include { ORIENT_COMPLEX  } from "../modules/schrodinger/orient_complex"
 include { PREPWIZARD      } from "../modules/schrodinger/prepwizard"
 include { APPLY_MEMBRANE  } from "../modules/membrane/apply_membrane"
 
@@ -31,42 +35,48 @@ workflow PREPARE_RECEPTOR {
     cap_termini       // val: true
 
     main:
-    // 1. Structure extraction: Separate raw protein from native ligand/cofactors
+    // 1. Separate models and extract components
     EXTRACT_COMPLEX(
         ch_input,
         native_ligand,
-        cofactors
+        cofactors,
+        membrane_enabled
     )
 
     if (membrane_enabled) {
-        // 2. Pure PPM 3.0 membrane orientation calculation (standalone, no Schrödinger)
+        // 2. Parallel PPM 3.0 immersion on pure protein
         IMMERS(
-            EXTRACT_COMPLEX.out.raw_protein_pdb,
+            EXTRACT_COMPLEX.out.pure_protein_pdb,
             membrane_type,
             membrane_topo,
             membrane_chains
         )
 
-        // 3. Align native reference ligand to the oriented receptor frame
-        ch_align_in = EXTRACT_COMPLEX.out.raw_protein_pdb
+        // 3. Superimpose and transform entire complex structure (protein + cofactors + ligand)
+        ch_orient_in = EXTRACT_COMPLEX.out.pure_protein_pdb
             .join(IMMERS.out.oriented_pdb)
-            .join(EXTRACT_COMPLEX.out.raw_native_mae)
-        ALIGN_LIGAND(ch_align_in)
+            .join(EXTRACT_COMPLEX.out.complex_mae)
 
-        ch_prep_in          = IMMERS.out.oriented_pdb
-        ch_final_ref_native = ALIGN_LIGAND.out.ref_native_mae
-        ch_final_ref_sdf    = ALIGN_LIGAND.out.ref_native_sdf
+        ORIENT_COMPLEX(
+            ch_orient_in,
+            native_ligand,
+            cofactors
+        )
+
+        ch_prep_in          = ORIENT_COMPLEX.out.receptor_raw_mae
+        ch_final_ref_native = ORIENT_COMPLEX.out.ref_native_mae
+        ch_final_ref_sdf    = ORIENT_COMPLEX.out.ref_native_sdf
         ch_mem_json         = IMMERS.out.membrane_json
         ch_mem_txt          = IMMERS.out.membrane_txt
     } else {
-        ch_prep_in          = EXTRACT_COMPLEX.out.raw_protein_pdb
-        ch_final_ref_native = EXTRACT_COMPLEX.out.raw_native_mae
-        ch_final_ref_sdf    = EXTRACT_COMPLEX.out.raw_native_sdf
+        ch_prep_in          = EXTRACT_COMPLEX.out.raw_receptor_mae
+        ch_final_ref_native = EXTRACT_COMPLEX.out.ref_native_mae
+        ch_final_ref_sdf    = EXTRACT_COMPLEX.out.ref_native_sdf
         ch_mem_json         = Channel.empty()
         ch_mem_txt          = Channel.empty()
     }
 
-    // 4. Schrodinger Protein Preparation Wizard
+    // 4. Protein Preparation Wizard in parallel across Slurm nodes
     PREPWIZARD(
         ch_prep_in,
         target_ph,
@@ -75,16 +85,17 @@ workflow PREPARE_RECEPTOR {
         cap_termini
     )
 
-    ch_final_mae = PREPWIZARD.out.prepared_mae
-    ch_final_pdb = PREPWIZARD.out.prepared_pdb
-
-    // 5. Optional implicit membrane property injection for Prime
+    // 5. Implicit membrane property injection for Prime MM-GBSA
     if (membrane_enabled) {
         ch_apply_in = PREPWIZARD.out.prepared_mae
             .join(ch_mem_txt)
-            
+
         APPLY_MEMBRANE(ch_apply_in)
-        ch_final_mae = APPLY_MEMBRANE.out.membrane_mae
+        ch_final_mae = APPLY_MEMBRANE.out.prepared_mae
+        ch_final_pdb = APPLY_MEMBRANE.out.prepared_pdb
+    } else {
+        ch_final_mae = PREPWIZARD.out.prepared_mae
+        ch_final_pdb = PREPWIZARD.out.prepared_pdb
     }
 
     emit:

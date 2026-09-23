@@ -60,6 +60,7 @@ process MERGE_LIGPREP {
 workflow PREPARE_LIGANDS {
     take:
     ch_library    // channel: [ val(meta), path(library_file) ]
+    ch_ref_native // channel: [ val(meta), path(ref_native_sdf) ]
     dock_engine   // val: "both", "gnina", "glide"
     batch_size    // val: 15
     target_ph     // val: 7.4
@@ -76,14 +77,28 @@ workflow PREPARE_LIGANDS {
             def chunk_meta = [
                 id: "${meta.id}_c${idx}",
                 chunk_idx: idx,
-                project: meta.project ?: meta.id
+                project: meta.project ?: meta.id,
+                is_native: false
             ]
             [ chunk_meta, f, idx ]
         }
     }
 
-    // 2. Always prepare 3D protonated / Epik states at physiological pH
-    ch_ligprep_in = ch_raw_chunks.map { chunk_meta, f, idx -> [ chunk_meta, f ] }
+    // 2. Add native reference ligand as a distinct chunk so it is screened and rescored in all frames
+    ch_native_chunk = ch_ref_native.first().map { meta, native_sdf ->
+        def nat_meta = [
+            id: "${meta.project ?: params.project_name}_native",
+            chunk_idx: 9999,
+            project: meta.project ?: params.project_name,
+            is_native: true
+        ]
+        [ nat_meta, native_sdf, 9999 ]
+    }
+
+    ch_all_chunks = ch_raw_chunks.mix(ch_native_chunk)
+
+    // 3. Prepare 3D protonated / Epik states at physiological pH across Slurm
+    ch_ligprep_in = ch_all_chunks.map { chunk_meta, f, idx -> [ chunk_meta, f ] }
     LIGPREP(ch_ligprep_in, target_ph, ph_tol, ff_version, max_states)
 
     ch_prepared_mae = LIGPREP.out.prepared_maegz
@@ -100,4 +115,5 @@ workflow PREPARE_LIGANDS {
     emit:
     prepared_ligands = ch_prepared_mae
     chunks           = ch_prepared_sdf
+    merged_library   = MERGE_LIGPREP.out.prepared_maegz
 }

@@ -50,33 +50,13 @@ process MERGE_GLIDE_CHUNKS {
 
     script:
     """
-    # 1. Merge PV files (Schrodinger structcat)
-    schrodinger structcat ${pv_files} -omae ${meta.id}_dock_pv.maegz
-
-    # 2. Merge SDF pose files
-    cat ${sdf_files} > ${meta.id}_dock.sdf
-
-    # 3. Merge CSV scores with header preservation
-    python3 -c "
-import sys, csv, os
-header = None
-rows = []
-for f in sys.argv[1:]:
-    if os.path.exists(f) and os.path.getsize(f) > 0:
-        with open(f, 'r', errors='ignore') as fp:
-            r = csv.reader(fp)
-            for i, row in enumerate(r):
-                if i == 0:
-                    if header is None:
-                        header = row
-                else:
-                    rows.append(row)
-with open('${meta.id}_dock.csv', 'w', newline='') as out:
-    w = csv.writer(out)
-    if header:
-        w.writerow(header)
-    w.writerows(rows)
-" ${csv_files}
+    schrodinger run python3 ${projectDir}/bin/merge_pv.py \\
+        --pv_files ${pv_files} \\
+        --csv_files ${csv_files} \\
+        --sdf_files ${sdf_files} \\
+        --out_pv ${meta.id}_dock_pv.maegz \\
+        --out_csv ${meta.id}_dock.csv \\
+        --out_sdf ${meta.id}_dock.sdf
     """
 
     stub:
@@ -251,7 +231,8 @@ workflow DOCK_LIBRARY {
             ch_all_resc_sdfs,
             top_k_frames,
             percentile_cutoff,
-            bench_ligands
+            bench_ligands,
+            params.native_ligand ?: ""
         )
 
         // Filter consolidated PV files per frame and split into parallel chunks

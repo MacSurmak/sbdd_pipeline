@@ -12,6 +12,8 @@ process SUMMARIZE_DOCKING {
     input:
     val(project_name)
     path(summary_files)
+    val(native_ligand)
+    val(benchmark_ligands)
 
     output:
     path("ranking.csv"), emit: ranking_csv
@@ -19,9 +21,13 @@ process SUMMARIZE_DOCKING {
     path("summary.json"), emit: summary_json
 
     script:
+    def nat_arg = native_ligand ? "--native_ligand ${native_ligand}" : ""
+    def bench_arg = benchmark_ligands ? "--benchmark_ligands ${benchmark_ligands}" : ""
     """
     python3 ${projectDir}/bin/summarize_results.py \\
         --docking_dir . \\
+        ${nat_arg} \\
+        ${bench_arg} \\
         --outdir .
     """
 

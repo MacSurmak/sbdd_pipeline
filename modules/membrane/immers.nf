@@ -9,7 +9,7 @@ process IMMERS {
     label "process_medium"
 
     input:
-    tuple val(meta), path(protein_pdb)
+    tuple val(meta), path(pure_protein_pdb)
     val(membrane_type)
     val(membrane_topo)
     val(membrane_chains)
@@ -21,17 +21,12 @@ process IMMERS {
 
     script:
     """
-    if [ ! -x "/usr/local/bin/immers" ] || [ ! -f "/usr/local/share/immers/res.lib" ]; then
-        echo "ERROR: immers binary or parameter library missing on host" >&2
-        exit 1
-    fi
-
-    ln -sf /usr/local/share/immers/res.lib res.lib
+    ln -sf /usr/local/share/immers/res.lib res.lib 2>/dev/null || true
 
     cat <<EOF > immers.inp
 2
 no
-${protein_pdb}
+${pure_protein_pdb}
 1
 ${membrane_type}
 planar
@@ -41,7 +36,7 @@ EOF
 
     /usr/local/bin/immers < immers.inp > immers.log
 
-    pdb_base="\$(basename ${protein_pdb} .pdb)"
+    pdb_base="\$(basename ${pure_protein_pdb} .pdb)"
     if [ -f "\${pdb_base}out.pdb" ]; then
         mv "\${pdb_base}out.pdb" "${meta.id}_oriented.pdb"
     elif [ -f "protout.pdb" ]; then

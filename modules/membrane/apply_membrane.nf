@@ -12,18 +12,23 @@ process APPLY_MEMBRANE {
     tuple val(meta), path(prepared_mae), path(membrane_info)
 
     output:
-    tuple val(meta), path("${meta.id}_membrane.mae"), emit: membrane_mae
+    tuple val(meta), path("${meta.id}_prepared.mae"), emit: prepared_mae
+    tuple val(meta), path("${meta.id}_prepared.pdb"), emit: prepared_pdb
 
     script:
     """
     schrodinger run python3 ${projectDir}/bin/apply_membrane.py \\
         --input ${prepared_mae} \\
         --info ${membrane_info} \\
-        --output ${meta.id}_membrane.mae
+        --output tmp_${meta.id}_prepared.mae
+
+    mv tmp_${meta.id}_prepared.mae ${meta.id}_prepared.mae
+    schrodinger structconvert ${meta.id}_prepared.mae ${meta.id}_prepared.pdb
     """
 
     stub:
     """
-    touch ${meta.id}_membrane.mae
+    touch ${meta.id}_prepared.mae
+    touch ${meta.id}_prepared.pdb
     """
 }

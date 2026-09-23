@@ -99,12 +99,13 @@ workflow SCREEN_WF {
         ch_ref_mae = PREPARE_RECEPTOR.out.ref_native_mae
     }
 
-    // Prepare ligands dynamically
+    // Prepare ligands dynamically (including native reference ligand)
     ch_lib = STAGE_INPUTS.out.staged_library
         .map { staged_lib -> [ [id: params.project_name, project: params.project_name], staged_lib ] }
 
     PREPARE_LIGANDS(
         ch_lib,
+        ch_ref_sdf,
         params.dock_engine ?: "gnina",
         params.batch_size ?: 15,
         params.ligand_ph ?: 7.4,
@@ -132,8 +133,11 @@ workflow SCREEN_WF {
     )
 
     // Summarize raw poses into consensus ranking CSV tables
+    def bench_ligands_str = params.benchmark_ligands ? (params.benchmark_ligands instanceof List ? params.benchmark_ligands.join(" ") : params.benchmark_ligands) : ""
     SUMMARIZE_DOCKING(
         params.project_name,
-        DOCK_LIBRARY.out.summary_files
+        DOCK_LIBRARY.out.summary_files,
+        params.native_ligand ?: "",
+        bench_ligands_str
     )
 }

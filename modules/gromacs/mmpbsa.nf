@@ -24,7 +24,6 @@ process GMX_MMPBSA {
     tuple val(meta), path("decomposition_mmpbsa_gb.csv"), path("thermodynamics_mmpbsa_gb.dat"), emit: gb_decomp_results, optional: true
 
     script:
-    def start_frame = ((start_ns * 1000) / 10) as int // assumes 10 ps recording interval
     def mthick_val = membrane_thickness ? (membrane_thickness as float) : 28.0
     def pb_block = is_membrane ? """
 &pb
@@ -58,10 +57,21 @@ saltcon=${salt_conc}
     def mpirun_cmd = cores > 1 ? "mpirun --oversubscribe -np ${cores} gmx_MMPBSA MPI" : "gmx_MMPBSA"
     """
     # 1. Total Binding Free Energy via Membrane-aware Poisson-Boltzmann (PB)
+    # Dynamically calculate startframe from trajectory header
+    start_frame=\$(python3 -c "
+import MDAnalysis as mda
+u = mda.Universe('${ref_pdb}', '${clean_xtc}')
+n_frames = len(u.trajectory)
+dt_ns = (u.trajectory[1].time - u.trajectory[0].time) / 1000.0 if n_frames > 1 else 0.01
+req_ns = float('${start_ns}')
+sf = min(n_frames, max(1, int(round(req_ns / dt_ns)) + 1))
+print(sf)
+")
+
     cat << EOF > mmpbsa_pb.in
 &general
 sys_name="Protein_Ligand",
-startframe=${start_frame},
+startframe=\${start_frame},
 interval=${step_frames},
 temperature=${temp}
 /
@@ -85,7 +95,7 @@ EOF
         cat << EOF > mmpbsa_gb.in
 &general
 sys_name="Protein_Ligand",
-startframe=${start_frame},
+startframe=\${start_frame},
 interval=${step_frames},
 temperature=${temp}
 /

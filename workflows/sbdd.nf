@@ -65,6 +65,7 @@ workflow SBDD_WF {
 
         PREPARE_LIGANDS(
             ch_lib,
+            PREPARE_RECEPTOR.out.ref_native_sdf,
             params.dock_engine ?: "gnina",
             params.batch_size ?: 15,
             params.ligand_ph ?: 7.4,
@@ -92,9 +93,12 @@ workflow SBDD_WF {
         )
 
         // 4. Summarize results into master ranking table and cross-frame matrix
+        def bench_ligands_sbdd = params.benchmark_ligands ? (params.benchmark_ligands instanceof List ? params.benchmark_ligands.join(" ") : params.benchmark_ligands) : ""
         SUMMARIZE_DOCKING(
             params.project_name,
-            DOCK_LIBRARY.out.summary_files
+            DOCK_LIBRARY.out.summary_files,
+            params.native_ligand ?: "",
+            bench_ligands_sbdd
         )
 
         // 5. Automated Hit Selection for Molecular Dynamics

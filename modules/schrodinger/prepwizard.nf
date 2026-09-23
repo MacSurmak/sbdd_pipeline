@@ -8,7 +8,7 @@ process PREPWIZARD {
     label 'process_medium'
 
     input:
-    tuple val(meta), path(raw_rec)
+    tuple val(meta), path(raw_receptor_mae)
     val(target_ph)
     val(ph_tolerance)
     val(min_rmsd)
@@ -21,16 +21,16 @@ process PREPWIZARD {
     script:
     def cap_flag = cap_termini ? "-captermini" : ""
     """
-    schrodinger prepwizard \
-        -fix -fillsidechains \
-        -propka_pH ${target_ph} \
-        -epik_pH ${target_ph} \
-        -epik_pHt ${ph_tolerance} \
-        -rmsd ${min_rmsd} \
-        -preserve_st_titles \
-        ${cap_flag} \
-        -WAIT \
-        ${raw_rec} \
+    schrodinger prepwizard \\
+        -fix -fillsidechains \\
+        -propka_pH ${target_ph} \\
+        -epik_pH ${target_ph} \\
+        -epik_pHt ${ph_tolerance} \\
+        -rmsd ${min_rmsd} \\
+        -preserve_st_titles \\
+        ${cap_flag} \\
+        -WAIT \\
+        ${raw_receptor_mae} \\
         ${meta.id}_prepared.mae
 
     schrodinger structconvert ${meta.id}_prepared.mae ${meta.id}_prepared.pdb
