@@ -21,9 +21,13 @@ process STAGE_INPUTS {
     path "staged_docked.*",   emit: staged_docked,   optional: true
 
     script:
-    def r_cmd = rec_path != 'NO_FILE' ? "cp -L \"${rec_path}\" \"staged_receptor.\${rec_path##*.}\"" : ""
-    def l_cmd = lib_path != 'NO_FILE' ? "cp -L \"${lib_path}\" \"staged_library.\${lib_path##*.}\"" : ""
-    def d_cmd = dock_path != 'NO_FILE' ? "cp -L \"${dock_path}\" \"staged_docked.\${dock_path##*.}\"" : ""
+    def r_ext = rec_path != 'NO_FILE' ? file(rec_path).extension : ""
+    def l_ext = lib_path != 'NO_FILE' ? file(lib_path).extension : ""
+    def d_ext = dock_path != 'NO_FILE' ? file(dock_path).extension : ""
+
+    def r_cmd = rec_path != 'NO_FILE' ? "cp -L \"${rec_path}\" \"staged_receptor.${r_ext}\"" : ""
+    def l_cmd = lib_path != 'NO_FILE' ? "cp -L \"${lib_path}\" \"staged_library.${l_ext}\"" : ""
+    def d_cmd = dock_path != 'NO_FILE' ? "cp -L \"${dock_path}\" \"staged_docked.${d_ext}\"" : ""
     """
     $r_cmd
     $l_cmd
@@ -31,9 +35,13 @@ process STAGE_INPUTS {
     """
 
     stub:
-    def r_stub = rec_path != 'NO_FILE' ? "touch \"staged_receptor.\${rec_path##*.}\"" : ""
-    def l_stub = lib_path != 'NO_FILE' ? "touch \"staged_library.\${lib_path##*.}\"" : ""
-    def d_stub = dock_path != 'NO_FILE' ? "touch \"staged_docked.\${dock_path##*.}\"" : ""
+    def r_ext = rec_path != 'NO_FILE' ? file(rec_path).extension : ""
+    def l_ext = lib_path != 'NO_FILE' ? file(lib_path).extension : ""
+    def d_ext = dock_path != 'NO_FILE' ? file(dock_path).extension : ""
+
+    def r_stub = rec_path != 'NO_FILE' ? "touch \"staged_receptor.${r_ext}\"" : ""
+    def l_stub = lib_path != 'NO_FILE' ? "touch \"staged_library.${l_ext}\"" : ""
+    def d_stub = dock_path != 'NO_FILE' ? "touch \"staged_docked.${d_ext}\"" : ""
     """
     $r_stub
     $l_stub
