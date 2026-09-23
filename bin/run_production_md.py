@@ -84,6 +84,7 @@ def main():
     parser.add_argument("--is_membrane", default="true", help="Membrane system flag")
     parser.add_argument("--queue", default="main", help="Slurm queue/partition")
     parser.add_argument("--mdp_template", required=True, help="Base MD template file")
+    parser.add_argument("--cpus", type=int, default=1, help="Number of OpenMP threads")
     parser.add_argument("--outdir", default=".", help="Output directory")
     args = parser.parse_args()
 
@@ -93,11 +94,9 @@ def main():
     gmx_bin = shutil.which("gmx") or "gmx"
     is_mem = str(args.is_membrane).lower() in ["true", "1", "yes"]
 
-    # 1. Ensure clean COMPLEX group in index.ndx
     ndx_file = Path(args.ndx).resolve()
-    ensure_complex_ndx_group(ndx_file)
 
-    # 2. Generate md.mdp for production
+    # 1. Generate md.mdp for production
     dt = 0.002
     chunk_steps = int(round((args.chunk_ns * 1000.0) / dt))
     total_chunks = max(1, int(round(args.total_ns / args.chunk_ns)))
@@ -124,16 +123,16 @@ def main():
     mdp_file = out_dir / "md.mdp"
     mdp_file.write_text(mdp_content)
 
-    # 3. Execute production chunks
+    # 2. Execute production chunks
     prev_gro = str(Path(args.gro).resolve())
     prev_cpt = str(Path(args.cpt).resolve())
 
     # Detect GPU availability
     has_gpu = bool(shutil.which("nvidia-smi"))
     base_hw = (
-        ["-nb", "gpu", "-pme", "gpu", "-update", "gpu", "-ntomp", "8"]
+        ["-nb", "gpu", "-pme", "gpu", "-update", "gpu", "-ntomp", str(args.cpus)]
         if has_gpu
-        else ["-ntomp", "8"]
+        else ["-ntomp", str(args.cpus)]
     )
 
     print(
@@ -194,111 +193,7 @@ def main():
 
             run_cmd(cmd_mdrun, out_dir, f"mdrun {chunk_name}")
 
-    # 4. Trajectory Concatenation & Centering (PBC fix)
-    raw_xtcs = sorted(
-        out_dir.glob("md_*.xtc"),
-        key=lambda p: (
-            int(p.stem.split("_")[-1]) if p.stem.split("_")[-1].isdigit() else 0
-        ),
-    )
-    if not raw_xtcs:
-        print("[ERROR] No chunk XTC files found for post-processing.", file=sys.stderr)
-        sys.exit(1)
-
-    tpr_1 = out_dir / "md_1.tpr"
-    cat_xtc = out_dir / "traj_cat.xtc"
-    whole_xtc = out_dir / "traj_whole.xtc"
-    clean_xtc = out_dir / "trajectory_clean.xtc"
-    ref_pdb = out_dir / "complex_ref.pdb"
-
-    # Step A: Concatenate
-    cmd_cat = (
-        [gmx_bin, "trjcat", "-f"]
-        + [str(x) for x in raw_xtcs]
-        + ["-cat", "-o", str(cat_xtc)]
-    )
-    run_cmd(cmd_cat, out_dir, "trjcat")
-
-    # Step B: Make molecules whole across PBC boundaries
-    p_whole = subprocess.Popen(
-        [
-            gmx_bin,
-            "trjconv",
-            "-s",
-            str(tpr_1),
-            "-f",
-            str(cat_xtc),
-            "-o",
-            str(whole_xtc),
-            "-pbc",
-            "whole",
-        ],
-        cwd=str(out_dir),
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-    )
-    p_whole.communicate(input="0\n")
-
-    # Step C: Center Protein and extract COMPLEX (Protein + UNK strictly, no lipids!)
-    p_center = subprocess.Popen(
-        [
-            gmx_bin,
-            "trjconv",
-            "-s",
-            str(tpr_1),
-            "-f",
-            str(whole_xtc),
-            "-n",
-            str(ndx_file),
-            "-o",
-            str(clean_xtc),
-            "-center",
-            "-pbc",
-            "mol",
-            "-ur",
-            "compact",
-        ],
-        cwd=str(out_dir),
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-    )
-    p_center.communicate(input="Protein\nCOMPLEX\n")
-
-    # Step D: Dump frame 0 of clean trajectory as reference PDB
-    p_dump = subprocess.Popen(
-        [
-            gmx_bin,
-            "trjconv",
-            "-s",
-            str(tpr_1),
-            "-f",
-            str(clean_xtc),
-            "-n",
-            str(ndx_file),
-            "-o",
-            str(ref_pdb),
-            "-dump",
-            "0",
-        ],
-        cwd=str(out_dir),
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-    )
-    p_dump.communicate(input="COMPLEX\n")
-
-    # Cleanup heavy intermediates
-    cat_xtc.unlink(missing_ok=True)
-    whole_xtc.unlink(missing_ok=True)
-
-    print(
-        f"[SUCCESS] Production MD complete: {clean_xtc.name} and {ref_pdb.name} ready."
-    )
+    print(f"[SUCCESS] Production MD complete: generated {total_chunks} chunk(s).")
 
 
 if __name__ == "__main__":

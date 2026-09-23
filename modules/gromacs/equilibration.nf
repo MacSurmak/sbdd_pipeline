@@ -53,11 +53,11 @@ process GMX_EQUILIBRATION {
         
         # Hardware offloading flags
         if [[ "\$stage" == *"em"* ]]; then
-            gmx mdrun -deffnm "\$stage" -nb gpu -ntomp 8
+            gmx mdrun -deffnm "\$stage" -nb gpu -ntomp ${task.cpus}
         elif [[ "\$stage" == *"berendsen"* ]]; then
-            gmx mdrun -deffnm "\$stage" -nb gpu -pme gpu -ntomp 8
+            gmx mdrun -deffnm "\$stage" -nb gpu -pme gpu -ntomp ${task.cpus}
         else
-            gmx mdrun -deffnm "\$stage" -nb gpu -pme gpu -update gpu -ntomp 8
+            gmx mdrun -deffnm "\$stage" -nb gpu -pme gpu -update gpu -ntomp ${task.cpus}
         fi
 
         prev_gro="\${stage}.gro"

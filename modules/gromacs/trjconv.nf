@@ -8,10 +8,10 @@ process TRJCONV {
     label 'process_low'
 
     input:
-    tuple val(meta), path(concat_xtc), path(tpr), path(index_ndx)
+    tuple val(meta), path(concat_xtc), path(tpr), path(topol_top), path(index_ndx)
 
     output:
-    tuple val(meta), path("trajectory_clean.xtc"), path("complex_ref.pdb"), emit: clean_traj
+    tuple val(meta), path("trajectory_clean.xtc"), path("complex_ref.pdb"), path(topol_top), path(index_ndx), emit: clean_traj
 
     script:
     """

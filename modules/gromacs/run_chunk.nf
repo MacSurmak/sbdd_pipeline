@@ -20,8 +20,8 @@ process RUN_PRODUCTION_MD {
     path(mdp_templates)
 
     output:
-    tuple val(meta), path("trajectory_clean.xtc"), path("complex_ref.pdb"), path(topol_top), path(index_ndx), emit: clean_traj
     tuple val(meta), path("md_*.xtc"), emit: all_xtcs
+    tuple val(meta), path("md_1.tpr"), path(topol_top), path(index_ndx), emit: sys_files
 
     script:
     """
@@ -38,13 +38,13 @@ process RUN_PRODUCTION_MD {
         --is_membrane ${is_membrane} \\
         --queue ${slurm_queue} \\
         --mdp_template ${mdp_templates}/md.mdp \\
+        --cpus ${task.cpus} \\
         --outdir .
     """
 
     stub:
     """
     touch md_1.xtc
-    touch trajectory_clean.xtc
-    touch complex_ref.pdb
+    touch md_1.tpr
     """
 }

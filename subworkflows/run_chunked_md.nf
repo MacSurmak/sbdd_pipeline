@@ -6,7 +6,9 @@
  */
 
 include { GMX_EQUILIBRATION } from '../modules/gromacs/equilibration'
-include { RUN_PRODUCTION_MD  } from '../modules/gromacs/run_chunk'
+include { RUN_PRODUCTION_MD } from '../modules/gromacs/run_chunk'
+include { TRJCAT            } from '../modules/gromacs/trjcat'
+include { TRJCONV           } from '../modules/gromacs/trjconv'
 
 workflow RUN_CHUNKED_MD {
     take:
@@ -61,6 +63,15 @@ workflow RUN_CHUNKED_MD {
         mdp_templates
     )
 
+    // 4. Concatenate raw chunks
+    TRJCAT(RUN_PRODUCTION_MD.out.all_xtcs)
+
+    // 5. PBC correction, centering, and extraction of pure complex
+    ch_trjconv_in = TRJCAT.out.concat_xtc
+        .join(RUN_PRODUCTION_MD.out.sys_files, by: 0)
+
+    TRJCONV(ch_trjconv_in)
+
     emit:
-    clean_trajectory = RUN_PRODUCTION_MD.out.clean_traj
+    clean_trajectory = TRJCONV.out.clean_traj
 }
