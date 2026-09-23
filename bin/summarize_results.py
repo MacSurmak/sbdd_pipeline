@@ -246,7 +246,9 @@ def main():
     resc_sdfs = list(dock_dir.glob("**/*rescored*.sdf")) or list(
         dock_dir.glob("**/*gnina_score_only*.sdf")
     )
-    dock_sdfs = list(dock_dir.glob("**/*gnina_dock*.sdf"))
+    dock_sdfs = list(dock_dir.glob("**/*gnina*dock*.sdf")) or list(
+        dock_dir.glob("**/*docked*.sdf")
+    )
 
     # Map by frame ID
     all_frames = set()
@@ -316,12 +318,6 @@ def main():
     # Export full raw multi-frame metrics before deduplication
     df_raw = df.copy()
     df_raw.to_csv(out_dir / "docking_combined_raw.csv", index=False)
-
-    # Backward compatibility: ensure primary CNNaffinity column exists if Dock_CNNaffinity is present
-    if "Dock_CNNaffinity" in df.columns and "CNNaffinity" not in df.columns:
-        df["CNNaffinity"] = df["Dock_CNNaffinity"]
-    elif "Resc_CNNaffinity" in df.columns and "CNNaffinity" not in df.columns:
-        df["CNNaffinity"] = df["Resc_CNNaffinity"]
 
     # Calculate Consensus Score
     df = calculate_consensus_score(df)

@@ -6,7 +6,7 @@ from pathlib import Path
 def test_select_hits(tmp_path):
     csv_file = tmp_path / "ranking.csv"
     csv_file.write_text(
-        "Rank,Title,GlideScore,CNNaffinity\n1,PPZ_1H_Ph_BnMe,-8.5,6.2\n2,PPZ_1H_Ph_Pr2,-7.8,5.9\n"
+        "Rank,Title,GlideScore,Dock_CNNaffinity\n1,PPZ_1H_Ph_BnMe,-8.5,6.2\n2,PPZ_1H_Ph_Pr2,-7.8,5.9\n"
     )
     out_file = tmp_path / "hits.txt"
 
