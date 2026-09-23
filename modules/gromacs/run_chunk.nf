@@ -24,7 +24,7 @@ process RUN_PRODUCTION_MD {
 
     script:
     """
-    ${projectDir}/bin/run_production_md.py \\
+    run_production_md.py \\
         --meta_id ${meta.id} \\
         --rep ${meta.rep} \\
         --gro ${eq_gro} \\

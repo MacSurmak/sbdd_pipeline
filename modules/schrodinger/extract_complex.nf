@@ -25,7 +25,8 @@ process EXTRACT_COMPLEX {
     def cof_arg = cofactors ? "--cofactors ${cofactors}" : ""
     if (membrane_enabled.toString() == 'true') {
         """
-        schrodinger run ${params.workdir}/bin/extract_complex.py \\            --input ${complex_file} \\
+        schrodinger run extract_complex.py \\
+            --input ${complex_file} \\
             --frame_index ${frame_idx} \\
             --ligand ${native_ligand} \\
             ${cof_arg} \\
@@ -34,16 +35,15 @@ process EXTRACT_COMPLEX {
         """
     } else {
         """
-        schrodinger run ${projectDir}/bin/extract_complex.py \\
+        schrodinger run extract_complex.py \\
             --input ${complex_file} \\
             --frame_index ${frame_idx} \\
             --ligand ${native_ligand} \\
             ${cof_arg} \\
             --out_receptor_mae ${meta.id}_raw_receptor.mae \\
-            --out_ligand_mae ${meta.id}_ref_native.mae
+            --out_ligand ${meta.id}_ref_native.mae
         """
     }
-
     stub:
     """
     touch ${meta.id}_pure_protein.pdb

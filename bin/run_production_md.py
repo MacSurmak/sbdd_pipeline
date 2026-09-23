@@ -16,6 +16,11 @@ import sys
 from pathlib import Path
 
 
+# Add script directory to sys.path for absolute imports
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from utils.gmx_helpers import ensure_complex_ndx_group
+
+
 def run_cmd(cmd: list, cwd: Path, desc: str = ""):
     print(f"[RUN] {desc or cmd[0]}: {' '.join(str(x) for x in cmd)}")
     res = subprocess.run(
@@ -28,40 +33,6 @@ def run_cmd(cmd: list, cwd: Path, desc: str = ""):
         )
         sys.exit(res.returncode)
     return res
-
-
-def ensure_complex_ndx_group(ndx_path: Path):
-    """Parses index.ndx and injects [ COMPLEX ] (Protein + UNK) if missing."""
-    if not ndx_path.exists():
-        return
-    text = ndx_path.read_text(encoding="utf-8", errors="ignore")
-    if "[ COMPLEX ]" in text or "[ complex ]" in text:
-        return
-
-    groups = {}
-    current = None
-    for line in text.splitlines():
-        l = line.strip()
-        if l.startswith("[") and l.endswith("]"):
-            current = l[1:-1].strip()
-            groups[current] = []
-        elif current is not None and l:
-            groups[current].extend([int(x) for x in l.split()])
-
-    prot_atoms = groups.get("Protein", [])
-    unk_atoms = groups.get("UNK", [])
-    if not prot_atoms:
-        print("[WARN] 'Protein' group not found in index.ndx", file=sys.stderr)
-        return
-
-    complex_atoms = sorted(list(set(prot_atoms + unk_atoms)))
-    with open(ndx_path, "a", encoding="utf-8") as f:
-        f.write("\n[ COMPLEX ]\n")
-        for i in range(0, len(complex_atoms), 15):
-            f.write(" ".join(f"{x:5d}" for x in complex_atoms[i : i + 15]) + "\n")
-    print(
-        f"[INFO] Injected [ COMPLEX ] group ({len(complex_atoms)} atoms) into index.ndx"
-    )
 
 
 def main():

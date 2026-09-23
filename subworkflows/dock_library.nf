@@ -50,7 +50,7 @@ process MERGE_GLIDE_CHUNKS {
 
     script:
     """
-    schrodinger run ${projectDir}/bin/merge_pv.py \\
+    schrodinger run merge_pv.py \\
         --pv_files ${pv_files} \\
         --csv_files ${csv_files} \\
         --sdf_files ${sdf_files} \\
@@ -104,7 +104,7 @@ process MERGE_MMGBSA_CHUNKS {
 
     script:
     """
-    ${projectDir}/bin/merge_csv.py --inputs ${csv_files} --output ${meta.id}_mmgbsa-out.csv
+    merge_csv.py --inputs ${csv_files} --output ${meta.id}_mmgbsa-out.csv
     """
 
     stub:

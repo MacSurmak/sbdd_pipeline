@@ -37,11 +37,13 @@ def main():
     # 1. Merge PV files
     with structure.StructureWriter(args.out_pv) as writer:
         for pv_file in pv_files:
-            pv_path = Path(pv_file)
+            pv_path = Path(pv_file).resolve()
             if not pv_path.exists() or pv_path.stat().st_size == 0:
                 continue
 
-            with structure.StructureReader(str(pv_path)) as reader:
+            reader = None
+            try:
+                reader = structure.StructureReader(str(pv_path))
                 for idx, st in enumerate(reader):
                     is_receptor = (idx == 0) and (
                         st.property.get("b_glide_receptor", 0) == 1
@@ -56,6 +58,9 @@ def main():
                     # Append ligand pose
                     writer.append(st)
                     total_ligand_poses += 1
+            finally:
+                if reader is not None:
+                    reader.close()
 
     print(
         f"Merged {len(pv_files)} PV files: 1 receptor + {total_ligand_poses} ligand poses -> {args.out_pv}"

@@ -47,7 +47,7 @@ EOF
         exit 1
     fi
 
-    ${projectDir}/bin/parse_immers.py \\
+    parse_immers.py \\
         --datapar datapar1 \\
         --out_json ${meta.id}_membrane.json \\
         --out_txt ${meta.id}_membrane.txt
