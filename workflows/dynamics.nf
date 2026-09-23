@@ -9,7 +9,6 @@ include { COUNT_MODELS     } from '../modules/common/count_models'
 include { SETUP_MD_SYSTEM  } from '../subworkflows/setup_md_system'
 include { RUN_CHUNKED_MD   } from '../subworkflows/run_chunked_md'
 include { ANALYZE_MD_TRAJ  } from '../subworkflows/analyze_md_traj'
-include { STAGE_ASSETS     } from '../modules/common/stage_assets'
 
 workflow DYNAMICS_WF {
     def rec_path = params.receptor ? file(params.receptor).toAbsolutePath().toString() : 'NO_FILE'
@@ -64,8 +63,6 @@ workflow DYNAMICS_WF {
         ch_lig_sdf = STAGE_INPUTS.out.staged_docked.map { d -> [ [id: params.project_name, frame: 1], d ] }
     }
 
-    STAGE_ASSETS(file("${projectDir}/assets/mdp", type: 'dir'))
-
     // Parse target hit list
     def hits = params.md_hits ? params.md_hits.split(",").collect { it.trim() } : ["native"]
 
@@ -106,7 +103,7 @@ workflow DYNAMICS_WF {
         params.nvt_long_ps ?: 500,
         params.npt_berendsen_ps ?: 1000,
         params.npt_pr_ps ?: 1000,
-        STAGE_ASSETS.out.mdp_templates
+        file("${params.workdir}/assets/mdp")
     )
 
     // 3. Trajectory analysis & MM-PBSA

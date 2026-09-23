@@ -22,7 +22,7 @@ process EXTRACT_MD_SYSTEM {
 
     script:
     """
-    extract_md_files.py \\
+    ${params.workdir}/bin/extract_md_files.py \\
         --lig_file ${lig_file} \\
         --lig_title "${lig_title}" \\
         --rec_file ${rec_file} \\
@@ -49,8 +49,8 @@ process MERGE_AMBER_COMPLEX {
 
     script:
     """
-    amber_fix_pdb.py ${rec_pdb} fixed_receptor.pdb
-    merge_complex.py fixed_receptor.pdb ${unk_mol2} complex.pdb
+    ${params.workdir}/bin/amber_fix_pdb.py ${rec_pdb} fixed_receptor.pdb
+    ${params.workdir}/bin/merge_complex.py fixed_receptor.pdb ${unk_mol2} complex.pdb
     """
 
     stub:

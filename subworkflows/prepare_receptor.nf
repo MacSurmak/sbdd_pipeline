@@ -40,8 +40,7 @@ workflow PREPARE_RECEPTOR {
         ch_input,
         native_ligand,
         cofactors,
-        membrane_enabled,
-        file("${projectDir}/bin/extract_complex.py")
+        membrane_enabled
     )
 
     if (membrane_enabled) {
@@ -61,8 +60,7 @@ workflow PREPARE_RECEPTOR {
         ORIENT_COMPLEX(
             ch_orient_in,
             native_ligand,
-            cofactors,
-            file("${projectDir}/bin/orient_complex.py")
+            cofactors
         )
 
         ch_prep_in          = ORIENT_COMPLEX.out.receptor_raw_mae
@@ -92,7 +90,7 @@ workflow PREPARE_RECEPTOR {
         ch_apply_in = PREPWIZARD.out.prepared_mae
             .join(ch_mem_txt)
 
-        APPLY_MEMBRANE(ch_apply_in, file("${projectDir}/bin/apply_membrane.py"))
+        APPLY_MEMBRANE(ch_apply_in)
         ch_final_mae = APPLY_MEMBRANE.out.prepared_mae
         ch_final_pdb = APPLY_MEMBRANE.out.prepared_pdb
     } else {

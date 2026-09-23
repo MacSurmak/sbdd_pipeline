@@ -68,12 +68,23 @@ def execute_nextflow(
     reports_dir.mkdir(parents=True, exist_ok=True)
     log_file = reports_dir / f"nextflow_{entrypoint}.log"
 
-    # Ensure all scripts in bin/ are executable so Nextflow stages them in $PATH
+    # Ensure all scripts in bin/ are executable
     for script_file in (FRAMEWORK_DIR / "bin").glob("*.py"):
         try:
             script_file.chmod(script_file.stat().st_mode | 0o111)
         except Exception:
             pass
+
+    # Copy code and assets to shared NFS scratch EXACTLY ONCE
+    shared_bin = scratch_base / "bin"
+    if shared_bin.exists():
+        shutil.rmtree(shared_bin)
+    shutil.copytree(FRAMEWORK_DIR / "bin", shared_bin)
+
+    shared_assets = scratch_base / "assets"
+    if shared_assets.exists():
+        shutil.rmtree(shared_assets)
+    shutil.copytree(FRAMEWORK_DIR / "assets", shared_assets)
 
     env = os.environ.copy()
     env["NXF_HOME"] = str(scratch_nxf_home.resolve())

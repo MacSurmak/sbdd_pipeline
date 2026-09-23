@@ -25,7 +25,7 @@ process BUILD_FUNNEL_WHITELIST {
     def bench_arg = benchmark_ligands ? "--benchmark_ligands ${benchmark_ligands}" : ""
     def nat_arg = native_ligand ? "--native_ligand ${native_ligand}" : ""
     """
-    build_funnel_whitelist.py \\
+    ${params.workdir}/bin/build_funnel_whitelist.py \\
         --glide_csvs ${glide_csvs} \\
         --gnina_sdfs ${gnina_sdfs} \\
         --top_k_frames ${top_k_frames} \\

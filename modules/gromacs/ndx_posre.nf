@@ -17,7 +17,7 @@ process NDX_POSRE {
     """
     echo "q" | gmx make_ndx -f ${input_gro} -o index.ndx
 
-    gromacs_ndx_fixer.py --ndx index.ndx --action add_groups
+    ${params.workdir}/bin/gromacs_ndx_fixer.py --ndx index.ndx --action add_groups
 
     # Generate multi-level restraints for Protein and Ligand
     for fc in "1000:" "250:_250" "50:_50"; do
@@ -27,8 +27,8 @@ process NDX_POSRE {
         echo "UNK"     | gmx genrestr -f ${input_gro} -n index.ndx -o "posre_lig\${sfx}.itp" -fc \$val \$val \$val
     done
 
-    gromacs_ndx_fixer.py --ndx index.ndx --action fix_posre
-    gromacs_ndx_fixer.py --ndx index.ndx --top ${topol_top} --action inject_posre
+    ${params.workdir}/bin/gromacs_ndx_fixer.py --ndx index.ndx --action fix_posre
+    ${params.workdir}/bin/gromacs_ndx_fixer.py --ndx index.ndx --top ${topol_top} --action inject_posre
     """
 
     stub:

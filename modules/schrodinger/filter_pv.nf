@@ -13,7 +13,6 @@ process FILTER_PV {
     tuple val(meta), path(pv_maegz)
     path(whitelist_csv)
     val(batch_size)
-    path script_file
 
     output:
     tuple val(meta), path("${meta.id}_filtered_pv.maegz"), emit: filtered_pv
@@ -22,7 +21,7 @@ process FILTER_PV {
     script:
     def frame_id = meta.frame ?: 1
     """
-    schrodinger run ${script_file} \\
+    schrodinger run ${params.workdir}/bin/filter_pv.py \\
         --input ${pv_maegz} \\
         --output ${meta.id}_filtered_pv.maegz \\
         --out_prefix ${meta.id}_filtered \\

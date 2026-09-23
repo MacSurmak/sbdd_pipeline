@@ -42,7 +42,6 @@ process MERGE_GLIDE_CHUNKS {
 
     input:
     tuple val(meta), path(pv_files), path(csv_files), path(sdf_files)
-    path script_file
 
     output:
     tuple val(meta), path("${meta.id}_dock_pv.maegz"), emit: pv_maegz
@@ -51,7 +50,7 @@ process MERGE_GLIDE_CHUNKS {
 
     script:
     """
-    schrodinger run ${script_file} \\
+    schrodinger run ${params.workdir}/bin/merge_pv.py \\
         --pv_files ${pv_files} \\
         --csv_files ${csv_files} \\
         --sdf_files ${sdf_files} \\
@@ -105,7 +104,7 @@ process MERGE_MMGBSA_CHUNKS {
 
     script:
     """
-    merge_csv.py --inputs ${csv_files} --output ${meta.id}_mmgbsa-out.csv
+    ${params.workdir}/bin/merge_csv.py --inputs ${csv_files} --output ${meta.id}_mmgbsa-out.csv
     """
 
     stub:
@@ -159,7 +158,7 @@ workflow DOCK_LIBRARY {
                 ]
                 [ comb_meta, grid_zip, lib_chunk_mae ]
             }
-        GLIDE_DOCK(ch_glide_in, prec, poses_n, ff_dock, file("${projectDir}/bin/pv_to_sdf.py"))
+        GLIDE_DOCK(ch_glide_in, prec, poses_n, ff_dock)
 
         ch_rec_rescore = ch_receptor_pdb.join(ch_ref_lig_sdf, by: 0)
         ch_rescore_in = GLIDE_DOCK.out.poses_sdf
@@ -184,7 +183,7 @@ workflow DOCK_LIBRARY {
             }
             .groupTuple(by: 0)
 
-        MERGE_GLIDE_CHUNKS(ch_to_merge_glide, file("${projectDir}/bin/merge_pv.py"))
+        MERGE_GLIDE_CHUNKS(ch_to_merge_glide)
 
         // Consolidate Rescore chunks per frame
         ch_to_merge_resc = GNINA_RESCORE.out.rescored_sdf
@@ -226,8 +225,7 @@ workflow DOCK_LIBRARY {
         FILTER_PV(
             ch_filter_in,
             BUILD_FUNNEL_WHITELIST.out.whitelist_csv,
-            batch_pv,
-            file("${projectDir}/bin/filter_pv.py")
+            batch_pv
         )
 
         // 2D PARALLELISM: N frames * K PV chunks = N * K parallel Prime MM-GBSA Slurm jobs!

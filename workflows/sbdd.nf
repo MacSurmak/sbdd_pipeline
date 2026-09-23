@@ -14,7 +14,6 @@ include { ANALYZE_MD_TRAJ   } from '../subworkflows/analyze_md_traj'
 include { SUMMARIZE_DOCKING } from '../modules/reporting/summarize'
 include { SELECT_HITS       } from '../modules/reporting/select_hits'
 include { COUNT_MODELS      } from '../modules/common/count_models'
-include { STAGE_ASSETS      } from '../modules/common/stage_assets'
 
 workflow SBDD_WF {
     if (!params.receptor) { error "Parameter --receptor is required." }
@@ -153,8 +152,6 @@ workflow SBDD_WF {
                 params.water_model ?: "opc"
             )
 
-            STAGE_ASSETS(file("${projectDir}/assets/mdp", type: 'dir'))
-
             RUN_CHUNKED_MD(
                 SETUP_MD_SYSTEM.out.system_ready,
                 params.membrane ?: false,
@@ -167,7 +164,7 @@ workflow SBDD_WF {
                 params.nvt_long_ps ?: 500,
                 params.npt_berendsen_ps ?: 1000,
                 params.npt_pr_ps ?: 1000,
-                STAGE_ASSETS.out.mdp_templates
+                file("${params.workdir}/assets/mdp")
             )
 
             ANALYZE_MD_TRAJ(

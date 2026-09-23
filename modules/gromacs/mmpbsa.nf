@@ -57,7 +57,7 @@ saltcon=${salt_conc}
     def mpirun_cmd = cores > 1 ? "mpirun --oversubscribe -np ${cores} gmx_MMPBSA MPI" : "gmx_MMPBSA"
     """
     # 1. Total Binding Free Energy via Membrane-aware Poisson-Boltzmann (PB)
-    start_frame=\$(get_mda_startframe.py --pdb ${ref_pdb} --xtc ${clean_xtc} --start_ns ${start_ns})
+    start_frame=\$(\${params.workdir}/bin/get_mda_startframe.py --pdb ${ref_pdb} --xtc ${clean_xtc} --start_ns ${start_ns})
 
     cat << EOF > mmpbsa_pb.in
 &general
