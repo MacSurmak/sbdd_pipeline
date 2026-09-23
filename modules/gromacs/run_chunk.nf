@@ -17,6 +17,7 @@ process RUN_PRODUCTION_MD {
     val(total_ns)
     val(chunk_ns)
     val(slurm_queue)
+    path(mdp_templates)
 
     output:
     tuple val(meta), path("trajectory_clean.xtc"), path("complex_ref.pdb"), path(topol_top), path(index_ndx), emit: clean_traj
@@ -36,6 +37,7 @@ process RUN_PRODUCTION_MD {
         --temp ${temperature} \\
         --is_membrane ${is_membrane} \\
         --queue ${slurm_queue} \\
+        --mdp_template ${mdp_templates}/md.mdp \\
         --outdir .
     """
 

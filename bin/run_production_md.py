@@ -83,6 +83,7 @@ def main():
     )
     parser.add_argument("--is_membrane", default="true", help="Membrane system flag")
     parser.add_argument("--queue", default="main", help="Slurm queue/partition")
+    parser.add_argument("--mdp_template", required=True, help="Base MD template file")
     parser.add_argument("--outdir", default=".", help="Output directory")
     args = parser.parse_args()
 
@@ -105,49 +106,21 @@ def main():
     ref_p = "1.0 1.0" if is_mem else "1.0"
     comp = "4.5e-5 4.5e-5" if is_mem else "4.5e-5"
 
-    mdp_content = f"""; Production MD chunk template
-integrator               = md
-dt                       = {dt}
-nsteps                   = {chunk_steps}
+    template_path = Path(args.mdp_template)
+    if not template_path.exists():
+        print(f"[ERROR] MDP template {template_path} not found.", file=sys.stderr)
+        sys.exit(1)
 
-nstxout-compressed       = 5000
-nstcalcenergy            = 100
-nstenergy                = 1000
-nstlog                   = 1000
+    with open(template_path, "r", encoding="utf-8") as f:
+        mdp_content = f.read()
 
-cutoff-scheme            = Verlet
-nstlist                  = 20
-coulombtype              = PME
-rcoulomb                 = 1.0
-vdwtype                  = Cut-off
-vdw-modifier             = None
-DispCorr                 = EnerPres
-rvdw                     = 1.0
-rlist                    = 1.0
-pbc                      = xyz
+    mdp_content = mdp_content.replace("{NSTEPS}", str(chunk_steps))
+    mdp_content = mdp_content.replace("{TEMP}", str(args.temp))
+    mdp_content = mdp_content.replace("{TC_GRPS}", "PROT_LIG SOL_ION")
+    mdp_content = mdp_content.replace("{PCOUPL_TYPE}", pcoupl_type)
+    mdp_content = mdp_content.replace("{REF_P}", ref_p)
+    mdp_content = mdp_content.replace("{COMPRESSIBILITY}", comp)
 
-tcoupl                   = v-rescale
-tc-grps                  = PROT_LIG SOL_ION
-tau-t                    = 1.0 1.0
-ref-t                    = {args.temp} {args.temp}
-
-pcoupl                   = Parrinello-Rahman
-pcoupltype               = {pcoupl_type}
-tau-p                    = 5.0
-ref-p                    = {ref_p}
-compressibility          = {comp}
-
-constraints              = h-bonds
-constraint-algorithm     = LINCS
-continuation             = yes
-lincs-order              = 4
-lincs-iter               = 1
-
-nstcomm                  = 100
-comm-mode                = linear
-comm-grps                = PROT_LIG SOL_ION
-gen_vel                  = no
-"""
     mdp_file = out_dir / "md.mdp"
     mdp_file.write_text(mdp_content)
 

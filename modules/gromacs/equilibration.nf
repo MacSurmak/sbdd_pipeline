@@ -15,175 +15,27 @@ process GMX_EQUILIBRATION {
     val(nvt_long_ps)
     val(npt_berendsen_ps)
     val(npt_pr_ps)
+    path(mdp_templates)
 
     output:
     tuple val(meta), path("eq_final.gro"), path("eq_final.cpt"), emit: equilibrated_state
     tuple val(meta), path("*.log"), emit: logs
 
     script:
-    def pcoupl_type = is_membrane ? "semiisotropic" : "isotropic"
-    def ref_p = is_membrane ? "1.0 1.0" : "1.0"
-    def comp = is_membrane ? "4.5e-5 4.5e-5" : "4.5e-5"
     """
     echo "=== Worker: \$(hostname) - Starting Multi-stage Equilibration ==="
     nvidia-smi --query-gpu=name,memory.total --format=csv,noheader || true
 
-    # 1. Generate customized MDP files
-    cat << 'EOF' > minim.mdp
-; Universal Energy Minimization Template
-define                   = {DEFINE}
-integrator               = steep
-emtol                    = 500.0
-emstep                   = {EMSTEP}
-nsteps                   = 50000
-
-nstxout                  = 0
-nstvout                  = 0
-nstenergy                = 1000
-nstlog                   = 1000
-
-cutoff-scheme            = Verlet
-coulombtype              = PME
-rcoulomb                 = 1.0
-vdwtype                  = cutoff
-rvdw                     = 1.0
-pbc                      = xyz
-
-constraints              = {CONSTRAINTS}
-constraint-algorithm     = lincs
-lincs-order              = 4
-lincs-iter               = 1
-EOF
-
-    cat << 'EOF' > nvt.mdp
-; Universal NVT Equilibration Template
-define                   = {DEFINE}
-integrator               = md
-dt                       = {DT}
-nsteps                   = {NSTEPS}
-
-nstxout                  = 5000
-nstvout                  = 5000
-nstenergy                = 1000
-nstlog                   = 1000
-nstxout-compressed       = 1000
-
-cutoff-scheme            = Verlet
-coulombtype              = PME
-rcoulomb                 = 1.0
-vdwtype                  = cutoff
-rvdw                     = 1.0
-pbc                      = xyz
-
-tcoupl                   = V-rescale
-tc-grps                  = {TC_GRPS}
-tau-t                    = 0.1 0.1
-ref-t                    = {TEMP} {TEMP}
-
-pcoupl                   = no
-
-constraints              = h-bonds
-constraint-algorithm     = lincs
-lincs-order              = 4
-lincs-iter               = 1
-
-continuation             = {CONTINUATION}
-gen_vel                  = {GEN_VEL}
-gen_temp                 = {TEMP}
-gen_seed                 = -1
-EOF
-
-    cat << 'EOF' > npt.mdp
-; Universal NPT Equilibration Template
-define                   = {DEFINE}
-integrator               = md
-dt                       = 0.002
-nsteps                   = {NSTEPS}
-
-nstxout                  = 5000
-nstvout                  = 5000
-nstenergy                = 1000
-nstlog                   = 1000
-nstxout-compressed       = 1000
-
-cutoff-scheme            = Verlet
-coulombtype              = PME
-rcoulomb                 = 1.0
-vdwtype                  = cutoff
-rvdw                     = 1.0
-pbc                      = xyz
-
-tcoupl                   = V-rescale
-tc-grps                  = {TC_GRPS}
-tau-t                    = 1.0 1.0
-ref-t                    = {TEMP} {TEMP}
-
-pcoupl                   = {PCOUPL}
-pcoupltype               = {PCOUPL_TYPE}
-tau-p                    = {TAU_P}
-ref-p                    = {REF_P}
-compressibility          = {COMPRESSIBILITY}
-refcoord-scaling         = com
-
-constraints              = h-bonds
-constraint-algorithm     = lincs
-lincs-order              = 4
-lincs-iter               = 1
-
-continuation             = yes
-EOF
-
-    python3 - << 'EOF'
-    import os
-
-    def ps_to_steps(ps, dt):
-        return str(int(round(float(ps) / float(dt))))
-
-    is_mem = "${is_membrane}".lower() == "true"
-    temp = "${temperature}"
-
-    nvt_short_steps = ps_to_steps("${nvt_short_ps}", 0.001)
-    nvt_long_steps = ps_to_steps("${nvt_long_ps}", 0.002)
-    npt_berendsen_steps = ps_to_steps("${npt_berendsen_ps}", 0.002)
-    npt_pr_steps = ps_to_steps("${npt_pr_ps}", 0.002)
-
-    base_replace = {
-        "{TEMP}": temp,
-        "{TC_GRPS}": "PROT_LIG SOL_ION",
-        "{PCOUPL_TYPE}": "${pcoupl_type}",
-        "{REF_P}": "${ref_p}",
-        "{COMPRESSIBILITY}": "${comp}"
-    }
-
-    if is_mem:
-        stages = [
-            ("emA", "minim.mdp", {"{DEFINE}": "-DPOSRES -DPOSRES_LIG", "{EMSTEP}": "0.005", "{CONSTRAINTS}": "h-bonds"}),
-            ("emB", "minim.mdp", {"{DEFINE}": "", "{EMSTEP}": "0.001", "{CONSTRAINTS}": "h-bonds"}),
-            ("emC", "minim.mdp", {"{DEFINE}": "", "{EMSTEP}": "0.0001", "{CONSTRAINTS}": "none"}),
-            ("nvt_short", "nvt.mdp", {"{DEFINE}": "-DPOSRES -DPOSRES_LIG", "{NSTEPS}": nvt_short_steps, "{DT}": "0.001", "{GEN_VEL}": "yes", "{CONTINUATION}": "no"}),
-            ("nvt_long", "nvt.mdp", {"{DEFINE}": "-DPOSRES -DPOSRES_LIG", "{NSTEPS}": nvt_long_steps, "{DT}": "0.002", "{GEN_VEL}": "no", "{CONTINUATION}": "yes"}),
-            ("npt_berendsen", "npt.mdp", {"{DEFINE}": "-DPOSRES -DPOSRES_LIG", "{NSTEPS}": npt_berendsen_steps, "{PCOUPL}": "C-rescale", "{TAU_P}": "5.0"}),
-            ("npt_pr_250", "npt.mdp", {"{DEFINE}": "-DPOSRES_250 -DPOSRES_LIG_250", "{NSTEPS}": npt_pr_steps, "{PCOUPL}": "Parrinello-Rahman", "{TAU_P}": "5.0"}),
-            ("npt_pr_50", "npt.mdp", {"{DEFINE}": "-DPOSRES_50 -DPOSRES_LIG_50", "{NSTEPS}": npt_pr_steps, "{PCOUPL}": "Parrinello-Rahman", "{TAU_P}": "5.0"}),
-            ("npt_unrestrained", "npt.mdp", {"{DEFINE}": "", "{NSTEPS}": npt_pr_steps, "{PCOUPL}": "Parrinello-Rahman", "{TAU_P}": "5.0"})
-        ]
-    else:
-        stages = [
-            ("emA", "minim.mdp", {"{DEFINE}": "-DPOSRES -DPOSRES_LIG", "{EMSTEP}": "0.01", "{CONSTRAINTS}": "h-bonds"}),
-            ("nvt_short", "nvt.mdp", {"{DEFINE}": "-DPOSRES -DPOSRES_LIG", "{NSTEPS}": nvt_short_steps, "{DT}": "0.001", "{GEN_VEL}": "yes", "{CONTINUATION}": "no"}),
-            ("npt_pr_1000", "npt.mdp", {"{DEFINE}": "-DPOSRES -DPOSRES_LIG", "{NSTEPS}": npt_pr_steps, "{PCOUPL}": "Parrinello-Rahman", "{TAU_P}": "5.0"}),
-            ("npt_unrestrained", "npt.mdp", {"{DEFINE}": "", "{NSTEPS}": npt_pr_steps, "{PCOUPL}": "Parrinello-Rahman", "{TAU_P}": "5.0"})
-        ]
-
-    for name, tpl, macros in stages:
-        with open(tpl) as f: c = f.read()
-        for k, v in base_replace.items(): c = c.replace(k, v)
-        for k, v in macros.items(): c = c.replace(k, v)
-        with open(f"{name}.mdp", "w") as out: out.write(c)
-
-    with open("stages_list.txt", "w") as f:
-        for name, _, _ in stages: f.write(f"{name}\\n")
-    EOF
+    # 1. Generate customized MDP files from templates
+    generate_mdp.py \\
+        --templates_dir ${mdp_templates} \\
+        --outdir . \\
+        --is_membrane ${is_membrane} \\
+        --temperature ${temperature} \\
+        --nvt_short_ps ${nvt_short_ps} \\
+        --nvt_long_ps ${nvt_long_ps} \\
+        --npt_berendsen_ps ${npt_berendsen_ps} \\
+        --npt_pr_ps ${npt_pr_ps}
 
     # 2. Sequential stage execution
     prev_gro="${input_gro}"

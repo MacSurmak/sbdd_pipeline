@@ -67,11 +67,12 @@ def cmd_status(args):
 
 
 def cmd_clean(args):
-    """Cleans /shared/work/<project_name> scratch directory."""
+    """Cleans the project's scratch directory."""
     cwd = Path.cwd()
     configs = load_project_configs(cwd)
     proj_name = configs.get("project", {}).get("name", cwd.name)
-    clean_shared_scratch(proj_name, verbose=True)
+    workdir = configs.get("project", {}).get("workdir", f"/shared/work/{proj_name}")
+    clean_shared_scratch(workdir, verbose=True)
 
 
 def run_workflow(entrypoint: str, args):
@@ -97,7 +98,13 @@ def run_workflow(entrypoint: str, args):
     auto_clean = not getattr(args, "keep_scratch", False)
 
     return execute_nextflow(
-        entrypoint, nf_args, cwd, profile=profile, resume=resume, auto_clean=auto_clean
+        entrypoint,
+        nf_args,
+        cwd,
+        profile=profile,
+        resume=resume,
+        auto_clean=auto_clean,
+        configs=configs,
     )
 
 

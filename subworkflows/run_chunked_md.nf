@@ -21,6 +21,7 @@ workflow RUN_CHUNKED_MD {
     nvt_long_ps      // val: 500
     npt_berendsen_ps // val: 1000
     npt_pr_ps        // val: 1000
+    mdp_templates    // path: assets/mdp
 
     main:
     // 1. Equilibration on Slurm GPU with dynamic step counts
@@ -31,7 +32,8 @@ workflow RUN_CHUNKED_MD {
         nvt_short_ps,
         nvt_long_ps,
         npt_berendsen_ps,
-        npt_pr_ps
+        npt_pr_ps,
+        mdp_templates
     )
 
     ch_sys_info = ch_system.map { meta, gro, topol, ndx, posre -> [ meta.id, topol, ndx ] }
@@ -55,7 +57,8 @@ workflow RUN_CHUNKED_MD {
         temperature,
         total_ns,
         chunk_ns,
-        slurm_queue
+        slurm_queue,
+        mdp_templates
     )
 
     emit:

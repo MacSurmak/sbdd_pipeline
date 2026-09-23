@@ -25,7 +25,7 @@ process MERGE_DOCK_CHUNKS {
 
     script:
     """
-    cat ${chunk_sdfs} > ${meta.id}_gnina_docked_all.sdf
+    find -L . -maxdepth 1 -type f -name "*.sdf" ! -name "${meta.id}_gnina_docked_all.sdf" -exec cat {} + > ${meta.id}_gnina_docked_all.sdf
     """
 
     stub:
@@ -81,7 +81,7 @@ process MERGE_RESC_CHUNKS {
 
     script:
     """
-    cat ${chunk_sdfs} > ${meta.id}_rescored.sdf
+    find -L . -maxdepth 1 -type f -name "*.sdf" ! -name "${meta.id}_rescored.sdf" -exec cat {} + > ${meta.id}_rescored.sdf
     """
 
     stub:
@@ -104,26 +104,7 @@ process MERGE_MMGBSA_CHUNKS {
 
     script:
     """
-    python3 -c "
-import sys, csv, os
-header = None
-rows = []
-for f in sorted(sys.argv[1:]):
-    if os.path.exists(f) and os.path.getsize(f) > 0:
-        with open(f, 'r', errors='ignore') as fp:
-            r = csv.reader(fp)
-            for i, row in enumerate(r):
-                if i == 0:
-                    if header is None:
-                        header = row
-                else:
-                    rows.append(row)
-with open('${meta.id}_mmgbsa-out.csv', 'w', newline='') as out:
-    w = csv.writer(out)
-    if header:
-        w.writerow(header)
-    w.writerows(rows)
-" ${csv_files}
+    merge_csv.py --inputs ${csv_files} --output ${meta.id}_mmgbsa-out.csv
     """
 
     stub:

@@ -57,16 +57,7 @@ saltcon=${salt_conc}
     def mpirun_cmd = cores > 1 ? "mpirun --oversubscribe -np ${cores} gmx_MMPBSA MPI" : "gmx_MMPBSA"
     """
     # 1. Total Binding Free Energy via Membrane-aware Poisson-Boltzmann (PB)
-    # Dynamically calculate startframe from trajectory header
-    start_frame=\$(python3 -c "
-import MDAnalysis as mda
-u = mda.Universe('${ref_pdb}', '${clean_xtc}')
-n_frames = len(u.trajectory)
-dt_ns = (u.trajectory[1].time - u.trajectory[0].time) / 1000.0 if n_frames > 1 else 0.01
-req_ns = float('${start_ns}')
-sf = min(n_frames, max(1, int(round(req_ns / dt_ns)) + 1))
-print(sf)
-")
+    start_frame=\$(get_mda_startframe.py --pdb ${ref_pdb} --xtc ${clean_xtc} --start_ns ${start_ns})
 
     cat << EOF > mmpbsa_pb.in
 &general
