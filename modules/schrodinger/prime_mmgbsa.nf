@@ -17,7 +17,7 @@ process PRIME_MMGBSA {
     tuple val(meta), path("${meta.id}_mmgbsa-out.maegz"), emit: out_maegz
 
     script:
-    def mem_flag = (membrane_enabled as boolean) ? "-membrane" : ""
+    def mem_flag = (membrane_enabled.toString() == 'true') ? "-membrane" : ""
     """
     schrodinger prime_mmgbsa \\
         -job_type ${job_type} \\

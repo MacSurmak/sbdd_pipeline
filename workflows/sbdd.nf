@@ -50,7 +50,7 @@ workflow SBDD_WF {
         ch_rec,
         params.native_ligand,
         params.keep_cofactors ?: "",
-        params.membrane ?: false,
+        params.membrane.toString() == 'true',
         params.membrane_type ?: "MOM",
         params.membrane_topo ?: "in",
         params.membrane_chains ?: "A",
@@ -91,7 +91,7 @@ workflow SBDD_WF {
             params.autobox_add ?: 4.0,
             params.top_k_frames ?: 3,
             params.percentile_cutoff ?: 0.50,
-            params.membrane ?: false
+            params.membrane.toString() == 'true'
         )
 
         // 4. Summarize results into master ranking table and cross-frame matrix
@@ -141,7 +141,7 @@ workflow SBDD_WF {
                 }
             SETUP_MD_SYSTEM(
                 ch_md_targets,
-                params.membrane ?: false,
+                params.membrane.toString() == 'true',
                 params.upper_lipids ?: "POPC:POPE:CHL1",
                 params.upper_ratio ?: "5:4:1",
                 params.lower_lipids ?: "POPC:POPE:POPS:CHL1",
@@ -154,7 +154,7 @@ workflow SBDD_WF {
 
             RUN_CHUNKED_MD(
                 SETUP_MD_SYSTEM.out.system_ready,
-                params.membrane ?: false,
+                params.membrane.toString() == 'true',
                 params.md_temperature ?: 310.15,
                 params.md_total_ns ?: 60,
                 params.md_chunk_ns ?: 10,
@@ -173,9 +173,9 @@ workflow SBDD_WF {
                 params.mmpbsa_step_frames ?: 40,
                 params.md_temperature ?: 310.15,
                 params.md_salt_conc ?: 0.15,
-                params.membrane ?: false,
+                params.membrane.toString() == 'true',
                 params.membrane_thickness ?: 28.0,
-                params.per_residue_decomp ?: true
+                params.per_residue_decomp.toString() == 'true'
             )
         }
     }

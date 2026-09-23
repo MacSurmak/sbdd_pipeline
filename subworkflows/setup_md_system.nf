@@ -92,7 +92,7 @@ workflow SETUP_MD_SYSTEM {
     MERGE_AMBER_COMPLEX(ch_merge_in)
 
     // 4. Membrane Assembly or Solvation
-    if (is_membrane) {
+    if (is_membrane.toString() == 'true') {
         PACKMOL_MEMGEN(
             MERGE_AMBER_COMPLEX.out.complex_pdb,
             upper_lipids,
@@ -116,7 +116,7 @@ workflow SETUP_MD_SYSTEM {
     PARMED(TLEAP.out.amber_system)
 
     // 7. Declashing if membrane system
-    if (is_membrane) {
+    if (is_membrane.toString() == 'true') {
         DECLASH(PARMED.out.gmx_system)
         ch_final_gro = DECLASH.out.declashed_gro
     } else {

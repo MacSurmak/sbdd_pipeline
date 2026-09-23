@@ -85,7 +85,7 @@ workflow SCREEN_WF {
             ch_rec,
             params.native_ligand,
             params.keep_cofactors ?: "",
-            params.membrane ?: false,
+            params.membrane.toString() == 'true',
             params.membrane_type ?: "MOM",
             params.membrane_topo ?: "in",
             params.membrane_chains ?: "A",
@@ -119,23 +119,22 @@ workflow SCREEN_WF {
     )
 
     // Parallel docking (Glide, GNINA, or Both)
-    DOCK_LIBRARY(
-        ch_rec_pdb,
-        ch_ref_sdf,
-        PREPARE_LIGANDS.out.chunks,
-        ch_rec_mae,
-        ch_ref_mae,
-        PREPARE_LIGANDS.out.prepared_ligands,
-        params.dock_engine ?: "both",
-        params.exhaustiveness ?: 16,
-        params.cnn_scoring ?: "rescore",
-        params.num_modes ?: 3,
-        params.autobox_add ?: 4.0,
-        params.top_k_frames ?: 3,
-        params.percentile_cutoff ?: 0.50,
-        params.membrane ?: false
-    )
-
+        DOCK_LIBRARY(
+            ch_rec_pdb,
+            ch_ref_sdf,
+            PREPARE_LIGANDS.out.chunks,
+            ch_rec_mae,
+            ch_ref_mae,
+            PREPARE_LIGANDS.out.prepared_ligands,
+            params.dock_engine ?: "both",
+            params.exhaustiveness ?: 16,
+            params.cnn_scoring ?: "rescore",
+            params.num_modes ?: 3,
+            params.autobox_add ?: 4.0,
+            params.top_k_frames ?: 3,
+            params.percentile_cutoff ?: 0.50,
+            params.membrane.toString() == 'true'
+        )
     // Summarize raw poses into consensus ranking CSV tables
     def bench_ligands_str = params.benchmark_ligands ? (params.benchmark_ligands instanceof List ? params.benchmark_ligands.join(" ") : params.benchmark_ligands) : ""
     SUMMARIZE_DOCKING(

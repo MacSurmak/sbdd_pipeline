@@ -43,7 +43,7 @@ workflow PREPARE_RECEPTOR {
         membrane_enabled
     )
 
-    if (membrane_enabled) {
+    if (membrane_enabled.toString() == 'true') {
         // 2. Parallel PPM 3.0 immersion on pure protein
         IMMERS(
             EXTRACT_COMPLEX.out.pure_protein_pdb,
@@ -86,7 +86,7 @@ workflow PREPARE_RECEPTOR {
     )
 
     // 5. Implicit membrane property injection for Prime MM-GBSA
-    if (membrane_enabled) {
+    if (membrane_enabled.toString() == 'true') {
         ch_apply_in = PREPWIZARD.out.prepared_mae
             .join(ch_mem_txt)
 

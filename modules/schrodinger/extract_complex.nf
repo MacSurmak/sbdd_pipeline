@@ -23,10 +23,9 @@ process EXTRACT_COMPLEX {
 
     script:
     def cof_arg = cofactors ? "--cofactors ${cofactors}" : ""
-    if (membrane_enabled) {
+    if (membrane_enabled.toString() == 'true') {
         """
-        schrodinger run ${projectDir}/bin/extract_complex.py \\
-            --input ${complex_file} \\
+        schrodinger run ${params.workdir}/bin/extract_complex.py \\            --input ${complex_file} \\
             --frame_index ${frame_idx} \\
             --ligand ${native_ligand} \\
             ${cof_arg} \\

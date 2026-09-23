@@ -43,7 +43,7 @@ workflow PREPARE_WF {
         ch_rec,
         params.native_ligand,
         params.keep_cofactors ?: "",
-        params.membrane ?: false,
+        params.membrane.toString() == 'true',
         params.membrane_type ?: "MOM",
         params.membrane_topo ?: "in",
         params.membrane_chains ?: "A",
