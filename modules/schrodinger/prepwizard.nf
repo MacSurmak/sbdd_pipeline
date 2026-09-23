@@ -21,6 +21,10 @@ process PREPWIZARD {
     script:
     def cap_flag = cap_termini ? "-captermini" : ""
     """
+    mkdir -p .jobdb .schrodinger_tmp
+    export SCHRODINGER_JOBDB_DIR=\$PWD/.jobdb
+    export SCHRODINGER_TMPDIR=\$PWD/.schrodinger_tmp
+
     schrodinger prepwizard \\
         -fix -fillsidechains \\
         -propka_pH ${target_ph} \\
@@ -29,11 +33,13 @@ process PREPWIZARD {
         -rmsd ${min_rmsd} \\
         -preserve_st_titles \\
         ${cap_flag} \\
+        -NOJOBID \\
         -WAIT \\
         ${raw_receptor_mae} \\
         ${meta.id}_prepared.mae
 
     schrodinger structconvert ${meta.id}_prepared.mae ${meta.id}_prepared.pdb
+    rm -rf .jobdb .schrodinger_tmp
     """
 
     stub:
