@@ -20,10 +20,11 @@ workflow DYNAMICS_WF {
     def ref_sdf_f1   = file("${params.outdir}/receptor/${params.project_name}_f1_ref_native.sdf")
     def ref_sdf      = ref_sdf_std.exists() ? ref_sdf_std : ref_sdf_f1
 
-    def rec_file     = prepared_pdb.exists() ? prepared_pdb : (params.receptor ? file(params.receptor) : file('NO_FILE'))
+    def dummy        = file("${projectDir}/assets/NO_FILE")
+    def rec_file     = prepared_pdb.exists() ? prepared_pdb : (params.receptor ? file(params.receptor) : dummy)
     def dock_file    = docked_sdf.exists() ? docked_sdf : (params.docked_poses ? file(params.docked_poses) : ref_sdf)
 
-    STAGE_INPUTS(rec_file, dock_file, ref_sdf)
+    STAGE_INPUTS(rec_file, dock_file, ref_sdf.exists() ? ref_sdf : dummy)
 
     // Parse target hit list (e.g. "native,PPZ_1H_Ph_BnMe" or single hit)
     def hits = params.md_hits ? params.md_hits.split(",").collect { it.trim() } : ["native"]

@@ -12,10 +12,11 @@ include { SUMMARIZE_DOCKING } from "../modules/reporting/summarize"
 include { COUNT_MODELS      } from "../modules/common/count_models"
 
 workflow SCREEN_WF {
-    def rec_file = params.receptor ? file(params.receptor) : file('NO_FILE')
-    def lib_file = params.library ? file(params.library) : file('NO_FILE')
+    def dummy    = file("${projectDir}/assets/NO_FILE")
+    def rec_file = params.receptor ? file(params.receptor) : dummy
+    def lib_file = params.library ? file(params.library) : dummy
 
-    STAGE_INPUTS(rec_file, lib_file, file('NO_FILE'))
+    STAGE_INPUTS(rec_file, lib_file, dummy)
 
     // Dynamic determination of NMR ensemble frames
     ch_rec_meta = STAGE_INPUTS.out.staged_receptor.map { rec ->

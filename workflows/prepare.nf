@@ -10,11 +10,12 @@ include { PREPARE_LIGANDS  } from '../subworkflows/prepare_ligands'
 include { COUNT_MODELS     } from '../modules/common/count_models'
 
 workflow PREPARE_WF {
-    def rec_file = params.receptor ? file(params.receptor) : file('NO_FILE')
-    def lib_file = params.library ? file(params.library) : file('NO_FILE')
+    def dummy    = file("${projectDir}/assets/NO_FILE")
+    def rec_file = params.receptor ? file(params.receptor) : dummy
+    def lib_file = params.library ? file(params.library) : dummy
 
     // 1. Stage input files to /shared scratch
-    STAGE_INPUTS(rec_file, lib_file, file('NO_FILE'))
+    STAGE_INPUTS(rec_file, lib_file, dummy)
 
     // 2. Dynamic determination of NMR ensemble frames
     ch_rec_meta = STAGE_INPUTS.out.staged_receptor.map { rec ->
