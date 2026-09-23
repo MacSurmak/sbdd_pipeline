@@ -74,25 +74,22 @@ workflow DYNAMICS_WF {
             [ [id: target_id, frame: meta_frame.frame], lig_sdf, hit_name, rec_pdb ]
         }
 
-    // 1. Build systems with dynamic padding and water model
-    SETUP_MD_SYSTEM(
-        ch_targets,
-        params.membrane ?: false,
-        params.upper_lipids ?: "POPC:POPE:CHL1",
-        params.upper_ratio ?: "5:4:1",
-        params.lower_lipids ?: "POPC:POPE:POPS:CHL1",
-        params.lower_ratio ?: "4:4:1:1",
-        params.lipid_padding ?: 10.0,
-        params.box_padding ?: 15.0,
-        params.md_salt_conc ?: 0.15,
-        params.water_model ?: "opc"
-    )
+        // 1. Build systems with dynamic padding and water model
+        SETUP_MD_SYSTEM(
+            ch_targets,
+            params.membrane ?: false,
+            params.upper_lipids ?: "POPC:POPE:CHL1",
+            params.upper_ratio ?: "5:4:1",
+            params.lower_lipids ?: "POPC:POPE:POPS:CHL1",
+            params.lower_ratio ?: "4:4:1:1",
+            params.lipid_padding ?: 10.0,
+            params.box_padding ?: 15.0,
+            params.md_salt_conc ?: 0.15,
+            params.water_model ?: "opc"
+        )
 
-    // 2. Equilibration & dynamic atomic production MD
-    STAGE_ASSETS(file("${projectDir}/assets/mdp", type: 'dir'))
-
-    RUN_CHUNKED_MD(
-        SETUP_MD_SYSTEM.out.system_ready,
+        // 2. Equilibration & dynamic atomic production MD
+        RUN_CHUNKED_MD(        SETUP_MD_SYSTEM.out.system_ready,
         params.membrane ?: false,
         params.md_temperature ?: 310.15,
         params.md_total_ns ?: 60,
