@@ -66,7 +66,7 @@ workflow SBDD_WF {
         PREPARE_LIGANDS(
             ch_lib,
             PREPARE_RECEPTOR.out.ref_native_sdf,
-            params.dock_engine ?: "gnina",
+            params.dock_engine ?: "both",
             params.batch_size ?: 15,
             params.ligand_ph ?: 7.4,
             params.ligand_ph_tol ?: 2.0,
@@ -82,7 +82,7 @@ workflow SBDD_WF {
             PREPARE_RECEPTOR.out.prepared_mae,
             PREPARE_RECEPTOR.out.ref_native_mae,
             PREPARE_LIGANDS.out.prepared_ligands,
-            params.dock_engine ?: "gnina",
+            params.dock_engine ?: "both",
             params.exhaustiveness ?: 16,
             params.cnn_scoring ?: "rescore",
             params.num_modes ?: 3,

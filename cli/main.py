@@ -2,6 +2,7 @@
 File: cli/main.py
 Description: Main CLI entrypoint for `sbdd` orchestrator tool.
 """
+
 import argparse
 import sys
 import shutil
@@ -15,11 +16,12 @@ from cli.core.runner import execute_nextflow, clean_shared_scratch, FRAMEWORK_DI
 
 console = Console()
 
+
 def cmd_init(args):
     """Initializes a new project workspace with atomic YAML configs."""
     target_dir = Path(args.directory).resolve()
     target_dir.mkdir(parents=True, exist_ok=True)
-    
+
     config_dir = target_dir / "configs"
     config_dir.mkdir(parents=True, exist_ok=True)
 
@@ -36,13 +38,20 @@ def cmd_init(args):
     console.print("  1. Copy your receptor (.cif or .pdb) into the project directory.")
     console.print("  2. Copy your ligand library (.sdf) into the project directory.")
     console.print("  3. Review configs in configs/ (e.g. receptor.yaml, gnina.yaml).")
-    console.print("  4. Run [bold cyan]sbdd prep[/bold cyan] or [bold cyan]sbdd all[/bold cyan]!\n")
+    console.print(
+        "  4. Run [bold cyan]sbdd prep[/bold cyan] or [bold cyan]sbdd all[/bold cyan]!\n"
+    )
+
 
 def cmd_status(args):
     """Inspects active Slurm jobs and Nextflow status."""
     console.rule("[bold cyan]Cluster & Slurm Status[/bold cyan]")
     try:
-        res = subprocess.run(["squeue", "-o", "%.10i %.10P %.20j %.10u %.2t %.10M %.6D %R"], capture_output=True, text=True)
+        res = subprocess.run(
+            ["squeue", "-o", "%.10i %.10P %.20j %.10u %.2t %.10M %.6D %R"],
+            capture_output=True,
+            text=True,
+        )
         console.print(res.stdout)
     except Exception as e:
         console.print(f"[red]Could not query Slurm squeue: {e}[/red]")
@@ -51,8 +60,11 @@ def cmd_status(args):
     log_f = Path.cwd() / ".nextflow.log"
     if log_f.exists():
         console.rule("[bold cyan]Recent Nextflow Activity[/bold cyan]")
-        tail = subprocess.run(["tail", "-n", "15", str(log_f)], capture_output=True, text=True)
+        tail = subprocess.run(
+            ["tail", "-n", "15", str(log_f)], capture_output=True, text=True
+        )
         console.print(tail.stdout)
+
 
 def cmd_clean(args):
     """Cleans /shared/work/<project_name> scratch directory."""
@@ -60,6 +72,7 @@ def cmd_clean(args):
     configs = load_project_configs(cwd)
     proj_name = configs.get("project", {}).get("name", cwd.name)
     clean_shared_scratch(proj_name, verbose=True)
+
 
 def run_workflow(entrypoint: str, args):
     """Generic dispatcher from CLI flags and configs to Nextflow execution."""
@@ -83,36 +96,66 @@ def run_workflow(entrypoint: str, args):
     resume = not getattr(args, "no_resume", False)
     auto_clean = not getattr(args, "keep_scratch", False)
 
-    return execute_nextflow(entrypoint, nf_args, cwd, profile=profile, resume=resume, auto_clean=auto_clean)
+    return execute_nextflow(
+        entrypoint, nf_args, cwd, profile=profile, resume=resume, auto_clean=auto_clean
+    )
+
 
 def main():
     parser = argparse.ArgumentParser(
-        prog="sbdd",
-        description="SBDD Pipeline Nextflow HPC Orchestrator CLI"
+        prog="sbdd", description="SBDD Pipeline Nextflow HPC Orchestrator CLI"
     )
     subparsers = parser.add_subparsers(dest="subcommand", help="Available subcommands")
 
     # 1. init
     p_init = subparsers.add_parser("init", help="Initialize new project workspace")
-    p_init.add_argument("directory", nargs="?", default=".", help="Target project directory (default: current)")
-    p_init.add_argument("--force", action="store_true", help="Overwrite existing templates")
+    p_init.add_argument(
+        "directory",
+        nargs="?",
+        default=".",
+        help="Target project directory (default: current)",
+    )
+    p_init.add_argument(
+        "--force", action="store_true", help="Overwrite existing templates"
+    )
 
     # Common options for workflows
     def add_common_wf_args(p):
         p.add_argument("--local", action="store_true", help="Run locally without Slurm")
-        p.add_argument("--no-resume", action="store_true", help="Start from scratch without -resume")
-        p.add_argument("--keep-scratch", action="store_true", help="Do not delete /shared/work upon completion")
-        p.add_argument("--urgent", action="store_true", help="Route tasks to urgent Slurm partition")
+        p.add_argument(
+            "--no-resume",
+            action="store_true",
+            help="Start from scratch without -resume",
+        )
+        p.add_argument(
+            "--keep-scratch",
+            action="store_true",
+            help="Do not delete /shared/work upon completion",
+        )
+        p.add_argument(
+            "--urgent",
+            action="store_true",
+            help="Route tasks to urgent Slurm partition",
+        )
 
     # 2. prep / prepare
-    p_prep = subparsers.add_parser("prep", aliases=["prepare"], help="Run receptor & ligand preparation")
+    p_prep = subparsers.add_parser(
+        "prep", aliases=["prepare"], help="Run receptor & ligand preparation"
+    )
     p_prep.add_argument("--receptor", help="Path to input structure (.cif/.pdb)")
     p_prep.add_argument("--library", help="Path to ligand library (.sdf)")
     add_common_wf_args(p_prep)
 
     # 3. dock / screen
-    p_dock = subparsers.add_parser("dock", aliases=["screen"], help="Run distributed docking across GPU nodes")
-    p_dock.add_argument("--engine", choices=["gnina", "glide", "both"], default="gnina", help="Docking engine choice")
+    p_dock = subparsers.add_parser(
+        "dock", aliases=["screen"], help="Run distributed docking across GPU nodes"
+    )
+    p_dock.add_argument(
+        "--engine",
+        choices=["gnina", "glide", "both"],
+        default=None,
+        help="Docking engine choice (default: from configs)",
+    )
     p_dock.add_argument("--library", help="Path to ligand library (.sdf)")
     add_common_wf_args(p_dock)
 
@@ -121,29 +164,45 @@ def main():
     add_common_wf_args(p_rescore)
 
     # 5. md / dynamics
-    p_dyn = subparsers.add_parser("dynamics", aliases=["md", "md-run", "md-setup"], help="Execute chunked MD simulations on Slurm GPUs")
+    p_dyn = subparsers.add_parser(
+        "dynamics",
+        aliases=["md", "md-run", "md-setup"],
+        help="Execute chunked MD simulations on Slurm GPUs",
+    )
     p_dyn.add_argument("--hits", help="Comma-separated hits to simulate")
     p_dyn.add_argument("--replicates", type=int, help="Number of MD replicates")
     add_common_wf_args(p_dyn)
 
     # 6. md-analyze
-    p_mda = subparsers.add_parser("md-analyze", help="Run trajectory PBC fix, metrics, and MM-PBSA")
+    p_mda = subparsers.add_parser(
+        "md-analyze", help="Run trajectory PBC fix, metrics, and MM-PBSA"
+    )
     p_mda.add_argument("--traj", help="Direct path to custom .xtc file")
     p_mda.add_argument("--topol", help="Direct path to custom topol.top or PDB")
     add_common_wf_args(p_mda)
 
     # 7. all / run
-    p_all = subparsers.add_parser("all", aliases=["run"], help="Execute end-to-end pipeline")
-    p_all.add_argument("--engine", choices=["gnina", "glide", "both"], help="Docking engine choice")
+    p_all = subparsers.add_parser(
+        "all", aliases=["run"], help="Execute end-to-end pipeline"
+    )
+    p_all.add_argument(
+        "--engine", choices=["gnina", "glide", "both"], help="Docking engine choice"
+    )
     p_all.add_argument("--hits", help="Comma-separated hit titles for MD")
-    p_all.add_argument("--top-n", dest="top_n", type=int, help="Number of top hits for MD")
+    p_all.add_argument(
+        "--top-n", dest="top_n", type=int, help="Number of top hits for MD"
+    )
     add_common_wf_args(p_all)
 
     # 8. clean
-    p_clean = subparsers.add_parser("clean", help="Clean /shared/work scratch directory for current project")
+    p_clean = subparsers.add_parser(
+        "clean", help="Clean /shared/work scratch directory for current project"
+    )
 
     # 9. status
-    p_stat = subparsers.add_parser("status", help="Inspect Slurm queue and Nextflow job status")
+    p_stat = subparsers.add_parser(
+        "status", help="Inspect Slurm queue and Nextflow job status"
+    )
 
     args = parser.parse_args()
 
@@ -167,6 +226,6 @@ def main():
     elif subcmd in ["all", "run"]:
         sys.exit(run_workflow("all", args))
 
+
 if __name__ == "__main__":
     main()
-

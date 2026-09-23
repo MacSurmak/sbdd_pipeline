@@ -106,7 +106,7 @@ workflow SCREEN_WF {
     PREPARE_LIGANDS(
         ch_lib,
         ch_ref_sdf,
-        params.dock_engine ?: "gnina",
+        params.dock_engine ?: "both",
         params.batch_size ?: 15,
         params.ligand_ph ?: 7.4,
         params.ligand_ph_tol ?: 2.0,
@@ -122,7 +122,7 @@ workflow SCREEN_WF {
         ch_rec_mae,
         ch_ref_mae,
         PREPARE_LIGANDS.out.prepared_ligands,
-        params.dock_engine ?: "gnina",
+        params.dock_engine ?: "both",
         params.exhaustiveness ?: 16,
         params.cnn_scoring ?: "rescore",
         params.num_modes ?: 3,
