@@ -3,7 +3,6 @@
  * Standalone MD system setup, chunked simulation, and trajectory analysis
  */
 
-include { STAGE_INPUTS    } from '../modules/common/stage_inputs'
 include { SETUP_MD_SYSTEM } from '../subworkflows/setup_md_system'
 include { RUN_CHUNKED_MD  } from '../subworkflows/run_chunked_md'
 include { ANALYZE_MD_TRAJ } from '../subworkflows/analyze_md_traj'
@@ -20,21 +19,19 @@ workflow DYNAMICS_WF {
     def ref_sdf_f1   = file("${params.outdir}/receptor/${params.project_name}_f1_ref_native.sdf")
     def ref_sdf      = ref_sdf_std.exists() ? ref_sdf_std : ref_sdf_f1
 
-    def dummy        = file("${projectDir}/assets/NO_FILE")
-    def rec_file     = prepared_pdb.exists() ? prepared_pdb : (params.receptor ? file(params.receptor) : dummy)
-    def dock_file    = docked_sdf.exists() ? docked_sdf : (params.docked_poses ? file(params.docked_poses) : ref_sdf)
+    def rec_file     = prepared_pdb.exists() ? prepared_pdb : (params.receptor ? file(params.receptor) : null)
+    def dock_file    = docked_sdf.exists() ? docked_sdf : (params.docked_poses ? file(params.docked_poses) : (ref_sdf.exists() ? ref_sdf : null))
 
-    STAGE_INPUTS(rec_file, dock_file, ref_sdf.exists() ? ref_sdf : dummy)
+    if (!rec_file) { error "No receptor found for dynamics. Provide --receptor or run 'sbdd prepare' first." }
+    if (!dock_file) { error "No docked poses found for dynamics. Provide --docked_poses or run 'sbdd screen' first." }
 
     // Parse target hit list (e.g. "native,PPZ_1H_Ph_BnMe" or single hit)
     def hits = params.md_hits ? params.md_hits.split(",").collect { it.trim() } : ["native"]
 
     ch_targets = Channel.fromList(hits)
-        .combine(STAGE_INPUTS.out.staged_library)
-        .combine(STAGE_INPUTS.out.staged_receptor)
-        .map { hit_name, staged_dock, staged_rec ->
+        .map { hit_name ->
             def target_id = hit_name.replaceAll("[^a-zA-Z0-9_-]", "_")
-            [ [id: target_id], staged_dock, hit_name, staged_rec ]
+            [ [id: target_id], dock_file, hit_name, rec_file ]
         }
 
     // 1. Build systems with dynamic padding and water model
