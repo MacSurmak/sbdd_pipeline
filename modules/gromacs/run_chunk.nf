@@ -17,7 +17,7 @@ process RUN_PRODUCTION_MD {
     val(total_ns)
     val(chunk_ns)
     val(slurm_queue)
-    path(mdp_templates)
+    path "mdp_templates"
 
     output:
     tuple val(meta), path("md_*.xtc"), emit: all_xtcs

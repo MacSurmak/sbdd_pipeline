@@ -15,7 +15,7 @@ process GMX_EQUILIBRATION {
     val(nvt_long_ps)
     val(npt_berendsen_ps)
     val(npt_pr_ps)
-    path(mdp_templates)
+    path "mdp_templates"
 
     output:
     tuple val(meta), path("eq_final.gro"), path("eq_final.cpt"), emit: equilibrated_state

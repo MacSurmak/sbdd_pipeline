@@ -61,7 +61,7 @@ workflow DYNAMICS_WF {
         params.nvt_long_ps ?: 500,
         params.npt_berendsen_ps ?: 1000,
         params.npt_pr_ps ?: 1000,
-        file("${projectDir}/assets/mdp")
+        file("${projectDir}/assets/mdp", type: 'dir')
     )
 
     // 3. Trajectory analysis & MM-PBSA
