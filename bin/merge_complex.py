@@ -7,17 +7,13 @@ Converts ResidueTemplate to Structure if necessary.
 import sys
 import logging
 import parmed as pmd
-from amber_fix_pdb import fix_for_amber
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
 
 def merge_complex(prot_pdb: str, lig_mol2: str, out_pdb: str):
-    logging.info(f"Fixing and merging {prot_pdb} with {lig_mol2}...")
-    temp_fixed = f"{prot_pdb}.fixed.pdb"
-    fix_for_amber(prot_pdb, temp_fixed)
-
-    prot = pmd.load_file(temp_fixed)
+    logging.info(f"Merging {prot_pdb} with {lig_mol2}...")
+    prot = pmd.load_file(prot_pdb)
     lig = pmd.load_file(lig_mol2)
 
     # Convert ResidueTemplate to Structure to expose .residues

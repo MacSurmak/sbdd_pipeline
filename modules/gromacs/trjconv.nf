@@ -16,13 +16,7 @@ process TRJCONV {
     script:
     """
     # 1. Inject [ COMPLEX ] (Protein + UNK strictly, no lipids) into index.ndx if not present
-    python3 -c "
-import sys
-from pathlib import Path
-sys.path.insert(0, '${projectDir}/bin')
-from run_production_md import ensure_complex_ndx_group
-ensure_complex_ndx_group(Path('${index_ndx}'))
-"
+    gromacs_ndx_fixer.py --ndx ${index_ndx} --action ensure_complex
 
     # 2. PBC correction steps: whole -> center -> extract pure COMPLEX
     echo "0" | gmx trjconv -s ${tpr} -f ${concat_xtc} -o pbc_whole.xtc -pbc whole

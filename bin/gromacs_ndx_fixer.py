@@ -227,3 +227,53 @@ def fix_posre_indices(itp_file: Path):
         else:
             out_lines.append(line)
     itp_file.write_text("\n".join(out_lines) + "\n")
+
+
+def ensure_complex_ndx_group(ndx_path: Path):
+    """Parses index.ndx and injects [ COMPLEX ] (Protein + UNK) if missing."""
+    if not ndx_path.exists():
+        return
+    text = ndx_path.read_text(encoding="utf-8", errors="ignore")
+    if "[ COMPLEX ]" in text or "[ complex ]" in text:
+        return
+
+    groups = parse_ndx(ndx_path)
+    prot_atoms = groups.get("Protein", [])
+    unk_atoms = groups.get("UNK", [])
+    if not prot_atoms:
+        logging.warning("'Protein' group not found in index.ndx")
+        return
+
+    complex_atoms = sorted(list(set(prot_atoms + unk_atoms)))
+    with open(ndx_path, "a", encoding="utf-8") as f:
+        write_ndx_group(f, "COMPLEX", complex_atoms)
+    logging.info(
+        f"Injected [ COMPLEX ] group ({len(complex_atoms)} atoms) into index.ndx"
+    )
+
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--ndx", required=True)
+    parser.add_argument("--top", required=False)
+    parser.add_argument(
+        "--action",
+        choices=["add_groups", "inject_posre", "fix_posre", "ensure_complex"],
+        required=True,
+    )
+    args = parser.parse_args()
+
+    ndx_path = Path(args.ndx)
+    if args.action == "add_groups":
+        add_thermostat_groups_by_name(ndx_path)
+    elif args.action == "inject_posre":
+        if args.top:
+            inject_ligand_posre(Path(args.top))
+    elif args.action == "fix_posre":
+        for sfx in ["", "_250", "_50"]:
+            fix_posre_indices(Path(f"posre{sfx}.itp"))
+            fix_posre_indices(Path(f"posre_lig{sfx}.itp"))
+    elif args.action == "ensure_complex":
+        ensure_complex_ndx_group(ndx_path)

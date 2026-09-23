@@ -11,6 +11,10 @@ process GMX_EQUILIBRATION {
     tuple val(meta), path(input_gro), path(topol_top), path(index_ndx), path(posre_files)
     val(is_membrane)
     val(temperature)
+    val(nvt_short_ps)
+    val(nvt_long_ps)
+    val(npt_berendsen_ps)
+    val(npt_pr_ps)
 
     output:
     tuple val(meta), path("eq_final.gro"), path("eq_final.cpt"), emit: equilibrated_state
@@ -138,10 +142,10 @@ EOF
     is_mem = "${is_membrane}".lower() == "true"
     temp = "${temperature}"
 
-    nvt_short_steps = ps_to_steps("${params.nvt_short_ps ?: 50}", 0.001)
-    nvt_long_steps = ps_to_steps("${params.nvt_long_ps ?: 500}", 0.002)
-    npt_berendsen_steps = ps_to_steps("${params.npt_berendsen_ps ?: 1000}", 0.002)
-    npt_pr_steps = ps_to_steps("${params.npt_pr_ps ?: 1000}", 0.002)
+    nvt_short_steps = ps_to_steps("${nvt_short_ps}", 0.001)
+    nvt_long_steps = ps_to_steps("${nvt_long_ps}", 0.002)
+    npt_berendsen_steps = ps_to_steps("${npt_berendsen_ps}", 0.002)
+    npt_pr_steps = ps_to_steps("${npt_pr_ps}", 0.002)
 
     base_replace = {
         "{TEMP}": temp,

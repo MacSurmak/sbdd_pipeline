@@ -17,13 +17,21 @@ workflow RUN_CHUNKED_MD {
     chunk_ns         // val: 10
     replicates       // val: 3
     slurm_queue      // val: "main"
+    nvt_short_ps     // val: 50
+    nvt_long_ps      // val: 500
+    npt_berendsen_ps // val: 1000
+    npt_pr_ps        // val: 1000
 
     main:
     // 1. Equilibration on Slurm GPU with dynamic step counts
     GMX_EQUILIBRATION(
         ch_system,
         is_membrane,
-        temperature
+        temperature,
+        nvt_short_ps,
+        nvt_long_ps,
+        npt_berendsen_ps,
+        npt_pr_ps
     )
 
     ch_sys_info = ch_system.map { meta, gro, topol, ndx, posre -> [ meta.id, topol, ndx ] }

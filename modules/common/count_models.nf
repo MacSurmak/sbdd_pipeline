@@ -17,7 +17,7 @@ process COUNT_MODELS {
 
     script:
     """
-    python3 ${projectDir}/bin/count_models.py \\
+    count_models.py \\
         --input ${receptor_file} \\
         --output models_count.txt
     """

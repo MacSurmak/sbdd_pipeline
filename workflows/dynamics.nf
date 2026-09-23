@@ -58,7 +58,11 @@ workflow DYNAMICS_WF {
         params.md_total_ns ?: 60,
         params.md_chunk_ns ?: 10,
         params.md_replicates ? (params.md_replicates as int) : 3,
-        params.queue ?: "main"
+        params.queue ?: "main",
+        params.nvt_short_ps ?: 50,
+        params.nvt_long_ps ?: 500,
+        params.npt_berendsen_ps ?: 1000,
+        params.npt_pr_ps ?: 1000
     )
 
     // 3. Trajectory analysis & MM-PBSA

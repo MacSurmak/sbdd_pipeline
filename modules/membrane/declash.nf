@@ -16,7 +16,7 @@ process DECLASH {
 
     script:
     """
-    python3 ${projectDir}/bin/declash_gmx.py \\
+    declash_gmx.py \\
         -f ${input_gro} \\
         -p ${topol_top} \\
         -o ${meta.id}_declashed.gro \\

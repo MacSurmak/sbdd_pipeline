@@ -20,7 +20,7 @@ process SPLIT_SDF {
 
     script:
     """
-    python3 ${projectDir}/bin/split_sdf.py \\
+    split_sdf.py \\
         --input ${library_sdf} \\
         --batch_size ${batch_size} \\
         --outdir .

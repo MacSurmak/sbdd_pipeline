@@ -17,13 +17,7 @@ process NDX_POSRE {
     """
     echo "q" | gmx make_ndx -f ${input_gro} -o index.ndx
 
-    python3 - << 'EOF'
-    import sys
-    from pathlib import Path
-    sys.path.insert(0, "${projectDir}/bin")
-    import gromacs_ndx_fixer as g
-    g.add_thermostat_groups_by_name(Path("index.ndx"))
-    EOF
+    gromacs_ndx_fixer.py --ndx index.ndx --action add_groups
 
     # Generate multi-level restraints for Protein and Ligand
     for fc in "1000:" "250:_250" "50:_50"; do
@@ -33,16 +27,8 @@ process NDX_POSRE {
         echo "UNK"     | gmx genrestr -f ${input_gro} -n index.ndx -o "posre_lig\${sfx}.itp" -fc \$val \$val \$val
     done
 
-    python3 - << 'EOF'
-    import sys
-    from pathlib import Path
-    sys.path.insert(0, "${projectDir}/bin")
-    import gromacs_ndx_fixer as g
-    for sfx in ["", "_250", "_50"]:
-        g.fix_posre_indices(Path(f"posre{sfx}.itp"))
-        g.fix_posre_indices(Path(f"posre_lig{sfx}.itp"))
-    g.inject_ligand_posre(Path("${topol_top}"))
-    EOF
+    gromacs_ndx_fixer.py --ndx index.ndx --action fix_posre
+    gromacs_ndx_fixer.py --ndx index.ndx --top ${topol_top} --action inject_posre
     """
 
     stub:
