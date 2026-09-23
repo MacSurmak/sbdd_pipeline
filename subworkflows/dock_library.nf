@@ -50,6 +50,7 @@ process MERGE_GLIDE_CHUNKS {
 
     script:
     """
+    cp \$(which merge_pv.py) .
     schrodinger run merge_pv.py \\
         --pv_files ${pv_files} \\
         --csv_files ${csv_files} \\
