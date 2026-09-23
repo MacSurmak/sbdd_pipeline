@@ -64,12 +64,12 @@ workflow SCREEN_WF {
                 def req = params.model_index ? (params.model_index as int) : 0
                 def models = (req > 0 && req <= total) ? [ req ] : (1..total).toList()
                 models.collect { idx ->
-                    def meta = [
+                    def frame_meta = [
                         id: "${params.project_name}_f${idx}",
                         frame: idx,
                         project: params.project_name
                     ]
-                    [ meta, staged_rec, idx ]
+                    [ frame_meta, staged_rec, idx ]
                 }
             }
 
