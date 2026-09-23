@@ -42,7 +42,10 @@ def main():
         "--out_receptor_mae", help="Output receptor + cofactors MAE path (non-membrane)"
     )
     parser.add_argument(
-        "--out_ligand_mae", help="Output native ligand MAE path (non-membrane)"
+        "--out_ligand",
+        "--out_ligand_mae",
+        dest="out_ligand_mae",
+        help="Output native ligand MAE path (non-membrane)",
     )
     args = parser.parse_args()
 
@@ -94,7 +97,7 @@ def main():
         )
 
     if args.out_ligand_mae:
-        lig_asl = f"(res.name '{args.ligand}' OR res.ptype '{args.ligand}*' OR res.ptype '*{args.ligand}*')"
+        lig_asl = f"res.ptype '{args.ligand}'"
         lig_atoms = analyze.evaluate_asl(st, lig_asl)
         sdf_out = str(Path(args.out_ligand_mae).with_suffix(".sdf"))
         if not lig_atoms:

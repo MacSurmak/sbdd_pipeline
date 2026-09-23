@@ -8,7 +8,7 @@ process LIGPREP {
     label 'process_medium'
 
     input:
-    tuple val(meta), path(chunk_sdf)
+    tuple val(meta), path(ligand_file)
     val(target_ph)
     val(ph_tolerance)
     val(ff_version)
@@ -19,9 +19,10 @@ process LIGPREP {
     tuple val(meta), path("${meta.id}_prepared.sdf"), emit: prepared_sdf
 
     script:
+    def in_flag = (ligand_file.name.endsWith('.mae') || ligand_file.name.endsWith('.maegz')) ? "-imae" : "-isd"
     """
     schrodinger ligprep \\
-        -isd ${chunk_sdf} \\
+        ${in_flag} ${ligand_file} \\
         -omae ${meta.id}_prepared.maegz \\
         -epik \\
         -ph ${target_ph} \\

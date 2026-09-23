@@ -109,7 +109,7 @@ workflow SCREEN_WF {
 
     PREPARE_LIGANDS(
         ch_lib,
-        ch_ref_sdf,
+        ch_ref_mae,
         params.dock_engine ?: "both",
         params.batch_size ?: 15,
         params.ligand_ph ?: 7.4,

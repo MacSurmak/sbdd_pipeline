@@ -67,7 +67,7 @@ workflow SBDD_WF {
 
         PREPARE_LIGANDS(
             ch_lib,
-            PREPARE_RECEPTOR.out.ref_native_sdf,
+            PREPARE_RECEPTOR.out.ref_native_mae,
             params.dock_engine ?: "both",
             params.batch_size ?: 15,
             params.ligand_ph ?: 7.4,

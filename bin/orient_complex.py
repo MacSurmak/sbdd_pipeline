@@ -67,7 +67,7 @@ def main():
         )
 
     # 1. Extract native ligand (MAE & SDF)
-    lig_asl = f"(res.name '{args.ligand}' OR res.ptype '{args.ligand}*' OR res.ptype '*{args.ligand}*')"
+    lig_asl = f"res.ptype '{args.ligand}'"
     lig_atoms = analyze.evaluate_asl(complex_st, lig_asl)
     sdf_out = str(Path(args.out_ligand).with_suffix(".sdf"))
     if not lig_atoms:
