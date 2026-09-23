@@ -9,10 +9,16 @@ include { RUN_CHUNKED_MD  } from '../subworkflows/run_chunked_md'
 include { ANALYZE_MD_TRAJ } from '../subworkflows/analyze_md_traj'
 
 workflow DYNAMICS_WF {
-    // Automatic resolution of inputs
-    def prepared_pdb = file("${params.outdir}/receptor/${params.project_name}_prepared.pdb")
+    // Automatic resolution of inputs (supporting both single model and multi-frame ensemble naming)
+    def prepared_pdb_std = file("${params.outdir}/receptor/${params.project_name}_prepared.pdb")
+    def prepared_pdb_f1  = file("${params.outdir}/receptor/${params.project_name}_f1_prepared.pdb")
+    def prepared_pdb     = prepared_pdb_std.exists() ? prepared_pdb_std : prepared_pdb_f1
+
     def docked_sdf   = file("${params.outdir}/docking/${params.project_name}_docked_all.sdf")
-    def ref_sdf      = file("${params.outdir}/receptor/${params.project_name}_ref_native.sdf")
+
+    def ref_sdf_std  = file("${params.outdir}/receptor/${params.project_name}_ref_native.sdf")
+    def ref_sdf_f1   = file("${params.outdir}/receptor/${params.project_name}_f1_ref_native.sdf")
+    def ref_sdf      = ref_sdf_std.exists() ? ref_sdf_std : ref_sdf_f1
 
     def rec_file     = prepared_pdb.exists() ? prepared_pdb : (params.receptor ? file(params.receptor) : file('NO_FILE'))
     def dock_file    = docked_sdf.exists() ? docked_sdf : (params.docked_poses ? file(params.docked_poses) : ref_sdf)

@@ -317,6 +317,12 @@ def main():
     df_raw = df.copy()
     df_raw.to_csv(out_dir / "docking_combined_raw.csv", index=False)
 
+    # Backward compatibility: ensure primary CNNaffinity column exists if Dock_CNNaffinity is present
+    if "Dock_CNNaffinity" in df.columns and "CNNaffinity" not in df.columns:
+        df["CNNaffinity"] = df["Dock_CNNaffinity"]
+    elif "Resc_CNNaffinity" in df.columns and "CNNaffinity" not in df.columns:
+        df["CNNaffinity"] = df["Resc_CNNaffinity"]
+
     # Calculate Consensus Score
     df = calculate_consensus_score(df)
 
