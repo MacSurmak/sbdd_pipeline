@@ -55,10 +55,11 @@ END_TIME=$(date +%s)
 ELAPSED=$((END_TIME - START_TIME))
 
 echo -e "\n[2/3] Verifying deliverables in ${SMOKE_DIR}..."
-if [ -f "${SMOKE_DIR}/docking/cluster_smoke_test_docked_all.sdf" ]; then
-    echo "  ✓ Found merged docking poses: docking/cluster_smoke_test_docked_all.sdf ($(wc -c < "${SMOKE_DIR}/docking/cluster_smoke_test_docked_all.sdf") bytes)"
+DOCK_OUT=$(find "${SMOKE_DIR}/docking" -name "*docked_all.sdf" | head -n 1)
+if [ -n "$DOCK_OUT" ] && [ -f "$DOCK_OUT" ]; then
+    echo "  ✓ Found merged docking poses: $(basename "$DOCK_OUT") ($(wc -c < "$DOCK_OUT") bytes)"
 else
-    echo "  ✗ ERROR: docking/cluster_smoke_test_docked_all.sdf was not generated!" >&2
+    echo "  ✗ ERROR: docking/*_docked_all.sdf was not generated!" >&2
     exit 1
 fi
 

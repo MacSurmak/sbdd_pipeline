@@ -84,15 +84,15 @@ workflow PREPARE_LIGANDS {
         }
     }
 
-    // 2. Add native reference ligand as a distinct chunk
+    // 2. Add native reference ligand as a distinct chunk (indexed as "native" to avoid arbitrary limits)
     ch_native_chunk = ch_ref_native.first().map { meta, native_sdf ->
         def nat_meta = [
             id: "${meta.project ?: params.project_name}_native",
-            chunk_idx: 9999,
+            chunk_idx: "native",
             project: meta.project ?: params.project_name,
             is_native: true
         ]
-        [ nat_meta, native_sdf, 9999 ]
+        [ nat_meta, native_sdf, "native" ]
     }
 
     ch_all_chunks = ch_raw_chunks.mix(ch_native_chunk)
