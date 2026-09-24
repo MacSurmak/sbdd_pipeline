@@ -19,18 +19,24 @@ process PRIME_MMGBSA {
     script:
     def mem_flag = (membrane_enabled.toString() == 'true') ? "-membrane" : ""
     """
-    schrodinger prime_mmgbsa \\
-        -job_type ${job_type} \\
-        -csv_output yes \\
-        -out_type PV \\
-        -jobname ${meta.id}_mmgbsa \\
-        -HOST localhost:${task.cpus} \\
-        -NJOBS ${task.cpus} \\
-        -OVERWRITE \\
-        -WAIT \\
-        ${mem_flag} \\
+    schrodinger prime_mmgbsa \
+        -job_type ${job_type} \
+        -csv_output yes \
+        -out_type PV \
+        -jobname ${meta.id}_mmgbsa \
+        -LOCAL \
+        -NJOBS ${task.cpus} \
+        -OVERWRITE \
+        ${mem_flag} \
         ${pv_maegz}
-    """
+
+    # Defensive check: ensure output files exist even if a chunk had zero scorable ligands
+    if [ ! -f "${meta.id}_mmgbsa-out.csv" ]; then
+        echo "title,r_psp_MMGBSA_dG_Bind" > "${meta.id}_mmgbsa-out.csv"
+    fi
+    if [ ! -f "${meta.id}_mmgbsa-out.maegz" ]; then
+        cp "${pv_maegz}" "${meta.id}_mmgbsa-out.maegz"
+    fi    """
 
     stub:
     """

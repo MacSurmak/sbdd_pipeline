@@ -15,8 +15,8 @@ process FILTER_PV {
     val(batch_size)
 
     output:
-    tuple val(meta), path("${meta.id}_filtered_pv.maegz"), emit: filtered_pv
-    tuple val(meta), path("${meta.id}_filtered_c*.maegz"), emit: filtered_pv_chunks
+    tuple val(meta), path("${meta.id}_filtered_pv.maegz"), emit: filtered_pv, optional: true
+    tuple val(meta), path("${meta.id}_filtered_c*.maegz"), emit: filtered_pv_chunks, optional: true
 
     script:
     def frame_id = meta.frame ?: 1

@@ -77,13 +77,8 @@ def main():
     # 2. Chunked output if out_prefix specified
     if args.out_prefix:
         if not whitelisted_poses:
-            # Output at least one chunk with receptor so downstream step has a valid PV file
-            c0_file = f"{args.out_prefix}_c0.maegz"
-            with structure.StructureWriter(c0_file) as writer:
-                if receptor:
-                    writer.append(receptor)
             print(
-                f"No whitelisted poses for frame {args.frame}. Wrote receptor-only chunk {c0_file}."
+                f"Frame {args.frame}: No whitelisted poses found. Skipping chunk generation."
             )
         else:
             chunk_idx = 0
