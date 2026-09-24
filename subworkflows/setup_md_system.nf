@@ -9,6 +9,7 @@ include { TLEAP          } from '../modules/amber/tleap'
 include { PARMED         } from '../modules/amber/parmed'
 include { DECLASH        } from '../modules/membrane/declash'
 include { NDX_POSRE      } from '../modules/gromacs/ndx_posre'
+
 process EXTRACT_MD_SYSTEM {
     tag "${meta.id}"
     label 'process_single'
@@ -26,7 +27,6 @@ process EXTRACT_MD_SYSTEM {
         --lig_title "${lig_title}" \\
         --rec_file ${rec_file} \\
         --out_dir .
-    """        --out_dir .
     """
 
     stub:
@@ -135,4 +135,3 @@ workflow SETUP_MD_SYSTEM {
     emit:
     system_ready = ch_system_ready
 }
-
