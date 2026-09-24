@@ -51,27 +51,23 @@ workflow RUN_CHUNKED_MD {
             }
         }
 
-    // 3. Groovy inject() pattern for pure static DAG unrolling
-    // Generates a linear chain of tasks exactly total_c times without AST parser errors
-    def chunks = (1..total_c).toList()
-    def acc = chunks.inject([ch_state, Channel.empty(), Channel.empty()]) { accumulator, c_idx ->
-        def current_state = accumulator[0]
-        def current_xtcs  = accumulator[1]
-        def current_sys   = accumulator[2]
+    ch_all_xtcs = Channel.empty()
+    ch_sys_files = Channel.empty()
 
-        def step_out = RUN_MD_CHUNK(current_state, ch_mdp_templates, is_membrane, temperature, chunk_ns, c_idx)
+    // 3. Range-based for-loop for pure static DAG unrolling
+    // Nextflow DSL2 natively supports 'for ( x in list )' inside workflows
+    for ( c_idx in 1..total_c ) {
+        def step_out = RUN_MD_CHUNK(ch_state, ch_mdp_templates, is_membrane, temperature, chunk_ns, c_idx)
         
-        def next_state = step_out.state.map { meta, out_gro, out_cpt, out_tpr, top, ndx ->
+        ch_state = step_out.state.map { meta, out_gro, out_cpt, out_tpr, top, ndx ->
             [meta, out_gro, out_cpt, out_tpr, top, ndx]
         }
-        def next_xtcs = current_xtcs.mix(step_out.xtc)
-        def next_sys = (c_idx == 1) ? step_out.sys_files : current_sys
         
-        [next_state, next_xtcs, next_sys]
+        ch_all_xtcs = ch_all_xtcs.mix(step_out.xtc)
+        if (c_idx == 1) {
+            ch_sys_files = step_out.sys_files
+        }
     }
-
-    ch_all_xtcs = acc[1]
-    ch_sys_files = acc[2]
 
     // 4. Group all resulting chunked XTC files by replicate ID
     ch_grouped_xtcs = ch_all_xtcs.groupTuple(by: 0, size: total_c)
