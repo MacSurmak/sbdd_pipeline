@@ -9,14 +9,15 @@ process RUN_MD_CHUNK {
     label 'process_gpu'
 
     input:
-    tuple val(meta), val(chunk_idx), path(prev_gro), path(prev_cpt), path(prev_tpr), path(topol_top), path(index_ndx)
+    tuple val(meta), path(prev_gro), path(prev_cpt), path(prev_tpr), path(topol_top), path(index_ndx)
     path mdp_templates
     val(is_membrane)
     val(temperature)
     val(chunk_ns)
+    val(chunk_idx)
 
     output:
-    tuple val(meta), val(chunk_idx), path("md_${chunk_idx}.gro"), path("md_${chunk_idx}.cpt"), path("md_${chunk_idx}.tpr"), path(topol_top), path(index_ndx), emit: state
+    tuple val(meta), path("out.gro"), path("out.cpt"), path("out.tpr"), path(topol_top), path(index_ndx), emit: state
     tuple val(meta), path("md_${chunk_idx}.xtc"), emit: xtc
     tuple val(meta), path("sys_ref.tpr"), path(topol_top), path(index_ndx), emit: sys_files, optional: true
 
@@ -38,20 +39,23 @@ process RUN_MD_CHUNK {
                          -e "s/{REF_P}/${ref_p}/g" \\
                          -e "s/{COMPRESSIBILITY}/${comp}/g" > md_run.mdp
 
-        gmx grompp -f md_run.mdp -o md_1.tpr -c ${prev_gro} -t ${prev_cpt} -p ${topol_top} -n ${index_ndx} -maxwarn 2
-        gmx mdrun -deffnm md_1 -nb gpu -pme gpu -update gpu -ntomp ${task.cpus}
-        cp md_1.tpr sys_ref.tpr
+        gmx grompp -f md_run.mdp -o out.tpr -c ${prev_gro} -t ${prev_cpt} -p ${topol_top} -n ${index_ndx} -maxwarn 2
+        gmx mdrun -deffnm md_${chunk_idx} -s out.tpr -nb gpu -pme gpu -update gpu -ntomp ${task.cpus}
+        cp out.tpr sys_ref.tpr
     else
-        gmx convert-tpr -s ${prev_tpr} -extend \${EXTENSION_PS} -o md_${chunk_idx}.tpr
-        gmx mdrun -deffnm md_${chunk_idx} -cpi ${prev_cpt} -noappend -nb gpu -pme gpu -update gpu -ntomp ${task.cpus}
+        gmx convert-tpr -s ${prev_tpr} -extend \${EXTENSION_PS} -o out.tpr
+        gmx mdrun -deffnm md_${chunk_idx} -s out.tpr -cpi ${prev_cpt} -noappend -nb gpu -pme gpu -update gpu -ntomp ${task.cpus}
     fi
+
+    mv md_${chunk_idx}.gro out.gro
+    mv md_${chunk_idx}.cpt out.cpt
     """
 
     stub:
     """
-    touch md_${chunk_idx}.gro
-    touch md_${chunk_idx}.cpt
-    touch md_${chunk_idx}.tpr
+    touch out.gro
+    touch out.cpt
+    touch out.tpr
     touch md_${chunk_idx}.xtc
     if [ "${chunk_idx}" -eq 1 ]; then
         touch sys_ref.tpr

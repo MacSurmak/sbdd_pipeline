@@ -9,34 +9,6 @@ include { GMX_EQUILIBRATION } from '../modules/gromacs/equilibration'
 include { RUN_MD_CHUNK      } from '../modules/gromacs/run_chunk'
 include { TRJCAT            } from '../modules/gromacs/trjcat'
 
-// Pure Nextflow Recursive Loop for Slurm Chunk Offloading
-workflow RECURSIVE_MD {
-    take:
-    state_in // [ meta, chunk_idx, gro, cpt, tpr, top, ndx ]
-    mdp_templates
-    is_membrane
-    temperature
-    chunk_ns
-
-    main:
-    RUN_MD_CHUNK(state_in, mdp_templates, is_membrane, temperature, chunk_ns)
-
-    RUN_MD_CHUNK.out.state.branch { meta, c_idx, gro, cpt, tpr, top, ndx ->
-        done: c_idx >= meta.total_chunks
-        loop: c_idx < meta.total_chunks
-    }.set { chunk_router }
-
-    next_state = chunk_router.loop.map { meta, c_idx, gro, cpt, tpr, top, ndx ->
-        [meta, c_idx + 1, gro, cpt, tpr, top, ndx]
-    }
-
-    RECURSIVE_MD(next_state, mdp_templates, is_membrane, temperature, chunk_ns)
-
-    emit:
-    xtcs = RUN_MD_CHUNK.out.xtc
-    sys_files = RUN_MD_CHUNK.out.sys_files
-}
-
 workflow RUN_CHUNKED_MD {
     take:
     ch_system        // channel: [ val(meta), path(gro), path(topol), path(ndx), path(posre_files) ]
@@ -68,27 +40,37 @@ workflow RUN_CHUNKED_MD {
     def total_c = Math.max(1, Math.round((total_ns as float) / (chunk_ns as float)) as int)
     def num_reps = replicates as int
 
-    // 2. Expand into independent replicates for dynamic recursive production MD
-    ch_start_state = GMX_EQUILIBRATION.out.equilibrated_state
+    // 2. Expand into independent replicates for dynamic production MD
+    ch_state = GMX_EQUILIBRATION.out.equilibrated_state
         .join(ch_system.map{ m, gro, top, ndx, pos -> [m.id, top, ndx] }, by: 0)
         .flatMap { target_id, meta, eq_gro, eq_cpt, topol, ndx ->
             (1..num_reps).collect { rep_id ->
-                def rep_meta = meta + [rep: rep_id, total_chunks: total_c]
+                def rep_meta = meta + [rep: rep_id]
                 // Send eq_cpt in place of prev_tpr as a dummy for the very first chunk
-                [ rep_meta, 1, eq_gro, eq_cpt, eq_cpt, topol, ndx ]
+                [ rep_meta, eq_gro, eq_cpt, eq_cpt, topol, ndx ]
             }
         }
 
-    // 3. Initiate self-balancing recursive loop
-    RECURSIVE_MD(ch_start_state, ch_mdp_templates, is_membrane, temperature, chunk_ns)
+    ch_all_xtcs = Channel.empty()
+    ch_sys_files = Channel.empty()
 
-    // 4. Group all resulting chunked XTC files by replicate ID
-    ch_xtcs_grouped = RECURSIVE_MD.out.xtcs.groupTuple(by: 0)
+    // 3. Initiate self-balancing unrolled DAG loop
+    for (int i = 1; i <= total_c; i++) {
+        def step_out = RUN_MD_CHUNK(ch_state, ch_mdp_templates, is_membrane, temperature, chunk_ns, i)
+        ch_state = step_out.state
+        ch_all_xtcs = ch_all_xtcs.mix(step_out.xtc)
+        if (i == 1) {
+            ch_sys_files = step_out.sys_files
+        }
+    }
+
+    // 4. Group all resulting chunked XTC files by replicate ID (strictly waiting for all chunks)
+    ch_grouped_xtcs = ch_all_xtcs.groupTuple(by: 0, size: total_c)
 
     // 5. Concatenate raw chunks and expose for post-analysis
-    TRJCAT(ch_xtcs_grouped)
+    TRJCAT(ch_grouped_xtcs)
 
     emit:
     raw_trajectory = TRJCAT.out.concat_xtc
-    sys_files = RECURSIVE_MD.out.sys_files
+    sys_files = ch_sys_files
 }
