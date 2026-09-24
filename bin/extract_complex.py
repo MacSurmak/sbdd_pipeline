@@ -102,8 +102,6 @@ def main():
         sdf_out = str(Path(args.out_ligand_mae).with_suffix(".sdf"))
         if not lig_atoms:
             logging.warning(f"Native ligand '{args.ligand}' not found in model {idx}.")
-            Path(args.out_ligand_mae).touch()
-            Path(sdf_out).touch()
         else:
             lig_st = st.extract(lig_atoms)
             lig_st.write(args.out_ligand_mae)
