@@ -26,14 +26,13 @@ process BUILD_FUNNEL_WHITELIST {
     def nat_arg = native_ligand ? "--native_ligand ${native_ligand}" : ""
     """
     build_funnel_whitelist.py \\
-        --glide_csvs ${glide_csvs} \\
-        --gnina_sdfs ${gnina_sdfs} \\
-        --top_k_frames ${top_k_frames} \\
-        --percentile_cutoff ${percentile_cutoff} \\
-        ${bench_arg} \\
-        ${nat_arg} \\
-        --output funnel_whitelist.csv
-    """
+    build_funnel_whitelist.py \
+        --glide_csvs ${glide_csvs} \
+        --gnina_sdfs ${gnina_sdfs} \
+        --top_k_frames ${top_k_frames} \
+        --percentile_cutoff ${percentile_cutoff} \
+        ${bench_arg} ${nat_arg} \
+        --output funnel_whitelist.csv    """
 
     stub:
     """

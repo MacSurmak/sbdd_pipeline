@@ -38,6 +38,11 @@ def main():
         default=[],
         help="Benchmark/control ligands to always preserve",
     )
+    parser.add_argument(
+        "--native_ligand",
+        default="",
+        help="Native ligand residue name or title to always preserve",
+    )
     parser.add_argument("--output", required=True, help="Output whitelist CSV path")
     args = parser.parse_args()
 
@@ -94,11 +99,17 @@ def main():
     else:
         df["Triage_Score"] = df["PR_Glide"]
 
-    # 2. Cutoff top percentile (e.g. top 50%) and unconditionally keep benchmark controls
+    # 2. Cutoff top percentile (e.g. top 50%) and unconditionally keep benchmark controls and native ligand
     best_triage = df.groupby("Title")["Triage_Score"].max()
     threshold = best_triage.quantile(1.0 - args.percentile_cutoff)
     passing_score = set(best_triage[best_triage >= threshold].index)
     forced_set = set(args.benchmark_ligands or [])
+    if args.native_ligand:
+        forced_set.add(args.native_ligand)
+        for t in df["Title"]:
+            if args.native_ligand.lower() in t.lower() or "native" in t.lower():
+                forced_set.add(t)
+
     kept_ligands = passing_score | (forced_set & set(df["Title"]))
 
     df_filtered = df[df["Title"].isin(kept_ligands)]
