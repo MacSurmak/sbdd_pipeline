@@ -9,6 +9,7 @@ process GMX_EQUILIBRATION {
 
     input:
     tuple val(meta), path(input_gro), path(topol_top), path(index_ndx), path(posre_files)
+    path mdp_templates
     val(is_membrane)
     val(temperature)
     val(nvt_short_ps)
@@ -27,7 +28,7 @@ process GMX_EQUILIBRATION {
 
     # 1. Generate customized MDP files from templates
     generate_mdp.py \\
-        --templates_dir ${projectDir}/assets/mdp \\
+        --templates_dir . \\
         --outdir . \\
         --is_membrane ${is_membrane} \\
         --temperature ${temperature} \\

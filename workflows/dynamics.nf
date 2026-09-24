@@ -3,46 +3,29 @@
  * Standalone MD system setup, chunked simulation, and trajectory analysis
  */
 
-include { STAGE_INPUTS     } from '../modules/common/stage_inputs'
 include { PREPARE_RECEPTOR } from '../subworkflows/prepare_receptor'
-include { COUNT_MODELS     } from '../modules/common/count_models'
 include { SETUP_MD_SYSTEM  } from '../subworkflows/setup_md_system'
 include { RUN_CHUNKED_MD   } from '../subworkflows/run_chunked_md'
 include { ANALYZE_MD_TRAJ  } from '../subworkflows/analyze_md_traj'
 
 workflow DYNAMICS_WF {
-    def rec_path = params.receptor ? file(params.receptor).toAbsolutePath().toString() : 'NO_FILE'
-    def dock_path = params.docked_poses ? file(params.docked_poses).toAbsolutePath().toString() : 'NO_FILE'
+    if (!params.receptor) { error "No receptor found for dynamics. Provide --receptor." }
 
-    if (rec_path == 'NO_FILE') { error "No receptor found for dynamics. Provide --receptor." }
-
-    STAGE_INPUTS(rec_path, 'NO_FILE', dock_path)
-
-    def is_prepared = rec_path.endsWith('_prepared.pdb') || rec_path.endsWith('_prepared.mae')
+    def rec_path = file(params.receptor).toAbsolutePath()
+    def is_prepared = rec_path.name.endsWith('_prepared.pdb') || rec_path.name.endsWith('_prepared.mae')
 
     ch_rec_pdb = Channel.empty()
     ch_lig_sdf = Channel.empty()
 
     if (!is_prepared) {
         // Receptor is raw, we must PREPARE it first!
-        ch_rec_meta = STAGE_INPUTS.out.staged_receptor.map { rec ->
+        ch_rec_raw = Channel.fromPath(rec_path, checkIfExists: true).map { rec ->
             [ [id: params.project_name, project: params.project_name], rec ]
         }
-        COUNT_MODELS(ch_rec_meta)
-        ch_rec = STAGE_INPUTS.out.staged_receptor
-            .combine(COUNT_MODELS.out.count_file)
-            .flatMap { staged_rec, meta_cnt, count_txt ->
-                def total = count_txt.text.trim() as int
-                def req = params.model_index ? (params.model_index as int) : 0
-                def models = (req > 0 && req <= total) ? [ req ] : (1..total).toList()
-                models.collect { idx ->
-                    def frame_meta = [ id: "${params.project_name}_f${idx}", frame: idx, project: params.project_name ]
-                    [ frame_meta, staged_rec, idx ]
-                }
-            }
 
         PREPARE_RECEPTOR(
-            ch_rec,
+            ch_rec_raw,
+            params.model_index ?: 0,
             params.native_ligand,
             params.keep_cofactors ?: "",
             params.membrane ?: false,
@@ -56,11 +39,23 @@ workflow DYNAMICS_WF {
         )
         ch_rec_pdb = PREPARE_RECEPTOR.out.prepared_pdb
         // If dock_path was not provided, use the native ligand we just extracted
-        ch_lig_sdf = dock_path == 'NO_FILE' ? PREPARE_RECEPTOR.out.ref_native_sdf : STAGE_INPUTS.out.staged_docked.map { d -> [ [id: params.project_name, frame: 1], d ] }
+        if (params.docked_poses) {
+            ch_lig_sdf = Channel.fromPath(file(params.docked_poses).toAbsolutePath(), checkIfExists: true)
+                .map { d -> [ [id: params.project_name, frame: 1], d ] }
+        } else {
+            ch_lig_sdf = PREPARE_RECEPTOR.out.ref_native_sdf
+        }
     } else {
         // Already prepared, just use inputs directly
-        ch_rec_pdb = STAGE_INPUTS.out.staged_receptor.map { r -> [ [id: params.project_name, frame: 1], r ] }
-        ch_lig_sdf = STAGE_INPUTS.out.staged_docked.map { d -> [ [id: params.project_name, frame: 1], d ] }
+        ch_rec_pdb = Channel.fromPath(rec_path, checkIfExists: true)
+            .map { r -> [ [id: params.project_name, frame: 1], r ] }
+            
+        if (params.docked_poses) {
+            ch_lig_sdf = Channel.fromPath(file(params.docked_poses).toAbsolutePath(), checkIfExists: true)
+                .map { d -> [ [id: params.project_name, frame: 1], d ] }
+        } else {
+            error "If providing a pre-prepared receptor, you must provide --docked_poses."
+        }
     }
 
     // Parse target hit list
@@ -87,9 +82,12 @@ workflow DYNAMICS_WF {
             params.water_model ?: "opc"
         )
 
-        // 2. Equilibration & dynamic atomic production MD
+        ch_mdp_templates = Channel.fromPath("${projectDir}/assets/mdp/*.mdp", checkIfExists: true).collect()
+
+    // 2. Equilibration & dynamic atomic production MD
     RUN_CHUNKED_MD(
         SETUP_MD_SYSTEM.out.system_ready,
+        ch_mdp_templates,
         params.membrane.toString() == 'true',
         params.md_temperature ?: 310.15,
         params.md_total_ns ?: 60,

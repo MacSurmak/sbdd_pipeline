@@ -3,7 +3,6 @@
  * Standalone distributed docking and screening workflow with ensemble support
  */
 
-include { STAGE_INPUTS      } from "../modules/common/stage_inputs"
 include { PREPARE_RECEPTOR  } from "../subworkflows/prepare_receptor"
 include { PREPARE_LIGANDS   } from "../subworkflows/prepare_ligands"
 include { DOCK_LIBRARY      } from "../subworkflows/dock_library"
@@ -13,21 +12,13 @@ include { COUNT_MODELS      } from "../modules/common/count_models"
 workflow SCREEN_WF {
     if (!params.receptor) { error "Parameter --receptor is required." }
 
-    def rec_path = file(params.receptor).toAbsolutePath().toString()
-    def lib_path = params.library ? file(params.library).toAbsolutePath().toString() : 'NO_FILE'
-
-    STAGE_INPUTS(rec_path, lib_path, 'NO_FILE')
-
-    // Dynamic determination of NMR ensemble frames
-    ch_rec_meta = STAGE_INPUTS.out.staged_receptor.map { rec ->
-        [ [id: params.project_name, project: params.project_name], rec ]
-    }
-        
-    COUNT_MODELS(ch_rec_meta)
+    ch_rec_raw = Channel.fromPath(file(params.receptor).toAbsolutePath(), checkIfExists: true)
+        .map { rec -> [ [id: params.project_name, project: params.project_name], rec ] }
 
     def prep_check = file("${params.outdir}/receptor/${params.project_name}_f1_prepared.pdb")
 
     if (prep_check.exists()) {
+        COUNT_MODELS(ch_rec_raw)
         ch_rec_pdb = COUNT_MODELS.out.count_file.flatMap { meta, count_txt ->
             def total = count_txt.text.trim() as int
             def req = params.model_index ? (params.model_index as int) : 0
@@ -65,24 +56,9 @@ workflow SCREEN_WF {
             }
         }
     } else {
-        ch_rec = STAGE_INPUTS.out.staged_receptor
-            .combine(COUNT_MODELS.out.count_file)
-            .flatMap { staged_rec, meta_cnt, count_txt ->
-                def total = count_txt.text.trim() as int
-                def req = params.model_index ? (params.model_index as int) : 0
-                def models = (req > 0 && req <= total) ? [ req ] : (1..total).toList()
-                models.collect { idx ->
-                    def frame_meta = [
-                        id: "${params.project_name}_f${idx}",
-                        frame: idx,
-                        project: params.project_name
-                    ]
-                    [ frame_meta, staged_rec, idx ]
-                }
-            }
-
         PREPARE_RECEPTOR(
-            ch_rec,
+            ch_rec_raw,
+            params.model_index ?: 0,
             params.native_ligand,
             params.keep_cofactors ?: "",
             params.membrane.toString() == 'true',
@@ -104,7 +80,7 @@ workflow SCREEN_WF {
     // Prepare ligands dynamically (including native reference ligand)
     if (!params.library) { error "Parameter --library is required for screening." }
 
-    ch_lib = STAGE_INPUTS.out.staged_library
+    ch_lib = Channel.fromPath(file(params.library).toAbsolutePath(), checkIfExists: true)
         .map { lib -> [ [id: params.project_name, project: params.project_name], lib ] }
 
     PREPARE_LIGANDS(

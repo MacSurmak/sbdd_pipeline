@@ -4,7 +4,6 @@
  * Screening Funnel Triage (Physics + AI), Prime MM-GBSA, automated hit selection, and chunked GROMACS MD.
  */
 
-include { STAGE_INPUTS      } from '../modules/common/stage_inputs'
 include { PREPARE_RECEPTOR  } from '../subworkflows/prepare_receptor'
 include { PREPARE_LIGANDS   } from '../subworkflows/prepare_ligands'
 include { DOCK_LIBRARY      } from '../subworkflows/dock_library'
@@ -13,41 +12,17 @@ include { RUN_CHUNKED_MD    } from '../subworkflows/run_chunked_md'
 include { ANALYZE_MD_TRAJ   } from '../subworkflows/analyze_md_traj'
 include { SUMMARIZE_DOCKING } from '../modules/reporting/summarize'
 include { SELECT_HITS       } from '../modules/reporting/select_hits'
-include { COUNT_MODELS      } from '../modules/common/count_models'
 
 workflow SBDD_WF {
     if (!params.receptor) { error "Parameter --receptor is required." }
 
-    def rec_path = file(params.receptor).toAbsolutePath().toString()
-    def lib_path = params.library ? file(params.library).toAbsolutePath().toString() : 'NO_FILE'
+    ch_rec = Channel.fromPath(file(params.receptor).toAbsolutePath(), checkIfExists: true)
+        .map { rec -> [ [id: params.project_name, project: params.project_name], rec ] }
 
-    STAGE_INPUTS(rec_path, lib_path, 'NO_FILE')
-
-    ch_rec_meta = STAGE_INPUTS.out.staged_receptor.map { rec ->
-        [ [id: params.project_name, project: params.project_name], rec ]
-    }
-
-    // 1. Dynamic determination of NMR ensemble frames
-    COUNT_MODELS(ch_rec_meta)
-
-    ch_rec = STAGE_INPUTS.out.staged_receptor
-        .combine(COUNT_MODELS.out.count_file)
-        .flatMap { staged_rec, meta_cnt, count_txt ->
-            def total = count_txt.text.trim() as int
-            def req = params.model_index ? (params.model_index as int) : 0
-            def models = (req > 0 && req <= total) ? [ req ] : (1..total).toList()
-            models.collect { idx ->
-                def frame_meta = [
-                    id: "${params.project_name}_f${idx}",
-                    frame: idx,
-                    project: params.project_name
-                ]
-                [ frame_meta, staged_rec, idx ]
-            }
-        }
-
+    // 1. Receptor Preparation
     PREPARE_RECEPTOR(
         ch_rec,
+        params.model_index ?: 0,
         params.native_ligand,
         params.keep_cofactors ?: "",
         params.membrane.toString() == 'true',
@@ -62,7 +37,7 @@ workflow SBDD_WF {
 
     // 2. Prepare Ligands & Docking
     if (params.library) {
-        ch_lib = STAGE_INPUTS.out.staged_library
+        ch_lib = Channel.fromPath(file(params.library).toAbsolutePath(), checkIfExists: true)
             .map { lib -> [ [id: params.project_name, project: params.project_name], lib ] }
 
         PREPARE_LIGANDS(
@@ -152,10 +127,12 @@ workflow SBDD_WF {
                 params.water_model ?: "opc"
             )
 
-            RUN_CHUNKED_MD(
-                SETUP_MD_SYSTEM.out.system_ready,
-                params.membrane.toString() == 'true',
-                params.md_temperature ?: 310.15,
+        ch_mdp_templates = Channel.fromPath("${projectDir}/assets/mdp/*.mdp", checkIfExists: true).collect()
+
+        RUN_CHUNKED_MD(
+            SETUP_MD_SYSTEM.out.system_ready,
+            ch_mdp_templates,
+            params.membrane.toString() == 'true',                params.md_temperature ?: 310.15,
                 params.md_total_ns ?: 60,
                 params.md_chunk_ns ?: 10,
                 params.md_replicates ? (params.md_replicates as int) : 3,

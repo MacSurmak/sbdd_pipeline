@@ -13,6 +13,7 @@ include { TRJCONV           } from '../modules/gromacs/trjconv'
 workflow RUN_CHUNKED_MD {
     take:
     ch_system        // channel: [ val(meta), path(gro), path(topol), path(ndx), path(posre_files) ]
+    ch_mdp_templates // channel: [ path(md.mdp), path(minim.mdp), ... ]
     is_membrane      // val: true/false
     temperature      // val: 310.15
     total_ns         // val: 60
@@ -28,6 +29,7 @@ workflow RUN_CHUNKED_MD {
     // 1. Equilibration on Slurm GPU with dynamic step counts
     GMX_EQUILIBRATION(
         ch_system,
+        ch_mdp_templates,
         is_membrane,
         temperature,
         nvt_short_ps,
@@ -53,6 +55,7 @@ workflow RUN_CHUNKED_MD {
     // 3. Dynamic Production MD
     RUN_PRODUCTION_MD(
         ch_prod_in,
+        ch_mdp_templates,
         is_membrane,
         temperature,
         total_ns,

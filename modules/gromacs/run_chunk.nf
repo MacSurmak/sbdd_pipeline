@@ -12,6 +12,7 @@ process RUN_PRODUCTION_MD {
 
     input:
     tuple val(meta), path(eq_gro), path(eq_cpt), path(topol_top), path(index_ndx)
+    path mdp_templates
     val(is_membrane)
     val(temperature)
     val(total_ns)
@@ -36,7 +37,7 @@ process RUN_PRODUCTION_MD {
         --temp ${temperature} \\
         --is_membrane ${is_membrane} \\
         --queue ${slurm_queue} \\
-        --mdp_template ${projectDir}/assets/mdp/md.mdp \\
+        --mdp_template md.mdp \\
         --cpus ${task.cpus} \\
         --outdir .
     """

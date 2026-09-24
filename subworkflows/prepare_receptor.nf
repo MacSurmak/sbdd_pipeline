@@ -14,6 +14,7 @@
  *      APPLY_MEMBRANE (Schrodinger Prime): injects implicit membrane slab properties for MM-GBSA.
  */
 
+include { COUNT_MODELS    } from "../modules/common/count_models"
 include { EXTRACT_COMPLEX } from "../modules/schrodinger/extract_complex"
 include { IMMERS          } from "../modules/membrane/immers"
 include { ORIENT_COMPLEX  } from "../modules/schrodinger/orient_complex"
@@ -22,7 +23,8 @@ include { APPLY_MEMBRANE  } from "../modules/membrane/apply_membrane"
 
 workflow PREPARE_RECEPTOR {
     take:
-    ch_input          // channel: [ val(meta), path(complex_file), val(frame_idx) ]
+    ch_receptor       // channel: [ val(meta), path(complex_file) ]
+    model_index       // val: int
     native_ligand     // val: "PKA"
     cofactors         // val: "HEM,MG"
     membrane_enabled  // val: true/false
@@ -35,9 +37,28 @@ workflow PREPARE_RECEPTOR {
     cap_termini       // val: true
 
     main:
-    // 1. Separate models and extract components
+    // 1. Dynamic determination of NMR ensemble frames
+    COUNT_MODELS(ch_receptor)
+
+    ch_extracted_in = ch_receptor
+        .join(COUNT_MODELS.out.count_file)
+        .flatMap { meta, rec_file, count_txt ->
+            def total = count_txt.text.trim() as int
+            def req = model_index ? (model_index as int) : 0
+            def models = (req > 0 && req <= total) ? [ req ] : (1..total).toList()
+            models.collect { idx ->
+                def frame_meta = [
+                    id: "${meta.id}_f${idx}",
+                    frame: idx,
+                    project: meta.project
+                ]
+                [ frame_meta, rec_file, idx ]
+            }
+        }
+
+    // 2. Separate models and extract components
     EXTRACT_COMPLEX(
-        ch_input,
+        ch_extracted_in,
         native_ligand,
         cofactors,
         membrane_enabled
