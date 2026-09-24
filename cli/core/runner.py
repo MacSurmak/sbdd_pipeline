@@ -197,6 +197,17 @@ def execute_nextflow(
         entrypoint,
     ]
 
+    # In small terminals (e.g. VS Code bottom panel < 25 lines), disable ANSI cursor jumping to avoid log spam
+    try:
+        import shutil
+
+        terminal_height = shutil.get_terminal_size((80, 24)).lines
+        if terminal_height < 25:
+            cmd.append("-ansi-log")
+            cmd.append("false")
+    except Exception:
+        pass
+
     if "TOWER_ACCESS_TOKEN" in os.environ:
         console.print(
             "[bold green]✓ Seqera Platform (Tower) Live Telemetry connected.[/bold green]"
