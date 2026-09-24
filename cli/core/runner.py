@@ -33,12 +33,21 @@ def clean_shared_scratch(workdir: str, verbose: bool = True):
 
 
 def build_unrolled_md_dag(total_chunks: int) -> str:
-    code = """/* Dynamically generated unrolled DAG for chunked MD */
-include { GMX_EQUILIBRATION } from '../modules/gromacs/equilibration'
-include { RUN_MD_CHUNK      } from '../modules/gromacs/run_chunk'
-include { TRJCAT            } from '../modules/gromacs/trjcat'
+    includes = [
+        "include { GMX_EQUILIBRATION } from '../modules/gromacs/equilibration'",
+        "include { TRJCAT            } from '../modules/gromacs/trjcat'",
+    ]
+    for i in range(1, total_chunks + 1):
+        includes.append(
+            f"include {{ RUN_MD_CHUNK as RUN_MD_CHUNK_{i} }} from '../modules/gromacs/run_chunk'"
+        )
 
-workflow RUN_CHUNKED_MD {
+    includes_str = "\n".join(includes)
+
+    code = f"""/* Dynamically generated unrolled DAG for chunked MD */
+{includes_str}
+
+workflow RUN_CHUNKED_MD {{
     take:
     ch_system
     ch_mdp_templates
@@ -58,19 +67,19 @@ workflow RUN_CHUNKED_MD {
     
     def num_reps = replicates as int
     ch_state_0 = GMX_EQUILIBRATION.out.equilibrated_state
-        .join(ch_system.map{ m, gro, top, ndx, pos -> [m.id, top, ndx] }, by: 0)
-        .flatMap { target_id, meta, eq_gro, eq_cpt, topol, ndx ->
-            (1..num_reps).collect { rep_id ->
+        .join(ch_system.map{{ m, gro, top, ndx, pos -> [m.id, top, ndx] }}, by: 0)
+        .flatMap {{ target_id, meta, eq_gro, eq_cpt, topol, ndx ->
+            (1..num_reps).collect {{ rep_id ->
                 def rep_meta = meta + [rep: rep_id]
                 [ rep_meta, eq_gro, eq_cpt, eq_cpt, topol, ndx ]
-            }
-        }
+            }}
+        }}
 
     ch_all_xtcs = Channel.empty()
 """
     for i in range(1, total_chunks + 1):
         code += f"""
-    step_{i} = RUN_MD_CHUNK(ch_state_{i-1}, ch_mdp_templates, is_membrane, temperature, chunk_ns, {i})
+    step_{i} = RUN_MD_CHUNK_{i}(ch_state_{i-1}, ch_mdp_templates, is_membrane, temperature, chunk_ns, {i})
     ch_state_{i} = step_{i}.state.map {{ meta, out_gro, out_cpt, out_tpr, top, ndx -> [meta, out_gro, out_cpt, out_tpr, top, ndx] }}
     ch_all_xtcs = ch_all_xtcs.mix(step_{i}.xtc)
 """
