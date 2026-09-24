@@ -37,6 +37,34 @@ if [ ! -f "${SCRIPT_DIR}/data/smoke_receptor.pdb" ] || ! grep -q "BTN" "${SCRIPT
     curl -fsSL https://files.rcsb.org/download/1STP.pdb -o "${SCRIPT_DIR}/data/smoke_receptor.pdb"
 fi
 
+# Generate valid 3D SDF library using RDKit
+python3 -c '
+from rdkit import Chem
+from rdkit.Chem import AllChem
+import sys
+
+smiles = {
+    "Aspirin": "CC(=O)Oc1ccccc1C(=O)O", 
+    "Ibuprofen": "CC(C)Cc1ccc(cc1)C(C)C(=O)O", 
+    "Paracetamol": "CC(=O)Nc1ccc(O)cc1"
+}
+
+try:
+    w = Chem.SDWriter("'${SCRIPT_DIR}'/data/smoke_ligand.sdf")
+    for n, s in smiles.items():
+        m = Chem.MolFromSmiles(s)
+        m.SetProp("_Name", n)
+        m = Chem.AddHs(m)
+        AllChem.EmbedMolecule(m, randomSeed=42)
+        AllChem.MMFFOptimizeMolecule(m)
+        w.write(m)
+    w.close()
+    print("Successfully generated smoke_ligand.sdf with 3 test molecules.")
+except Exception as e:
+    print(f"Error generating SDF: {e}")
+    sys.exit(1)
+'
+
 # Copy smoke data and configs
 cp -r "${SCRIPT_DIR}/configs" "${SMOKE_DIR}/"
 cp "${SCRIPT_DIR}/data/smoke_receptor.pdb" "${SMOKE_DIR}/"
