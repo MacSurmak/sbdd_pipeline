@@ -32,6 +32,62 @@ def clean_shared_scratch(workdir: str, verbose: bool = True):
             console.print(f"[dim]No scratch directory found at {scratch_dir}[/dim]")
 
 
+def build_unrolled_md_dag(total_chunks: int) -> str:
+    code = """/* Dynamically generated unrolled DAG for chunked MD */
+include { GMX_EQUILIBRATION } from '../modules/gromacs/equilibration'
+include { RUN_MD_CHUNK      } from '../modules/gromacs/run_chunk'
+include { TRJCAT            } from '../modules/gromacs/trjcat'
+
+workflow RUN_CHUNKED_MD {
+    take:
+    ch_system
+    ch_mdp_templates
+    is_membrane
+    temperature
+    total_ns
+    chunk_ns
+    replicates
+    slurm_queue
+    nvt_short_ps
+    nvt_long_ps
+    npt_berendsen_ps
+    npt_pr_ps
+
+    main:
+    GMX_EQUILIBRATION(ch_system, ch_mdp_templates, is_membrane, temperature, nvt_short_ps, nvt_long_ps, npt_berendsen_ps, npt_pr_ps)
+    
+    def num_reps = replicates as int
+    ch_state_0 = GMX_EQUILIBRATION.out.equilibrated_state
+        .join(ch_system.map{ m, gro, top, ndx, pos -> [m.id, top, ndx] }, by: 0)
+        .flatMap { target_id, meta, eq_gro, eq_cpt, topol, ndx ->
+            (1..num_reps).collect { rep_id ->
+                def rep_meta = meta + [rep: rep_id]
+                [ rep_meta, eq_gro, eq_cpt, eq_cpt, topol, ndx ]
+            }
+        }
+
+    ch_all_xtcs = Channel.empty()
+"""
+    for i in range(1, total_chunks + 1):
+        code += f"""
+    step_{i} = RUN_MD_CHUNK(ch_state_{i-1}, ch_mdp_templates, is_membrane, temperature, chunk_ns, {i})
+    ch_state_{i} = step_{i}.state.map {{ meta, out_gro, out_cpt, out_tpr, top, ndx -> [meta, out_gro, out_cpt, out_tpr, top, ndx] }}
+    ch_all_xtcs = ch_all_xtcs.mix(step_{i}.xtc)
+"""
+    code += f"""
+    sys_files = step_1.sys_files
+
+    ch_grouped_xtcs = ch_all_xtcs.groupTuple(by: 0, size: {total_chunks})
+    TRJCAT(ch_grouped_xtcs)
+
+    emit:
+    raw_trajectory = TRJCAT.out.concat_xtc
+    sys_files = sys_files
+}}
+"""
+    return code
+
+
 def execute_nextflow(
     entrypoint: str,
     extra_args: list,
@@ -68,8 +124,42 @@ def execute_nextflow(
     reports_dir.mkdir(parents=True, exist_ok=True)
     log_file = reports_dir / f"nextflow_{entrypoint}.log"
 
-    # Ensure all scripts in bin/ are executable
-    for script_file in (FRAMEWORK_DIR / "bin").glob("*.py"):
+    # Pre-generate unrolled DAG pipeline snapshot
+    total_ns = 60.0
+    chunk_ns = 10.0
+    if configs:
+        prod_cfg = configs.get("md_simulation", {}).get("production", {})
+        total_ns = float(prod_cfg.get("total_time_ns", 60.0))
+        chunk_ns = float(prod_cfg.get("chunk_size_ns", 10.0))
+
+    for i, arg in enumerate(extra_args):
+        if arg == "--md_total_ns" and i + 1 < len(extra_args):
+            total_ns = float(extra_args[i + 1])
+        elif arg == "--md_chunk_ns" and i + 1 < len(extra_args):
+            chunk_ns = float(extra_args[i + 1])
+
+    total_c = max(1, int(round(total_ns / chunk_ns)))
+
+    pipeline_code_dir = scratch_base / ".pipeline_code"
+    if pipeline_code_dir.exists():
+        shutil.rmtree(pipeline_code_dir)
+    pipeline_code_dir.mkdir(parents=True)
+
+    for d in ["workflows", "subworkflows", "modules", "assets", "conf", "bin"]:
+        src = FRAMEWORK_DIR / d
+        if src.exists():
+            shutil.copytree(src, pipeline_code_dir / d)
+    for f in ["main.nf", "nextflow.config"]:
+        src = FRAMEWORK_DIR / f
+        if src.exists():
+            shutil.copy(src, pipeline_code_dir / f)
+
+    unrolled_code = build_unrolled_md_dag(total_c)
+    (pipeline_code_dir / "subworkflows" / "run_chunked_md.nf").write_text(unrolled_code)
+
+    main_nf = pipeline_code_dir / "main.nf"
+
+    for script_file in (pipeline_code_dir / "bin").glob("*.py"):
         try:
             script_file.chmod(script_file.stat().st_mode | 0o111)
         except Exception:
