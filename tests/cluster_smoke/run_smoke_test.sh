@@ -16,7 +16,7 @@ echo " Starting End-to-End Slurm Cluster Integration Smoke Test"
 echo " Framework Root: ${ROOT_DIR}"
 echo "=========================================================="
 
-SMOKE_DIR="/tmp/cluster_smoke_$(date +%s)"
+SMOKE_DIR="/shared/smoke_test_$(date +%s)"
 mkdir -p "${SMOKE_DIR}"
 
 cleanup() {
