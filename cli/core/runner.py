@@ -198,11 +198,9 @@ def execute_nextflow(
     ]
 
     if "TOWER_ACCESS_TOKEN" in os.environ:
-        cmd.append("-with-tower")
         console.print(
             "[bold green]✓ Seqera Platform (Tower) Live Telemetry connected.[/bold green]"
         )
-
     if resume:
         cmd.append("-resume")
 
