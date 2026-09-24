@@ -3,28 +3,33 @@
  * Standalone MD system setup, chunked simulation, and trajectory analysis
  */
 
+include { STAGE_INPUTS     } from '../modules/common/stage_inputs'
 include { PREPARE_RECEPTOR } from '../subworkflows/prepare_receptor'
 include { SETUP_MD_SYSTEM  } from '../subworkflows/setup_md_system'
 include { RUN_CHUNKED_MD   } from '../subworkflows/run_chunked_md'
 include { ANALYZE_MD_TRAJ  } from '../subworkflows/analyze_md_traj'
 
 workflow DYNAMICS_WF {
-    if (!params.receptor) { error "No receptor found for dynamics. Provide --receptor." }
+    def rec_path_str = params.receptor ? file(params.receptor).toAbsolutePath().toString() : 'NO_FILE'
+    def dock_path_str = params.docked_poses ? file(params.docked_poses).toAbsolutePath().toString() : 'NO_FILE'
 
-    def rec_path = file(params.receptor).toAbsolutePath()
-    def is_prepared = rec_path.name.endsWith('_prepared.pdb') || rec_path.name.endsWith('_prepared.mae')
+    if (rec_path_str == 'NO_FILE') { error "No receptor found for dynamics. Provide --receptor." }
+
+    STAGE_INPUTS(rec_path_str, 'NO_FILE', dock_path_str)
+
+    def is_prepared = rec_path_str.endsWith('_prepared.pdb') || rec_path_str.endsWith('_prepared.mae')
 
     ch_rec_pdb = Channel.empty()
     ch_lig_sdf = Channel.empty()
 
     if (!is_prepared) {
         // Receptor is raw, we must PREPARE it first!
-        ch_rec_raw = Channel.fromPath(rec_path, checkIfExists: true).map { rec ->
+        ch_rec_staged = STAGE_INPUTS.out.staged_receptor.map { rec ->
             [ [id: params.project_name, project: params.project_name], rec ]
         }
 
         PREPARE_RECEPTOR(
-            ch_rec_raw,
+            ch_rec_staged,
             params.model_index ?: 0,
             params.native_ligand,
             params.keep_cofactors ?: "",
@@ -40,18 +45,18 @@ workflow DYNAMICS_WF {
         ch_rec_pdb = PREPARE_RECEPTOR.out.prepared_pdb
         // If dock_path was not provided, use the native ligand we just extracted
         if (params.docked_poses) {
-            ch_lig_sdf = Channel.fromPath(file(params.docked_poses).toAbsolutePath(), checkIfExists: true)
+            ch_lig_sdf = STAGE_INPUTS.out.staged_docked
                 .map { d -> [ [id: params.project_name, frame: 1], d ] }
         } else {
             ch_lig_sdf = PREPARE_RECEPTOR.out.ref_native_sdf
         }
     } else {
         // Already prepared, just use inputs directly
-        ch_rec_pdb = Channel.fromPath(rec_path, checkIfExists: true)
+        ch_rec_pdb = STAGE_INPUTS.out.staged_receptor
             .map { r -> [ [id: params.project_name, frame: 1], r ] }
             
         if (params.docked_poses) {
-            ch_lig_sdf = Channel.fromPath(file(params.docked_poses).toAbsolutePath(), checkIfExists: true)
+            ch_lig_sdf = STAGE_INPUTS.out.staged_docked
                 .map { d -> [ [id: params.project_name, frame: 1], d ] }
         } else {
             error "If providing a pre-prepared receptor, you must provide --docked_poses."
