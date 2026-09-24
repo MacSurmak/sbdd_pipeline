@@ -101,16 +101,17 @@ def main():
         lig_atoms = analyze.evaluate_asl(st, lig_asl)
         sdf_out = str(Path(args.out_ligand_mae).with_suffix(".sdf"))
         if not lig_atoms:
-            logging.warning(f"Native ligand '{args.ligand}' not found in model {idx}.")
-            Path(args.out_ligand_mae).touch()
-            Path(sdf_out).touch()
-        else:
-            lig_st = st.extract(lig_atoms)
-            lig_st.write(args.out_ligand_mae)
-            lig_st.write(sdf_out)
-            logging.info(
-                f"Wrote native ligand to {args.out_ligand_mae} and {sdf_out} ({len(lig_atoms)} atoms)"
+            logging.error(
+                f"STRICT MODE: Native ligand '{args.ligand}' not found in model {idx}."
             )
+            sys.exit(1)
+
+        lig_st = st.extract(lig_atoms)
+        lig_st.write(args.out_ligand_mae)
+        lig_st.write(sdf_out)
+        logging.info(
+            f"Wrote native ligand to {args.out_ligand_mae} and {sdf_out} ({len(lig_atoms)} atoms)"
+        )
 
 
 if __name__ == "__main__":

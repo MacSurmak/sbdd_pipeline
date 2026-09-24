@@ -21,13 +21,9 @@ process SUMMARIZE_DOCKING {
     path("summary.json"), emit: summary_json
 
     script:
-    def nat_arg = native_ligand ? "--native_ligand ${native_ligand}" : ""
-    def bench_arg = benchmark_ligands ? "--benchmark_ligands ${benchmark_ligands}" : ""
     """
     summarize_results.py \\
         --docking_dir . \\
-        ${nat_arg} \\
-        ${bench_arg} \\
         --outdir .
     """
 

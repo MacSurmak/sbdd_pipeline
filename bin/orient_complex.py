@@ -71,15 +71,15 @@ def main():
     lig_atoms = analyze.evaluate_asl(complex_st, lig_asl)
     sdf_out = str(Path(args.out_ligand).with_suffix(".sdf"))
     if not lig_atoms:
-        logging.warning(f"Native ligand '{args.ligand}' not found in complex.")
-        Path(args.out_ligand).touch()
-        Path(sdf_out).touch()
-    else:
-        lig_st = complex_st.extract(lig_atoms)
-        lig_st.write(args.out_ligand)
-        lig_st.write(sdf_out)
-        logging.info(f"Wrote oriented native ligand to {args.out_ligand} and {sdf_out}")
+        logging.error(
+            f"STRICT MODE: Native ligand '{args.ligand}' not found in complex."
+        )
+        sys.exit(1)
 
+    lig_st = complex_st.extract(lig_atoms)
+    lig_st.write(args.out_ligand)
+    lig_st.write(sdf_out)
+    logging.info(f"Wrote oriented native ligand to {args.out_ligand} and {sdf_out}")
     # 2. Extract receptor + cofactors (MAE)
     cofactors_asl = (
         " OR ".join([f"res.ptype '{c}'" for c in args.cofactors])
