@@ -19,7 +19,7 @@ process RUN_MD_CHUNK {
     output:
     tuple val(meta), path("out.gro"), path("out.cpt"), path("out.tpr"), path(topol_top), path(index_ndx), emit: state
     tuple val(meta), path("md_${chunk_idx}.xtc"), emit: xtc
-    tuple val(meta), path("sys_ref.tpr"), path(topol_top), path(index_ndx), emit: sys_files, optional: true
+    tuple val(meta), path("sys_ref.tpr"), path(topol_top), path(index_ndx), emit: sys_files
 
     script:
     def pcoupl_type = is_membrane.toString() == 'true' ? "semiisotropic" : "isotropic"
@@ -45,6 +45,7 @@ process RUN_MD_CHUNK {
     else
         gmx convert-tpr -s ${prev_tpr} -extend \${EXTENSION_PS} -o out.tpr
         gmx mdrun -deffnm md_${chunk_idx} -s out.tpr -cpi ${prev_cpt} -noappend -nb gpu -pme gpu -update gpu -ntomp ${task.cpus}
+        cp ${prev_tpr} sys_ref.tpr
     fi
 
     mv md_${chunk_idx}.gro out.gro
@@ -57,8 +58,6 @@ process RUN_MD_CHUNK {
     touch out.cpt
     touch out.tpr
     touch md_${chunk_idx}.xtc
-    if [ "${chunk_idx}" -eq 1 ]; then
-        touch sys_ref.tpr
-    fi
+    touch sys_ref.tpr
     """
 }
