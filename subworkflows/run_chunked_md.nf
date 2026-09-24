@@ -9,38 +9,6 @@ include { GMX_EQUILIBRATION } from '../modules/gromacs/equilibration'
 include { RUN_MD_CHUNK      } from '../modules/gromacs/run_chunk'
 include { TRJCAT            } from '../modules/gromacs/trjcat'
 
-// Compile-Time Unrolling Workflow for Strict Sequential Dependency
-workflow CHUNK_LOOP {
-    take:
-    ch_state
-    ch_mdp
-    is_mem
-    temp
-    c_ns
-    c_idx
-    t_c
-
-    main:
-    step_out = RUN_MD_CHUNK(ch_state, ch_mdp, is_mem, temp, c_ns, c_idx)
-    
-    if (c_idx < t_c) {
-        next_state = step_out.state.map { meta, out_gro, out_cpt, out_tpr, top, ndx ->
-            [meta, out_gro, out_cpt, out_tpr, top, ndx]
-        }
-        next_res = CHUNK_LOOP(next_state, ch_mdp, is_mem, temp, c_ns, c_idx + 1, t_c)
-        
-        out_xtcs = step_out.xtc.mix(next_res.xtc)
-        out_sys  = step_out.sys_files
-    } else {
-        out_xtcs = step_out.xtc
-        out_sys  = step_out.sys_files
-    }
-
-    emit:
-    xtc = out_xtcs
-    sys_files = out_sys
-}
-
 workflow RUN_CHUNKED_MD {
     take:
     ch_system        // channel: [ val(meta), path(gro), path(topol), path(ndx), path(posre_files) ]
@@ -83,16 +51,35 @@ workflow RUN_CHUNKED_MD {
             }
         }
 
-    // 3. Initiate self-balancing unrolled DAG loop (Compile-time expansion)
-    loop_res = CHUNK_LOOP(ch_state, ch_mdp_templates, is_membrane, temperature, chunk_ns, 1, total_c)
+    // 3. Groovy inject() pattern for pure static DAG unrolling
+    // Generates a linear chain of tasks exactly total_c times without AST parser errors
+    def chunks = (1..total_c).toList()
+    def acc = chunks.inject([ch_state, Channel.empty(), Channel.empty()]) { accumulator, c_idx ->
+        def current_state = accumulator[0]
+        def current_xtcs  = accumulator[1]
+        def current_sys   = accumulator[2]
+
+        def step_out = RUN_MD_CHUNK(current_state, ch_mdp_templates, is_membrane, temperature, chunk_ns, c_idx)
+        
+        def next_state = step_out.state.map { meta, out_gro, out_cpt, out_tpr, top, ndx ->
+            [meta, out_gro, out_cpt, out_tpr, top, ndx]
+        }
+        def next_xtcs = current_xtcs.mix(step_out.xtc)
+        def next_sys = (c_idx == 1) ? step_out.sys_files : current_sys
+        
+        [next_state, next_xtcs, next_sys]
+    }
+
+    ch_all_xtcs = acc[1]
+    ch_sys_files = acc[2]
 
     // 4. Group all resulting chunked XTC files by replicate ID
-    ch_grouped_xtcs = loop_res.xtc.groupTuple(by: 0, size: total_c)
+    ch_grouped_xtcs = ch_all_xtcs.groupTuple(by: 0, size: total_c)
 
     // 5. Concatenate raw chunks and expose for post-analysis
     TRJCAT(ch_grouped_xtcs)
 
     emit:
     raw_trajectory = TRJCAT.out.concat_xtc
-    sys_files = loop_res.sys_files
+    sys_files = ch_sys_files
 }
