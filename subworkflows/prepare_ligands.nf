@@ -84,8 +84,8 @@ workflow PREPARE_LIGANDS {
         }
     }
 
-    // 2. Add native reference ligand as a distinct chunk (safely handle optional/missing apostructure inputs)
-    ch_native_chunk = ch_ref_native.take(1).map { meta, native_sdf ->
+    // 2. Add native reference ligand as a distinct chunk (filter out 0-byte dummy files from apo structures)
+    ch_native_chunk = ch_ref_native.filter { meta, f -> f.size() > 0 }.take(1).map { meta, native_sdf ->
         def nat_meta = [
             id: "${meta.project ?: params.project_name}_native",
             chunk_idx: 9999,

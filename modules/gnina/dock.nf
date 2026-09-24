@@ -23,10 +23,17 @@ process GNINA_DOCK {
     echo "=== Worker: \$(hostname) (GPU Node) ==="
     nvidia-smi --query-gpu=name,memory.total --format=csv,noheader || true
 
+    # Enable blind docking if reference ligand is a 0-byte dummy file
+    if [ -s "${ref_lig_sdf}" ]; then
+        AUTOBOX="--autobox_ligand ${ref_lig_sdf}"
+    else
+        AUTOBOX="--autobox_ligand ${receptor_pdb}"
+    fi
+
     gnina \
         -r ${receptor_pdb} \
         -l ${chunk_sdf} \
-        --autobox_ligand ${ref_lig_sdf} \
+        \$AUTOBOX \
         --autobox_add ${autobox_add} \
         --exhaustiveness ${exhaustiveness} \
         --cnn_scoring ${cnn_scoring} \

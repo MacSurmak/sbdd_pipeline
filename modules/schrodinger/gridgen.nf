@@ -21,11 +21,14 @@ process GLIDE_GRIDGEN {
     cat << EOF > gridgen.in
 GRIDFILE ${meta.id}_grid.zip
 RECEP_FILE ${receptor_mae}
-REF_LIGAND_FILE ${ref_lig_mae}
 INNERBOX ${inner_box}
 OUTERBOX ${outer_box}
 FORCEFIELD ${forcefield}
 EOF
+
+    if [ -s "${ref_lig_mae}" ]; then
+        echo "REF_LIGAND_FILE ${ref_lig_mae}" >> gridgen.in
+    fi
 
     schrodinger glide gridgen.in -OVERWRITE -WAIT
     """

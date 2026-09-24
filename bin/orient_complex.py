@@ -72,6 +72,8 @@ def main():
     sdf_out = str(Path(args.out_ligand).with_suffix(".sdf"))
     if not lig_atoms:
         logging.warning(f"Native ligand '{args.ligand}' not found in complex.")
+        Path(args.out_ligand).touch()
+        Path(sdf_out).touch()
     else:
         lig_st = complex_st.extract(lig_atoms)
         lig_st.write(args.out_ligand)
