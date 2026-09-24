@@ -132,28 +132,35 @@ workflow SBDD_WF {
         RUN_CHUNKED_MD(
             SETUP_MD_SYSTEM.out.system_ready,
             ch_mdp_templates,
-            params.membrane.toString() == 'true',                params.md_temperature ?: 310.15,
-                params.md_total_ns ?: 60,
-                params.md_chunk_ns ?: 10,
-                params.md_replicates ? (params.md_replicates as int) : 3,
-                params.queue ?: "main",
-                params.nvt_short_ps ?: 50,
-                params.nvt_long_ps ?: 500,
-                params.npt_berendsen_ps ?: 1000,
-                params.npt_pr_ps ?: 1000
-            )
+            params.membrane.toString() == 'true',
+            params.md_temperature ?: 310.15,
+            params.md_total_ns ?: 60,
+            params.md_chunk_ns ?: 10,
+            params.md_replicates ? (params.md_replicates as int) : 3,
+            params.queue ?: "main",
+            params.nvt_short_ps ?: 50,
+            params.nvt_long_ps ?: 500,
+            params.npt_berendsen_ps ?: 1000,
+            params.npt_pr_ps ?: 1000
+        )
 
-            ANALYZE_MD_TRAJ(
-                RUN_CHUNKED_MD.out.clean_trajectory,
-                params.mmpbsa_cores ?: 16,
-                params.mmpbsa_start_ns ?: 20.0,
-                params.mmpbsa_step_frames ?: 40,
-                params.md_temperature ?: 310.15,
-                params.md_salt_conc ?: 0.15,
-                params.membrane.toString() == 'true',
-                params.membrane_thickness ?: 28.0,
-                params.per_residue_decomp.toString() == 'true'
-            )
+        // 7. Analysis (PBC fixing, RMSD, MMPBSA) strictly on completed raw trajectories
+        ch_trjconv_in = RUN_CHUNKED_MD.out.raw_trajectory
+            .join(RUN_CHUNKED_MD.out.sys_files, by: 0)
+
+        TRJCONV(ch_trjconv_in)
+
+        ANALYZE_MD_TRAJ(
+            TRJCONV.out.clean_traj,
+            params.mmpbsa_cores ?: 16,
+            params.mmpbsa_start_ns ?: 20.0,
+            params.mmpbsa_step_frames ?: 40,
+            params.md_temperature ?: 310.15,
+            params.md_salt_conc ?: 0.15,
+            params.membrane.toString() == 'true',
+            params.membrane_thickness ?: 28.0,
+            params.per_residue_decomp.toString() == 'true'
+        )
         }
     }
 }

@@ -90,12 +90,20 @@ def run_workflow(entrypoint: str, args):
         nf_args.extend(["--dock_engine", args.engine])
     if getattr(args, "hits", None):
         nf_args.extend(["--md_hits", args.hits])
+    if getattr(args, "traj", None):
+        nf_args.extend(["--traj", str(Path(args.traj).resolve())])
+    if getattr(args, "tpr", None):
+        nf_args.extend(["--tpr", str(Path(args.tpr).resolve())])
+    if getattr(args, "topol", None):
+        nf_args.extend(["--topol", str(Path(args.topol).resolve())])
+    if getattr(args, "ndx", None):
+        nf_args.extend(["--ndx", str(Path(args.ndx).resolve())])
     if getattr(args, "urgent", False):
         nf_args.extend(["--queue", "urgent"])
 
     profile = "local" if getattr(args, "local", False) else "slurm"
     resume = not getattr(args, "no_resume", False)
-    auto_clean = not getattr(args, "keep_scratch", False)
+    auto_clean = getattr(args, "clean_scratch", False)
 
     return execute_nextflow(
         entrypoint,
@@ -135,9 +143,9 @@ def main():
             help="Start from scratch without -resume",
         )
         p.add_argument(
-            "--keep-scratch",
+            "--clean-scratch",
             action="store_true",
-            help="Do not delete /shared/work upon completion",
+            help="Delete /shared/work upon completion (default: False)",
         )
         p.add_argument(
             "--urgent",
@@ -185,7 +193,9 @@ def main():
         "md-analyze", help="Run trajectory PBC fix, metrics, and MM-PBSA"
     )
     p_mda.add_argument("--traj", help="Direct path to custom .xtc file")
+    p_mda.add_argument("--tpr", help="Direct path to custom .tpr file")
     p_mda.add_argument("--topol", help="Direct path to custom topol.top or PDB")
+    p_mda.add_argument("--ndx", help="Direct path to custom index.ndx file")
     add_common_wf_args(p_mda)
 
     # 7. all / run

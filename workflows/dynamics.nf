@@ -79,16 +79,6 @@ workflow DYNAMICS_WF {
         params.nvt_long_ps ?: 500,
         params.npt_berendsen_ps ?: 1000,
         params.npt_pr_ps ?: 1000
-    )    // 3. Trajectory analysis & MM-PBSA
-    ANALYZE_MD_TRAJ(
-        RUN_CHUNKED_MD.out.clean_trajectory,
-        params.mmpbsa_cores ?: 16,
-        params.mmpbsa_start_ns ?: 20.0,
-        params.mmpbsa_step_frames ?: 40,
-        params.md_temperature ?: 310.15,
-        params.md_salt_conc ?: 0.15,
-        params.membrane.toString() == 'true',
-        params.membrane_thickness ?: 28.0,
-        params.per_residue_decomp.toString() == 'true'
-    )
+    )    // Note: Analysis is intentionally decoupled from MD generation.
+    // Use `sbdd md-analyze` to process the RAW concatenated trajectories.
 }

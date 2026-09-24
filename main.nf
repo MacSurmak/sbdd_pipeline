@@ -10,6 +10,7 @@ nextflow.enable.dsl = 2
 include { PREPARE_WF  } from './workflows/prepare'
 include { SCREEN_WF   } from './workflows/screen'
 include { DYNAMICS_WF } from './workflows/dynamics'
+include { ANALYZE_WF  } from './workflows/analyze'
 include { SBDD_WF     } from './workflows/sbdd'
 
 def helpMessage() {
@@ -49,6 +50,8 @@ workflow {
         SCREEN_WF()
     } else if (entrypoint == "dynamics") {
         DYNAMICS_WF()
+    } else if (entrypoint == "md-analyze") {
+        ANALYZE_WF()
     } else {
         SBDD_WF()
     }

@@ -6,9 +6,36 @@
  */
 
 include { GMX_EQUILIBRATION } from '../modules/gromacs/equilibration'
-include { RUN_PRODUCTION_MD } from '../modules/gromacs/run_chunk'
+include { RUN_MD_CHUNK      } from '../modules/gromacs/run_chunk'
 include { TRJCAT            } from '../modules/gromacs/trjcat'
-include { TRJCONV           } from '../modules/gromacs/trjconv'
+
+// Pure Nextflow Recursive Loop for Slurm Chunk Offloading
+workflow RECURSIVE_MD {
+    take:
+    state_in // [ meta, chunk_idx, gro, cpt, tpr, top, ndx ]
+    mdp_templates
+    is_membrane
+    temperature
+    chunk_ns
+
+    main:
+    RUN_MD_CHUNK(state_in, mdp_templates, is_membrane, temperature, chunk_ns)
+
+    RUN_MD_CHUNK.out.state.branch { meta, c_idx, gro, cpt, tpr, top, ndx ->
+        done: c_idx >= meta.total_chunks
+        loop: c_idx < meta.total_chunks
+    }.set { chunk_router }
+
+    next_state = chunk_router.loop.map { meta, c_idx, gro, cpt, tpr, top, ndx ->
+        [meta, c_idx + 1, gro, cpt, tpr, top, ndx]
+    }
+
+    RECURSIVE_MD(next_state, mdp_templates, is_membrane, temperature, chunk_ns)
+
+    emit:
+    xtcs = RUN_MD_CHUNK.out.xtc
+    sys_files = RUN_MD_CHUNK.out.sys_files
+}
 
 workflow RUN_CHUNKED_MD {
     take:
@@ -38,40 +65,30 @@ workflow RUN_CHUNKED_MD {
         npt_pr_ps
     )
 
-    ch_sys_info = ch_system.map { meta, gro, topol, ndx, posre -> [ meta.id, topol, ndx ] }
+    def total_c = Math.max(1, Math.round((total_ns as float) / (chunk_ns as float)) as int)
+    def num_reps = replicates as int
 
-    // 2. Expand into independent replicates for production MD
-    def num_reps = (replicates as int)
-    ch_prod_in = GMX_EQUILIBRATION.out.equilibrated_state
-        .map { meta, eq_gro, eq_cpt -> [ meta.id, meta, eq_gro, eq_cpt ] }
-        .combine(ch_sys_info, by: 0)
+    // 2. Expand into independent replicates for dynamic recursive production MD
+    ch_start_state = GMX_EQUILIBRATION.out.equilibrated_state
+        .join(ch_system.map{ m, gro, top, ndx, pos -> [m.id, top, ndx] }, by: 0)
         .flatMap { target_id, meta, eq_gro, eq_cpt, topol, ndx ->
             (1..num_reps).collect { rep_id ->
-                def rep_meta = meta + [rep: rep_id]
-                [ rep_meta, eq_gro, eq_cpt, topol, ndx ]
+                def rep_meta = meta + [rep: rep_id, total_chunks: total_c]
+                // Send eq_cpt in place of prev_tpr as a dummy for the very first chunk
+                [ rep_meta, 1, eq_gro, eq_cpt, eq_cpt, topol, ndx ]
             }
         }
 
-    // 3. Dynamic Production MD
-    RUN_PRODUCTION_MD(
-        ch_prod_in,
-        ch_mdp_templates,
-        is_membrane,
-        temperature,
-        total_ns,
-        chunk_ns,
-        slurm_queue
-    )
+    // 3. Initiate self-balancing recursive loop
+    RECURSIVE_MD(ch_start_state, ch_mdp_templates, is_membrane, temperature, chunk_ns)
 
-    // 4. Concatenate raw chunks
-    TRJCAT(RUN_PRODUCTION_MD.out.all_xtcs)
+    // 4. Group all resulting chunked XTC files by replicate ID
+    ch_xtcs_grouped = RECURSIVE_MD.out.xtcs.groupTuple(by: 0)
 
-    // 5. PBC correction, centering, and extraction of pure complex
-    ch_trjconv_in = TRJCAT.out.concat_xtc
-        .join(RUN_PRODUCTION_MD.out.sys_files, by: 0)
-
-    TRJCONV(ch_trjconv_in)
+    // 5. Concatenate raw chunks and expose for post-analysis
+    TRJCAT(ch_xtcs_grouped)
 
     emit:
-    clean_trajectory = TRJCONV.out.clean_traj
+    raw_trajectory = TRJCAT.out.concat_xtc
+    sys_files = RECURSIVE_MD.out.sys_files
 }

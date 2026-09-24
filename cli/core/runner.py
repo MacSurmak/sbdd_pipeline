@@ -38,7 +38,7 @@ def execute_nextflow(
     project_dir: Path,
     profile: str = "slurm",
     resume: bool = True,
-    auto_clean: bool = True,
+    auto_clean: bool = False,
     configs: dict = None,
 ) -> int:
     """Invokes Nextflow orchestrator with complete isolation from project directory."""
