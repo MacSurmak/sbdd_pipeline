@@ -4,7 +4,6 @@
  * Screening Funnel Triage (Physics + AI), Prime MM-GBSA, automated hit selection, and chunked GROMACS MD.
  */
 
-include { STAGE_INPUTS      } from '../modules/common/stage_inputs'
 include { PREPARE_RECEPTOR  } from '../subworkflows/prepare_receptor'
 include { PREPARE_LIGANDS   } from '../subworkflows/prepare_ligands'
 include { DOCK_LIBRARY      } from '../subworkflows/dock_library'
@@ -17,12 +16,7 @@ include { SELECT_HITS       } from '../modules/reporting/select_hits'
 workflow SBDD_WF {
     if (!params.receptor) { error "Parameter --receptor is required." }
 
-    def rec_path = file(params.receptor).toAbsolutePath().toString()
-    def lib_path = params.library ? file(params.library).toAbsolutePath().toString() : 'NO_FILE'
-
-    STAGE_INPUTS(rec_path, lib_path, 'NO_FILE')
-
-    ch_rec = STAGE_INPUTS.out.staged_receptor
+    ch_rec = Channel.fromPath(file(params.receptor).toAbsolutePath(), checkIfExists: true)
         .map { rec -> [ [id: params.project_name, project: params.project_name], rec ] }
 
     // 1. Receptor Preparation
@@ -43,7 +37,7 @@ workflow SBDD_WF {
 
     // 2. Prepare Ligands & Docking
     if (params.library) {
-        ch_lib = STAGE_INPUTS.out.staged_library
+        ch_lib = Channel.fromPath(file(params.library).toAbsolutePath(), checkIfExists: true)
             .map { lib -> [ [id: params.project_name, project: params.project_name], lib ] }
 
         PREPARE_LIGANDS(

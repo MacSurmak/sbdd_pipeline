@@ -3,19 +3,13 @@
  * Standalone receptor and ligand preparation workflow with ensemble support
  */
 
-include { STAGE_INPUTS     } from '../modules/common/stage_inputs'
 include { PREPARE_RECEPTOR } from '../subworkflows/prepare_receptor'
 include { PREPARE_LIGANDS  } from '../subworkflows/prepare_ligands'
 
 workflow PREPARE_WF {
     if (!params.receptor) { error "Parameter --receptor is required." }
 
-    def rec_path = file(params.receptor).toAbsolutePath().toString()
-    def lib_path = params.library ? file(params.library).toAbsolutePath().toString() : 'NO_FILE'
-
-    STAGE_INPUTS(rec_path, lib_path, 'NO_FILE')
-
-    ch_rec = STAGE_INPUTS.out.staged_receptor
+    ch_rec = Channel.fromPath(file(params.receptor).toAbsolutePath(), checkIfExists: true)
         .map { rec -> [ [id: params.project_name, project: params.project_name], rec ] }
 
     PREPARE_RECEPTOR(
@@ -35,7 +29,7 @@ workflow PREPARE_WF {
 
     // 2. Prepare Ligands (if provided)
     if (params.library) {
-        ch_lib = STAGE_INPUTS.out.staged_library
+        ch_lib = Channel.fromPath(file(params.library).toAbsolutePath(), checkIfExists: true)
             .map { lib -> [ [id: params.project_name, project: params.project_name], lib ] }
 
         PREPARE_LIGANDS(

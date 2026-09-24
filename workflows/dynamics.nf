@@ -3,64 +3,40 @@
  * Standalone MD system setup, chunked simulation, and trajectory analysis
  */
 
-include { STAGE_INPUTS     } from '../modules/common/stage_inputs'
 include { PREPARE_RECEPTOR } from '../subworkflows/prepare_receptor'
 include { SETUP_MD_SYSTEM  } from '../subworkflows/setup_md_system'
 include { RUN_CHUNKED_MD   } from '../subworkflows/run_chunked_md'
 include { ANALYZE_MD_TRAJ  } from '../subworkflows/analyze_md_traj'
 
 workflow DYNAMICS_WF {
-    def rec_path_str = params.receptor ? file(params.receptor).toAbsolutePath().toString() : 'NO_FILE'
-    def dock_path_str = params.docked_poses ? file(params.docked_poses).toAbsolutePath().toString() : 'NO_FILE'
+    if (!params.receptor) { error "Parameter --receptor is required for dynamics." }
 
-    if (rec_path_str == 'NO_FILE') { error "No receptor found for dynamics. Provide --receptor." }
+    ch_rec = Channel.fromPath(file(params.receptor).toAbsolutePath(), checkIfExists: true)
+        .map { rec -> [ [id: params.project_name, project: params.project_name], rec ] }
 
-    STAGE_INPUTS(rec_path_str, 'NO_FILE', dock_path_str)
+    // We completely trust native Nextflow caching (-resume). Always pass through PREPARE_RECEPTOR.
+    PREPARE_RECEPTOR(
+        ch_rec,
+        params.model_index ?: 0,
+        params.native_ligand,
+        params.keep_cofactors ?: "",
+        params.membrane ?: false,
+        params.membrane_type ?: "MOM",
+        params.membrane_topo ?: "in",
+        params.membrane_chains ?: "A",
+        params.target_ph ?: 7.4,
+        params.ph_tolerance ?: 1.0,
+        params.minimize_rmsd ?: 0.3,
+        params.cap_termini ?: true
+    )
 
-    def is_prepared = rec_path_str.endsWith('_prepared.pdb') || rec_path_str.endsWith('_prepared.mae')
+    ch_rec_pdb = PREPARE_RECEPTOR.out.prepared_pdb
 
-    ch_rec_pdb = Channel.empty()
-    ch_lig_sdf = Channel.empty()
-
-    if (!is_prepared) {
-        // Receptor is raw, we must PREPARE it first!
-        ch_rec_staged = STAGE_INPUTS.out.staged_receptor.map { rec ->
-            [ [id: params.project_name, project: params.project_name], rec ]
-        }
-
-        PREPARE_RECEPTOR(
-            ch_rec_staged,
-            params.model_index ?: 0,
-            params.native_ligand,
-            params.keep_cofactors ?: "",
-            params.membrane ?: false,
-            params.membrane_type ?: "MOM",
-            params.membrane_topo ?: "in",
-            params.membrane_chains ?: "A",
-            params.target_ph ?: 7.4,
-            params.ph_tolerance ?: 1.0,
-            params.minimize_rmsd ?: 0.3,
-            params.cap_termini ?: true
-        )
-        ch_rec_pdb = PREPARE_RECEPTOR.out.prepared_pdb
-        // If dock_path was not provided, use the native ligand we just extracted
-        if (params.docked_poses) {
-            ch_lig_sdf = STAGE_INPUTS.out.staged_docked
-                .map { d -> [ [id: params.project_name, frame: 1], d ] }
-        } else {
-            ch_lig_sdf = PREPARE_RECEPTOR.out.ref_native_sdf
-        }
+    if (params.docked_poses) {
+        ch_lig_sdf = Channel.fromPath(file(params.docked_poses).toAbsolutePath(), checkIfExists: true)
+            .map { d -> [ [id: params.project_name, frame: 1], d ] }
     } else {
-        // Already prepared, just use inputs directly
-        ch_rec_pdb = STAGE_INPUTS.out.staged_receptor
-            .map { r -> [ [id: params.project_name, frame: 1], r ] }
-            
-        if (params.docked_poses) {
-            ch_lig_sdf = STAGE_INPUTS.out.staged_docked
-                .map { d -> [ [id: params.project_name, frame: 1], d ] }
-        } else {
-            error "If providing a pre-prepared receptor, you must provide --docked_poses."
-        }
+        ch_lig_sdf = PREPARE_RECEPTOR.out.ref_native_sdf
     }
 
     // Parse target hit list
