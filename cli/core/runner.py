@@ -178,6 +178,11 @@ def execute_nextflow(
     env["NXF_HOME"] = str(scratch_nxf_home.resolve())
     env["NXF_WORK"] = str(scratch_work.resolve())
 
+    # Forward Seqera Platform / Tower credentials if available
+    for key in ["TOWER_ACCESS_TOKEN", "TOWER_WORKSPACE_ID", "TOWER_API_ENDPOINT"]:
+        if key in os.environ:
+            env[key] = os.environ[key]
+
     cmd = [
         "nextflow",
         "-log",
@@ -191,6 +196,12 @@ def execute_nextflow(
         "--entry",
         entrypoint,
     ]
+
+    if "TOWER_ACCESS_TOKEN" in os.environ:
+        cmd.append("-with-tower")
+        console.print(
+            "[bold green]✓ Seqera Platform (Tower) Live Telemetry connected.[/bold green]"
+        )
 
     if resume:
         cmd.append("-resume")
