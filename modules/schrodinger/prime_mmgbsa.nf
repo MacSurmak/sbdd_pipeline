@@ -2,10 +2,9 @@
  * modules/schrodinger/prime_mmgbsa.nf
  * Prime MM-GBSA Free Energy Calculation
  */
-
 process PRIME_MMGBSA {
     tag "${meta.id}"
-    label 'process_high'
+    label 'process_low'
 
     input:
     tuple val(meta), path(pv_maegz)
@@ -19,15 +18,16 @@ process PRIME_MMGBSA {
     script:
     def mem_flag = (membrane_enabled.toString() == 'true') ? "-membrane" : ""
     """
-    schrodinger prime_mmgbsa \
-        -job_type ${job_type} \
-        -csv_output yes \
-        -out_type PV \
-        -jobname ${meta.id}_mmgbsa \
-        -LOCAL \
-        -NJOBS ${task.cpus} \
-        -OVERWRITE \
-        ${mem_flag} \
+    schrodinger prime_mmgbsa \\
+        -job_type ${job_type} \\
+        -csv_output yes \\
+        -out_type PV \\
+        -jobname ${meta.id}_mmgbsa \\
+        -HOST localhost:${task.cpus} \\
+        -NJOBS ${task.cpus} \\
+        -OVERWRITE \\
+        -WAIT \\
+        ${mem_flag} \\
         ${pv_maegz}
 
     # Defensive check: ensure output files exist even if a chunk had zero scorable ligands
@@ -36,7 +36,8 @@ process PRIME_MMGBSA {
     fi
     if [ ! -f "${meta.id}_mmgbsa-out.maegz" ]; then
         cp "${pv_maegz}" "${meta.id}_mmgbsa-out.maegz"
-    fi    """
+    fi
+    """
 
     stub:
     """
