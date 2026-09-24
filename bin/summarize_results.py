@@ -114,6 +114,12 @@ def main():
         "--docking_dir", help="Directory containing docking poses and tables"
     )
     parser.add_argument("--analysis_dir", help="Directory containing MM-GBSA csv files")
+    parser.add_argument(
+        "--native_ligand", default="", help="Native ligand residue name"
+    )
+    parser.add_argument(
+        "--benchmark_ligands", nargs="*", default=[], help="Benchmark ligand titles"
+    )
     parser.add_argument("--outdir", required=True, help="Output reports directory")
     args = parser.parse_args()
 
@@ -223,7 +229,10 @@ def main():
     df_resolved = compute_pose_consensus_rmsd(df_resolved, dock_dir)
 
     # Delta score relative to native ligand if present
-    native_mask = df_resolved["Title"].str.lower().isin(["native", "ref", "pka"])
+    native_targets = ["native", "ref", "pka"]
+    if args.native_ligand:
+        native_targets.append(args.native_ligand.lower())
+    native_mask = df_resolved["Title"].str.lower().isin(native_targets)
     if native_mask.any():
         native_score = df_resolved.loc[native_mask, "Ultimate_Score"].iloc[0]
         df_resolved["Delta_to_Native"] = df_resolved["Ultimate_Score"] - native_score

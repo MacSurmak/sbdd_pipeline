@@ -31,6 +31,12 @@ trap cleanup EXIT
 
 export NXF_HOME="${SMOKE_DIR}/.nextflow"
 
+# Ensure authentic protein-ligand complex (1STP: Streptavidin with native BTN) is downloaded from RCSB PDB
+if [ ! -f "${SCRIPT_DIR}/data/smoke_receptor.pdb" ] || ! grep -q "BTN" "${SCRIPT_DIR}/data/smoke_receptor.pdb"; then
+    echo "Downloading authentic 1STP complex (Streptavidin + BTN) from RCSB PDB..."
+    curl -fsSL https://files.rcsb.org/download/1STP.pdb -o "${SCRIPT_DIR}/data/smoke_receptor.pdb"
+fi
+
 # Copy smoke data and configs
 cp -r "${SCRIPT_DIR}/configs" "${SMOKE_DIR}/"
 cp "${SCRIPT_DIR}/data/smoke_receptor.pdb" "${SMOKE_DIR}/"
