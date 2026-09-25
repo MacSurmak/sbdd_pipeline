@@ -31,7 +31,8 @@ process TLEAP {
     fi
 
     # 3. Build tLEaP topology
-    cat << EOF > tleap.insource leaprc.protein.ff19SB
+    cat << EOF > tleap.in
+source leaprc.protein.ff19SB
 source leaprc.gaff2
 source leaprc.lipid21
 source leaprc.water.opc
@@ -58,7 +59,6 @@ EOF
 
     tleap -f tleap.in
     """
-
     stub:
     """
     touch complex.prmtop
