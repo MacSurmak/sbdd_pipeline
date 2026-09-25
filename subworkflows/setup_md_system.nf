@@ -4,6 +4,8 @@
  */
 
 include { ANTECHAMBER    } from '../modules/amber/antechamber'
+include { PDB4AMBER      } from '../modules/amber/pdb4amber'
+include { MERGE_PDB      } from '../modules/amber/merge_pdb'
 include { PACKMOL_MEMGEN } from '../modules/membrane/packmol'
 include { TLEAP          } from '../modules/amber/tleap'
 include { PARMED         } from '../modules/amber/parmed'
@@ -37,28 +39,6 @@ process EXTRACT_MD_SYSTEM {
     """
 }
 
-process MERGE_AMBER_COMPLEX {
-    tag "${meta.id}"
-    label 'process_single'
-
-    input:
-    tuple val(meta), path(rec_pdb), path(unk_mol2)
-
-    output:
-    tuple val(meta), path("complex.pdb"), emit: complex_pdb
-
-    script:
-    """
-    amber_fix_pdb.py ${rec_pdb} fixed_receptor.pdb
-    merge_complex.py fixed_receptor.pdb ${unk_mol2} complex.pdb
-    """
-
-    stub:
-    """
-    touch complex.pdb
-    """
-}
-
 workflow SETUP_MD_SYSTEM {
     take:
     ch_targets        // channel: [ val(meta), path(docked_pose), val(hit_title), path(receptor_file) ]
@@ -83,18 +63,23 @@ workflow SETUP_MD_SYSTEM {
     // 2. Antechamber GAFF2 / AM1-BCC
     ANTECHAMBER(ch_ante_in)
 
-    // 3. Merge Amber Complex: join receptor.pdb with UNK_gaff2.mol2
-    ch_merge_in = EXTRACT_MD_SYSTEM.out.extracted
+    // 3. PDB4AMBER - Standardize protein topology and safely detect disulfides
+    ch_pdb4amber_in = EXTRACT_MD_SYSTEM.out.extracted
         .map { meta, rec_pdb, lig_mol2, charge_txt -> [ meta, rec_pdb ] }
-        .join(ANTECHAMBER.out.gaff_params)
-        .map { meta, rec_pdb, unk_mol2, unk_frcmod -> [ meta, rec_pdb, unk_mol2 ] }
+    
+    PDB4AMBER(ch_pdb4amber_in)
 
-    MERGE_AMBER_COMPLEX(ch_merge_in)
+    // 4. Clean Bash Merge of standardized protein and ligand
+    ch_merge_in = PDB4AMBER.out.amber_rec
+        .map { meta, rec_amber, sslink -> [ meta, rec_amber ] }
+        .join(ANTECHAMBER.out.gaff_params.map { meta, mol2, frcmod, pdb -> [ meta, pdb ] })
 
-    // 4. Membrane Assembly or Solvation
+    MERGE_PDB(ch_merge_in)
+
+    // 5. Membrane Assembly or Solvation
     if (is_membrane.toString() == 'true') {
         PACKMOL_MEMGEN(
-            MERGE_AMBER_COMPLEX.out.complex_pdb,
+            MERGE_PDB.out.complex_pdb,
             upper_lipids,
             upper_ratio,
             lower_lipids,
@@ -105,11 +90,14 @@ workflow SETUP_MD_SYSTEM {
         )
         ch_tleap_pdb = PACKMOL_MEMGEN.out.mem_complex_pdb
     } else {
-        ch_tleap_pdb = MERGE_AMBER_COMPLEX.out.complex_pdb
+        ch_tleap_pdb = MERGE_PDB.out.complex_pdb
     }
 
-    // 5. tLEaP topology building
-    ch_tleap_in = ch_tleap_pdb.join(ANTECHAMBER.out.gaff_params)
+    // 6. tLEaP topology building - fully native Amber linking
+    ch_tleap_in = ch_tleap_pdb
+        .join(PDB4AMBER.out.amber_rec.map { meta, rec_amber, sslink -> [ meta, sslink ] })
+        .join(ANTECHAMBER.out.gaff_params.map { meta, mol2, frcmod, pdb -> [ meta, mol2, frcmod ] })
+    
     TLEAP(ch_tleap_in, water_model, is_membrane, wat_pad)
 
     // 6. ParmEd conversion to GROMACS

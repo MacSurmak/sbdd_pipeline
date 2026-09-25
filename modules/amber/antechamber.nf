@@ -11,7 +11,7 @@ process ANTECHAMBER {
     tuple val(meta), path(ligand_mol2), path(charge_file)
 
     output:
-    tuple val(meta), path("UNK_gaff2.mol2"), path("UNK.frcmod"), emit: gaff_params
+    tuple val(meta), path("UNK_gaff2.mol2"), path("UNK.frcmod"), path("UNK_gaff2.pdb"), emit: gaff_params
 
     script:
     """
@@ -28,6 +28,9 @@ process ANTECHAMBER {
         -c bcc \
         -nc "\$charge" \
         -rn UNK
+
+    # Export an exactly matching PDB equivalent of the ligand for bash structural merging
+    antechamber -i UNK_gaff2.mol2 -fi mol2 -o UNK_gaff2.pdb -fo pdb
 
     parmchk2 \
         -i UNK_gaff2.mol2 \
