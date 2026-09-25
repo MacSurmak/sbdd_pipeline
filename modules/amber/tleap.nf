@@ -37,7 +37,6 @@ source leaprc.gaff2
 source leaprc.lipid21
 source leaprc.water.opc
 loadAmberParams frcmod.ionslm_126_opc
-
 # Load ligand definitions first so the PDB loads without warnings
 UNK = loadmol2 ${unk_mol2}
 loadAmberParams ${unk_frcmod}
