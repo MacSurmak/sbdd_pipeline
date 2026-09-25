@@ -8,7 +8,7 @@ process MERGE_PDB {
     label 'process_single'
 
     input:
-    tuple val(meta), path(rec_amber_pdb), path(unk_pdb)
+    tuple val(meta), path(rec_pdb), path(unk_pdb)
 
     output:
     tuple val(meta), path("complex_dry.pdb"), emit: complex_pdb
@@ -16,7 +16,7 @@ process MERGE_PDB {
     script:
     """
     # Strip trailing END/TER records from the protein
-    grep -v -E "^(END|TER)" ${rec_amber_pdb} > complex_dry.pdb
+    grep -v -E "^(END|TER)" ${rec_pdb} > complex_dry.pdb
     
     # Append purely structural records from the ligand
     grep -E "^(ATOM|HETATM)" ${unk_pdb} >> complex_dry.pdb

@@ -4,7 +4,6 @@
  */
 
 include { ANTECHAMBER    } from '../modules/amber/antechamber'
-include { PDB4AMBER      } from '../modules/amber/pdb4amber'
 include { MERGE_PDB      } from '../modules/amber/merge_pdb'
 include { PACKMOL_MEMGEN } from '../modules/membrane/packmol'
 include { TLEAP          } from '../modules/amber/tleap'
@@ -63,15 +62,9 @@ workflow SETUP_MD_SYSTEM {
     // 2. Antechamber GAFF2 / AM1-BCC
     ANTECHAMBER(ch_ante_in)
 
-    // 3. PDB4AMBER - Standardize protein topology and safely detect disulfides
-    ch_pdb4amber_in = EXTRACT_MD_SYSTEM.out.extracted
+    // 3. Clean Bash Merge of standardized protein and ligand
+    ch_merge_in = EXTRACT_MD_SYSTEM.out.extracted
         .map { meta, rec_pdb, lig_mol2, charge_txt -> [ meta, rec_pdb ] }
-    
-    PDB4AMBER(ch_pdb4amber_in)
-
-    // 4. Clean Bash Merge of standardized protein and ligand
-    ch_merge_in = PDB4AMBER.out.amber_rec
-        .map { meta, rec_amber, sslink -> [ meta, rec_amber ] }
         .join(ANTECHAMBER.out.gaff_params.map { meta, mol2, frcmod, pdb -> [ meta, pdb ] })
 
     MERGE_PDB(ch_merge_in)
@@ -95,7 +88,6 @@ workflow SETUP_MD_SYSTEM {
 
     // 6. tLEaP topology building - fully native Amber linking
     ch_tleap_in = ch_tleap_pdb
-        .join(PDB4AMBER.out.amber_rec.map { meta, rec_amber, sslink -> [ meta, sslink ] })
         .join(ANTECHAMBER.out.gaff_params.map { meta, mol2, frcmod, pdb -> [ meta, mol2, frcmod ] })
     
     TLEAP(ch_tleap_in, water_model, is_membrane, wat_pad)
