@@ -43,40 +43,6 @@ def cmd_init(args):
     )
 
 
-def cmd_dashboard(args):
-    """Prints endpoints and status of real-time monitoring dashboards."""
-    console.rule("[bold cyan]SBDD HPC Real-Time Monitoring Dashboards[/bold cyan]")
-
-    table = Table(
-        title="Dashboard Endpoints", show_header=True, header_style="bold magenta"
-    )
-    table.add_column("Service", style="cyan", width=22)
-    table.add_column("Type", style="green", width=18)
-    table.add_column("URL / Command", style="white")
-
-    table.add_row(
-        "Grafana Cluster Dashboard",
-        "Hardware & Slurm Metrics",
-        "http://172.16.6.6:3000 (Guest access enabled)",
-    )
-    table.add_row("Prometheus Server", "Raw Metrics Endpoint", "http://172.16.6.6:9090")
-    table.add_row(
-        "Seqera Platform (Tower)",
-        "Workflow DAG & Logs",
-        "https://cloud.seqera.io (Token: $TOWER_ACCESS_TOKEN)",
-    )
-    table.add_row(
-        "Slurm CLI Queue",
-        "Live Terminal Monitor",
-        "watch -n 2 'squeue -o \"%.8i %.10P %.24j %.8u %.2t %.8M %.6D %R\"'",
-    )
-
-    console.print(table)
-    console.print(
-        "\n[dim]To deploy/update dashboards across nodes: ansible-playbook -i hosts.ini site.yml -t monitoring[/dim]\n"
-    )
-
-
 def cmd_status(args):
     """Inspects active Slurm jobs and Nextflow status."""
     console.rule("[bold cyan]Cluster & Slurm Status[/bold cyan]")
@@ -255,11 +221,6 @@ def main():
         "status", help="Inspect Slurm queue and Nextflow job status"
     )
 
-    # 10. dashboard
-    p_dash = subparsers.add_parser(
-        "dashboard", help="Show cluster monitoring dashboards (Grafana & Seqera)"
-    )
-
     args = parser.parse_args()
 
     if not args.subcommand:
@@ -271,8 +232,6 @@ def main():
         cmd_init(args)
     elif subcmd == "status":
         cmd_status(args)
-    elif subcmd == "dashboard":
-        cmd_dashboard(args)
     elif subcmd == "clean":
         cmd_clean(args)
     elif subcmd in ["prep", "prepare"]:
