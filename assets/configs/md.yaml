@@ -1,5 +1,7 @@
 md_simulation:
   enabled: true
+  pbc_center: "Protein"              # Group for centering trajectory
+  pbc_extract: "COMPLEX"             # Group to extract (use "System" to keep water)
   system_build:
     water_model: "opc"               # opc, tip3p
     box_padding: 15.0

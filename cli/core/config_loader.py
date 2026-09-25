@@ -2,15 +2,17 @@
 File: cli/core/config_loader.py
 Description: Scans, loads, and merges atomic configuration YAML files from configs/.
 """
+
 from pathlib import Path
 from typing import Dict, Any
 import yaml
+
 
 def load_project_configs(project_dir: Path) -> Dict[str, Any]:
     """Merges all YAML files in project_dir/configs or project_dir into a single dictionary."""
     config_dir = project_dir / "configs"
     search_dirs = [config_dir] if config_dir.exists() else [project_dir]
-    
+
     merged: Dict[str, Any] = {}
     yaml_files = []
     for sdir in search_dirs:
@@ -35,11 +37,14 @@ def load_project_configs(project_dir: Path) -> Dict[str, Any]:
             merged.setdefault("receptor", {})["input_file"] = pdb_files[0].name
 
     if "screening" not in merged or not merged["screening"].get("library_file"):
-        sdf_files = [f for f in project_dir.glob("*.sdf") if "dock" not in f.name.lower()]
+        sdf_files = [
+            f for f in project_dir.glob("*.sdf") if "dock" not in f.name.lower()
+        ]
         if sdf_files:
             merged.setdefault("screening", {})["library_file"] = sdf_files[0].name
 
     return merged
+
 
 def build_nextflow_args(config: Dict[str, Any], project_dir: Path) -> list:
     """Translates dictionary of parameters into Nextflow CLI arguments."""
@@ -83,7 +88,12 @@ def build_nextflow_args(config: Dict[str, Any], project_dir: Path) -> list:
         args.extend(["--membrane_topo", str(mem_cfg["topology"])])
     if mem_cfg.get("chains"):
         chains = mem_cfg["chains"]
-        args.extend(["--membrane_chains", ",".join(chains) if isinstance(chains, list) else str(chains)])
+        args.extend(
+            [
+                "--membrane_chains",
+                ",".join(chains) if isinstance(chains, list) else str(chains),
+            ]
+        )
 
     # Library
     screen_cfg = config.get("screening", {})
@@ -112,16 +122,25 @@ def build_nextflow_args(config: Dict[str, Any], project_dir: Path) -> list:
         args.extend(["--batch_size", str(gnina_cfg["batch_size"])])
 
     # Analysis & Funnel Triage
-    funnel_cfg = config.get("analysis", {}).get("funnel", {}) or config.get("screening", {}).get("funnel", {})
+    funnel_cfg = config.get("analysis", {}).get("funnel", {}) or config.get(
+        "screening", {}
+    ).get("funnel", {})
     if funnel_cfg.get("top_frames_per_ligand"):
         args.extend(["--top_k_frames", str(funnel_cfg["top_frames_per_ligand"])])
     if funnel_cfg.get("library_percentile_cutoff"):
-        args.extend(["--percentile_cutoff", str(funnel_cfg["library_percentile_cutoff"])])
+        args.extend(
+            ["--percentile_cutoff", str(funnel_cfg["library_percentile_cutoff"])]
+        )
 
     # MD Settings
     md_cfg = config.get("md_simulation", {})
     if "enabled" in md_cfg:
         args.extend(["--run_md", "true" if md_cfg["enabled"] else "false"])
+    if md_cfg.get("pbc_center"):
+        args.extend(["--pbc_center", str(md_cfg["pbc_center"])])
+    if md_cfg.get("pbc_extract"):
+        args.extend(["--pbc_extract", str(md_cfg["pbc_extract"])])
+
     prod_cfg = md_cfg.get("production", {})
     if prod_cfg.get("total_time_ns"):
         args.extend(["--md_total_ns", str(prod_cfg["total_time_ns"])])
@@ -136,4 +155,3 @@ def build_nextflow_args(config: Dict[str, Any], project_dir: Path) -> list:
     args.extend(["--outdir", str(project_dir.resolve())])
 
     return args
-

@@ -5,7 +5,7 @@
 
 process ANTECHAMBER {
     tag "${meta.id}"
-    label 'process_high'
+    label 'process_single'
 
     input:
     tuple val(meta), path(ligand_mol2), path(charge_file)

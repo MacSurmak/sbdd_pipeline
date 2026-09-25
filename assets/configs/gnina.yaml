@@ -5,5 +5,5 @@ gnina:
   num_modes: 3                       # Number of binding poses to output
   autobox_add: 4.0                   # Padding around autobox reference ligand (Å)
   cnn_model: "crossdock_default2018" # Default GNINA CNN model
-  batch_size: 15                     # Molecules per Slurm GPU task
+  batch_size: 5                      # 5 ligands per chunk for maximum cluster scalability
 

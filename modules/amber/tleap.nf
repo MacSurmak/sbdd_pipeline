@@ -5,7 +5,7 @@
 
 process TLEAP {
     tag "${meta.id}"
-    label 'process_medium'
+    label 'process_single'
 
     input:
     tuple val(meta), path(complex_pdb), path(unk_mol2), path(unk_frcmod)

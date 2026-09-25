@@ -9,7 +9,6 @@ include { GMX_MMPBSA } from '../modules/gromacs/mmpbsa'
 workflow ANALYZE_MD_TRAJ {
     take:
     ch_traj_clean      // channel: [ val(meta), path(clean_xtc), path(ref_pdb), path(topol), path(ndx) ]
-    mmpbsa_cores       // val: 16
     start_ns           // val: 20.0
     step_frames        // val: 40
     temperature        // val: 310.15
@@ -28,7 +27,6 @@ workflow ANALYZE_MD_TRAJ {
     // 2. Run MM-PBSA free energy calculation
     GMX_MMPBSA(
         ch_traj_clean,
-        mmpbsa_cores,
         start_ns,
         step_frames,
         temperature,

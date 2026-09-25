@@ -10,7 +10,6 @@ process GMX_MMPBSA {
 
     input:
     tuple val(meta), path(clean_xtc), path(ref_pdb), path(topol_top), path(index_ndx)
-    val(cores)
     val(start_ns)
     val(step_frames)
     val(temp)
@@ -54,7 +53,7 @@ igb=2,
 saltcon=${salt_conc}
 /
 """
-    def mpirun_cmd = cores > 1 ? "mpirun --oversubscribe -np ${cores} gmx_MMPBSA MPI" : "gmx_MMPBSA"
+    def mpirun_cmd = task.cpus > 1 ? "mpirun --oversubscribe -np ${task.cpus} gmx_MMPBSA MPI" : "gmx_MMPBSA"
     """
     # 1. Total Binding Free Energy via Membrane-aware Poisson-Boltzmann (PB)
     start_frame=\$(get_mda_startframe.py --pdb ${ref_pdb} --xtc ${clean_xtc} --start_ns ${start_ns})

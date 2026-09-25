@@ -5,7 +5,7 @@
 
 process PACKMOL_MEMGEN {
     tag "${meta.id}"
-    label 'process_high'
+    label 'process_single'
 
     input:
     tuple val(meta), path(complex_pdb)

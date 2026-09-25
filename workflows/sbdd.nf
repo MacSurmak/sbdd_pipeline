@@ -149,11 +149,14 @@ workflow SBDD_WF {
         ch_trjconv_in = RUN_CHUNKED_MD.out.raw_trajectory
             .join(RUN_CHUNKED_MD.out.sys_files, by: 0)
 
-        TRJCONV(ch_trjconv_in)
+        TRJCONV(
+            ch_trjconv_in,
+            params.pbc_center ?: "Protein",
+            params.pbc_extract ?: "COMPLEX"
+        )
 
         ANALYZE_MD_TRAJ(
             TRJCONV.out.clean_traj,
-            params.mmpbsa_cores ?: 16,
             params.mmpbsa_start_ns ?: 20.0,
             params.mmpbsa_step_frames ?: 40,
             params.md_temperature ?: 310.15,

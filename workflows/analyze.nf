@@ -26,11 +26,14 @@ workflow ANALYZE_WF {
         .combine(ch_ndx)
         .map { m, traj, tpr, top, ndx -> [m, traj, tpr, top, ndx] }
 
-    TRJCONV(ch_trjconv_in)
+    TRJCONV(
+        ch_trjconv_in,
+        params.pbc_center ?: "Protein",
+        params.pbc_extract ?: "COMPLEX"
+    )
 
     ANALYZE_MD_TRAJ(
         TRJCONV.out.clean_traj,
-        params.mmpbsa_cores ?: 16,
         params.mmpbsa_start_ns ?: 20.0,
         params.mmpbsa_step_frames ?: 40,
         params.md_temperature ?: 310.15,
