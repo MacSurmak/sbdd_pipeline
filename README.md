@@ -132,7 +132,7 @@ sbdd run
 ### Уровень 1: Модульные тесты Python (Tier 1)
 Проверяет математику, парсеры, форматирование GRO/TOP и RDKit:
 ```bash
-/home/user/miniforge3/envs/sbdd_cluster_env/bin/pytest tests/unit
+/opt/miniforge3/envs/sbdd_cluster_env/bin/pytest tests/unit
 ```
 *Время выполнения: ~5 секунд. Результат: 9/9 тестов passed.*
 
