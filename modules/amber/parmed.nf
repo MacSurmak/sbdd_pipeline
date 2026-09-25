@@ -15,7 +15,7 @@ process PARMED {
 
     script:
     """
-    python3 -c "import parmed as p; s=p.load_file('${prmtop}', '${inpcrd}'); s.save('topol.top', format='gromacs'); s.save('step3_input.gro')"
+    convert_amber_to_gmx.py --prmtop ${prmtop} --inpcrd ${inpcrd}
     """
 
     stub:
