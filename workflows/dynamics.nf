@@ -40,7 +40,8 @@ workflow DYNAMICS_WF {
     }
 
     // Parse target hit list
-    def hits = params.md_hits ? params.md_hits.split(",").collect { it.trim() } : ["native"]
+    def fallback_hit = params.native_ligand ?: "UNK"
+    def hits = params.md_hits ? params.md_hits.split(",").collect { it.trim() } : [fallback_hit]
 
     ch_targets = Channel.fromList(hits)
         .combine(ch_lig_sdf)

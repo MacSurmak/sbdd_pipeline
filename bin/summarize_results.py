@@ -229,11 +229,12 @@ def main():
     df_resolved = compute_pose_consensus_rmsd(df_resolved, dock_dir)
 
     # Delta score relative to native ligand if present
-    native_targets = ["native", "ref", "pka"]
+    native_targets = []
     if args.native_ligand:
         native_targets.append(args.native_ligand.lower())
+
     native_mask = df_resolved["Title"].str.lower().isin(native_targets)
-    if native_mask.any():
+    if native_targets and native_mask.any():
         native_score = df_resolved.loc[native_mask, "Ultimate_Score"].iloc[0]
         df_resolved["Delta_to_Native"] = df_resolved["Ultimate_Score"] - native_score
 

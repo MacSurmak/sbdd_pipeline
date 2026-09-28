@@ -107,7 +107,7 @@ def main():
     if args.native_ligand:
         forced_set.add(args.native_ligand)
         for t in df["Title"]:
-            if args.native_ligand.lower() in t.lower() or "native" in t.lower():
+            if args.native_ligand.lower() == t.lower():
                 forced_set.add(t)
 
     kept_ligands = passing_score | (forced_set & set(df["Title"]))

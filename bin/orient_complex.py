@@ -77,6 +77,7 @@ def main():
         sys.exit(1)
 
     lig_st = complex_st.extract(lig_atoms)
+    lig_st.title = args.ligand
     lig_st.write(args.out_ligand)
     lig_st.write(sdf_out)
     logging.info(f"Wrote oriented native ligand to {args.out_ligand} and {sdf_out}")

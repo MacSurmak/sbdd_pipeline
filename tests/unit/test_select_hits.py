@@ -20,10 +20,12 @@ def test_select_hits(tmp_path):
         "1",
         "--include_native",
         "true",
+        "--native_ligand",
+        "BTN",
         "--out",
         str(out_file),
     ]
     res = subprocess.run(cmd, capture_output=True, text=True)
     assert res.returncode == 0
     lines = [l.strip() for l in out_file.read_text().splitlines() if l.strip()]
-    assert lines == ["PPZ_1H_Ph_BnMe,1", "native,1"]
+    assert lines == ["PPZ_1H_Ph_BnMe,1", "BTN,1"]

@@ -86,7 +86,8 @@ workflow SBDD_WF {
         SELECT_HITS(
             ch_ranking_tuple,
             params.top_n_hits ?: 1,
-            true
+            true,
+            params.native_ligand ?: ""
         )
 
         // 6. Downstream MD simulation

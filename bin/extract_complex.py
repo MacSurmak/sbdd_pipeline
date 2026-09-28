@@ -107,6 +107,7 @@ def main():
             sys.exit(1)
 
         lig_st = st.extract(lig_atoms)
+        lig_st.title = args.ligand
         lig_st.write(args.out_ligand_mae)
         lig_st.write(sdf_out)
         logging.info(
