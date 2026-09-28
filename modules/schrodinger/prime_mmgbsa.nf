@@ -18,24 +18,13 @@ process PRIME_MMGBSA {
     script:
     def mem_flag = (membrane_enabled.toString() == 'true') ? "-membrane" : ""
     """
-    # Ensure valid non-empty machine-id for Schrödinger mmlic3 in container
-    if [ -s /etc/machine-id ]; then
-        export APPTAINER_BINDPATH="/etc/machine-id\${APPTAINER_BINDPATH:+,\$APPTAINER_BINDPATH}"
-        export SINGULARITY_BINDPATH="/etc/machine-id\${SINGULARITY_BINDPATH:+,\$SINGULARITY_BINDPATH}"
-    else
-        FAKE_MID=\$(mktemp /tmp/machine-id.XXXXXX)
-        od -vAn -N16 -tx1 /dev/urandom | tr -d ' \\n' > "\$FAKE_MID"
-        export APPTAINER_BINDPATH="\${FAKE_MID}:/etc/machine-id\${APPTAINER_BINDPATH:+,\$APPTAINER_BINDPATH}"
-        export SINGULARITY_BINDPATH="\${FAKE_MID}:/etc/machine-id\${SINGULARITY_BINDPATH:+,\$SINGULARITY_BINDPATH}"
-    fi
-
     schrodinger prime_mmgbsa \
         -job_type ${job_type} \
         -csv_output yes \
         -out_type PV \
         -jobname ${meta.id}_mmgbsa \
-        -HOST localhost:${task.cpus} \
-        -NJOBS ${task.cpus} \
+        -HOST localhost \
+        -NJOBS 1 \
         -OVERWRITE \
         -WAIT \
         ${mem_flag} \
@@ -53,16 +42,15 @@ process PRIME_MMGBSA {
         echo "FATAL: Prime MM-GBSA failed to generate expected outputs."
         echo "Directory listing:"
         ls -la
-      if [ -f "${meta.id}_mmgbsa.Prime.log" ]; then
-          echo "=== ${meta.id}_mmgbsa.Prime.log ==="
-          cat "${meta.id}_mmgbsa.Prime.log"
-      elif [ -f "${meta.id}_mmgbsa.log" ]; then
-          echo "=== ${meta.id}_mmgbsa.log ==="
-          cat "${meta.id}_mmgbsa.log"
-      fi
-      exit 1
-  fi    fi    """
-    stub:
+        if [ -f "${meta.id}_mmgbsa.Prime.log" ]; then
+            echo "=== ${meta.id}_mmgbsa.Prime.log ==="
+            cat "${meta.id}_mmgbsa.Prime.log"
+        elif [ -f "${meta.id}_mmgbsa.log" ]; then
+            echo "=== ${meta.id}_mmgbsa.log ==="
+            cat "${meta.id}_mmgbsa.log"
+        fi
+        exit 1
+    fi    stub:
     """
     touch ${meta.id}_mmgbsa-out.csv
     touch ${meta.id}_mmgbsa-out.maegz
