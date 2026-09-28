@@ -22,6 +22,7 @@ process SELECT_HITS {
     script:
     """
     python3 ${projectDir}/bin/select_hits.py \\
+    script:
     def nat_arg = native_ligand ? "--native_ligand ${native_ligand}" : ""
     """
     python3 ${projectDir}/bin/select_hits.py \
@@ -36,5 +37,4 @@ process SELECT_HITS {
     """
     echo "PPZ_1H_Ph_BnMe,1" > selected_hits.txt
     echo "${native_ligand ?: 'UNK'},1" >> selected_hits.txt
-    """}
-
+    """
