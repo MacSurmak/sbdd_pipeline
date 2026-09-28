@@ -35,9 +35,12 @@ def add_thermostat_groups_by_name(ndx_path: Path):
     NO numerical index offsets. Guaranteed partition of the entire System.
     """
     groups = parse_ndx(ndx_path)
+    prot_atoms = groups.get("Protein", [])
+    unk_atoms = groups.get("UNK", [])
+    if not prot_atoms:
+        raise ValueError("FATAL: 'Protein' group not found in index.ndx")
 
-    if "System" not in groups:
-        raise KeyError("Group [ System ] not found in index.ndx")
+    complex_atoms = sorted(list(set(prot_atoms + unk_atoms)))
 
     water_and_ion_atoms: Set[int] = set()
     ion_names = {
