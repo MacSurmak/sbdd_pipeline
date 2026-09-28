@@ -8,14 +8,12 @@ include { SETUP_MD_SYSTEM  } from '../subworkflows/setup_md_system'
 include { RUN_CHUNKED_MD   } from '../subworkflows/run_chunked_md'
 include { ANALYZE_MD_TRAJ  } from '../subworkflows/analyze_md_traj'
 
-import org.yaml.snakeyaml.Yaml
-
 workflow DYNAMICS_WF {
     if (!params.manifest) { error "FATAL: Parameter --manifest is required." }
     if (!params.md_protocol) { error "FATAL: Parameter --md_protocol is required. Did you run 'sbdd md-init'?" }
 
     def manifestFile = file(params.manifest)
-    def yaml = new Yaml()
+    def yaml = new org.yaml.snakeyaml.Yaml()
     def manifestData = yaml.load(manifestFile.text)
 
     ch_targets = Channel.fromList(manifestData.targets).map { target ->

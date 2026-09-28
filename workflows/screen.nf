@@ -1,5 +1,3 @@
-import org.yaml.snakeyaml.Yaml
-
 /*
  * workflows/screen.nf
  * Standalone decoupled distributed docking workflow.
@@ -15,7 +13,7 @@ workflow SCREEN_WF {
     if (!params.library) { error "FATAL: Parameter --library is required for screening." }
 
     def manifestFile = file(params.manifest)
-    def yaml = new Yaml()
+    def yaml = new org.yaml.snakeyaml.Yaml()
     def manifestData = yaml.load(manifestFile.text)
 
     // 1. Load pre-prepared structures from the prepared/ folder

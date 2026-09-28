@@ -3,8 +3,6 @@
  * Standalone receptor and ligand preparation workflow with ensemble support
  */
 
-import org.yaml.snakeyaml.Yaml
-
 include { PREPARE_RECEPTOR } from '../subworkflows/prepare_receptor'
 
 workflow PREPARE_WF {
@@ -13,7 +11,7 @@ workflow PREPARE_WF {
     def manifestFile = file(params.manifest)
     if (!manifestFile.exists()) { error "FATAL: Manifest file not found at ${params.manifest}" }
     
-    def yaml = new Yaml()
+    def yaml = new org.yaml.snakeyaml.Yaml()
     def manifestData = yaml.load(manifestFile.text)
     if (!manifestData.targets) { error "FATAL: 'targets' list missing in manifest.yaml" }
 

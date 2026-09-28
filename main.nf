@@ -11,7 +11,6 @@ include { PREPARE_WF  } from './workflows/prepare'
 include { SCREEN_WF   } from './workflows/screen'
 include { DYNAMICS_WF } from './workflows/dynamics'
 include { ANALYZE_WF  } from './workflows/analyze'
-include { SBDD_WF     } from './workflows/sbdd'
 
 def helpMessage() {
     log.info """
@@ -43,7 +42,6 @@ workflow {
     }
 
     def entrypoint = params.entry ? params.entry.toLowerCase() : "all"
-
     if (entrypoint == "prepare") {
         PREPARE_WF()
     } else if (entrypoint == "screen") {
@@ -55,6 +53,11 @@ workflow {
     } else {
         if (entrypoint != null && entrypoint != "null") {
             log.error "Unknown entrypoint: ${entrypoint}"
+        }
+        helpMessage()
+        exit 1
+    }
+}            log.error "Unknown entrypoint: ${entrypoint}"
         }
         helpMessage()
         exit 1
