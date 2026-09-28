@@ -170,7 +170,7 @@ def execute_nextflow(
 
     for script_file in (pipeline_code_dir / "bin").glob("*.py"):
         try:
-            script_file.chmod(script_file.stat().st_mode | 0o111)
+            script_file.chmod(0o755)
         except Exception:
             pass
 

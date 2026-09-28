@@ -20,41 +20,10 @@ process TLEAP {
     script:
     def solvate_cmd = !is_membrane ? "solvateBox complex OPCBOX ${box_padding}" : ""
     """
-    # 1. Standardize Schrödinger terminal caps and protonation to AMBER format using ParmEd API
-    amber_cap_fixer.py ${complex_pdb} complex_clean.pdb
+    # 1. Standardize Schrödinger terminal caps, protonation, and SS-bonds to AMBER format using ParmEd
+    python3 ${projectDir}/bin/amber_cap_fixer.py ${complex_pdb} complex_clean.pdb --bonds_out apply_bonds.in
 
-    # 2. Map SS-links dynamically
-    python3 -c "
-import sys
-from pathlib import Path
-# Append framework bin to path so we can import topology_prep
-sys.path.append('${projectDir}/bin/utils')
-try:
-    # Try importing from the bin directory structure if copied
-    sys.path.append(str(Path('${projectDir}/bin')))
-except Exception:
-    pass
-
-def generate_bonds(pdb):
-    import math
-    cys = []
-    with open(pdb) as f:
-        for l in f:
-            if l.startswith(('ATOM','HETATM')) and l[12:16].strip() == 'SG' and l[17:20].strip() in ['CYS','CYX']:
-                cys.append({'c': l[21], 'r': int(l[22:26]), 'x': float(l[30:38]), 'y': float(l[38:46]), 'z': float(l[46:54])})
-    bonds = []
-    for i in range(len(cys)):
-        for j in range(i+1, len(cys)):
-            a, b = cys[i], cys[j]
-            if a['r'] == b['r'] and a['c'] == b['c']: continue
-            if math.sqrt((a['x']-b['x'])**2 + (a['y']-b['y'])**2 + (a['z']-b['z'])**2) <= 2.3:
-                bonds.append(f'bond complex.{a[\\"r\\"]}.SG complex.{b[\\"r\\"]}.SG')
-    return '\\n'.join(bonds)
-
-open('apply_bonds.in', 'w').write(generate_bonds('complex_clean.pdb') + '\\n')
-"
-
-    # 3. Build tLEaP topology
+    # 2. Build tLEaP topology
     cat << EOF > tleap.in
 source leaprc.protein.ff19SB
 source leaprc.gaff2
@@ -82,6 +51,7 @@ EOF
 
     tleap -f tleap.in
     """
+
     stub:
     """
     touch complex.prmtop

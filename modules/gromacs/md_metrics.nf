@@ -17,7 +17,7 @@ process MD_METRICS {
 
     script:
     """
-    md_metrics.py \\
+    python3 ${projectDir}/bin/md_metrics.py \\
         --pdb ${ref_pdb} \\
         --xtc ${clean_xtc} \\
         --outdir .

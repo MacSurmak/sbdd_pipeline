@@ -104,7 +104,7 @@ process MERGE_MMGBSA_CHUNKS {
 
     script:
     """
-    merge_csv.py --inputs ${csv_files} --output ${meta.id}_mmgbsa-out.csv
+    python3 ${projectDir}/bin/merge_csv.py --inputs ${csv_files} --output ${meta.id}_mmgbsa-out.csv
     """
 
     stub:

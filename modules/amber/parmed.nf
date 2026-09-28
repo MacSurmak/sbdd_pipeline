@@ -15,7 +15,7 @@ process PARMED {
 
     script:
     """
-    convert_amber_to_gmx.py --prmtop ${prmtop} --inpcrd ${inpcrd}
+    python3 ${projectDir}/bin/convert_amber_to_gmx.py --prmtop ${prmtop} --inpcrd ${inpcrd}
     """
 
     stub:

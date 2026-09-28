@@ -27,7 +27,7 @@ process GMX_EQUILIBRATION {
     nvidia-smi --query-gpu=name,memory.total --format=csv,noheader || true
 
     # 1. Generate customized MDP files from templates
-    generate_mdp.py \\
+    python3 ${projectDir}/bin/generate_mdp.py \\
         --templates_dir . \\
         --outdir . \\
         --is_membrane ${is_membrane} \\

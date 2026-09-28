@@ -24,7 +24,7 @@ process SUMMARIZE_DOCKING {
     def nat_arg = native_ligand ? "--native_ligand ${native_ligand}" : ""
     def bench_arg = benchmark_ligands ? "--benchmark_ligands ${benchmark_ligands}" : ""
     """
-    summarize_results.py \\
+    python3 ${projectDir}/bin/summarize_results.py \\
         --docking_dir . \\
         ${nat_arg} \\
         ${bench_arg} \\
