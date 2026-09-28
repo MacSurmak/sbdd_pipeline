@@ -9,13 +9,7 @@ process GMX_EQUILIBRATION {
 
     input:
     tuple val(meta), path(input_gro), path(topol_top), path(index_ndx), path(posre_files)
-    path mdp_templates
-    val(is_membrane)
-    val(temperature)
-    val(nvt_short_ps)
-    val(nvt_long_ps)
-    val(npt_berendsen_ps)
-    val(npt_pr_ps)
+    path md_protocol
 
     output:
     tuple val(meta), path("eq_final.gro"), path("eq_final.cpt"), path("eq_final.tpr"), emit: equilibrated_state
@@ -26,43 +20,37 @@ process GMX_EQUILIBRATION {
     echo "=== Worker: \$(hostname) - Starting Multi-stage Equilibration ==="
     nvidia-smi --query-gpu=name,memory.total --format=csv,noheader || true
 
-    # 1. Generate customized MDP files from templates
-    python3 ${projectDir}/bin/generate_mdp.py \\
-        --templates_dir . \\
-        --outdir . \\
-        --is_membrane ${is_membrane} \\
-        --temperature ${temperature} \\
-        --nvt_short_ps ${nvt_short_ps} \\
-        --nvt_long_ps ${nvt_long_ps} \\
-        --npt_berendsen_ps ${npt_berendsen_ps} \\
-        --npt_pr_ps ${npt_pr_ps}
+    if [ ! -f protocol.txt ]; then
+        echo "FATAL: protocol.txt playlist not found!"
+        exit 1
+    fi
 
-    # 2. Sequential stage execution
     prev_gro="${input_gro}"
     prev_cpt=""
     prev_tpr=""
 
-    while read stage; do
-        echo "--> Running stage: \$stage"
+    while read mdp_file; do
+        [ -z "\$mdp_file" ] && continue
+        echo "--> Running stage: \$mdp_file"
         
+        stage_name=\$(basename "\$mdp_file" .mdp)
         cpt_arg=""
-        if [ -n "\$prev_cpt" ] && [ -f "\$prev_cpt" ] && [[ "\$stage" != *"em"* ]]; then
+        if [ -n "\$prev_cpt" ] && [ -f "\$prev_cpt" ] && [[ "\$stage_name" != *"em"* && "\$stage_name" != *"minim"* ]]; then
             cpt_arg="-t \$prev_cpt"
         fi
 
-        gmx grompp -f "\${stage}.mdp" -o "\${stage}.tpr" -c "\$prev_gro" -r "\$prev_gro" -p "${topol_top}" -n "${index_ndx}" \$cpt_arg -maxwarn 2
+        gmx grompp -f "\$mdp_file" -o "\${stage_name}.tpr" -c "\$prev_gro" -r "\$prev_gro" -p "${topol_top}" -n "${index_ndx}" \$cpt_arg -maxwarn 2
         
-        # Hardware offloading flags (1 thread-MPI rank per GPU + task.cpus OpenMP threads)
-        if [[ "\$stage" == *"em"* ]]; then
-            gmx mdrun -deffnm "\$stage" -nb gpu -ntmpi 1 -ntomp ${task.cpus}
+        if [[ "\$stage_name" == *"em"* || "\$stage_name" == *"minim"* ]]; then
+            gmx mdrun -deffnm "\${stage_name}" -nb gpu -ntmpi 1 -ntomp ${task.cpus}
         else
-            gmx mdrun -deffnm "\$stage" -nb gpu -pme gpu -ntmpi 1 -ntomp ${task.cpus}
+            gmx mdrun -deffnm "\${stage_name}" -nb gpu -pme gpu -ntmpi 1 -ntomp ${task.cpus}
         fi
 
-        prev_gro="\${stage}.gro"
-        prev_cpt="\${stage}.cpt"
-        prev_tpr="\${stage}.tpr"
-    done < stages_list.txt
+        prev_gro="\${stage_name}.gro"
+        prev_cpt="\${stage_name}.cpt"
+        prev_tpr="\${stage_name}.tpr"
+    done < protocol.txt
 
     cp "\$prev_gro" eq_final.gro
     cp "\$prev_cpt" eq_final.cpt

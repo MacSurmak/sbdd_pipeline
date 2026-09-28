@@ -16,17 +16,20 @@ process EXTRACT_MD_SYSTEM {
     label 'process_single'
 
     input:
-    tuple val(meta), path(lig_file), val(lig_title), path(rec_file)
+    tuple val(meta), path(rec_file), path(lig_file)
+    val(cofactors)
 
     output:
-    tuple val(meta), path("receptor.pdb"), path("ligand.mol2"), path("lig_charge.txt"), emit: extracted
+    tuple val(meta), path("receptor_dry.pdb"), path("organics.json"), path("org_files/*"), emit: extracted
 
     script:
+    def cof_list = cofactors instanceof List ? cofactors.join(' ') : cofactors
+    def cof_arg = cof_list ? "--cofactors ${cof_list}" : ""
     """
     schrodinger run ${projectDir}/bin/extract_md_files.py \\
-        --lig_file ${lig_file} \\
-        --lig_title "${lig_title}" \\
         --rec_file ${rec_file} \\
+        --lig_file ${lig_file} \\
+        ${cof_arg} \\
         --out_dir .
     """
 
@@ -40,7 +43,7 @@ process EXTRACT_MD_SYSTEM {
 
 workflow SETUP_MD_SYSTEM {
     take:
-    ch_targets        // channel: [ val(meta), path(docked_pose), val(hit_title), path(receptor_file) ]
+    ch_targets        // channel: [ val(meta), path(receptor_pdb), path(ligand_file), val(cofactors_list) ]
     is_membrane       // val: true/false
     upper_lipids      // val: "POPC:POPE:CHL1"
     upper_ratio       // val: "5:4:1"
@@ -53,23 +56,37 @@ workflow SETUP_MD_SYSTEM {
 
     main:
     // 1. Extract files
-    EXTRACT_MD_SYSTEM(ch_targets)
+    ch_ext_in = ch_targets.map { meta, rec_pdb, lig_file, cofs -> [ meta, rec_pdb, lig_file ] }
+    EXTRACT_MD_SYSTEM(ch_ext_in, ch_targets.map { it[3] })
     
-    ch_ante_in = EXTRACT_MD_SYSTEM.out.extracted.map { meta, rec_pdb, lig_mol2, charge_txt ->
-        [ meta, lig_mol2, charge_txt ]
+    // 2. Parse organic components for parallel Antechamber
+    ch_ante_in = EXTRACT_MD_SYSTEM.out.extracted.flatMap { meta, rec_pdb, json_file, out_dir ->
+        def data = new groovy.json.JsonSlurper().parseText(json_file.text)
+        data.collect { org ->
+            def mol_meta = meta + [mol_id: org.name]
+            [ mol_meta, file("${out_dir}/${org.mol2}"), file("${out_dir}/${org.charge}") ]
+        }
     }
 
-    // 2. Antechamber GAFF2 / AM1-BCC
     ANTECHAMBER(ch_ante_in)
 
-    // 3. Clean Bash Merge of standardized protein and ligand
+    ch_ante_grouped = ANTECHAMBER.out.gaff_params
+        .map { mol_meta, mol2, frcmod, pdb ->
+            [ [id: mol_meta.id, project: mol_meta.project], mol2, frcmod, pdb ]
+        }
+        .groupTuple(by: 0)
+
+    // 3. Clean Bash Merge of standardized protein and ALL organics
     ch_merge_in = EXTRACT_MD_SYSTEM.out.extracted
-        .map { meta, rec_pdb, lig_mol2, charge_txt -> [ meta, rec_pdb ] }
-        .join(ANTECHAMBER.out.gaff_params.map { meta, mol2, frcmod, pdb -> [ meta, pdb ] })
+        .map { meta, rec_pdb, json_file, dir -> [ meta, rec_pdb ] }
+        .join(ch_ante_grouped, remainder: true)
+        .map { meta, rec_pdb, mol2s, frcmods, pdbs ->
+            [ meta, rec_pdb, pdbs ?: [] ]
+        }
 
     MERGE_PDB(ch_merge_in)
 
-    // 5. Membrane Assembly or Solvation
+    // 4. Membrane Assembly or Solvation
     if (is_membrane.toString() == 'true') {
         PACKMOL_MEMGEN(
             MERGE_PDB.out.complex_pdb,
@@ -86,16 +103,19 @@ workflow SETUP_MD_SYSTEM {
         ch_tleap_pdb = MERGE_PDB.out.complex_pdb
     }
 
-    // 6. tLEaP topology building - fully native Amber linking
+    // 5. tLEaP topology building
     ch_tleap_in = ch_tleap_pdb
-        .join(ANTECHAMBER.out.gaff_params.map { meta, mol2, frcmod, pdb -> [ meta, mol2, frcmod ] })
+        .join(ch_ante_grouped, remainder: true)
+        .map { meta, pdb, mol2s, frcmods, pdbs ->
+            [ meta, pdb, mol2s ?: [], frcmods ?: [] ]
+        }
     
     TLEAP(ch_tleap_in, water_model, is_membrane, wat_pad)
 
     // 6. ParmEd conversion to GROMACS
     PARMED(TLEAP.out.amber_system)
 
-    // 7. Declashing if membrane system
+    // 7. Declash
     if (is_membrane.toString() == 'true') {
         DECLASH(PARMED.out.gmx_system)
         ch_final_gro = DECLASH.out.declashed_gro

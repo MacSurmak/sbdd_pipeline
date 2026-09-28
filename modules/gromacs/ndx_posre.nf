@@ -14,23 +14,33 @@ process NDX_POSRE {
     tuple val(meta), path("index.ndx"), path("topol.top"), path("posre*.itp"), emit: restraints
 
     script:
+    // For omnivorous setup, we dynamically extract all non-protein organics
     """
     echo "q" | gmx make_ndx -f ${input_gro} -o index.ndx
-
     python3 ${projectDir}/bin/gromacs_ndx_fixer.py --ndx index.ndx --action add_groups
 
-    # Generate multi-level restraints for Protein and Ligand (1000, 250, 50 kJ/mol/nm^2)
-    echo "Protein" | gmx genrestr -f ${input_gro} -n index.ndx -o posre.itp -fc 1000 1000 1000
-    echo "UNK"     | gmx genrestr -f ${input_gro} -n index.ndx -o posre_lig.itp -fc 1000 1000 1000
+    # 1. Protein Restraints (Isolated to guarantee 1-to-N local index)
+    echo "Protein" | gmx trjconv -f ${input_gro} -n index.ndx -o prot.gro
+    echo "System" | gmx genrestr -f prot.gro -o posre_PROT.itp -fc 9999 9999 9999
+    sed -i 's/9999/POSRES_PROT_FC/g' posre_PROT.itp
 
-    echo "Protein" | gmx genrestr -f ${input_gro} -n index.ndx -o posre_250.itp -fc 250 250 250
-    echo "UNK"     | gmx genrestr -f ${input_gro} -n index.ndx -o posre_lig_250.itp -fc 250 250 250
+    # 2. Organic Restraints
+    ORG_LIST=""
+    grep -E "^\\[" index.ndx | tr -d '[] ' > groups.txt
+    for grp in \$(cat groups.txt); do
+        if [[ "\$grp" != "System" && "\$grp" != "Protein" && "\$grp" != "SOL" && "\$grp" != "Water" && "\$grp" != "PROT_LIG" && "\$grp" != "SOL_ION" && "\$grp" != "COMPLEX" ]]; then
+            # Ignore single atom ions
+            NATOMS=\$(echo "\$grp" | gmx make_ndx -f ${input_gro} -n index.ndx -o /dev/null 2>&1 | grep -E "^\s*[0-9]+ \$grp" | awk '{print \$3}')
+            if [ -n "\$NATOMS" ] && [ "\$NATOMS" -gt 1 ]; then
+                echo "\$grp" | gmx trjconv -f ${input_gro} -n index.ndx -o \${grp}.gro
+                echo "System" | gmx genrestr -f \${grp}.gro -o posre_\${grp}.itp -fc 9999 9999 9999
+                sed -i "s/9999/POSRES_\${grp}_FC/g" posre_\${grp}.itp
+                ORG_LIST="\$ORG_LIST,\$grp"
+            fi
+        fi
+    done
 
-    echo "Protein" | gmx genrestr -f ${input_gro} -n index.ndx -o posre_50.itp -fc 50 50 50
-    echo "UNK"     | gmx genrestr -f ${input_gro} -n index.ndx -o posre_lig_50.itp -fc 50 50 50
-
-    python3 ${projectDir}/bin/gromacs_ndx_fixer.py --ndx index.ndx --action fix_posre
-    python3 ${projectDir}/bin/gromacs_ndx_fixer.py --ndx index.ndx --top ${topol_top} --action inject_posre
+    python3 ${projectDir}/bin/gromacs_ndx_fixer.py --top ${topol_top} --action inject_posre --orgs "\$ORG_LIST"
     """
 
     stub:

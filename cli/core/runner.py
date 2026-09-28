@@ -51,19 +51,13 @@ workflow RUN_CHUNKED_MD {{
     take:
     ch_system
     ch_mdp_templates
-    is_membrane
-    temperature
+    ch_md_protocol
     total_ns
     chunk_ns
     replicates
-    slurm_queue
-    nvt_short_ps
-    nvt_long_ps
-    npt_berendsen_ps
-    npt_pr_ps
 
     main:
-    GMX_EQUILIBRATION(ch_system, ch_mdp_templates, is_membrane, temperature, nvt_short_ps, nvt_long_ps, npt_berendsen_ps, npt_pr_ps)
+    GMX_EQUILIBRATION(ch_system, ch_md_protocol)
     
     def num_reps = replicates as int
     ch_state_0 = GMX_EQUILIBRATION.out.equilibrated_state
@@ -79,7 +73,7 @@ workflow RUN_CHUNKED_MD {{
 """
     for i in range(1, total_chunks + 1):
         code += f"""
-    step_{i} = RUN_MD_CHUNK_{i}(ch_state_{i-1}, ch_mdp_templates, is_membrane, temperature, chunk_ns, {i})
+    step_{i} = RUN_MD_CHUNK_{i}(ch_state_{i-1}, ch_md_protocol, chunk_ns, {i})
     ch_state_{i} = step_{i}.state.map {{ meta, out_gro, out_cpt, out_tpr, top, ndx -> [meta, out_gro, out_cpt, out_tpr, top, ndx] }}
     ch_all_xtcs = ch_all_xtcs.mix(step_{i}.xtc)
 """

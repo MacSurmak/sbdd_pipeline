@@ -4,41 +4,37 @@
  */
 
 process ANTECHAMBER {
-    tag "${meta.id}"
+    tag "${meta.id}_${meta.mol_id}"
     label 'process_single'
 
     input:
-    tuple val(meta), path(ligand_mol2), path(charge_file)
+    tuple val(meta), path(mol2), path(charge_file)
 
     output:
-    tuple val(meta), path("UNK_gaff2.mol2"), path("UNK.frcmod"), path("UNK_gaff2.pdb"), emit: gaff_params
+    tuple val(meta), path("${meta.mol_id}_gaff2.mol2"), path("${meta.mol_id}.frcmod"), path("${meta.mol_id}_gaff2.pdb"), emit: gaff_params
 
     script:
+    def name = meta.mol_id
     """
     charge=\$(cat ${charge_file} | tr -d '[:space:]')
-    if [ -z "\$charge" ]; then
-        echo "FATAL: Ligand charge could not be determined or file is empty."
-        exit 1
-    fi
-
-    echo "Running Antechamber with net charge \$charge"
+    
+    echo "Running Antechamber for ${name} with net charge \$charge"
     antechamber \
-        -i ${ligand_mol2} \
+        -i ${mol2} \
         -fi mol2 \
-        -o UNK_gaff2.mol2 \
+        -o ${name}_gaff2.mol2 \
         -fo mol2 \
         -at gaff2 \
         -c bcc \
         -nc "\$charge" \
-        -rn UNK
+        -rn ${name}
 
-    # Export an exactly matching PDB equivalent of the ligand for bash structural merging
-    antechamber -i UNK_gaff2.mol2 -fi mol2 -o UNK_gaff2.pdb -fo pdb
+    antechamber -i ${name}_gaff2.mol2 -fi mol2 -o ${name}_gaff2.pdb -fo pdb
 
     parmchk2 \
-        -i UNK_gaff2.mol2 \
+        -i ${name}_gaff2.mol2 \
         -f mol2 \
-        -o UNK.frcmod \
+        -o ${name}.frcmod \
         -s 2
     """
 

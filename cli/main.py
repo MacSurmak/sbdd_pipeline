@@ -68,6 +68,46 @@ def cmd_status(args):
         console.print(tail.stdout)
 
 
+def cmd_md_init(args):
+    """Initializes the editable MD protocol playlist and MDP files."""
+    cwd = Path.cwd()
+    configs = load_project_configs(cwd)
+    md_dir = cwd / "configs" / "md_protocol"
+    md_dir.mkdir(parents=True, exist_ok=True)
+
+    is_mem = configs.get("membrane", {}).get("enabled", False)
+
+    # Generate flexible MDP templates utilizing POSRES macros
+    content_minim = "define = -DPOSRES -DPOSRES_PROT_FC=1000 -DPOSRES_UNK_FC=1000\nintegrator = steep\nemtol = 500.0\nemstep = 0.01\nnsteps = 50000\ncutoff-scheme = Verlet\ncoulombtype = PME\nrcoulomb = 1.0\nvdwtype = cutoff\nrvdw = 1.0\npbc = xyz\nconstraints = h-bonds\nconstraint-algorithm = lincs\n"
+    content_nvt = "define = -DPOSRES -DPOSRES_PROT_FC=1000 -DPOSRES_UNK_FC=1000\nintegrator = md\ndt = 0.001\nnsteps = 50000\nnstxout-compressed = 5000\ncutoff-scheme = Verlet\ncoulombtype = PME\nrcoulomb = 1.0\nvdwtype = cutoff\nrvdw = 1.0\npbc = xyz\ntcoupl = V-rescale\ntc-grps = PROT_LIG SOL_ION\ntau-t = 0.1 0.1\nref-t = 310.15 310.15\npcoupl = no\nconstraints = h-bonds\nconstraint-algorithm = lincs\ncontinuation = no\ngen_vel = yes\ngen_temp = 310.15\n"
+    content_npt = "define = -DPOSRES -DPOSRES_PROT_FC=500 -DPOSRES_UNK_FC=500\nintegrator = md\ndt = 0.002\nnsteps = 100000\nnstxout-compressed = 5000\ncutoff-scheme = Verlet\ncoulombtype = PME\nrcoulomb = 1.0\nvdwtype = cutoff\nrvdw = 1.0\npbc = xyz\ntcoupl = V-rescale\ntc-grps = PROT_LIG SOL_ION\ntau-t = 1.0 1.0\nref-t = 310.15 310.15\npcoupl = Parrinello-Rahman\npcoupltype = isotropic\ntau-p = 5.0\nref-p = 1.0\ncompressibility = 4.5e-5\nrefcoord-scaling = com\nconstraints = h-bonds\ncontinuation = yes\n"
+    content_md = "integrator = md\ndt = 0.002\nnsteps = 500000\nnstxout-compressed = 5000\ncutoff-scheme = Verlet\ncoulombtype = PME\nrcoulomb = 1.0\nvdwtype = cutoff\nrvdw = 1.0\npbc = xyz\ntcoupl = V-rescale\ntc-grps = PROT_LIG SOL_ION\ntau-t = 1.0 1.0\nref-t = 310.15 310.15\npcoupl = Parrinello-Rahman\npcoupltype = isotropic\ntau-p = 5.0\nref-p = 1.0\ncompressibility = 4.5e-5\nconstraints = h-bonds\ncontinuation = yes\n"
+
+    if is_mem:
+        content_npt = (
+            content_npt.replace("isotropic", "semiisotropic")
+            .replace("ref-p = 1.0", "ref-p = 1.0 1.0")
+            .replace("compressibility = 4.5e-5", "compressibility = 4.5e-5 4.5e-5")
+        )
+        content_md = (
+            content_md.replace("isotropic", "semiisotropic")
+            .replace("ref-p = 1.0", "ref-p = 1.0 1.0")
+            .replace("compressibility = 4.5e-5", "compressibility = 4.5e-5 4.5e-5")
+        )
+
+    (md_dir / "minim.mdp").write_text(content_minim)
+    (md_dir / "nvt.mdp").write_text(content_nvt)
+    (md_dir / "npt.mdp").write_text(content_npt)
+    (md_dir / "md.mdp").write_text(content_md)
+
+    (md_dir / "protocol.txt").write_text("minim.mdp\nnvt.mdp\nnpt.mdp\n")
+
+    console.print(f"[bold green]✓ MD Protocol initialized in {md_dir}[/bold green]")
+    console.print(
+        "[dim]You can now manually edit the .mdp files and reorder protocol.txt before running MD.[/dim]"
+    )
+
+
 def cmd_clean(args):
     """Cleans the project's scratch directory."""
     cwd = Path.cwd()
@@ -180,17 +220,20 @@ def main():
     p_rescore = subparsers.add_parser("rescore", help="Run MM-GBSA and CNN rescoring")
     add_common_wf_args(p_rescore)
 
-    # 5. md / dynamics
+    # 5. md-init
+    p_mdinit = subparsers.add_parser(
+        "md-init", help="Initialize editable MD protocol playlist"
+    )
+
+    # 6. md / dynamics
     p_dyn = subparsers.add_parser(
         "dynamics",
         aliases=["md", "md-run", "md-setup"],
-        help="Execute chunked MD simulations on Slurm GPUs",
+        help="Execute chunked MD simulations using protocol.txt playlist",
     )
-    p_dyn.add_argument("--hits", help="Comma-separated hits to simulate")
-    p_dyn.add_argument("--replicates", type=int, help="Number of MD replicates")
     add_common_wf_args(p_dyn)
 
-    # 6. md-analyze
+    # 7. md-analyze
     p_mda = subparsers.add_parser(
         "md-analyze", help="Run trajectory PBC fix, metrics, and MM-PBSA"
     )
@@ -219,6 +262,8 @@ def main():
     subcmd = args.subcommand
     if subcmd == "init":
         cmd_init(args)
+    elif subcmd == "md-init":
+        cmd_md_init(args)
     elif subcmd == "status":
         cmd_status(args)
     elif subcmd == "clean":

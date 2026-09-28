@@ -9,50 +9,73 @@ import sys
 from pathlib import Path
 
 
-def extract_via_schrodinger(lig_file, lig_title, rec_file, out_dir):
+ION_RESNAMES = {"ZN", "MG", "CA", "NA", "K", "CL", "ZN2", "MG2", "CA2"}
+
+
+def extract_via_schrodinger(args):
     from schrodinger import structure
+    from schrodinger.structutils import analyze
+    import json
 
-    out_dir = Path(out_dir)
+    out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
+    org_dir = out_dir / "org_files"
+    org_dir.mkdir(parents=True, exist_ok=True)
 
-    # 1. Receptor PDB
-    rec_st = structure.StructureReader.read(rec_file)
-    rec_out = out_dir / "receptor.pdb"
-    structure.StructureWriter.write(rec_st, str(rec_out))
+    rec_st = structure.StructureReader.read(args.rec_file)
+    organics = []
 
-    # 2. Ligand
-    charge = 0
-    lig_found = False
-    all_ligs = []
-
-    with structure.StructureReader(lig_file) as reader:
-        for i, st in enumerate(reader):
-            if i == 0 and (
-                st.property.get("b_glide_receptor", 0) == 1 or st.atom_total > 500
-            ):
+    # 1. Extract organic cofactors (Leave ions in protein)
+    if args.cofactors:
+        for cof in args.cofactors:
+            cof = cof.strip()
+            if not cof or cof.upper() in ION_RESNAMES:
                 continue
-            all_ligs.append(st)
-            title = (st.property.get("s_m_title") or st.title or "").strip()
-            if (
-                not lig_title
-                or title == lig_title.strip()
-                or title.lower() == lig_title.strip().lower()
-            ):
-                lig_mol2 = out_dir / "ligand.mol2"
-                structure.StructureWriter.write(st, str(lig_mol2))
-                charge = st.formal_charge
-                lig_found = True
+            asl = f"res.ptype '{cof}'"
+            atoms = analyze.evaluate_asl(rec_st, asl)
+            if atoms:
+                cof_st = rec_st.extract(atoms)
+                cof_st.title = cof
+                for res in cof_st.residue:
+                    res.pdbres = cof
+                cof_out = org_dir / f"{cof}.mol2"
+                cof_st.write(str(cof_out))
+                (org_dir / f"{cof}_charge.txt").write_text(str(cof_st.formal_charge))
+                organics.append(
+                    {"name": cof, "mol2": f"{cof}.mol2", "charge": f"{cof}_charge.txt"}
+                )
+                rec_st.deleteAtoms(atoms)
+
+    # Save dry receptor (Protein + Ions)
+    rec_out = out_dir / "receptor_dry.pdb"
+    rec_st.write(str(rec_out))
+
+    # 2. Extract Ligand if provided
+    if (
+        args.lig_file
+        and args.lig_file.lower() != "none"
+        and Path(args.lig_file).exists()
+    ):
+        with structure.StructureReader(args.lig_file) as reader:
+            for i, st in enumerate(reader):
+                st.title = "UNK"
+                for res in st.residue:
+                    res.pdbres = "UNK"
+                lig_out = org_dir / "UNK.mol2"
+                st.write(str(lig_out))
+                (org_dir / "UNK_charge.txt").write_text(str(st.formal_charge))
+                organics.append(
+                    {"name": "UNK", "mol2": "UNK.mol2", "charge": "UNK_charge.txt"}
+                )
                 break
 
-    if not lig_found:
-        raise ValueError(f"FATAL: Ligand '{lig_title}' not found in {lig_file}")
+    with open(out_dir / "organics.json", "w") as f:
+        json.dump(organics, f)
 
-    with open(out_dir / "lig_charge.txt", "w") as f:
-        f.write(str(charge))
-    print(f"Extracted files successfully. Ligand formal charge: {charge}")
+    print(f"Extracted dry receptor and {len(organics)} organic molecule(s).")
 
 
-def extract_via_rdkit(lig_file, lig_title, rec_file, out_dir):
+def extract_via_rdkit(args):
     from rdkit import Chem
 
     out_dir = Path(out_dir)
@@ -135,21 +158,19 @@ def main():
         description="Extracts receptor and ligand files for MD"
     )
     parser.add_argument(
-        "--lig_file", required=True, help="Input docked pose file (.maegz or .sdf)"
+        "--rec_file", required=True, help="Input prepared receptor file (.mae or .pdb)"
     )
-    parser.add_argument("--lig_title", default="", help="Title or ID of target ligand")
     parser.add_argument(
-        "--rec_file", required=True, help="Input receptor file (.mae or .pdb)"
+        "--lig_file", default="none", help="Input docked pose file (.sdf or .mae)"
     )
+    parser.add_argument("--cofactors", nargs="*", default=[], help="Cofactors list")
     parser.add_argument("--out_dir", required=True, help="Output directory")
     args = parser.parse_args()
 
     try:
-        extract_via_schrodinger(
-            args.lig_file, args.lig_title, args.rec_file, args.out_dir
-        )
+        extract_via_schrodinger(args)
     except ImportError:
-        extract_via_rdkit(args.lig_file, args.lig_title, args.rec_file, args.out_dir)
+        extract_via_rdkit(args)
     except Exception as e:
         print(f"Error in extract_md_files: {e}", file=sys.stderr)
         sys.exit(1)

@@ -88,126 +88,37 @@ def add_thermostat_groups_by_name(ndx_path: Path):
         write_ndx_group(f, "SOL_ION", sorted(list(water_and_ion_atoms)))
 
 
-def inject_ligand_posre(top_file: Path):
-    """Injects position restraints with multiple force constants at the end of UNK moleculetype."""
+def inject_posre(top_file: Path, org_names: str):
+    """Injects dynamic POSRES macro blocks into topol.top based on moleculetype."""
     if not top_file.exists():
         return
+
+    orgs = set(org_names.split(",")) if org_names else set()
     lines = top_file.read_text().splitlines()
+    out = []
 
-    out_lines = []
-    in_unk = False
-    injected = False
-
-    posre_block = (
-        "\n#ifdef POSRES_LIG\n"
-        '#include "posre_lig.itp"\n'
-        "#endif\n"
-        "#ifdef POSRES_LIG_250\n"
-        '#include "posre_lig_250.itp"\n'
-        "#endif\n"
-        "#ifdef POSRES_LIG_50\n"
-        '#include "posre_lig_50.itp"\n'
-        "#endif\n"
-    )
+    state = "NONE"
+    current_mol = None
 
     for line in lines:
         stripped = line.strip()
 
-        if (
-            in_unk
-            and not injected
-            and (
-                stripped.startswith("[ moleculetype ]")
-                or stripped.startswith("[ system ]")
-            )
-        ):
-            out_lines.append(posre_block)
-            injected = True
-            in_unk = False
+        if stripped.startswith("[ moleculetype ]") or stripped.startswith("[ system ]"):
+            if current_mol == "system1" or current_mol == "Protein":
+                out.append('#ifdef POSRES\n#include "posre_PROT.itp"\n#endif')
+            elif current_mol in orgs or current_mol == "UNK":
+                out.append(f'#ifdef POSRES\n#include "posre_{current_mol}.itp"\n#endif')
 
-        if stripped.startswith("[ moleculetype ]"):
-            in_unk = False
+            state = "MOL_START" if stripped.startswith("[ moleculetype ]") else "SYSTEM"
+            current_mol = None
 
-        if (
-            not stripped.startswith(";")
-            and stripped.startswith("UNK")
-            and len(stripped.split()) >= 2
-        ):
-            in_unk = True
+        elif state == "MOL_START" and stripped and not stripped.startswith(";"):
+            current_mol = stripped.split()[0]
+            state = "INSIDE_MOL"
 
-        out_lines.append(line)
+        out.append(line)
 
-    if in_unk and not injected:
-        out_lines.append(posre_block)
-
-    # Inject protein multi-level posres at the end of system1 or Protein
-    out_lines_prot = []
-    in_prot = False
-    injected_prot = False
-
-    posre_block_prot = (
-        "\n#ifdef POSRES\n"
-        '#include "posre.itp"\n'
-        "#endif\n"
-        "#ifdef POSRES_250\n"
-        '#include "posre_250.itp"\n'
-        "#endif\n"
-        "#ifdef POSRES_50\n"
-        '#include "posre_50.itp"\n'
-        "#endif\n"
-    )
-
-    for line in out_lines:
-        stripped = line.strip()
-
-        if (
-            in_prot
-            and not injected_prot
-            and (
-                stripped.startswith("[ moleculetype ]")
-                or stripped.startswith("[ system ]")
-            )
-        ):
-            out_lines_prot.append(posre_block_prot)
-            injected_prot = True
-            in_prot = False
-
-        if stripped.startswith("[ moleculetype ]"):
-            in_prot = False
-
-        if (
-            not stripped.startswith(";")
-            and (stripped.startswith("system1") or stripped.startswith("Protein"))
-            and len(stripped.split()) >= 2
-        ):
-            in_prot = True
-
-        out_lines_prot.append(line)
-
-    top_file.write_text("\n".join(out_lines_prot) + "\n")
-
-
-def fix_posre_indices(itp_file: Path):
-    """Converts global atom indices in posre_lig.itp to 1-based local molecule indices (1 to N)."""
-    if not itp_file.exists():
-        return
-    lines = itp_file.read_text().splitlines()
-    out_lines = []
-    atom_idx = 1
-    for line in lines:
-        stripped = line.strip()
-        if not stripped or stripped.startswith(";") or stripped.startswith("["):
-            out_lines.append(line)
-            continue
-        parts = stripped.split()
-        if len(parts) >= 5:
-            out_lines.append(
-                f"{atom_idx:5d}{int(parts[1]):5d}{float(parts[2]):10.1f}{float(parts[3]):10.1f}{float(parts[4]):10.1f}"
-            )
-            atom_idx += 1
-        else:
-            out_lines.append(line)
-    itp_file.write_text("\n".join(out_lines) + "\n")
+    top_file.write_text("\n".join(out) + "\n")
 
 
 if __name__ == "__main__":
@@ -218,9 +129,10 @@ if __name__ == "__main__":
     parser.add_argument("--top", required=False)
     parser.add_argument(
         "--action",
-        choices=["add_groups", "inject_posre", "fix_posre", "ensure_complex"],
+        choices=["add_groups", "inject_posre", "ensure_complex"],
         required=True,
     )
+    parser.add_argument("--orgs", default="")
     args = parser.parse_args()
 
     ndx_path = Path(args.ndx)
@@ -228,10 +140,6 @@ if __name__ == "__main__":
         add_thermostat_groups_by_name(ndx_path)
     elif args.action == "inject_posre":
         if args.top:
-            inject_ligand_posre(Path(args.top))
-    elif args.action == "fix_posre":
-        for sfx in ["", "_250", "_50"]:
-            fix_posre_indices(Path(f"posre{sfx}.itp"))
-            fix_posre_indices(Path(f"posre_lig{sfx}.itp"))
+            inject_posre(Path(args.top), args.orgs)
     elif args.action == "ensure_complex":
         ensure_complex_ndx_group(ndx_path)

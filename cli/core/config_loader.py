@@ -226,20 +226,7 @@ def build_nextflow_args(config: Dict[str, Any], project_dir: Path) -> list:
                 )
             args.extend([flag, str(sys_build[key])])
 
-        # Equilibration - STRICT VALIDATION (No hidden defaults)
-        eq_cfg = md_cfg.get("equilibration")
-        if not eq_cfg:
-            raise ValueError(
-                "Config validation failed: 'md_simulation.equilibration' section in md.yaml is required when MD is enabled!"
-            )
-        for key in ["nvt_short_ps", "nvt_long_ps", "npt_berendsen_ps", "npt_pr_ps"]:
-            if key not in eq_cfg:
-                raise ValueError(
-                    f"Config validation failed: 'md_simulation.equilibration.{key}' in md.yaml is required!"
-                )
-            args.extend([f"--{key}", str(eq_cfg[key])])
-
-        # Production - STRICT VALIDATION
+        # Production chunks
         prod_cfg = md_cfg.get("production")
         if not prod_cfg:
             raise ValueError(
@@ -249,7 +236,6 @@ def build_nextflow_args(config: Dict[str, Any], project_dir: Path) -> list:
             ("total_time_ns", "--md_total_ns"),
             ("chunk_size_ns", "--md_chunk_ns"),
             ("replicates", "--md_replicates"),
-            ("temperature", "--md_temperature"),
         ]:
             if key not in prod_cfg:
                 raise ValueError(
@@ -257,19 +243,19 @@ def build_nextflow_args(config: Dict[str, Any], project_dir: Path) -> list:
                 )
             args.extend([flag, str(prod_cfg[key])])
 
+        # Protocol dir
+        protocol_dir = project_dir / "configs" / "md_protocol"
+        if not protocol_dir.exists():
+            raise FileNotFoundError(
+                f"MD Protocol directory not found: {protocol_dir}. Did you run 'sbdd md-init'?"
+            )
+        args.extend(["--md_protocol", str(protocol_dir.resolve())])
+
         # Selection & Trajectory
         if "pbc_center" in md_cfg:
             args.extend(["--pbc_center", str(md_cfg["pbc_center"])])
         if "pbc_extract" in md_cfg:
             args.extend(["--pbc_extract", str(md_cfg["pbc_extract"])])
-        sel_cfg = md_cfg.get("selection", {})
-        if sel_cfg.get("top_n"):
-            args.extend(["--top_n_hits", str(sel_cfg["top_n"])])
-        if sel_cfg.get("selected_hits"):
-            hits = sel_cfg["selected_hits"]
-            args.extend(
-                ["--md_hits", ",".join(hits) if isinstance(hits, list) else str(hits)]
-            )
     else:
         args.extend(["--run_md", "false"])
 
