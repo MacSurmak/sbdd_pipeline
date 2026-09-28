@@ -23,8 +23,9 @@ process GMX_MMPBSA {
     tuple val(meta), path("decomposition_mmpbsa_gb.csv"), path("thermodynamics_mmpbsa_gb.dat"), emit: gb_decomp_results, optional: true
 
     script:
+    def is_mem = (is_membrane.toString() == 'true')
     def mthick_val = membrane_thickness as float
-    def pb_block = is_membrane ? """
+    def pb_block = is_mem ? """
 &pb
 memopt=1,
 mthick=${mthick_val},
