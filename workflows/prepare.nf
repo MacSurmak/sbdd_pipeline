@@ -14,17 +14,17 @@ workflow PREPARE_WF {
 
     PREPARE_RECEPTOR(
         ch_rec,
-        params.model_index ?: 0,
+        params.model_index,
         params.native_ligand,
-        params.keep_cofactors ?: "",
-        params.membrane.toString() == 'true',
-        params.membrane_type ?: "MOM",
-        params.membrane_topo ?: "in",
-        params.membrane_chains ?: "A",
-        params.target_ph ?: 7.4,
-        params.ph_tolerance ?: 1.0,
-        params.minimize_rmsd ?: 0.3,
-        params.cap_termini ?: true
+        params.keep_cofactors,
+        params.membrane,
+        params.membrane_type,
+        params.membrane_topo,
+        params.membrane_chains,
+        params.target_ph,
+        params.ph_tolerance,
+        params.minimize_rmsd,
+        params.cap_termini
     )
 
     // 2. Prepare Ligands (if provided)
@@ -35,12 +35,12 @@ workflow PREPARE_WF {
         PREPARE_LIGANDS(
             ch_lib,
             PREPARE_RECEPTOR.out.ref_native_mae,
-            params.dock_engine ?: "both",
-            params.batch_size ?: 15,
-            params.ligand_ph ?: 7.4,
-            params.ligand_ph_tol ?: 2.0,
-            params.ligprep_ff ?: 16,
-            params.max_states ?: 32
+            params.dock_engine,
+            params.batch_size,
+            params.ligand_ph,
+            params.ligand_ph_tol,
+            params.ligprep_ff,
+            params.max_states
         )
     }
 }

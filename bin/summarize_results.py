@@ -195,16 +195,9 @@ def main():
 
     df = pd.DataFrame(rows)
     if df.empty:
-        print("Warning: No records found. Generating empty templates.")
-        pd.DataFrame(columns=["Rank", "Title", "Frame", "Ultimate_Score"]).to_csv(
-            out_dir / "ranking.csv", index=False
+        raise ValueError(
+            "FATAL: No records found. Docking and/or rescoring failed entirely."
         )
-        pd.DataFrame(columns=["Title"]).to_csv(
-            out_dir / "cross_frame_matrix.csv", index=False
-        )
-        with open(out_dir / "summary.json", "w") as fj:
-            json.dump([], fj)
-        sys.exit(0)
 
     # Export full raw multi-frame metrics before deduplication
     df_raw = df.copy()

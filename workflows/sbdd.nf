@@ -23,17 +23,17 @@ workflow SBDD_WF {
     // 1. Receptor Preparation
     PREPARE_RECEPTOR(
         ch_rec,
-        params.model_index ?: 0,
+        params.model_index,
         params.native_ligand,
-        params.keep_cofactors ?: "",
-        params.membrane.toString() == 'true',
-        params.membrane_type ?: "MOM",
-        params.membrane_topo ?: "in",
-        params.membrane_chains ?: "A",
-        params.target_ph ?: 7.4,
-        params.ph_tolerance ?: 1.0,
-        params.minimize_rmsd ?: 0.3,
-        params.cap_termini ?: true
+        params.keep_cofactors,
+        params.membrane,
+        params.membrane_type,
+        params.membrane_topo,
+        params.membrane_chains,
+        params.target_ph,
+        params.ph_tolerance,
+        params.minimize_rmsd,
+        params.cap_termini
     )
 
     // 2. Prepare Ligands & Docking
@@ -44,12 +44,12 @@ workflow SBDD_WF {
         PREPARE_LIGANDS(
             ch_lib,
             PREPARE_RECEPTOR.out.ref_native_mae,
-            params.dock_engine ?: "both",
-            params.batch_size ?: 15,
-            params.ligand_ph ?: 7.4,
-            params.ligand_ph_tol ?: 2.0,
-            params.ligprep_ff ?: 16,
-            params.max_states ?: 32
+            params.dock_engine,
+            params.batch_size,
+            params.ligand_ph,
+            params.ligand_ph_tol,
+            params.ligprep_ff,
+            params.max_states
         )
 
         // 3. Multi-Engine Docking, Triage, and MM-GBSA
@@ -60,14 +60,14 @@ workflow SBDD_WF {
             PREPARE_RECEPTOR.out.prepared_mae,
             PREPARE_RECEPTOR.out.ref_native_mae,
             PREPARE_LIGANDS.out.prepared_ligands,
-            params.dock_engine ?: "both",
-            params.exhaustiveness ?: 16,
-            params.cnn_scoring ?: "rescore",
-            params.num_modes ?: 3,
-            params.autobox_add ?: 4.0,
-            params.top_k_frames ?: 3,
-            params.percentile_cutoff ?: 0.50,
-            params.membrane.toString() == 'true'
+            params.dock_engine,
+            params.exhaustiveness,
+            params.cnn_scoring,
+            params.num_modes,
+            params.autobox_add,
+            params.top_k_frames,
+            params.percentile_cutoff,
+            params.membrane
         )
 
         // 4. Summarize results into master ranking table and cross-frame matrix
@@ -75,7 +75,7 @@ workflow SBDD_WF {
         SUMMARIZE_DOCKING(
             params.project_name,
             DOCK_LIBRARY.out.summary_files,
-            params.native_ligand ?: "",
+            params.native_ligand,
             bench_ligands_sbdd
         )
 
@@ -85,9 +85,9 @@ workflow SBDD_WF {
 
         SELECT_HITS(
             ch_ranking_tuple,
-            params.top_n_hits ?: 1,
+            params.top_n_hits,
             true,
-            params.native_ligand ?: ""
+            params.native_ligand
         )
 
         // 6. Downstream MD simulation
@@ -128,7 +128,7 @@ workflow SBDD_WF {
                 }
             SETUP_MD_SYSTEM(
                 ch_md_targets,
-                params.membrane.toString() == 'true',
+                params.membrane,
                 params.upper_lipids,
                 params.upper_ratio,
                 params.lower_lipids,
@@ -144,7 +144,7 @@ workflow SBDD_WF {
         RUN_CHUNKED_MD(
             SETUP_MD_SYSTEM.out.system_ready,
             ch_mdp_templates,
-            params.membrane.toString() == 'true',
+            params.membrane,
             params.md_temperature,
             params.md_total_ns,
             params.md_chunk_ns,
@@ -162,19 +162,19 @@ workflow SBDD_WF {
 
         TRJCONV(
             ch_trjconv_in,
-            params.pbc_center ?: "Protein",
-            params.pbc_extract ?: "COMPLEX"
+            params.pbc_center,
+            params.pbc_extract
         )
 
         ANALYZE_MD_TRAJ(
             TRJCONV.out.clean_traj,
-            params.mmpbsa_start_ns ?: 20.0,
-            params.mmpbsa_step_frames ?: 40,
-            params.md_temperature ?: 310.15,
-            params.md_salt_conc ?: 0.15,
-            params.membrane.toString() == 'true',
-            params.membrane_thickness ?: 28.0,
-            params.per_residue_decomp.toString() == 'true'
+            params.mmpbsa_start_ns,
+            params.mmpbsa_step_frames,
+            params.md_temperature,
+            params.md_salt_conc,
+            params.membrane,
+            params.membrane_thickness,
+            params.per_residue_decomp
         )
         }
     }

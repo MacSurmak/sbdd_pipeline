@@ -28,22 +28,6 @@ def load_project_configs(project_dir: Path) -> Dict[str, Any]:
         except Exception as e:
             raise ValueError(f"Failed to parse YAML file {yf.name}: {e}")
 
-    # Fallback to single inputs in project root if not explicitly in YAML
-    if "receptor" not in merged or not merged["receptor"].get("input_file"):
-        cif_files = list(project_dir.glob("*.cif"))
-        pdb_files = list(project_dir.glob("*.pdb"))
-        if cif_files:
-            merged.setdefault("receptor", {})["input_file"] = cif_files[0].name
-        elif pdb_files:
-            merged.setdefault("receptor", {})["input_file"] = pdb_files[0].name
-
-    if "screening" not in merged or not merged["screening"].get("library_file"):
-        sdf_files = [
-            f for f in project_dir.glob("*.sdf") if "dock" not in f.name.lower()
-        ]
-        if sdf_files:
-            merged.setdefault("screening", {})["library_file"] = sdf_files[0].name
-
     return merged
 
 

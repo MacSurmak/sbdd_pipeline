@@ -16,7 +16,10 @@ process ANTECHAMBER {
     script:
     """
     charge=\$(cat ${charge_file} | tr -d '[:space:]')
-    [ -z "\$charge" ] && charge=0
+    if [ -z "\$charge" ]; then
+        echo "FATAL: Ligand charge could not be determined or file is empty."
+        exit 1
+    fi
 
     echo "Running Antechamber with net charge \$charge"
     antechamber \

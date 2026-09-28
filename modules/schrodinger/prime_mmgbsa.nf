@@ -27,18 +27,14 @@ process PRIME_MMGBSA {
         -NJOBS ${task.cpus} \\
         -OVERWRITE \\
         -WAIT \\
-        ${mem_flag} \\
+        ${mem_flag} \
         ${pv_maegz}
 
-    # Defensive check: ensure output files exist even if a chunk had zero scorable ligands
-    if [ ! -f "${meta.id}_mmgbsa-out.csv" ]; then
-        echo "title,r_psp_MMGBSA_dG_Bind" > "${meta.id}_mmgbsa-out.csv"
-    fi
-    if [ ! -f "${meta.id}_mmgbsa-out.maegz" ]; then
-        cp "${pv_maegz}" "${meta.id}_mmgbsa-out.maegz"
+    if [ ! -f "${meta.id}_mmgbsa-out.csv" ] || [ ! -f "${meta.id}_mmgbsa-out.maegz" ]; then
+        echo "FATAL: Prime MM-GBSA failed to generate expected outputs."
+        exit 1
     fi
     """
-
     stub:
     """
     touch ${meta.id}_mmgbsa-out.csv

@@ -17,17 +17,17 @@ workflow DYNAMICS_WF {
     // We completely trust native Nextflow caching (-resume). Always pass through PREPARE_RECEPTOR.
     PREPARE_RECEPTOR(
         ch_rec,
-        params.model_index ?: 0,
+        params.model_index,
         params.native_ligand,
-        params.keep_cofactors ?: "",
-        params.membrane ?: false,
-        params.membrane_type ?: "MOM",
-        params.membrane_topo ?: "in",
-        params.membrane_chains ?: "A",
-        params.target_ph ?: 7.4,
-        params.ph_tolerance ?: 1.0,
-        params.minimize_rmsd ?: 0.3,
-        params.cap_termini ?: true
+        params.keep_cofactors,
+        params.membrane,
+        params.membrane_type,
+        params.membrane_topo,
+        params.membrane_chains,
+        params.target_ph,
+        params.ph_tolerance,
+        params.minimize_rmsd,
+        params.cap_termini
     )
 
     ch_rec_pdb = PREPARE_RECEPTOR.out.prepared_pdb
@@ -54,15 +54,16 @@ workflow DYNAMICS_WF {
     // 1. Build systems with dynamic padding and water model
     SETUP_MD_SYSTEM(
         ch_targets,
-        params.membrane.toString() == 'true',
-        params.upper_lipids ?: "POPC:POPE:CHL1",            params.upper_ratio ?: "5:4:1",
-            params.lower_lipids ?: "POPC:POPE:POPS:CHL1",
-            params.lower_ratio ?: "4:4:1:1",
-            params.lipid_padding ?: 10.0,
-            params.box_padding ?: 15.0,
-            params.md_salt_conc ?: 0.15,
-            params.water_model ?: "opc"
-        )
+        params.membrane,
+        params.upper_lipids,
+        params.upper_ratio,
+        params.lower_lipids,
+        params.lower_ratio,
+        params.lipid_padding,
+        params.box_padding,
+        params.md_salt_conc,
+        params.water_model
+    )
 
         ch_mdp_templates = Channel.fromPath("${projectDir}/assets/mdp/*.mdp", checkIfExists: true).collect()
 
@@ -77,7 +78,7 @@ workflow DYNAMICS_WF {
     RUN_CHUNKED_MD(
         SETUP_MD_SYSTEM.out.system_ready,
         ch_mdp_templates,
-        params.membrane.toString() == 'true',
+        params.membrane,
         params.md_temperature,
         params.md_total_ns,
         params.md_chunk_ns,

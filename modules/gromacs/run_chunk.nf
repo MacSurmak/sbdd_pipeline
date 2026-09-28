@@ -44,7 +44,7 @@ process RUN_MD_CHUNK {
         cp out.tpr sys_ref.tpr
     else
         gmx convert-tpr -s ${prev_tpr} -extend \${EXTENSION_PS} -o out.tpr
-        gmx mdrun -deffnm md_${chunk_idx} -s out.tpr -cpi ${prev_cpt} -nb gpu -pme gpu -ntmpi 1 -ntomp ${task.cpus}
+        gmx mdrun -deffnm md_${chunk_idx} -s out.tpr -cpi ${prev_cpt} -noappend -nb gpu -pme gpu -ntmpi 1 -ntomp ${task.cpus}
         cp out.tpr sys_ref.tpr
     fi
 

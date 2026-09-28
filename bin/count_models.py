@@ -8,6 +8,7 @@ import argparse
 import sys
 from pathlib import Path
 
+
 def count_cif_models(file_path: Path) -> int:
     models = 0
     with open(file_path, "r", errors="ignore") as f:
@@ -28,20 +29,22 @@ def count_cif_models(file_path: Path) -> int:
                         pass
             if line.strip().startswith("_atom_site.pdbx_PDB_model_num"):
                 pass
-            if line.strip().startswith("data_") and not line.strip().startswith("data_general"):
+            if line.strip().startswith("data_") and not line.strip().startswith(
+                "data_general"
+            ):
                 # some CIF files repeat data blocks
                 pass
     # If not found via tags, scan model numbers or structure reader
     # Schrodinger fallback if available
-    try:
-        from schrodinger.structure import count_structures
-        return count_structures(str(file_path))
-    except Exception:
-        pass
-    return 1
+    from schrodinger.structure import count_structures
+
+    return count_structures(str(file_path))
+
 
 def main():
-    parser = argparse.ArgumentParser(description="Count structures or NMR models in macromolecular file")
+    parser = argparse.ArgumentParser(
+        description="Count structures or NMR models in macromolecular file"
+    )
     parser.add_argument("--input", required=True, help="Input macromolecule file")
     parser.add_argument("--output", default="models_count.txt", help="Output text file")
     args = parser.parse_args()
@@ -51,6 +54,7 @@ def main():
 
     try:
         from schrodinger.structure import count_structures
+
         count = count_structures(str(p.resolve()))
     except Exception:
         if p.suffix.lower() in [".cif", ".mmcif"]:
@@ -67,6 +71,7 @@ def main():
     print(count)
     with open(args.output, "w") as out:
         out.write(f"{count}\n")
+
 
 if __name__ == "__main__":
     main()

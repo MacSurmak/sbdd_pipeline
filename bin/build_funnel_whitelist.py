@@ -83,11 +83,7 @@ def main():
     df = pd.DataFrame(all_data)
     out_csv = Path(args.output)
     if df.empty:
-        print(
-            "Warning: No docking data available to build funnel whitelist. Outputting empty whitelist."
-        )
-        pd.DataFrame(columns=["Title", "Frame"]).to_csv(out_csv, index=False)
-        sys.exit(0)
+        raise ValueError("FATAL: No docking data available to build funnel whitelist.")
 
     # 1. Percentile Ranks (Glide lower is better, CNN higher is better)
     df["PR_Glide"] = df["GlideScore"].rank(ascending=False, pct=True)

@@ -55,16 +55,17 @@ def main():
     at_list_orig = analyze.evaluate_asl(raw_prot, calpha_asl)
     at_list_orient = analyze.evaluate_asl(orient_prot, calpha_asl)
 
-    if len(at_list_orig) == len(at_list_orient) and len(at_list_orig) >= 3:
-        matrix = rmsd.get_super_transformation_matrix(
-            orient_prot, at_list_orient, raw_prot, at_list_orig
+    if len(at_list_orig) != len(at_list_orient) or len(at_list_orig) < 3:
+        logging.error(
+            "FATAL: CA atom mismatch between original and PPM-oriented protein. Alignment failed."
         )
-        transform.transform_structure(complex_st, matrix)
-        logging.info("Successfully applied PPM 3.0 transformation to the full complex.")
-    else:
-        logging.warning(
-            "CA atom mismatch during alignment; using untransformed complex coordinates."
-        )
+        sys.exit(1)
+
+    matrix = rmsd.get_super_transformation_matrix(
+        orient_prot, at_list_orient, raw_prot, at_list_orig
+    )
+    transform.transform_structure(complex_st, matrix)
+    logging.info("Successfully applied PPM 3.0 transformation to the full complex.")
 
     # 1. Extract native ligand (MAE & SDF)
     lig_asl = f"res.ptype '{args.ligand}'"

@@ -40,6 +40,9 @@ process PACKMOL_MEMGEN {
         echo "Packmol bilayer generated successfully."
     elif [ -f "${meta.id}_mem_complex_mempack.pdb" ]; then
         mv "${meta.id}_mem_complex_mempack.pdb" "${meta.id}_mem_complex.pdb"
+    else
+        echo "FATAL: Packmol-memgen failed to generate output PDB."
+        exit 1
     fi
     """
 

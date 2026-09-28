@@ -33,27 +33,23 @@ def main():
     selected = []
     csv_path = Path(args.ranking_csv)
     if csv_path.exists() and csv_path.stat().st_size > 0:
-        try:
-            with open(csv_path, "r", encoding="utf-8", errors="ignore") as f:
-                reader = csv.DictReader(f)
-                for row in reader:
-                    title = (
-                        row.get("Title")
-                        or row.get("title")
-                        or row.get("s_m_title")
-                        or ""
-                    )
-                    title = title.strip()
-                    frame = row.get("Frame") or row.get("frame") or "F1"
-                    frame_id = (
-                        str(frame).replace("F", "").replace("f", "").strip() or "1"
-                    )
-                    if title and not any(s[0] == title for s in selected):
-                        selected.append((title, frame_id))
-                        if len(selected) >= args.top_n:
-                            break
-        except Exception as e:
-            print(f"Warning: Could not parse {args.ranking_csv}: {e}", file=sys.stderr)
+        with open(csv_path, "r", encoding="utf-8", errors="ignore") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                title = (
+                    row.get("Title") or row.get("title") or row.get("s_m_title") or ""
+                )
+                title = title.strip()
+                frame = row.get("Frame") or row.get("frame") or "F1"
+                frame_id = str(frame).replace("F", "").replace("f", "").strip() or "1"
+                if title and not any(s[0] == title for s in selected):
+                    selected.append((title, frame_id))
+                    if len(selected) >= args.top_n:
+                        break
+    else:
+        raise FileNotFoundError(
+            f"FATAL: Ranking CSV {args.ranking_csv} not found or empty."
+        )
 
     include_nat = str(args.include_native).lower() in ["true", "1", "yes"]
     nat_lig = args.native_ligand.strip()
@@ -62,13 +58,7 @@ def main():
         selected.append((nat_lig, "1"))
 
     if not selected:
-        if nat_lig:
-            selected = [(nat_lig, "1")]
-        else:
-            print(
-                "Warning: No hits selected and no native ligand specified.",
-                file=sys.stderr,
-            )
+        raise ValueError("FATAL: No hits selected and no native ligand specified.")
 
     print(f"Selected {len(selected)} hit(s) for MD simulation: {selected}")
     with open(args.out, "w", encoding="utf-8") as f:

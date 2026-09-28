@@ -17,17 +17,17 @@ workflow SCREEN_WF {
 
     PREPARE_RECEPTOR(
         ch_rec,
-        params.model_index ?: 0,
+        params.model_index,
         params.native_ligand,
-        params.keep_cofactors ?: "",
-        params.membrane.toString() == 'true',
-        params.membrane_type ?: "MOM",
-        params.membrane_topo ?: "in",
-        params.membrane_chains ?: "A",
-        params.target_ph ?: 7.4,
-        params.ph_tolerance ?: 1.0,
-        params.minimize_rmsd ?: 0.3,
-        params.cap_termini ?: true
+        params.keep_cofactors,
+        params.membrane,
+        params.membrane_type,
+        params.membrane_topo,
+        params.membrane_chains,
+        params.target_ph,
+        params.ph_tolerance,
+        params.minimize_rmsd,
+        params.cap_termini
     )
 
     ch_rec_pdb = PREPARE_RECEPTOR.out.prepared_pdb
@@ -42,12 +42,12 @@ workflow SCREEN_WF {
     PREPARE_LIGANDS(
         ch_lib,
         ch_ref_mae,
-        params.dock_engine ?: "both",
-        params.batch_size ?: 15,
-        params.ligand_ph ?: 7.4,
-        params.ligand_ph_tol ?: 2.0,
-        params.ligprep_ff ?: 16,
-        params.max_states ?: 32
+        params.dock_engine,
+        params.batch_size,
+        params.ligand_ph,
+        params.ligand_ph_tol,
+        params.ligprep_ff,
+        params.max_states
     )
 
     // Parallel docking (Glide, GNINA, or Both)
@@ -58,21 +58,21 @@ workflow SCREEN_WF {
             ch_rec_mae,
             ch_ref_mae,
             PREPARE_LIGANDS.out.prepared_ligands,
-            params.dock_engine ?: "both",
-            params.exhaustiveness ?: 16,
-            params.cnn_scoring ?: "rescore",
-            params.num_modes ?: 3,
-            params.autobox_add ?: 4.0,
-            params.top_k_frames ?: 3,
-            params.percentile_cutoff ?: 0.50,
-            params.membrane.toString() == 'true'
+            params.dock_engine,
+            params.exhaustiveness,
+            params.cnn_scoring,
+            params.num_modes,
+            params.autobox_add,
+            params.top_k_frames,
+            params.percentile_cutoff,
+            params.membrane
         )
     // Summarize raw poses into consensus ranking CSV tables
     def bench_ligands_str = params.benchmark_ligands ? (params.benchmark_ligands instanceof List ? params.benchmark_ligands.join(" ") : params.benchmark_ligands) : ""
     SUMMARIZE_DOCKING(
         params.project_name,
         DOCK_LIBRARY.out.summary_files,
-        params.native_ligand ?: "",
+        params.native_ligand,
         bench_ligands_str
     )
 }

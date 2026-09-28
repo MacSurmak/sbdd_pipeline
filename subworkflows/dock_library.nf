@@ -136,13 +136,13 @@ workflow DOCK_LIBRARY {
 
     // 1. GLIDE DOCKING & GNINA RESCORE & SCREENING FUNNEL -> PRIME MM-GBSA
     if (dock_engine in ["glide", "both"]) {
-        def inner_box = params.inner_box ?: "10, 10, 10"
-        def outer_box = params.outer_box ?: "26, 26, 26"
-        def ff_dock   = params.glide_forcefield ?: "OPLS4"
-        def prec      = params.glide_precision ?: "SP"
-        def poses_n   = params.poses_per_lig ?: 1
-        def cnn_resc  = params.cnn_model ?: "crossdock_default2018"
-        def prime_job = params.prime_job_type ?: "ENERGY"
+        def inner_box = params.inner_box
+        def outer_box = params.outer_box
+        def ff_dock   = params.glide_forcefield
+        def prec      = params.glide_precision
+        def poses_n   = params.poses_per_lig
+        def cnn_resc  = params.cnn_model
+        def prime_job = params.prime_job_type
 
         ch_grid_in = ch_receptor_mae.join(ch_ref_lig_mae, by: 0)
         GLIDE_GRIDGEN(ch_grid_in, inner_box, outer_box, ff_dock)
@@ -221,7 +221,7 @@ workflow DOCK_LIBRARY {
             .combine(BUILD_FUNNEL_WHITELIST.out.whitelist_csv)
             .map { meta, pv, wl -> [ meta, pv ] }
 
-        def batch_pv = params.mmgbsa_batch_size ?: 25
+        def batch_pv = params.mmgbsa_batch_size
         FILTER_PV(
             ch_filter_in,
             BUILD_FUNNEL_WHITELIST.out.whitelist_csv,

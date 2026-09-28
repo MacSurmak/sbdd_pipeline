@@ -28,18 +28,18 @@ workflow ANALYZE_WF {
 
     TRJCONV(
         ch_trjconv_in,
-        params.pbc_center ?: "Protein",
-        params.pbc_extract ?: "COMPLEX"
+        params.pbc_center,
+        params.pbc_extract
     )
 
     ANALYZE_MD_TRAJ(
         TRJCONV.out.clean_traj,
-        params.mmpbsa_start_ns ?: 20.0,
-        params.mmpbsa_step_frames ?: 40,
-        params.md_temperature ?: 310.15,
-        params.md_salt_conc ?: 0.15,
-        params.membrane.toString() == 'true',
-        params.membrane_thickness ?: 28.0,
-        params.per_residue_decomp.toString() == 'true'
+        params.mmpbsa_start_ns,
+        params.mmpbsa_step_frames,
+        params.md_temperature,
+        params.md_salt_conc,
+        params.membrane,
+        params.membrane_thickness,
+        params.per_residue_decomp
     )
 }
