@@ -19,19 +19,20 @@ process PRIME_MMGBSA {
     def mem_flag = (membrane_enabled.toString() == 'true') ? "-membrane" : ""
     """
     schrodinger prime_mmgbsa \
-        -WAIT \
-        -LOCAL \
         -job_type ${job_type} \
         -csv_output yes \
         -out_type PV \
         -jobname ${meta.id}_mmgbsa \
+        -HOST localhost:${task.cpus} \
+        -NJOBS ${task.cpus} \
         -OVERWRITE \
+        -WAIT \
         ${mem_flag} \
         ${pv_maegz}
 
-    # Normalize output names if Schrödinger generated without -out infix
-    if [ -f "${meta.id}_mmgbsa.csv" ] && [ ! -f "${meta.id}_mmgbsa-out.csv" ]; then
-        mv "${meta.id}_mmgbsa.csv" "${meta.id}_mmgbsa-out.csv"
+    # Normalize CSV name: Prime MM-GBSA writes <jobname>.csv, not <jobname>-out.csv
+    if [ -f "${meta.id}_mmgbsa.csv" ]; then
+        cp "${meta.id}_mmgbsa.csv" "${meta.id}_mmgbsa-out.csv"
     fi
     if [ -f "${meta.id}_mmgbsa.maegz" ] && [ ! -f "${meta.id}_mmgbsa-out.maegz" ]; then
         mv "${meta.id}_mmgbsa.maegz" "${meta.id}_mmgbsa-out.maegz"
