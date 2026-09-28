@@ -119,9 +119,9 @@ workflow PREPARE_RECEPTOR {
     }
 
     // 8. Explicitly Prepare Native Ligand (Protonation/Epik)
-    ch_native_to_prep = ch_final_ref_sdf.map { meta, sdf ->
+    ch_native_to_prep = ch_final_ref_native.map { meta, mae ->
         def new_meta = meta + [id: "${meta.id}_ref_native"]
-        [ new_meta, sdf ]
+        [ new_meta, mae ]
     }
     
     LIGPREP(ch_native_to_prep, target_ph, ph_tol, 16, 1)

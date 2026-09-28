@@ -29,8 +29,14 @@ process LIGPREP {
         -pht ${ph_tolerance} \\
         -s ${max_states} \\
         -bff ${ff_version} \\
-        -g \\
         -WAIT
+
+    if [ ! -f "${meta.id}_prepared.maegz" ]; then
+        echo "FATAL: LigPrep failed to produce ${meta.id}_prepared.maegz!"
+        echo "=== LIGPREP LOG ==="
+        cat *.log 2>/dev/null || true
+        exit 1
+    fi
 
     schrodinger structconvert ${meta.id}_prepared.maegz ${meta.id}_prepared.sdf
     """
