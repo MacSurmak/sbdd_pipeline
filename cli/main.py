@@ -121,7 +121,7 @@ def run_workflow(entrypoint: str, args):
     """Generic dispatcher from CLI flags and configs to Nextflow execution."""
     cwd = Path.cwd()
     configs = load_project_configs(cwd)
-    nf_args = build_nextflow_args(configs, cwd)
+    nf_args = build_nextflow_args(configs, cwd, entrypoint=entrypoint)
 
     # CLI flag overrides
     if getattr(args, "receptor", None):

@@ -31,7 +31,9 @@ def load_project_configs(project_dir: Path) -> Dict[str, Any]:
     return merged
 
 
-def build_nextflow_args(config: Dict[str, Any], project_dir: Path) -> list:
+def build_nextflow_args(
+    config: Dict[str, Any], project_dir: Path, entrypoint: str = "all"
+) -> list:
     """Translates dictionary of parameters into Nextflow CLI arguments with strict validation."""
     args = []
 
@@ -245,14 +247,14 @@ def build_nextflow_args(config: Dict[str, Any], project_dir: Path) -> list:
 
         # Protocol dir
         protocol_dir = project_dir / "configs" / "md_protocol"
-        if not protocol_dir.exists():
+        if not protocol_dir.exists() and entrypoint in ["dynamics"]:
             raise FileNotFoundError(
                 f"MD Protocol directory not found: {protocol_dir}. Did you run 'sbdd md-init'?"
             )
-        args.extend(["--md_protocol", str(protocol_dir.resolve())])
+        if protocol_dir.exists():
+            args.extend(["--md_protocol", str(protocol_dir.resolve())])
 
-        # Selection & Trajectory
-        if "pbc_center" in md_cfg:
+            # Selection & Trajectory        if "pbc_center" in md_cfg:
             args.extend(["--pbc_center", str(md_cfg["pbc_center"])])
         if "pbc_extract" in md_cfg:
             args.extend(["--pbc_extract", str(md_cfg["pbc_extract"])])
