@@ -3,20 +3,44 @@
  * Standalone receptor and ligand preparation workflow with ensemble support
  */
 
+import org.yaml.snakeyaml.Yaml
+
 include { PREPARE_RECEPTOR } from '../subworkflows/prepare_receptor'
-include { PREPARE_LIGANDS  } from '../subworkflows/prepare_ligands'
 
 workflow PREPARE_WF {
-    if (!params.receptor) { error "Parameter --receptor is required." }
+    if (!params.manifest) { error "FATAL: Parameter --manifest is required." }
 
-    ch_rec = Channel.fromPath(file(params.receptor).toAbsolutePath(), checkIfExists: true)
-        .map { rec -> [ [id: params.project_name, project: params.project_name], rec ] }
+    def manifestFile = file(params.manifest)
+    if (!manifestFile.exists()) { error "FATAL: Manifest file not found at ${params.manifest}" }
+    
+    def yaml = new Yaml()
+    def manifestData = yaml.load(manifestFile.text)
+    if (!manifestData.targets) { error "FATAL: 'targets' list missing in manifest.yaml" }
+
+    ch_targets = Channel.fromList(manifestData.targets).map { target ->
+        def target_id = target.id ?: "unknown"
+        def struct_file = target.structure
+        if (!struct_file) error "FATAL: Target ${target_id} has no 'structure' defined."
+        
+        def rec_path = file("${manifestFile.parent}/${struct_file}")
+        if (!rec_path.exists()) {
+            rec_path = file("${launchDir}/${struct_file}")
+        }
+        if (!rec_path.exists()) error "FATAL: Structure file ${struct_file} not found for target ${target_id}."
+
+        def meta = [
+            id: target_id,
+            project: params.project_name,
+            native_ligand: target.native_ligand ?: "",
+            cofactors: target.cofactors ?: [],
+            is_prepared: false
+        ]
+        
+        [ meta, rec_path.toAbsolutePath() ]
+    }
 
     PREPARE_RECEPTOR(
-        ch_rec,
-        params.model_index,
-        params.native_ligand,
-        params.keep_cofactors,
+        ch_targets,
         params.membrane,
         params.membrane_type,
         params.membrane_topo,
@@ -26,21 +50,4 @@ workflow PREPARE_WF {
         params.minimize_rmsd,
         params.cap_termini
     )
-
-    // 2. Prepare Ligands (if provided)
-    if (params.library) {
-        ch_lib = Channel.fromPath(file(params.library).toAbsolutePath(), checkIfExists: true)
-            .map { lib -> [ [id: params.project_name, project: params.project_name], lib ] }
-
-        PREPARE_LIGANDS(
-            ch_lib,
-            PREPARE_RECEPTOR.out.ref_native_mae,
-            params.dock_engine,
-            params.batch_size,
-            params.ligand_ph,
-            params.ligand_ph_tol,
-            params.ligprep_ff,
-            params.max_states
-        )
-    }
 }

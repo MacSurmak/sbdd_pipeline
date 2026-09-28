@@ -27,7 +27,7 @@ def main():
         "--frame_index", type=int, default=1, help="NMR model index (1-based)"
     )
     parser.add_argument(
-        "--ligand", required=True, help="Native ligand residue name (e.g. PKA)"
+        "--ligand", default="", help="Native ligand residue name (e.g. PKA)"
     )
     parser.add_argument(
         "--cofactors", nargs="*", default=[], help="Cofactors to retain with protein"
@@ -96,7 +96,7 @@ def main():
             f"Wrote raw receptor MAE to {args.out_receptor_mae} ({len(rec_atoms)} atoms)"
         )
 
-    if args.out_ligand_mae:
+    if args.out_ligand_mae and args.ligand:
         lig_asl = f"res.ptype '{args.ligand}'"
         lig_atoms = analyze.evaluate_asl(st, lig_asl)
         sdf_out = str(Path(args.out_ligand_mae).with_suffix(".sdf"))

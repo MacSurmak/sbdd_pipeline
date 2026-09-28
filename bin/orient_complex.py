@@ -31,7 +31,7 @@ def main():
         "--oriented_protein", required=True, help="Input PPM-oriented protein PDB"
     )
     parser.add_argument("--complex_mae", required=True, help="Input raw complex MAE")
-    parser.add_argument("--ligand", required=True, help="Native ligand residue name")
+    parser.add_argument("--ligand", default="", help="Native ligand residue name")
     parser.add_argument(
         "--cofactors", nargs="*", default=[], help="Cofactors to retain with receptor"
     )
@@ -67,21 +67,23 @@ def main():
     transform.transform_structure(complex_st, matrix)
     logging.info("Successfully applied PPM 3.0 transformation to the full complex.")
 
-    # 1. Extract native ligand (MAE & SDF)
-    lig_asl = f"res.ptype '{args.ligand}'"
-    lig_atoms = analyze.evaluate_asl(complex_st, lig_asl)
-    sdf_out = str(Path(args.out_ligand).with_suffix(".sdf"))
-    if not lig_atoms:
-        logging.error(
-            f"STRICT MODE: Native ligand '{args.ligand}' not found in complex."
-        )
-        sys.exit(1)
+    # 1. Extract native ligand (MAE & SDF) if provided
+    if args.ligand and args.out_ligand:
+        lig_asl = f"res.ptype '{args.ligand}'"
+        lig_atoms = analyze.evaluate_asl(complex_st, lig_asl)
+        sdf_out = str(Path(args.out_ligand).with_suffix(".sdf"))
+        if not lig_atoms:
+            logging.error(
+                f"STRICT MODE: Native ligand '{args.ligand}' not found in complex."
+            )
+            sys.exit(1)
 
-    lig_st = complex_st.extract(lig_atoms)
-    lig_st.title = args.ligand
-    lig_st.write(args.out_ligand)
-    lig_st.write(sdf_out)
-    logging.info(f"Wrote oriented native ligand to {args.out_ligand} and {sdf_out}")
+        lig_st = complex_st.extract(lig_atoms)
+        lig_st.title = args.ligand
+        lig_st.write(args.out_ligand)
+        lig_st.write(sdf_out)
+        logging.info(f"Wrote oriented native ligand to {args.out_ligand} and {sdf_out}")
+
     # 2. Extract receptor + cofactors (MAE)
     cofactors_asl = (
         " OR ".join([f"res.ptype '{c}'" for c in args.cofactors])

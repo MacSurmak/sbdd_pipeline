@@ -35,11 +35,13 @@ def cmd_init(args):
     console.print(f"[bold green]✓ Project initialized at: {target_dir}[/bold green]")
     console.print(f"[cyan]Configurations created in:[/cyan] {config_dir}")
     console.print("\n[bold]Next steps:[/bold]")
-    console.print("  1. Copy your receptor (.cif or .pdb) into the project directory.")
-    console.print("  2. Copy your ligand library (.sdf) into the project directory.")
-    console.print("  3. Review configs in configs/ (e.g. receptor.yaml, gnina.yaml).")
     console.print(
-        "  4. Run [bold cyan]sbdd prep[/bold cyan] or [bold cyan]sbdd all[/bold cyan]!\n"
+        "  1. Copy your structures (.cif or .pdb) into the project directory."
+    )
+    console.print("  2. Edit configs/manifest.yaml to describe your targets.")
+    console.print("  3. Review configurations (e.g., md.yaml, gnina.yaml).")
+    console.print(
+        "  4. Run [bold cyan]sbdd prep[/bold cyan] to standardize the structures!\n"
     )
 
 
@@ -198,20 +200,7 @@ def main():
     p_mda.add_argument("--ndx", help="Direct path to custom index.ndx file")
     add_common_wf_args(p_mda)
 
-    # 7. all / run
-    p_all = subparsers.add_parser(
-        "all", aliases=["run"], help="Execute end-to-end pipeline"
-    )
-    p_all.add_argument(
-        "--engine", choices=["gnina", "glide", "both"], help="Docking engine choice"
-    )
-    p_all.add_argument("--hits", help="Comma-separated hit titles for MD")
-    p_all.add_argument(
-        "--top-n", dest="top_n", type=int, help="Number of top hits for MD"
-    )
-    add_common_wf_args(p_all)
-
-    # 8. clean
+    # 7. clean
     p_clean = subparsers.add_parser(
         "clean", help="Clean /shared/work scratch directory for current project"
     )
@@ -240,8 +229,6 @@ def main():
         sys.exit(run_workflow("screen", args))
     elif subcmd in ["dynamics", "md", "md-run", "md-setup", "md-analyze"]:
         sys.exit(run_workflow("dynamics", args))
-    elif subcmd in ["all", "run"]:
-        sys.exit(run_workflow("all", args))
 
 
 if __name__ == "__main__":

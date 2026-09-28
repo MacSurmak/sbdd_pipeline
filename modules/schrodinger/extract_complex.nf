@@ -10,8 +10,6 @@ process EXTRACT_COMPLEX {
 
     input:
     tuple val(meta), path(complex_file), val(frame_idx)
-    val(native_ligand)
-    val(cofactors)
     val(membrane_enabled)
 
     output:
@@ -22,13 +20,15 @@ process EXTRACT_COMPLEX {
     tuple val(meta), path("${meta.id}_ref_native.sdf"), emit: ref_native_sdf, optional: true
 
     script:
-    def cof_arg = (cofactors && cofactors != 'null') ? "--cofactors ${cofactors}" : ""
+    def lig_arg = meta.native_ligand ? "--ligand ${meta.native_ligand}" : ""
+    def cof_list = meta.cofactors instanceof List ? meta.cofactors.join(' ') : meta.cofactors
+    def cof_arg = cof_list ? "--cofactors ${cof_list}" : ""
     if (membrane_enabled.toString() == 'true') {
         """
         schrodinger run ${projectDir}/bin/extract_complex.py \\
             --input ${complex_file} \\
             --frame_index ${frame_idx} \\
-            --ligand ${native_ligand} ${cof_arg} \\
+            ${lig_arg} ${cof_arg} \\
             --out_pure_protein ${meta.id}_pure_protein.pdb \\
             --out_complex_mae ${meta.id}_complex.mae
         """
@@ -37,9 +37,9 @@ process EXTRACT_COMPLEX {
         schrodinger run ${projectDir}/bin/extract_complex.py \\
             --input ${complex_file} \\
             --frame_index ${frame_idx} \\
-            --ligand ${native_ligand} ${cof_arg} \\
+            ${lig_arg} ${cof_arg} \\
             --out_receptor_mae ${meta.id}_raw_receptor.mae \\
-            --out_ligand ${meta.id}_ref_native.mae
+            --out_ligand_mae ${meta.id}_ref_native.mae
         """
     }
     stub:

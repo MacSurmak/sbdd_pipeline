@@ -43,54 +43,29 @@ def build_nextflow_args(config: Dict[str, Any], project_dir: Path) -> list:
         )
     args.extend(["--project_name", str(proj_cfg["name"])])
 
-    # 2. Receptor
-    rec_cfg = config.get("receptor", {})
-    if not rec_cfg:
-        raise ValueError(
-            "Config validation failed: 'receptor' section in receptor.yaml is required!"
+    # 2. Manifest
+    manifest_path = project_dir / "configs" / "manifest.yaml"
+    if not manifest_path.exists():
+        manifest_path = project_dir / "manifest.yaml"
+    if not manifest_path.exists():
+        raise FileNotFoundError(
+            f"FATAL: manifest.yaml not found in {project_dir}/configs or {project_dir}"
         )
+    args.extend(["--manifest", str(manifest_path.resolve())])
 
-    rec_file = rec_cfg.get("input_file")
-    if not rec_file:
-        raise ValueError(
-            "Config validation failed: 'receptor.input_file' in receptor.yaml is required!"
-        )
-    rec_path = project_dir / rec_file
-    if not rec_path.exists():
-        rec_path = project_dir / "receptor" / rec_file
-    if not rec_path.exists():
-        raise FileNotFoundError(f"Receptor file not found: {rec_file} in {project_dir}")
-    args.extend(["--receptor", str(rec_path.resolve())])
-
-    if not rec_cfg.get("native_ligand_resname"):
-        raise ValueError(
-            "Config validation failed: 'receptor.native_ligand_resname' in receptor.yaml is required!"
-        )
-    args.extend(["--native_ligand", str(rec_cfg["native_ligand_resname"])])
-
-    if "model_index" in rec_cfg:
-        args.extend(["--model_index", str(rec_cfg["model_index"])])
-    if "total_models" in rec_cfg:
-        args.extend(["--total_models", str(rec_cfg["total_models"])])
-    if rec_cfg.get("keep_cofactors"):
-        cofactors = rec_cfg["keep_cofactors"]
-        args.extend(
-            [
-                "--keep_cofactors",
-                " ".join(cofactors) if isinstance(cofactors, list) else str(cofactors),
-            ]
-        )
-
-    pw_cfg = rec_cfg.get("prep_wizard", {})
-    if pw_cfg:
-        if "cap_termini" in pw_cfg:
-            args.extend(["--cap_termini", "true" if pw_cfg["cap_termini"] else "false"])
-        if "target_ph" in pw_cfg:
-            args.extend(["--target_ph", str(pw_cfg["target_ph"])])
-        if "ph_tolerance" in pw_cfg:
-            args.extend(["--ph_tolerance", str(pw_cfg["ph_tolerance"])])
-        if "minimize_rmsd" in pw_cfg:
-            args.extend(["--minimize_rmsd", str(pw_cfg["minimize_rmsd"])])
+    # Global PrepWizard defaults (can be customized via config in the future)
+    args.extend(
+        [
+            "--cap_termini",
+            "true",
+            "--target_ph",
+            "7.4",
+            "--ph_tolerance",
+            "1.0",
+            "--minimize_rmsd",
+            "0.3",
+        ]
+    )
 
     # 3. Membrane
     mem_cfg = config.get("membrane", {})
@@ -142,18 +117,15 @@ def build_nextflow_args(config: Dict[str, Any], project_dir: Path) -> list:
     else:
         args.extend(["--membrane", "false"])
 
-    # 4. Library / Screening
+    # 4. Library / Screening (Optional, passed globally for docking/screening)
     screen_cfg = config.get("screening", {})
     if screen_cfg.get("library_file"):
         lib_file = screen_cfg["library_file"]
         lib_path = project_dir / lib_file
         if not lib_path.exists():
             lib_path = project_dir / "ligands" / lib_file
-        if not lib_path.exists():
-            raise FileNotFoundError(
-                f"Ligand library file not found: {lib_file} in {project_dir}"
-            )
-        args.extend(["--library", str(lib_path.resolve())])
+        if lib_path.exists():
+            args.extend(["--library", str(lib_path.resolve())])
 
     funnel_cfg = screen_cfg.get("funnel", {}) or config.get("analysis", {}).get(
         "funnel", {}

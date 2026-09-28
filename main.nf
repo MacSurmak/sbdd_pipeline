@@ -53,7 +53,7 @@ workflow {
     } else if (entrypoint == "md-analyze") {
         ANALYZE_WF()
     } else {
-        SBDD_WF()
+        error "Unknown entrypoint: ${entrypoint}"
     }
 }
 
