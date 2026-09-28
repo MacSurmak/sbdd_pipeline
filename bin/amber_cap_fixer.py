@@ -3,8 +3,8 @@
 bin/amber_cap_fixer.py
 Uses official ParmEd API to translate Schrödinger terminal cap nomenclature (ACE/NMA) 
 into AMBER standard nomenclature (ACE/NME) so tLEaP can build topology.
-Strictly preserves all coordinates, geometries, and protonation states.
-Restored to the robust logic of the original SBDD pipeline.
+Strictly preserves all coordinates, geometries, and protonation states from PrepWizard.
+Corrects single backbone amide protons (H, HN, 1H, 2H, H1, H2) to canonical 'H'.
 """
 import argparse
 import sys
@@ -57,11 +57,21 @@ def main():
 
     # 2. Rename residues and atoms
     for res in struct.residues:
-        # Standard amino acid backbone amide hydrogen fix (H1 / HN / 1H -> H)
+        # Standard amino acid backbone amide hydrogen fix
         if res.name not in ["ACE", "NME", "NMA"]:
-            for a in res.atoms:
-                if a.name in ["H1", "HN", "1H"]:
-                    a.name = "H"
+            # Identify backbone amide hydrogen candidates on N
+            amide_h = [
+                a
+                for a in res.atoms
+                if a.name in ["H", "HN", "1H", "2H", "3H", "H1", "H2", "H3"]
+            ]
+            if len(amide_h) == 1:
+                # Internal or ACE-capped residue: strictly single amide 'H' in AMBER
+                amide_h[0].name = "H"
+            elif len(amide_h) == 3:
+                # Uncapped N-terminal ammonium group (-NH3+): strictly H1, H2, H3 in AMBER
+                for idx, a in enumerate(sorted(amide_h, key=lambda x: x.name), start=1):
+                    a.name = f"H{idx}"
 
         # C-Terminal Cap (NMA / NME -> NME: atoms N, H, CH3, H1, H2, H3)
         if res.name in ["NMA", "NME"]:
