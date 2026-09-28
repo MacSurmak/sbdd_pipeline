@@ -2,6 +2,7 @@
  * modules/schrodinger/orient_complex.nf
  * Transforms full complex structure using PPM 3.0 CA superposition matrix.
  * Extracts oriented receptor+cofactors (MAE) and native ligand (MAE & SDF).
+ */
 process ORIENT_COMPLEX {
     tag "${meta.id}"
     label "process_single"
