@@ -68,10 +68,10 @@ workflow RUN_CHUNKED_MD {{
     def num_reps = replicates as int
     ch_state_0 = GMX_EQUILIBRATION.out.equilibrated_state
         .join(ch_system.map{{ m, gro, top, ndx, pos -> [m, top, ndx] }}, by: 0)
-        .flatMap {{ meta, eq_gro, eq_cpt, topol, ndx ->
+        .flatMap {{ meta, eq_gro, eq_cpt, eq_tpr, topol, ndx ->
             (1..num_reps).collect {{ rep_id ->
                 def rep_meta = meta + [rep: rep_id]
-                [ rep_meta, eq_gro, eq_cpt, eq_cpt, topol, ndx ]
+                [ rep_meta, eq_gro, eq_cpt, eq_tpr, topol, ndx ]
             }}
         }}
 

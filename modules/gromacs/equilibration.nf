@@ -18,7 +18,7 @@ process GMX_EQUILIBRATION {
     val(npt_pr_ps)
 
     output:
-    tuple val(meta), path("eq_final.gro"), path("eq_final.cpt"), emit: equilibrated_state
+    tuple val(meta), path("eq_final.gro"), path("eq_final.cpt"), path("eq_final.tpr"), emit: equilibrated_state
     tuple val(meta), path("*.log"), emit: logs
 
     script:
@@ -40,6 +40,7 @@ process GMX_EQUILIBRATION {
     # 2. Sequential stage execution
     prev_gro="${input_gro}"
     prev_cpt=""
+    prev_tpr=""
 
     while read stage; do
         echo "--> Running stage: \$stage"
@@ -60,16 +61,19 @@ process GMX_EQUILIBRATION {
 
         prev_gro="\${stage}.gro"
         prev_cpt="\${stage}.cpt"
+        prev_tpr="\${stage}.tpr"
     done < stages_list.txt
 
     cp "\$prev_gro" eq_final.gro
     cp "\$prev_cpt" eq_final.cpt
+    cp "\$prev_tpr" eq_final.tpr
     """
 
     stub:
     """
     touch eq_final.gro
     touch eq_final.cpt
+    touch eq_final.tpr
     touch eq.log
     """
 }
