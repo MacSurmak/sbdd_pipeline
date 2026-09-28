@@ -20,6 +20,7 @@ include { IMMERS          } from "../modules/membrane/immers"
 include { ORIENT_COMPLEX  } from "../modules/schrodinger/orient_complex"
 include { PREPWIZARD      } from "../modules/schrodinger/prepwizard"
 include { APPLY_MEMBRANE  } from "../modules/membrane/apply_membrane"
+include { LIGPREP         } from "../modules/schrodinger/ligprep"
 
 workflow PREPARE_RECEPTOR {
     take:
@@ -49,8 +50,9 @@ workflow PREPARE_RECEPTOR {
             def total = count_txt.text.trim() as int
             def models = (1..total).toList()
             models.collect { idx ->
+                def suffix = total > 1 ? "_f${idx}" : ""
                 def frame_meta = meta + [
-                    id: "${meta.id}_f${idx}",
+                    id: "${meta.id}${suffix}",
                     frame: idx
                 ]
                 [ frame_meta, rec_file, idx ]
@@ -116,7 +118,25 @@ workflow PREPARE_RECEPTOR {
         ch_final_pdb = PREPWIZARD.out.prepared_pdb
     }
 
-    // 8. Output Mapping & Updating State Contract
+    // 8. Explicitly Prepare Native Ligand (Protonation/Epik)
+    ch_native_to_prep = ch_final_ref_sdf.map { meta, sdf ->
+        def new_meta = meta + [id: "${meta.id}_ref_native"]
+        [ new_meta, sdf ]
+    }
+    
+    LIGPREP(ch_native_to_prep, target_ph, ph_tol, 16, 1)
+    
+    ch_prepped_native_sdf = LIGPREP.out.prepared_sdf.map { meta, sdf ->
+        def orig_meta = meta + [id: meta.id.replaceAll("_ref_native\$", "")]
+        [ orig_meta, sdf ]
+    }
+    
+    ch_prepped_native_mae = LIGPREP.out.prepared_maegz.map { meta, mae ->
+        def orig_meta = meta + [id: meta.id.replaceAll("_ref_native\$", "")]
+        [ orig_meta, mae ]
+    }
+
+    // 9. Output Mapping & Updating State Contract
     ch_fully_prepared_pdb = ch_final_pdb.map { meta, file -> [ meta + [is_prepared: true], file ] }
     ch_fully_prepared_mae = ch_final_mae.map { meta, file -> [ meta + [is_prepared: true], file ] }
 
@@ -126,7 +146,7 @@ workflow PREPARE_RECEPTOR {
     emit:
     prepared_pdb     = ch_all_prepared_pdb
     prepared_mae     = ch_fully_prepared_mae
-    ref_native_mae   = ch_final_ref_native
-    ref_native_sdf   = ch_final_ref_sdf
+    ref_native_mae   = ch_prepped_native_mae
+    ref_native_sdf   = ch_prepped_native_sdf
     membrane_json    = ch_mem_json
 }
