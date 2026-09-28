@@ -34,7 +34,17 @@ ${membrane_topo}
 ${membrane_chains}
 EOF
 
-    /usr/local/bin/immers < immers.inp > immers.log
+    IMMERS_BIN=\$(which immers 2>/dev/null || echo "/opt/containers/bin/immers")
+    if [ ! -x "\$IMMERS_BIN" ]; then
+        IMMERS_BIN="/usr/local/bin/immers"
+    fi
+
+    if [ ! -x "\$IMMERS_BIN" ]; then
+        echo "FATAL: immers binary not found in PATH, /opt/containers/bin, or /usr/local/bin!" >&2
+        exit 1
+    fi
+
+    "\$IMMERS_BIN" < immers.inp > immers.log
 
     pdb_base="\$(basename ${pure_protein_pdb} .pdb)"
     if [ -f "\${pdb_base}out.pdb" ]; then
@@ -42,7 +52,7 @@ EOF
     elif [ -f "protout.pdb" ]; then
         mv "protout.pdb" "${meta.id}_oriented.pdb"
     else
-        echo "ERROR: immers did not produce expected oriented PDB." >&2
+        echo "FATAL: immers did not produce expected oriented PDB." >&2
         cat immers.log >&2
         exit 1
     fi
