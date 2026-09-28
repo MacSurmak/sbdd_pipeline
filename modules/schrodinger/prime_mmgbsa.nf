@@ -18,23 +18,35 @@ process PRIME_MMGBSA {
     script:
     def mem_flag = (membrane_enabled.toString() == 'true') ? "-membrane" : ""
     """
-    schrodinger prime_mmgbsa \\
-        -job_type ${job_type} \\
-        -csv_output yes \\
-        -out_type PV \\
-        -jobname ${meta.id}_mmgbsa \\
-        -HOST localhost:${task.cpus} \\
-        -NJOBS ${task.cpus} \\
-        -OVERWRITE \\
-        -WAIT \\
+    schrodinger prime_mmgbsa \
+        -WAIT \
+        -LOCAL \
+        -job_type ${job_type} \
+        -csv_output yes \
+        -out_type PV \
+        -jobname ${meta.id}_mmgbsa \
+        -OVERWRITE \
         ${mem_flag} \
         ${pv_maegz}
 
+    # Normalize output names if Schrödinger generated without -out infix
+    if [ -f "${meta.id}_mmgbsa.csv" ] && [ ! -f "${meta.id}_mmgbsa-out.csv" ]; then
+        mv "${meta.id}_mmgbsa.csv" "${meta.id}_mmgbsa-out.csv"
+    fi
+    if [ -f "${meta.id}_mmgbsa.maegz" ] && [ ! -f "${meta.id}_mmgbsa-out.maegz" ]; then
+        mv "${meta.id}_mmgbsa.maegz" "${meta.id}_mmgbsa-out.maegz"
+    fi
+
     if [ ! -f "${meta.id}_mmgbsa-out.csv" ] || [ ! -f "${meta.id}_mmgbsa-out.maegz" ]; then
         echo "FATAL: Prime MM-GBSA failed to generate expected outputs."
+        echo "Directory listing:"
+        ls -la
+        if [ -f "${meta.id}_mmgbsa.log" ]; then
+            echo "=== ${meta.id}_mmgbsa.log ==="
+            cat "${meta.id}_mmgbsa.log"
+        fi
         exit 1
-    fi
-    """
+    fi    """
     stub:
     """
     touch ${meta.id}_mmgbsa-out.csv
