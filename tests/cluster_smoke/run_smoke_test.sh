@@ -21,9 +21,7 @@ mkdir -p "${SMOKE_DIR}"
 
 cleanup() {
     EXIT_STATUS=$?
-    if [ $EXIT_STATUS -eq 0 ]; then
-        rm -rf "${SMOKE_DIR}" /shared/work/cluster_smoke_test 2>/dev/null || true
-    else
+    if [ $EXIT_STATUS -ne 0 ]; then
         echo -e "\n[DEBUG] Failure detected. Preserving workdir for inspection: /shared/work/cluster_smoke_test"
     fi
 }
