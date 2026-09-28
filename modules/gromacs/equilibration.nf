@@ -52,11 +52,12 @@ process GMX_EQUILIBRATION {
         gmx grompp -f "\${stage}.mdp" -o "\${stage}.tpr" -c "\$prev_gro" -r "\$prev_gro" -p "${topol_top}" -n "${index_ndx}" \$cpt_arg -maxwarn 2
         
         # Hardware offloading flags (1 thread-MPI rank per GPU + task.cpus OpenMP threads)
-        if [[ "$stage" == *"em"* ]]; then
-            gmx mdrun -deffnm "$stage" -nb gpu -ntmpi 1 -ntomp ${task.cpus}
+        if [[ "\$stage" == *"em"* ]]; then
+            gmx mdrun -deffnm "\$stage" -nb gpu -ntmpi 1 -ntomp ${task.cpus}
         else
-            gmx mdrun -deffnm "$stage" -nb gpu -pme gpu -ntmpi 1 -ntomp ${task.cpus}
+            gmx mdrun -deffnm "\$stage" -nb gpu -pme gpu -ntmpi 1 -ntomp ${task.cpus}
         fi
+
         prev_gro="\${stage}.gro"
         prev_cpt="\${stage}.cpt"
     done < stages_list.txt
