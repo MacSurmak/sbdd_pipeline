@@ -27,21 +27,21 @@ process NDX_POSRE {
 
     # 2. Organic Restraints from Topology
     ORG_LIST=""
-    awk '/^\\[ molecules \\]/{flag=1; next} flag && NF>0 && !/^;/{print \\$1}' ${topol_top} | sort | uniq > mol_types.txt
+    awk '/^\\[ molecules \\]/{flag=1; next} flag && NF>0 && !/^;/{print \$1}' ${topol_top} | sort | uniq > mol_types.txt
 
     for grp in \$(cat mol_types.txt); do
-        if [[ "\\$grp" == "system1" || "\\$grp" == "Protein" || "\\$grp" == "SOL" || "\\$grp" == "Water" ]]; then continue; fi
-        if echo "\\$grp" | grep -qE "^(K\\+|NA\\+|CL-|Cl-|Na\\+|ZN|MG|CA|ZN2|MG2|CA2)\$"; then continue; fi
+        if [[ "\$grp" == "system1" || "\$grp" == "Protein" || "\$grp" == "SOL" || "\$grp" == "Water" ]]; then continue; fi
+        if echo "\$grp" | grep -qE "^(K\\+|NA\\+|CL-|Cl-|Na\\+|ZN|MG|CA|ZN2|MG2|CA2)\$"; then continue; fi
 
-        if grep -q "^\\[ \\$grp \\]" index.ndx; then
-            echo "\\$grp" | gmx trjconv -s ${input_gro} -f ${input_gro} -n index.ndx -o \${grp}.gro
+        if grep -q "^\\[ \$grp \\]" index.ndx; then
+            echo "\$grp" | gmx trjconv -s ${input_gro} -f ${input_gro} -n index.ndx -o \${grp}.gro
             echo "0" | gmx genrestr -f \${grp}.gro -o posre_\${grp}.itp
             sed -i -E "s/1000\\s+1000\\s+1000/POSRES_\${grp}_FC POSRES_\${grp}_FC POSRES_\${grp}_FC/g" posre_\${grp}.itp
-            ORG_LIST="\\$ORG_LIST,\\$grp"
+            ORG_LIST="\$ORG_LIST,\$grp"
         fi
     done
 
-    python3 ${projectDir}/bin/gromacs_ndx_fixer.py --ndx index.ndx --top ${topol_top} --action inject_posre --orgs "\\$ORG_LIST"
+    python3 ${projectDir}/bin/gromacs_ndx_fixer.py --ndx index.ndx --top ${topol_top} --action inject_posre --orgs "\$ORG_LIST"
     """
 
     stub:
