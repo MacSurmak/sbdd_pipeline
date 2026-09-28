@@ -34,7 +34,7 @@ def write_ndx_group(f, name: str, atom_ids: List[int]):
 def ensure_complex_ndx_group(ndx_path: Path):
     """Parses index.ndx and injects [ COMPLEX ] (Protein + UNK) if missing."""
     if not ndx_path.exists():
-        return
+        raise FileNotFoundError(f"FATAL: index.ndx not found at {ndx_path}")
     text = ndx_path.read_text(encoding="utf-8", errors="ignore")
     if "[ COMPLEX ]" in text or "[ complex ]" in text:
         return
@@ -43,8 +43,7 @@ def ensure_complex_ndx_group(ndx_path: Path):
     prot_atoms = groups.get("Protein", [])
     unk_atoms = groups.get("UNK", [])
     if not prot_atoms:
-        logging.warning("'Protein' group not found in index.ndx")
-        return
+        raise ValueError("FATAL: 'Protein' group not found in index.ndx")
 
     complex_atoms = sorted(list(set(prot_atoms + unk_atoms)))
     with open(ndx_path, "a", encoding="utf-8") as f:

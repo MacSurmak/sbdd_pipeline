@@ -40,7 +40,10 @@ workflow DYNAMICS_WF {
     }
 
     // Parse target hit list
-    def fallback_hit = params.native_ligand ?: "UNK"
+    if (!params.md_hits && !params.native_ligand) {
+        error "FATAL: Neither --md_hits nor --native_ligand provided for dynamics workflow!"
+    }
+    def fallback_hit = params.native_ligand
     def hits = params.md_hits ? params.md_hits.split(",").collect { it.trim() } : [fallback_hit]
 
     ch_targets = Channel.fromList(hits)

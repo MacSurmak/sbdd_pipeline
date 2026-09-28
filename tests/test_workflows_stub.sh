@@ -39,6 +39,7 @@ nextflow -log "${TMP_OUT}/nextflow_prep.log" run "${MAIN_NF}" \
     --total_models 2 \
     --project_name test_stub_prep \
     --receptor "${SAMPLE_REC}" \
+    --native_ligand BTN \
     --library "${SAMPLE_LIB}" \
     --outdir "${TMP_OUT}/prep" \
     -profile slurm
@@ -53,6 +54,7 @@ nextflow -log "${TMP_OUT}/nextflow_screen_gnina.log" run "${MAIN_NF}" \
     --dock_engine gnina \
     --project_name test_stub_screen_gnina \
     --receptor "${SAMPLE_REC}" \
+    --native_ligand BTN \
     --library "${SAMPLE_LIB}" \
     --outdir "${TMP_OUT}/screen_gnina" \
     -profile slurm
@@ -67,6 +69,7 @@ nextflow -log "${TMP_OUT}/nextflow_screen_both.log" run "${MAIN_NF}" \
     --dock_engine both \
     --project_name test_stub_screen_both \
     --receptor "${SAMPLE_REC}" \
+    --native_ligand BTN \
     --library "${SAMPLE_LIB}" \
     --outdir "${TMP_OUT}/screen_both" \
     -profile slurm
@@ -80,6 +83,7 @@ nextflow -log "${TMP_OUT}/nextflow_dyn.log" run "${MAIN_NF}" \
     --md_replicates 1 \
     --project_name test_stub_dyn \
     --receptor "${SAMPLE_REC}" \
+    --native_ligand BTN \
     --docked_poses "${SAMPLE_LIB}" \
     --outdir "${TMP_OUT}/dynamics" \
     -profile slurm
@@ -94,6 +98,7 @@ nextflow -log "${TMP_OUT}/nextflow_all.log" run "${MAIN_NF}" \
     --md_replicates 1 \
     --project_name test_stub_all \
     --receptor "${SAMPLE_REC}" \
+    --native_ligand BTN \
     --library "${SAMPLE_LIB}" \
     --outdir "${TMP_OUT}/all" \
     -profile slurm

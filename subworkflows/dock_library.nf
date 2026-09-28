@@ -213,7 +213,7 @@ workflow DOCK_LIBRARY {
             top_k_frames,
             percentile_cutoff,
             bench_ligands,
-            params.native_ligand ?: ""
+            params.native_ligand
         )
 
         // Filter consolidated PV files per frame and split into parallel chunks

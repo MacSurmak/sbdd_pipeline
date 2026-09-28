@@ -19,7 +19,7 @@ process FILTER_PV {
     tuple val(meta), path("${meta.id}_filtered_c*.maegz"), emit: filtered_pv_chunks, optional: true
 
     script:
-    def frame_id = meta.frame ?: 1
+    def frame_id = meta.frame
     """
     schrodinger run ${projectDir}/bin/filter_pv.py \\
         --input ${pv_maegz} \\
