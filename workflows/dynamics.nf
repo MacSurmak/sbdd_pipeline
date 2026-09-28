@@ -21,12 +21,18 @@ workflow DYNAMICS_WF {
     ch_targets = Channel.fromList(manifestData.targets).map { target ->
         def target_id = target.id
         def struct_file = target.structure
-        def lig_file = target.ligand ?: "NO_LIGAND"
+        def lig_file = target.ligand
         
         def rec_path = file("${launchDir}/prepared/${target_id}_prepared.pdb")
         if (!rec_path.exists()) rec_path = file("${manifestFile.parent}/${struct_file}")
         
-        def lig_path = file("${launchDir}/${lig_file}")
+        def lig_path
+        if (lig_file) {
+            lig_path = file("${launchDir}/${lig_file}")
+        } else {
+            lig_path = file("${launchDir}/prepared/${target_id}_ref_native.sdf")
+            if (!lig_path.exists()) lig_path = file("NO_LIGAND")
+        }
         
         def meta = [
             id: target_id,
