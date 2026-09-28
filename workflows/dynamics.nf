@@ -29,7 +29,8 @@ workflow DYNAMICS_WF {
         if (lig_file) {
             lig_path = file("${params.outdir}/${lig_file}")
         } else {
-            lig_path = file("${params.outdir}/prepared/${target_id}_ref_native.sdf")
+            lig_path = file("${params.outdir}/prepared/${target_id}_ref_native_prepared.sdf")
+            if (!lig_path.exists()) lig_path = file("${params.outdir}/prepared/${target_id}_ref_native.sdf")
             if (!lig_path.exists()) lig_path = file("NO_LIGAND")
         }
         

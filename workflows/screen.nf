@@ -22,7 +22,8 @@ workflow SCREEN_WF {
         
         def rec_pdb = file("${params.outdir}/prepared/${target_id}_prepared.pdb")
         def rec_mae = file("${params.outdir}/prepared/${target_id}_prepared.mae")
-        def ref_sdf = file("${params.outdir}/prepared/${target_id}_ref_native.sdf")
+        def ref_sdf = file("${params.outdir}/prepared/${target_id}_ref_native_prepared.sdf")
+        if (!ref_sdf.exists()) ref_sdf = file("${params.outdir}/prepared/${target_id}_ref_native.sdf")
         def ref_mae = file("${params.outdir}/prepared/${target_id}_ref_native.mae")
         
         if (!rec_pdb.exists() || !rec_mae.exists()) {

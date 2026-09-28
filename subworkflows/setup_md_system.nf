@@ -80,8 +80,11 @@ workflow SETUP_MD_SYSTEM {
     ch_merge_in = EXTRACT_MD_SYSTEM.out.extracted
         .map { meta, rec_pdb, json_file, dir -> [ meta, rec_pdb ] }
         .join(ch_ante_grouped, remainder: true)
-        .map { meta, rec_pdb, mol2s, frcmods, pdbs ->
-            [ meta, rec_pdb, pdbs ?: [] ]
+        .map { tuple ->
+            def meta = tuple[0]
+            def rec_pdb = tuple[1]
+            def pdbs = (tuple.size() > 4 && tuple[4] != null) ? tuple[4] : []
+            [ meta, rec_pdb, pdbs ]
         }
 
     MERGE_PDB(ch_merge_in)
@@ -106,8 +109,12 @@ workflow SETUP_MD_SYSTEM {
     // 5. tLEaP topology building
     ch_tleap_in = ch_tleap_pdb
         .join(ch_ante_grouped, remainder: true)
-        .map { meta, pdb, mol2s, frcmods, pdbs ->
-            [ meta, pdb, mol2s ?: [], frcmods ?: [] ]
+        .map { tuple ->
+            def meta = tuple[0]
+            def pdb = tuple[1]
+            def mol2s = (tuple.size() > 2 && tuple[2] != null) ? tuple[2] : []
+            def frcmods = (tuple.size() > 3 && tuple[3] != null) ? tuple[3] : []
+            [ meta, pdb, mol2s, frcmods ]
         }
     
     TLEAP(ch_tleap_in, water_model, is_membrane, wat_pad)
