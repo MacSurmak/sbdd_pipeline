@@ -56,7 +56,7 @@ saltcon=${salt_conc}
     def mpirun_cmd = task.cpus > 1 ? "mpirun --oversubscribe -np ${task.cpus} gmx_MMPBSA MPI" : "gmx_MMPBSA"
     """
     # 1. Total Binding Free Energy via Membrane-aware Poisson-Boltzmann (PB)
-    start_frame=$(python3 ${projectDir}/bin/get_mda_startframe.py --pdb ${ref_pdb} --xtc ${clean_xtc} --start_ns ${start_ns})
+    start_frame=\$(python3 ${projectDir}/bin/get_mda_startframe.py --pdb ${ref_pdb} --xtc ${clean_xtc} --start_ns ${start_ns})
     cat << EOF > mmpbsa_pb.in
 &general
 sys_name="Protein_Ligand",

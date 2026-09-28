@@ -19,17 +19,20 @@ process NDX_POSRE {
 
     python3 ${projectDir}/bin/gromacs_ndx_fixer.py --ndx index.ndx --action add_groups
 
-    # Generate multi-level restraints for Protein and Ligand
-    for fc in "1000:" "250:_250" "50:_50"; do
-        val=${fc%%:*}
-        sfx=${fc##*:}
-        echo "Protein" | gmx genrestr -f ${input_gro} -n index.ndx -o "posre${sfx}.itp" -fc $val $val $val
-        echo "UNK"     | gmx genrestr -f ${input_gro} -n index.ndx -o "posre_lig${sfx}.itp" -fc $val $val $val
-    done
+    # Generate multi-level restraints for Protein and Ligand (1000, 250, 50 kJ/mol/nm^2)
+    echo "Protein" | gmx genrestr -f ${input_gro} -n index.ndx -o posre.itp -fc 1000 1000 1000
+    echo "UNK"     | gmx genrestr -f ${input_gro} -n index.ndx -o posre_lig.itp -fc 1000 1000 1000
+
+    echo "Protein" | gmx genrestr -f ${input_gro} -n index.ndx -o posre_250.itp -fc 250 250 250
+    echo "UNK"     | gmx genrestr -f ${input_gro} -n index.ndx -o posre_lig_250.itp -fc 250 250 250
+
+    echo "Protein" | gmx genrestr -f ${input_gro} -n index.ndx -o posre_50.itp -fc 50 50 50
+    echo "UNK"     | gmx genrestr -f ${input_gro} -n index.ndx -o posre_lig_50.itp -fc 50 50 50
 
     python3 ${projectDir}/bin/gromacs_ndx_fixer.py --ndx index.ndx --action fix_posre
     python3 ${projectDir}/bin/gromacs_ndx_fixer.py --ndx index.ndx --top ${topol_top} --action inject_posre
     """
+
     stub:
     """
     touch index.ndx
@@ -39,4 +42,3 @@ process NDX_POSRE {
     touch posre_50.itp
     """
 }
-
