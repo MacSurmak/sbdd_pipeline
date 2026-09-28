@@ -20,20 +20,23 @@ process NDX_POSRE {
     python3 ${projectDir}/bin/gromacs_ndx_fixer.py --ndx index.ndx --action add_groups
 
     # 1. Protein Restraints (Isolated to guarantee 1-to-N local index)
-    echo "Protein" | gmx trjconv -f ${input_gro} -n index.ndx -o prot.gro
-    echo "System" | gmx genrestr -f prot.gro -o posre_PROT.itp -fc 9999 9999 9999
-    sed -i 's/9999/POSRES_PROT_FC/g' posre_PROT.itp
+    if grep -q "\\[ Protein \\]" index.ndx; then
+        echo "Protein" | gmx trjconv -s ${input_gro} -f ${input_gro} -n index.ndx -o prot.gro
+        echo "0" | gmx genrestr -f prot.gro -o posre_PROT.itp -fc 9999 9999 9999
+        sed -i 's/9999/POSRES_PROT_FC/g' posre_PROT.itp
+    fi
 
     # 2. Organic Restraints
     ORG_LIST=""
     grep -E "^\\[" index.ndx | tr -d '[] ' > groups.txt
     for grp in \$(cat groups.txt); do
         if [[ "\$grp" != "System" && "\$grp" != "Protein" && "\$grp" != "SOL" && "\$grp" != "Water" && "\$grp" != "PROT_LIG" && "\$grp" != "SOL_ION" && "\$grp" != "COMPLEX" ]]; then
-            # Ignore single atom ions
-            NATOMS=\$(echo "\$grp" | gmx make_ndx -f ${input_gro} -n index.ndx -o /dev/null 2>&1 | grep -E "^\s*[0-9]+ \$grp" | awk '{print \$3}')
-            if [ -n "\$NATOMS" ] && [ "\$NATOMS" -gt 1 ]; then
-                echo "\$grp" | gmx trjconv -f ${input_gro} -n index.ndx -o \${grp}.gro
-                echo "System" | gmx genrestr -f \${grp}.gro -o posre_\${grp}.itp -fc 9999 9999 9999
+            # Count atoms in the group robustly using awk
+            NATOMS=\$(awk "/^\\[ \$grp \\]/{flag=1; next} /^\\[/{flag=0} flag {count+=NF} END{print count+0}" index.ndx)
+            
+            if [ "\$NATOMS" -gt 1 ]; then
+                echo "\$grp" | gmx trjconv -s ${input_gro} -f ${input_gro} -n index.ndx -o \${grp}.gro
+                echo "0" | gmx genrestr -f \${grp}.gro -o posre_\${grp}.itp -fc 9999 9999 9999
                 sed -i "s/9999/POSRES_\${grp}_FC/g" posre_\${grp}.itp
                 ORG_LIST="\$ORG_LIST,\$grp"
             fi
