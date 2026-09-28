@@ -20,7 +20,7 @@ process EXTRACT_MD_SYSTEM {
     val(cofactors)
 
     output:
-    tuple val(meta), path("receptor_dry.pdb"), path("organics.json"), path("org_files/*"), emit: extracted
+    tuple val(meta), path("receptor_dry.pdb"), path("organics.json"), path("org_files"), emit: extracted
 
     script:
     def cof_list = cofactors instanceof List ? cofactors.join(' ') : cofactors

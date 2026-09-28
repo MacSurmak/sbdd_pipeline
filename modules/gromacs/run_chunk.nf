@@ -22,10 +22,19 @@ process RUN_MD_CHUNK {
     script:
     """
     echo "=== Worker: \$(hostname) | Chunk: ${chunk_idx} ==="
+    
+    CHUNK_STEPS=\$(awk "BEGIN {printf \\"%.0f\\", (${chunk_ns} * 1000.0) / 0.002}")
     EXTENSION_PS=\$(awk "BEGIN {printf \\"%.0f\\", ${chunk_ns} * 1000.0}")
+    NSTXOUT=\$(awk "BEGIN {steps=\${CHUNK_STEPS}; n=int(steps/10); if (n<1) n=1; if (n>5000) n=5000; print n}")
+    NSTENERGY=\$(awk "BEGIN {steps=\${CHUNK_STEPS}; n=int(steps/10); if (n<1) n=1; if (n>1000) n=1000; print n}")
 
     if [ "${chunk_idx}" -eq 1 ]; then
-        gmx grompp -f md.mdp -o out.tpr -c ${prev_gro} -t ${prev_cpt} -p ${topol_top} -n ${index_ndx} -maxwarn 2
+        sed -e "s/nsteps\\s*=.*/nsteps = \${CHUNK_STEPS}/g" \\
+            -e "s/nstxout-compressed\\s*=.*/nstxout-compressed = \${NSTXOUT}/g" \\
+            -e "s/nstenergy\\s*=.*/nstenergy = \${NSTENERGY}/g" \\
+            md.mdp > md_run.mdp
+
+        gmx grompp -f md_run.mdp -o out.tpr -c ${prev_gro} -t ${prev_cpt} -p ${topol_top} -n ${index_ndx} -maxwarn 2
         gmx mdrun -deffnm md_${chunk_idx} -s out.tpr -nb gpu -pme gpu -ntmpi 1 -ntomp ${task.cpus}
         cp out.tpr sys_ref.tpr
     else

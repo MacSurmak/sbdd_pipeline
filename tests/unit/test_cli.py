@@ -10,8 +10,8 @@ def test_config_loader(tmp_path):
 
     (tmp_path / "test_rec.pdb").write_text("ATOM 1 ...\n")
     (configs_dir / "project.yaml").write_text("project:\n  name: TestProj\n")
-    (configs_dir / "receptor.yaml").write_text(
-        "receptor:\n  input_file: test_rec.pdb\n  native_ligand_resname: PKA\n"
+    (configs_dir / "manifest.yaml").write_text(
+        "targets:\n  - id: test_target\n    structure: test_rec.pdb\n    native_ligand: PKA\n"
     )
     (configs_dir / "gnina.yaml").write_text(
         "gnina:\n  enabled: true\n  exhaustiveness: 8\n  cnn_scoring: rescore\n  batch_size: 10\n"
@@ -29,6 +29,7 @@ def test_config_loader(tmp_path):
     assert "8" in nf_args
     assert "--membrane" in nf_args
     assert "false" in nf_args
+    assert "--manifest" in nf_args
 
 
 def test_sbdd_init(tmp_path):
@@ -41,7 +42,7 @@ def test_sbdd_init(tmp_path):
     assert res.returncode == 0, f"sbdd init failed: {res.stderr}"
 
     assert (target / "configs").exists()
+    assert (target / "configs" / "manifest.yaml").exists()
     assert (target / "configs" / "project.yaml").exists()
     assert (target / "configs" / "gnina.yaml").exists()
-    assert (target / "configs" / "receptor.yaml").exists()
     assert (target / "configs" / "membrane.yaml").exists()

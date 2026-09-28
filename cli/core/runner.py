@@ -50,7 +50,6 @@ def build_unrolled_md_dag(total_chunks: int) -> str:
 workflow RUN_CHUNKED_MD {{
     take:
     ch_system
-    ch_mdp_templates
     ch_md_protocol
     total_ns
     chunk_ns

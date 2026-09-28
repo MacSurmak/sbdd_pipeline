@@ -53,7 +53,11 @@ workflow {
     } else if (entrypoint == "md-analyze") {
         ANALYZE_WF()
     } else {
-        error "Unknown entrypoint: ${entrypoint}"
+        if (entrypoint != null && entrypoint != "null") {
+            log.error "Unknown entrypoint: ${entrypoint}"
+        }
+        helpMessage()
+        exit 1
     }
 }
 
