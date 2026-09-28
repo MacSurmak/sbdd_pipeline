@@ -53,12 +53,15 @@ process PRIME_MMGBSA {
         echo "FATAL: Prime MM-GBSA failed to generate expected outputs."
         echo "Directory listing:"
         ls -la
-        if [ -f "${meta.id}_mmgbsa.log" ]; then
-            echo "=== ${meta.id}_mmgbsa.log ==="
-            cat "${meta.id}_mmgbsa.log"
-        fi
-        exit 1
-    fi    """
+      if [ -f "${meta.id}_mmgbsa.Prime.log" ]; then
+          echo "=== ${meta.id}_mmgbsa.Prime.log ==="
+          cat "${meta.id}_mmgbsa.Prime.log"
+      elif [ -f "${meta.id}_mmgbsa.log" ]; then
+          echo "=== ${meta.id}_mmgbsa.log ==="
+          cat "${meta.id}_mmgbsa.log"
+      fi
+      exit 1
+  fi    fi    """
     stub:
     """
     touch ${meta.id}_mmgbsa-out.csv

@@ -74,6 +74,10 @@ def main():
                 writer.append(p)
         print(f"Wrote single filtered PV to {args.output}")
 
+    # Ensure receptor is explicitly flagged as glide receptor for Prime
+    if receptor:
+        receptor.property["b_glide_receptor"] = 1
+
     # 2. Chunked output if out_prefix specified
     if args.out_prefix:
         if not whitelisted_poses:
