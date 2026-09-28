@@ -57,10 +57,5 @@ workflow {
         helpMessage()
         exit 1
     }
-}            log.error "Unknown entrypoint: ${entrypoint}"
-        }
-        helpMessage()
-        exit 1
-    }
 }
 
