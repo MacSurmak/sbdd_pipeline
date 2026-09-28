@@ -44,11 +44,22 @@ process RUN_MD_CHUNK {
         cp out.tpr sys_ref.tpr
     else
         gmx convert-tpr -s ${prev_tpr} -extend \${EXTENSION_PS} -o out.tpr
-        gmx mdrun -deffnm md_${chunk_idx} -s out.tpr -cpi ${prev_cpt} -noappend -nb gpu -pme gpu -ntmpi 1 -ntomp ${task.cpus}
-        cp ${prev_tpr} sys_ref.tpr
+        gmx mdrun -deffnm md_${chunk_idx} -s out.tpr -cpi ${prev_cpt} -nb gpu -pme gpu -ntmpi 1 -ntomp ${task.cpus}
+        cp out.tpr sys_ref.tpr
     fi
-    mv md_${chunk_idx}.gro out.gro
-    mv md_${chunk_idx}.cpt out.cpt
+
+    if [ -f md_${chunk_idx}.part*.gro ]; then
+        mv md_${chunk_idx}.part*.gro md_${chunk_idx}.gro
+    fi
+    if [ -f md_${chunk_idx}.part*.cpt ]; then
+        mv md_${chunk_idx}.part*.cpt md_${chunk_idx}.cpt
+    fi
+    if [ -f md_${chunk_idx}.part*.xtc ]; then
+        mv md_${chunk_idx}.part*.xtc md_${chunk_idx}.xtc
+    fi
+
+    cp md_${chunk_idx}.gro out.gro
+    cp md_${chunk_idx}.cpt out.cpt
     """
 
     stub:
