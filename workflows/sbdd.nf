@@ -90,7 +90,17 @@ workflow SBDD_WF {
         )
 
         // 6. Downstream MD simulation
-        if (params.run_md) {
+        if (params.run_md.toString() == 'true') {
+            if (!params.nvt_short_ps || !params.nvt_long_ps || !params.npt_berendsen_ps || !params.npt_pr_ps) {
+                error "FATAL: MD equilibration parameters (--nvt_short_ps, --nvt_long_ps, --npt_berendsen_ps, --npt_pr_ps) are not set! Check md.yaml."
+            }
+            if (!params.md_total_ns || !params.md_chunk_ns || !params.md_temperature || !params.md_replicates) {
+                error "FATAL: MD production parameters (--md_total_ns, --md_chunk_ns, --md_temperature, --md_replicates) are not set! Check md.yaml."
+            }
+            if (!params.water_model || !params.box_padding || !params.md_salt_conc) {
+                error "FATAL: MD system build parameters (--water_model, --box_padding, --md_salt_conc) are not set! Check md.yaml."
+            }
+
             ch_hits = SELECT_HITS.out.hits_file
                 .flatMap { meta, file -> file.readLines() }
                 .map { line -> line.trim() }
@@ -118,14 +128,14 @@ workflow SBDD_WF {
             SETUP_MD_SYSTEM(
                 ch_md_targets,
                 params.membrane.toString() == 'true',
-                params.upper_lipids ?: "POPC:POPE:CHL1",
-                params.upper_ratio ?: "5:4:1",
-                params.lower_lipids ?: "POPC:POPE:POPS:CHL1",
-                params.lower_ratio ?: "4:4:1:1",
-                params.lipid_padding ?: 10.0,
-                params.box_padding ?: 15.0,
-                params.md_salt_conc ?: 0.15,
-                params.water_model ?: "opc"
+                params.upper_lipids,
+                params.upper_ratio,
+                params.lower_lipids,
+                params.lower_ratio,
+                params.lipid_padding,
+                params.box_padding,
+                params.md_salt_conc,
+                params.water_model
             )
 
         ch_mdp_templates = Channel.fromPath("${projectDir}/assets/mdp/*.mdp", checkIfExists: true).collect()
@@ -134,15 +144,15 @@ workflow SBDD_WF {
             SETUP_MD_SYSTEM.out.system_ready,
             ch_mdp_templates,
             params.membrane.toString() == 'true',
-            params.md_temperature ?: 310.15,
-            params.md_total_ns ?: 60,
-            params.md_chunk_ns ?: 10,
-            params.md_replicates ? (params.md_replicates as int) : 3,
-            params.queue ?: "main",
-            params.nvt_short_ps ?: 50,
-            params.nvt_long_ps ?: 500,
-            params.npt_berendsen_ps ?: 1000,
-            params.npt_pr_ps ?: 1000
+            params.md_temperature,
+            params.md_total_ns,
+            params.md_chunk_ns,
+            params.md_replicates as int,
+            params.queue,
+            params.nvt_short_ps,
+            params.nvt_long_ps,
+            params.npt_berendsen_ps,
+            params.npt_pr_ps
         )
 
         // 7. Analysis (PBC fixing, RMSD, MMPBSA) strictly on completed raw trajectories

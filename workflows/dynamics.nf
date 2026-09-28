@@ -66,19 +66,26 @@ workflow DYNAMICS_WF {
         ch_mdp_templates = Channel.fromPath("${projectDir}/assets/mdp/*.mdp", checkIfExists: true).collect()
 
     // 2. Equilibration & dynamic atomic production MD
+    if (!params.nvt_short_ps || !params.nvt_long_ps || !params.npt_berendsen_ps || !params.npt_pr_ps) {
+        error "FATAL: MD equilibration parameters (--nvt_short_ps, --nvt_long_ps, --npt_berendsen_ps, --npt_pr_ps) are not set! Check md.yaml."
+    }
+    if (!params.md_total_ns || !params.md_chunk_ns || !params.md_temperature || !params.md_replicates) {
+        error "FATAL: MD production parameters (--md_total_ns, --md_chunk_ns, --md_temperature, --md_replicates) are not set! Check md.yaml."
+    }
+
     RUN_CHUNKED_MD(
         SETUP_MD_SYSTEM.out.system_ready,
         ch_mdp_templates,
         params.membrane.toString() == 'true',
-        params.md_temperature ?: 310.15,
-        params.md_total_ns ?: 60,
-        params.md_chunk_ns ?: 10,
-        params.md_replicates ? (params.md_replicates as int) : 3,
-        params.queue ?: "main",
-        params.nvt_short_ps ?: 50,
-        params.nvt_long_ps ?: 500,
-        params.npt_berendsen_ps ?: 1000,
-        params.npt_pr_ps ?: 1000
+        params.md_temperature,
+        params.md_total_ns,
+        params.md_chunk_ns,
+        params.md_replicates as int,
+        params.queue,
+        params.nvt_short_ps,
+        params.nvt_long_ps,
+        params.npt_berendsen_ps,
+        params.npt_pr_ps
     )    // Note: Analysis is intentionally decoupled from MD generation.
     // Use `sbdd md-analyze` to process the RAW concatenated trajectories.
 }

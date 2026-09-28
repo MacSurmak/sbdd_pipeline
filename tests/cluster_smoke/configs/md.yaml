@@ -1,8 +1,10 @@
 md_simulation:
   enabled: true
+  pbc_center: "Protein"
+  pbc_extract: "COMPLEX"
   system_build:
     water_model: "opc"
-    box_padding: 8.0                 # Крошечный бокс = мало воды = сверхбыстрая MD
+    box_padding: 8.0
     neutralize: true
     salt_conc: 0.15
   equilibration:
@@ -12,9 +14,9 @@ md_simulation:
     npt_pr_ps: 2
   production:
     temperature: 310.15
-    total_time_ns: 0.008             # 8 пикосекунд (очень быстро)
-    chunk_size_ns: 0.004             # По 4пс на чанк (итого 2 чанка)
-    replicates: 2                    # 2 независимые реплики
+    total_time_ns: 0.008
+    chunk_size_ns: 0.004
+    replicates: 2
   selection:
     mode: "top_n"
     top_n: 1
