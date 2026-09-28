@@ -22,7 +22,7 @@ workflow PREPARE_WF {
         
         def rec_path = file("${manifestFile.parent}/${struct_file}")
         if (!rec_path.exists()) {
-            rec_path = file("${launchDir}/${struct_file}")
+            rec_path = file("${params.outdir}/${struct_file}")
         }
         if (!rec_path.exists()) error "FATAL: Structure file ${struct_file} not found for target ${target_id}."
 

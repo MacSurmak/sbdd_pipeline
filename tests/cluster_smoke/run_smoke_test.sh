@@ -36,6 +36,9 @@ cd "${SMOKE_DIR}"
 # Initialize project structure
 sbdd init . > /dev/null
 
+# Disable membrane for fast testing
+sed -i 's/enabled: true/enabled: false/g' configs/membrane.yaml
+
 # Download 1STP and extract exactly one frame
 python3 -c '
 import urllib.request

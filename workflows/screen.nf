@@ -20,10 +20,10 @@ workflow SCREEN_WF {
     ch_targets = Channel.fromList(manifestData.targets).map { target ->
         def target_id = target.id
         
-        def rec_pdb = file("${launchDir}/prepared/${target_id}_prepared.pdb")
-        def rec_mae = file("${launchDir}/prepared/${target_id}_prepared.mae")
-        def ref_sdf = file("${launchDir}/prepared/${target_id}_ref_native.sdf")
-        def ref_mae = file("${launchDir}/prepared/${target_id}_ref_native.mae")
+        def rec_pdb = file("${params.outdir}/prepared/${target_id}_prepared.pdb")
+        def rec_mae = file("${params.outdir}/prepared/${target_id}_prepared.mae")
+        def ref_sdf = file("${params.outdir}/prepared/${target_id}_ref_native.sdf")
+        def ref_mae = file("${params.outdir}/prepared/${target_id}_ref_native.mae")
         
         if (!rec_pdb.exists() || !rec_mae.exists()) {
             error "FATAL: Prepared structures not found for target ${target_id} in prepared/ directory. Did you run 'sbdd prep'?"

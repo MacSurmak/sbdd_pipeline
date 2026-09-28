@@ -21,14 +21,15 @@ workflow DYNAMICS_WF {
         def struct_file = target.structure
         def lig_file = target.ligand
         
-        def rec_path = file("${launchDir}/prepared/${target_id}_prepared.pdb")
+        def rec_path = file("${params.outdir}/prepared/${target_id}_prepared.pdb")
         if (!rec_path.exists()) rec_path = file("${manifestFile.parent}/${struct_file}")
+        if (!rec_path.exists()) rec_path = file("${params.outdir}/${struct_file}")
         
         def lig_path
         if (lig_file) {
-            lig_path = file("${launchDir}/${lig_file}")
+            lig_path = file("${params.outdir}/${lig_file}")
         } else {
-            lig_path = file("${launchDir}/prepared/${target_id}_ref_native.sdf")
+            lig_path = file("${params.outdir}/prepared/${target_id}_ref_native.sdf")
             if (!lig_path.exists()) lig_path = file("NO_LIGAND")
         }
         
