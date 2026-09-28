@@ -18,12 +18,14 @@ process PRIME_MMGBSA {
     script:
     def mem_flag = (membrane_enabled.toString() == 'true') ? "-membrane" : ""
     """
-    # Dynamically locate host libtirpc.so.3 and bind it into container
-    TIRPC_HOST=\$(ls /lib/x86_64-linux-gnu/libtirpc.so.3 /usr/lib/x86_64-linux-gnu/libtirpc.so.3 /usr/lib/libtirpc.so.3 2>/dev/null | head -n 1)
-    if [ -n "\$TIRPC_HOST" ]; then
-        export APPTAINER_BINDPATH="\${TIRPC_HOST}:/usr/lib/x86_64-linux-gnu/libtirpc.so.3,\${TIRPC_HOST}:/lib/x86_64-linux-gnu/libtirpc.so.3\${APPTAINER_BINDPATH:+,\$APPTAINER_BINDPATH}"
-        export SINGULARITY_BINDPATH="\${TIRPC_HOST}:/usr/lib/x86_64-linux-gnu/libtirpc.so.3,\${TIRPC_HOST}:/lib/x86_64-linux-gnu/libtirpc.so.3\${SINGULARITY_BINDPATH:+,\$SINGULARITY_BINDPATH}"
-    fi
+    # Dynamically bind full host RPC, keyutils and Kerberos library chain into container
+    for lib in libtirpc.so.3 libkeyutils.so.1 libgssapi_krb5.so.2 libkrb5.so.3 libk5crypto.so.3 libcom_err.so.2 libkrb5support.so.0; do
+        LIB_PATH=\$(ls /lib/x86_64-linux-gnu/\$lib /usr/lib/x86_64-linux-gnu/\$lib /usr/lib/\$lib 2>/dev/null | head -n 1)
+        if [ -n "\$LIB_PATH" ]; then
+            export APPTAINER_BINDPATH="\${LIB_PATH}:/usr/lib/x86_64-linux-gnu/\$lib,\${LIB_PATH}:/lib/x86_64-linux-gnu/\$lib\${APPTAINER_BINDPATH:+,\$APPTAINER_BINDPATH}"
+            export SINGULARITY_BINDPATH="\${LIB_PATH}:/usr/lib/x86_64-linux-gnu/\$lib,\${LIB_PATH}:/lib/x86_64-linux-gnu/\$lib\${SINGULARITY_BINDPATH:+,\$SINGULARITY_BINDPATH}"
+        fi
+    done
 
     schrodinger prime_mmgbsa \
         -job_type ${job_type} \
