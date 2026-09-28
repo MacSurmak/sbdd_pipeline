@@ -15,9 +15,13 @@ process TRJCAT {
 
     script:
     """
-    # Sort files naturally by chunk index
-    ls -v md_*.xtc > chunks.list
-    gmx trjcat -f \$(cat chunks.list) -cat -o concatenated.xtc
+    count=\$(ls -v md_*.xtc 2>/dev/null | wc -l)
+    if [ "\$count" -eq 1 ]; then
+        cp md_*.xtc concatenated.xtc
+    else
+        ls -v md_*.xtc > chunks.list
+        gmx trjcat -f \$(cat chunks.list) -cat -o concatenated.xtc
+    fi
     """
 
     stub:

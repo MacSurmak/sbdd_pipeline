@@ -30,13 +30,17 @@ process RUN_MD_CHUNK {
     
     CHUNK_STEPS=\$(awk "BEGIN {printf \\"%.0f\\", (${chunk_ns} * 1000.0) / 0.002}")
     EXTENSION_PS=\$(awk "BEGIN {printf \\"%.0f\\", ${chunk_ns} * 1000.0}")
+    NSTXOUT=\$(awk "BEGIN {steps=\${CHUNK_STEPS}; n=int(steps/10); if (n<1) n=1; if (n>5000) n=5000; print n}")
+    NSTENERGY=\$(awk "BEGIN {steps=\${CHUNK_STEPS}; n=int(steps/10); if (n<1) n=1; if (n>1000) n=1000; print n}")
 
     if [ "${chunk_idx}" -eq 1 ]; then
-        cat md.mdp | sed -e "s/{NSTEPS}/\${CHUNK_STEPS}/g" \
-                         -e "s/{TEMP}/${temperature}/g" \
-                         -e "s/{TC_GRPS}/PROT_LIG SOL_ION/g" \
-                         -e "s/{PCOUPL_TYPE}/${pcoupl_type}/g" \
-                         -e "s/{REF_P}/${ref_p}/g" \
+        cat md.mdp | sed -e "s/{NSTEPS}/\${CHUNK_STEPS}/g" \\
+                         -e "s/{NSTXOUT}/\${NSTXOUT}/g" \\
+                         -e "s/{NSTENERGY}/\${NSTENERGY}/g" \\
+                         -e "s/{TEMP}/${temperature}/g" \\
+                         -e "s/{TC_GRPS}/PROT_LIG SOL_ION/g" \\
+                         -e "s/{PCOUPL_TYPE}/${pcoupl_type}/g" \\
+                         -e "s/{REF_P}/${ref_p}/g" \\
                          -e "s/{COMPRESSIBILITY}/${comp}/g" > md_run.mdp
 
         gmx grompp -f md_run.mdp -o out.tpr -c ${prev_gro} -t ${prev_cpt} -p ${topol_top} -n ${index_ndx} -maxwarn 2

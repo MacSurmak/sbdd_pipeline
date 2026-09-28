@@ -3,10 +3,10 @@ integrator               = md
 dt                       = 0.002
 nsteps                   = {NSTEPS}
 
-nstxout-compressed       = 5000
-nstcalcenergy            = 100
-nstenergy                = 1000
-nstlog                   = 1000
+nstxout-compressed       = {NSTXOUT}
+nstcalcenergy            = {NSTENERGY}
+nstenergy                = {NSTENERGY}
+nstlog                   = {NSTENERGY}
 
 cutoff-scheme            = Verlet
 nstlist                  = 20
