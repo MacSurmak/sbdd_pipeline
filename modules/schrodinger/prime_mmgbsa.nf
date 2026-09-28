@@ -37,7 +37,6 @@ process PRIME_MMGBSA {
     if [ -f "${meta.id}_mmgbsa.maegz" ] && [ ! -f "${meta.id}_mmgbsa-out.maegz" ]; then
         mv "${meta.id}_mmgbsa.maegz" "${meta.id}_mmgbsa-out.maegz"
     fi
-
     if [ ! -f "${meta.id}_mmgbsa-out.csv" ] || [ ! -f "${meta.id}_mmgbsa-out.maegz" ]; then
         echo "FATAL: Prime MM-GBSA failed to generate expected outputs."
         echo "Directory listing:"
@@ -50,7 +49,10 @@ process PRIME_MMGBSA {
             cat "${meta.id}_mmgbsa.log"
         fi
         exit 1
-    fi    stub:
+    fi
+    """
+
+    stub:
     """
     touch ${meta.id}_mmgbsa-out.csv
     touch ${meta.id}_mmgbsa-out.maegz
