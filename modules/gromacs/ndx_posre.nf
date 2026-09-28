@@ -26,15 +26,13 @@ process NDX_POSRE {
         sed -i 's/9999/POSRES_PROT_FC/g' posre_PROT.itp
     fi
 
-    # 2. Organic Restraints
+    # 2. Organic Restraints from Topology
     ORG_LIST=""
-    grep -E "^\\[" index.ndx | tr -d '[] ' > groups.txt
-    for grp in \$(cat groups.txt); do
-        if [[ "\$grp" != "System" && "\$grp" != "Protein" && "\$grp" != "SOL" && "\$grp" != "Water" && "\$grp" != "PROT_LIG" && "\$grp" != "SOL_ION" && "\$grp" != "COMPLEX" ]]; then
-            # Count atoms in the group robustly using awk
-            NATOMS=\$(awk "/^\\[ \$grp \\]/{flag=1; next} /^\\[/{flag=0} flag {count+=NF} END{print count+0}" index.ndx)
-            
-            if [ "\$NATOMS" -gt 1 ]; then
+    awk '/^\\[ molecules \\]/{flag=1; next} flag && NF>0 && !/^;/{print \$1}' ${topol_top} | sort | uniq > mol_types.txt
+
+    for grp in \$(cat mol_types.txt); do
+        if [[ "\$grp" != "system1" && "\$grp" != "Protein" && "\$grp" != "SOL" && "\$grp" != "Water" && ! "\$grp" =~ ^(K\\+|NA\\+|CL-|Cl-|Na\\+|ZN|MG|CA|ZN2|MG2|CA2)$ ]]; then
+            if grep -q "^\\[ \$grp \\]" index.ndx; then
                 echo "\$grp" | gmx trjconv -s ${input_gro} -f ${input_gro} -n index.ndx -o \${grp}.gro
                 echo "0" | gmx genrestr -f \${grp}.gro -o posre_\${grp}.itp -fc 9999 9999 9999
                 sed -i "s/9999/POSRES_\${grp}_FC/g" posre_\${grp}.itp
@@ -43,7 +41,7 @@ process NDX_POSRE {
         fi
     done
 
-    python3 ${projectDir}/bin/gromacs_ndx_fixer.py --top ${topol_top} --action inject_posre --orgs "\$ORG_LIST"
+    python3 ${projectDir}/bin/gromacs_ndx_fixer.py --ndx index.ndx --top ${topol_top} --action inject_posre --orgs "\$ORG_LIST"
     """
 
     stub:
