@@ -32,22 +32,21 @@ process RUN_MD_CHUNK {
     EXTENSION_PS=\$(awk "BEGIN {printf \\"%.0f\\", ${chunk_ns} * 1000.0}")
 
     if [ "${chunk_idx}" -eq 1 ]; then
-        cat md.mdp | sed -e "s/{NSTEPS}/\${CHUNK_STEPS}/g" \\
-                         -e "s/{TEMP}/${temperature}/g" \\
-                         -e "s/{TC_GRPS}/PROT_LIG SOL_ION/g" \\
-                         -e "s/{PCOUPL_TYPE}/${pcoupl_type}/g" \\
-                         -e "s/{REF_P}/${ref_p}/g" \\
+        cat md.mdp | sed -e "s/{NSTEPS}/\${CHUNK_STEPS}/g" \
+                         -e "s/{TEMP}/${temperature}/g" \
+                         -e "s/{TC_GRPS}/PROT_LIG SOL_ION/g" \
+                         -e "s/{PCOUPL_TYPE}/${pcoupl_type}/g" \
+                         -e "s/{REF_P}/${ref_p}/g" \
                          -e "s/{COMPRESSIBILITY}/${comp}/g" > md_run.mdp
 
         gmx grompp -f md_run.mdp -o out.tpr -c ${prev_gro} -t ${prev_cpt} -p ${topol_top} -n ${index_ndx} -maxwarn 2
-        gmx mdrun -deffnm md_${chunk_idx} -s out.tpr -nb gpu -pme gpu -update gpu -ntomp ${task.cpus}
+        gmx mdrun -deffnm md_${chunk_idx} -s out.tpr -nb gpu -pme gpu -update gpu -ntmpi 1 -ntomp ${task.cpus}
         cp out.tpr sys_ref.tpr
     else
         gmx convert-tpr -s ${prev_tpr} -extend \${EXTENSION_PS} -o out.tpr
-        gmx mdrun -deffnm md_${chunk_idx} -s out.tpr -cpi ${prev_cpt} -noappend -nb gpu -pme gpu -update gpu -ntomp ${task.cpus}
+        gmx mdrun -deffnm md_${chunk_idx} -s out.tpr -cpi ${prev_cpt} -noappend -nb gpu -pme gpu -update gpu -ntmpi 1 -ntomp ${task.cpus}
         cp ${prev_tpr} sys_ref.tpr
     fi
-
     mv md_${chunk_idx}.gro out.gro
     mv md_${chunk_idx}.cpt out.cpt
     """
