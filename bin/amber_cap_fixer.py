@@ -1,141 +1,225 @@
 #!/usr/bin/env python3
 """
 bin/amber_cap_fixer.py
-Uses official ParmEd API to translate Schrödinger terminal cap nomenclature (ACE/NMA) 
-into AMBER standard nomenclature (ACE/NME) so tLEaP can build topology.
-Strictly preserves all coordinates, geometries, and protonation states from PrepWizard.
-Corrects single backbone amide protons (H, HN, 1H, 2H, H1, H2) to canonical 'H'.
+Clean, deterministic PDB renamer for AMBER/tLEaP compatibility.
+Translates caps (ACE/NME), protonation states (ASH/GLH/LYN/HID/HIE/HIP), and disulfides (CYX).
+STRICTLY prevents chain fragmentation: NEVER writes TER cards between consecutive residues in the same chain.
 """
+
 import argparse
+import math
 import sys
+from pathlib import Path
+
+
+def format_atom_name(name: str) -> str:
+    name = name.strip()
+    if len(name) >= 4:
+        return f"{name[:4]:4s}"
+    else:
+        return f" {name:<3s}"
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Standardize terminal caps for AMBER")
+    parser = argparse.ArgumentParser(
+        description="Standardize PDB for AMBER without chain fragmentation"
+    )
     parser.add_argument("input_pdb", help="Input PDB file")
-    parser.add_argument("output_pdb", help="Output PDB file")
+    parser.add_argument("output_pdb", help="Output clean PDB file")
     parser.add_argument(
         "--bonds_out", default=None, help="Output tLEaP bond commands file"
     )
     args = parser.parse_args()
 
-    try:
-        import parmed as pmd
-        import numpy as np
-    except ImportError:
-        print(
-            "ERROR: ParmEd and numpy are required but not installed.", file=sys.stderr
-        )
-        sys.exit(1)
+    lines = Path(args.input_pdb).read_text(errors="ignore").splitlines()
 
-    struct = pmd.load_file(args.input_pdb)
+    # 1. Parse atoms into structured records, grouped by residue
+    residues = []
+    current_key = None
+    current_res = None
 
-    # 1. Identify Disulfide Bridges (SG-SG distance < 2.5 A)
-    bonds = []
-    cyx_res = set()
-    cys_residues = [r for r in struct.residues if r.name in ["CYS", "CYX"]]
-    for i, res1 in enumerate(cys_residues):
-        sg1 = next((a for a in res1.atoms if a.name == "SG"), None)
-        if not sg1:
+    for line in lines:
+        if not (line.startswith("ATOM") or line.startswith("HETATM")):
             continue
-        for res2 in cys_residues[i + 1 :]:
-            sg2 = next((a for a in res2.atoms if a.name == "SG"), None)
-            if not sg2:
-                continue
-            dist = np.linalg.norm(
-                np.array([sg1.xx, sg1.xy, sg1.xz]) - np.array([sg2.xx, sg2.xy, sg2.xz])
+
+        atom_num = int(line[6:11].strip())
+        atom_name = line[12:16].strip()
+        alt_loc = line[16]
+        res_name = line[17:20].strip()
+        chain_id = line[21]
+        res_seq = int(line[22:26].strip())
+        i_code = line[26]
+        x = float(line[30:38])
+        y = float(line[38:46])
+        z = float(line[46:54])
+
+        res_key = (chain_id, res_seq, i_code)
+        if res_key != current_key:
+            current_key = res_key
+            current_res = {
+                "chain_id": chain_id,
+                "res_seq": res_seq,
+                "i_code": i_code,
+                "res_name": res_name,
+                "atoms": [],
+            }
+            residues.append(current_res)
+
+        current_res["atoms"].append(
+            {
+                "atom_num": atom_num,
+                "atom_name": atom_name,
+                "line": line,
+                "x": x,
+                "y": y,
+                "z": z,
+            }
+        )
+
+    # 2. Identify Disulfide Bridges (SG-SG distance < 2.5 A)
+    bonds = []
+    cyx_indices = set()
+    cys_candidates = []
+
+    for idx, r in enumerate(residues):
+        if r["res_name"] in ["CYS", "CYX"]:
+            sg = next((a for a in r["atoms"] if a["atom_name"] == "SG"), None)
+            if sg:
+                cys_candidates.append((idx, r, sg))
+
+    for i in range(len(cys_candidates)):
+        idx1, r1, sg1 = cys_candidates[i]
+        for j in range(i + 1, len(cys_candidates)):
+            idx2, r2, sg2 = cys_candidates[j]
+            dist = math.sqrt(
+                (sg1["x"] - sg2["x"]) ** 2
+                + (sg1["y"] - sg2["y"]) ** 2
+                + (sg1["z"] - sg2["z"]) ** 2
             )
             if dist < 2.5:
-                cyx_res.add(res1)
-                cyx_res.add(res2)
-                bonds.append(f"bond complex.{res1.number}.SG complex.{res2.number}.SG")
+                cyx_indices.add(idx1)
+                cyx_indices.add(idx2)
+                bonds.append(
+                    f"bond complex.{r1['res_seq']}.SG complex.{r2['res_seq']}.SG"
+                )
 
     if args.bonds_out:
-        with open(args.bonds_out, "w") as f_bonds:
+        with open(args.bonds_out, "w") as fb:
             for b in bonds:
-                f_bonds.write(f"{b}\n")
+                fb.write(f"{b}\n")
 
-    # 2. Rename residues and atoms
-    for res in struct.residues:
-        # Standard amino acid backbone amide hydrogen fix
-        if res.name not in ["ACE", "NME", "NMA"]:
-            # Identify backbone amide hydrogen candidates on N
+    # 3. Apply chemical renaming rules
+    for idx, r in enumerate(residues):
+        res_name = r["res_name"]
+        atom_names = [a["atom_name"] for a in r["atoms"]]
+
+        # Disulfide Cysteine
+        if idx in cyx_indices:
+            r["res_name"] = "CYX"
+            r["atoms"] = [a for a in r["atoms"] if a["atom_name"] not in ["HG", "2HG"]]
+
+        # Protonated Aspartate (ASH)
+        elif res_name == "ASP" and any(n in ["HD2", "2HD"] for n in atom_names):
+            r["res_name"] = "ASH"
+
+        # Protonated Glutamate (GLH)
+        elif res_name == "GLU" and any(n in ["HE2", "2HE"] for n in atom_names):
+            r["res_name"] = "GLH"
+
+        # Neutral Lysine (LYN)
+        elif res_name == "LYS" and not any(
+            n in ["HZ3", "3HZ", "HZ"] for n in atom_names
+        ):
+            r["res_name"] = "LYN"
+
+        # Histidine States
+        elif res_name in ["HIS", "HSD", "HSE", "HSP"]:
+            has_hd1 = "HD1" in atom_names
+            has_he2 = "HE2" in atom_names
+            if has_hd1 and has_he2:
+                r["res_name"] = "HIP"
+            elif has_hd1:
+                r["res_name"] = "HID"
+            else:
+                r["res_name"] = "HIE"
+
+        # C-terminal Cap (NMA/NME -> NME)
+        elif res_name in ["NMA", "NME"]:
+            r["res_name"] = "NME"
+            for a in r["atoms"]:
+                an = a["atom_name"]
+                if an in ["CA", "C"]:
+                    a["atom_name"] = "CH3"
+                elif an == "HN":
+                    a["atom_name"] = "H"
+                elif an in ["1HA", "1H", "HH31"]:
+                    a["atom_name"] = "H1"
+                elif an in ["2HA", "2H", "HH32"]:
+                    a["atom_name"] = "H2"
+                elif an in ["3HA", "3H", "HH33"]:
+                    a["atom_name"] = "H3"
+
+        # N-terminal Cap (ACE)
+        elif res_name == "ACE":
+            for a in r["atoms"]:
+                an = a["atom_name"]
+                if an == "CA":
+                    a["atom_name"] = "CH3"
+                elif an in ["1HA", "1H", "HH31"]:
+                    a["atom_name"] = "H1"
+                elif an in ["2HA", "2H", "HH32"]:
+                    a["atom_name"] = "H2"
+                elif an in ["3HA", "3H", "HH33"]:
+                    a["atom_name"] = "H3"
+
+        # Standard backbone amide hydrogen fix
+        elif res_name not in ["PRO"]:
             amide_h = [
                 a
-                for a in res.atoms
-                if a.name in ["H", "HN", "1H", "2H", "3H", "H1", "H2", "H3"]
+                for a in r["atoms"]
+                if a["atom_name"] in ["H", "HN", "1H", "2H", "3H", "H1", "H2", "H3"]
             ]
             if len(amide_h) == 1:
-                # Internal or ACE-capped residue: strictly single amide 'H' in AMBER
-                amide_h[0].name = "H"
+                amide_h[0]["atom_name"] = "H"
             elif len(amide_h) == 3:
-                # Uncapped N-terminal ammonium group (-NH3+): strictly H1, H2, H3 in AMBER
-                for idx, a in enumerate(sorted(amide_h, key=lambda x: x.name), start=1):
-                    a.name = f"H{idx}"
+                for h_idx, a in enumerate(
+                    sorted(amide_h, key=lambda x: x["atom_name"]), start=1
+                ):
+                    a["atom_name"] = f"H{h_idx}"
 
-        # C-Terminal Cap (NMA / NME -> NME: atoms N, H, CH3, H1, H2, H3)
-        if res.name in ["NMA", "NME"]:
-            res.name = "NME"
-            for a in res.atoms:
-                if a.name in ["CA", "CH3"]:
-                    a.name = "C"
-                elif a.name in ["1HA", "1H", "H1", "HH31"]:
-                    a.name = "H1"
-                elif a.name in ["2HA", "2H", "H2", "HH32"]:
-                    a.name = "H2"
-                elif a.name in ["3HA", "3H", "H3", "HH33"]:
-                    a.name = "H3"
-                elif a.name == "HN":
-                    a.name = "H"
+    # 4. Write output PDB strictly preserving continuous chain continuity
+    out_lines = []
+    global_atom_idx = 1
+    prev_chain = None
 
-        # N-Terminal Cap (ACE: atoms C, O, CH3, H1, H2, H3)
-        elif res.name == "ACE":
-            for a in res.atoms:
-                if a.name in ["1H", "1HA", "H1", "HH31"]:
-                    a.name = "H1"
-                elif a.name in ["2H", "2HA", "H2", "HH32"]:
-                    a.name = "H2"
-                elif a.name in ["3H", "3HA", "H3", "HH33"]:
-                    a.name = "H3"
-                elif a.name == "CA":
-                    a.name = "CH3"
+    for r_idx, r in enumerate(residues):
+        # Insert TER ONLY if chain physically changes
+        if prev_chain is not None and r["chain_id"] != prev_chain:
+            out_lines.append(
+                f"TER   {global_atom_idx:5d}      {residues[r_idx-1]['res_name']:>3s} {prev_chain}{residues[r_idx-1]['res_seq']:4d}"
+            )
+            global_atom_idx += 1
 
-        # Protonated Aspartate (ASP with HD2 -> ASH)
-        elif res.name == "ASP":
-            if any(a.name in ["HD2", "2HD"] for a in res.atoms):
-                res.name = "ASH"
+        prev_chain = r["chain_id"]
+        formatted_res = f"{r['res_name']:>3s}"
 
-        # Protonated Glutamate (GLU with HE2 -> GLH)
-        elif res.name == "GLU":
-            if any(a.name in ["HE2", "2HE"] for a in res.atoms):
-                res.name = "GLH"
+        for a in r["atoms"]:
+            formatted_atom = format_atom_name(a["atom_name"])
+            orig = a["line"]
+            # Keep coordinates, occupancy, tempFactor, and element intact
+            new_line = f"{orig[:6]}{global_atom_idx:5d} {formatted_atom}{orig[16]}{formatted_res}{orig[20:]}"
+            out_lines.append(new_line)
+            global_atom_idx += 1
 
-        # Neutral Lysine (LYS without HZ3 -> LYN)
-        elif res.name == "LYS":
-            if not any(a.name in ["HZ3", "3HZ", "HZ"] for a in res.atoms):
-                res.name = "LYN"
+    # Final TER at the end of the entire protein structure
+    if residues:
+        last = residues[-1]
+        out_lines.append(
+            f"TER   {global_atom_idx:5d}      {last['res_name']:>3s} {last['chain_id']}{last['res_seq']:4d}"
+        )
 
-        # Histidine Protonation States (HIP, HID, HIE)
-        elif res.name in ["HIS", "HSD", "HSE", "HSP"]:
-            names = [a.name for a in res.atoms]
-            if "HD1" in names and "HE2" in names:
-                res.name = "HIP"
-            elif "HD1" in names:
-                res.name = "HID"
-            elif "HE2" in names:
-                res.name = "HIE"
-            else:
-                res.name = "HIE"
-
-        # Cysteine Disulfides
-        elif res in cyx_res:
-            res.name = "CYX"
-            hg_atom = next((a for a in res.atoms if a.name == "HG"), None)
-            if hg_atom:
-                struct.atoms.remove(hg_atom)
-                res.atoms.remove(hg_atom)
-
-    struct.save(args.output_pdb, overwrite=True)
+    out_lines.append("END")
+    Path(args.output_pdb).write_text("\n".join(out_lines) + "\n")
 
 
 if __name__ == "__main__":
