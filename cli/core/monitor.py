@@ -112,6 +112,7 @@ def run_monitor(port: int = 8089):
 
                     node_name = msg.get("node", "local")
                     dt_ps = msg.get("dt_ps")
+                    start_step = msg.get("start")
 
                     # Extract total from packet metadata or log line
                     total_steps = msg.get("total")
@@ -134,6 +135,31 @@ def run_monitor(port: int = 8089):
                     match_step = re.search(r"(?i)step[=\s]+(\d+)", log_line)
                     if match_step:
                         current_step = int(match_step.group(1))
+
+                        # Determine task-relative steps from telemetry or chunk heuristic
+                        display_step = current_step
+                        display_total = total_steps
+
+                        if (
+                            start_step is not None
+                            and total_steps is not None
+                            and total_steps > start_step
+                        ):
+                            display_total = total_steps - start_step
+                            display_step = max(
+                                0, min(display_total, current_step - start_step)
+                            )
+                        elif total_steps is not None and total_steps > 0:
+                            m_chunk = re.search(r"(?:md_|C)(\d+)", task_name, re.I)
+                            if m_chunk:
+                                chunk_idx = int(m_chunk.group(1))
+                                if chunk_idx >= 1:
+                                    chunk_size = total_steps // chunk_idx
+                                    base_step = (chunk_idx - 1) * chunk_size
+                                    display_total = total_steps - base_step
+                                    display_step = max(
+                                        0, min(display_total, current_step - base_step)
+                                    )
 
                         if task_name not in task_stats:
                             task_stats[task_name] = {
@@ -186,26 +212,28 @@ def run_monitor(port: int = 8089):
                         if task_name not in task_bars:
                             task_bars[task_name] = progress.add_task(
                                 f"[green]{escape(clean_name)}",
-                                total=total_steps,
+                                total=display_total,
+                                completed=display_step,
                                 node=escape(node_name),
                                 speed=speed_display,
                             )
                         else:
                             task_obj = progress._tasks[task_bars[task_name]]
                             if (
-                                total_steps is not None
-                                and task_obj.total != total_steps
+                                display_total is not None
+                                and task_obj.total != display_total
                             ):
-                                progress.update(task_bars[task_name], total=total_steps)
+                                progress.update(
+                                    task_bars[task_name], total=display_total
+                                )
 
                             progress.update(
                                 task_bars[task_name],
-                                completed=current_step,
+                                completed=display_step,
                                 node=escape(node_name),
                                 speed=speed_display,
                             )
                         continue
-
                 except socket.timeout:
                     continue
                 except Exception:
