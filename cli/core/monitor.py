@@ -1,6 +1,8 @@
 import socket
 import json
 import re
+import time
+import subprocess
 from rich.console import Console
 from rich.progress import (
     Progress,
@@ -15,7 +17,7 @@ console = Console()
 
 
 def run_monitor(port: int = 8089):
-    """Listens for UDP telemetry packets from GROMACS and renders real-time progress bars with dynamic nsteps."""
+    """Listens for UDP telemetry packets from GROMACS and renders real-time progress bars with dynamic lifecycle."""
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.bind(("0.0.0.0", port))
     sock.settimeout(0.5)
@@ -36,15 +38,57 @@ def run_monitor(port: int = 8089):
     )
 
     task_bars = {}
+    last_seen = {}
+    last_reap = time.time()
 
     try:
         with progress:
             while True:
+                now = time.time()
+
+                # Periodic reaper: sync with squeue to purge jobs terminated via SIGKILL, scancel or completion
+                if now - last_reap > 2.0:
+                    last_reap = now
+                    active_job_ids = None
+                    try:
+                        sq_out = subprocess.check_output(
+                            ["squeue", "-h", "-o", "%i"], text=True, stderr=subprocess.DEVNULL
+                        )
+                        active_job_ids = set(sq_out.split())
+                    except Exception:
+                        pass
+
+                    for t_name in list(task_bars.keys()):
+                        m_job = re.search(r'#(\d+)', t_name)
+                        # When job has a Slurm ID and is no longer present in squeue (even if squeue is completely empty)
+                        if m_job and active_job_ids is not None and m_job.group(1) not in active_job_ids:
+                            progress.remove_task(task_bars[t_name])
+                            del task_bars[t_name]
+                            last_seen.pop(t_name, None)
+                            continue
+
+                        # If task went completely silent for over 25s
+                        if now - last_seen.get(t_name, now) > 25.0:
+                            progress.remove_task(task_bars[t_name])
+                            del task_bars[t_name]
+                            last_seen.pop(t_name, None)
+
                 try:
                     data, _ = sock.recvfrom(2048)
                     msg = json.loads(data.decode("utf-8", errors="ignore"))
                     task_name = msg.get("task", "unknown")
-                    log_line = msg.get("log", "")
+                    event = msg.get("event")
+
+                    # Handle explicit exit signal from wrapper trap
+                    if event == "exit":
+                        if task_name in task_bars:
+                            progress.remove_task(task_bars[task_name])
+                            del task_bars[task_name]
+                            last_seen.pop(task_name, None)
+                        continue
+
+                    last_seen[task_name] = now
+                    log_line = msg.get("log", "").replace("\r", " ").strip()
 
                     clean_name = task_name.split(":")[-1].strip()
                     clean_name = clean_name.replace("RUN_MD_CHUNK ", "").replace(
@@ -84,6 +128,7 @@ def run_monitor(port: int = 8089):
 
                         progress.update(task_bars[task_name], completed=current_step)
                         continue
+
                 except socket.timeout:
                     continue
                 except Exception:
