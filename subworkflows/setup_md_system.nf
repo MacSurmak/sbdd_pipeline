@@ -20,7 +20,7 @@ process EXTRACT_MD_SYSTEM {
     val(cofactors)
 
     output:
-    tuple val(meta), path("receptor_dry.pdb"), path("organics.json"), path("org_files"), emit: extracted
+    tuple val(meta), path("receptor_dry.pdb"), path("organics.json"), path("org_files/*"), emit: extracted
 
     script:
     def cof_list = cofactors instanceof List ? cofactors.join(' ') : cofactors
@@ -60,11 +60,14 @@ workflow SETUP_MD_SYSTEM {
     EXTRACT_MD_SYSTEM(ch_ext_in, ch_targets.map { it[3] })
     
     // 2. Parse organic components for parallel Antechamber
-    ch_ante_in = EXTRACT_MD_SYSTEM.out.extracted.flatMap { meta, rec_pdb, json_file, out_dir ->
+    ch_ante_in = EXTRACT_MD_SYSTEM.out.extracted.flatMap { meta, rec_pdb, json_file, org_files ->
+        def org_list = org_files instanceof List ? org_files : [org_files]
         def data = new groovy.json.JsonSlurper().parseText(json_file.text)
         data.collect { org ->
             def mol_meta = meta + [mol_id: org.name]
-            [ mol_meta, file("${out_dir}/${org.mol2}"), file("${out_dir}/${org.charge}") ]
+            def m_file = org_list.find { it.name == org.mol2 }
+            def c_file = org_list.find { it.name == org.charge }
+            [ mol_meta, m_file, c_file ]
         }
     }
 
