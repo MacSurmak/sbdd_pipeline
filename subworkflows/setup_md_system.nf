@@ -77,7 +77,7 @@ workflow SETUP_MD_SYSTEM {
         .map { mol_meta, mol2, frcmod, pdb ->
             [ [id: mol_meta.id, project: mol_meta.project], mol2, frcmod, pdb ]
         }
-        .groupTuple(by: 0)
+        .groupTuple(by: 0, sort: true)
 
     // 3. Clean Bash Merge of standardized protein and ALL organics
     ch_merge_in = EXTRACT_MD_SYSTEM.out.extracted

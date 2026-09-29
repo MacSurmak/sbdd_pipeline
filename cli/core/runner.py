@@ -79,7 +79,7 @@ workflow RUN_CHUNKED_MD {{
     code += f"""
     sys_files = step_1.sys_files
 
-    ch_grouped_xtcs = ch_all_xtcs.groupTuple(by: 0, size: {total_chunks})
+    ch_grouped_xtcs = ch_all_xtcs.groupTuple(by: 0, size: {total_chunks}, sort: true)
     TRJCAT(ch_grouped_xtcs)
 
     emit:

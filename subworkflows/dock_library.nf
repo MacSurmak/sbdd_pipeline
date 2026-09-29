@@ -181,7 +181,7 @@ workflow DOCK_LIBRARY {
                 ]
                 [ frame_meta, pv, csv, sdf ]
             }
-            .groupTuple(by: 0)
+            .groupTuple(by: 0, sort: true)
 
         MERGE_GLIDE_CHUNKS(ch_to_merge_glide)
 
@@ -195,7 +195,7 @@ workflow DOCK_LIBRARY {
                 ]
                 [ frame_meta, sdf ]
             }
-            .groupTuple(by: 0)
+            .groupTuple(by: 0, sort: true)
 
         MERGE_RESC_CHUNKS(ch_to_merge_resc)
 
@@ -255,7 +255,7 @@ workflow DOCK_LIBRARY {
                 ]
                 [ frame_meta, csv ]
             }
-            .groupTuple(by: 0)
+            .groupTuple(by: 0, sort: true)
 
         MERGE_MMGBSA_CHUNKS(ch_mmgbsa_to_merge)
 
@@ -296,7 +296,7 @@ workflow DOCK_LIBRARY {
                 def frame_meta = [id: meta.frame_id, frame: meta.frame, project: meta.project]
                 [ frame_meta, sdf ]
             }
-            .groupTuple(by: 0)
+            .groupTuple(by: 0, sort: true)
 
         MERGE_DOCK_CHUNKS(ch_to_merge)
 
