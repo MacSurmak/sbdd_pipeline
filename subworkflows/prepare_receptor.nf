@@ -20,7 +20,7 @@ include { IMMERS          } from "../modules/membrane/immers"
 include { ORIENT_COMPLEX  } from "../modules/schrodinger/orient_complex"
 include { PREPWIZARD      } from "../modules/schrodinger/prepwizard"
 include { APPLY_MEMBRANE  } from "../modules/membrane/apply_membrane"
-include { LIGPREP         } from "../modules/schrodinger/ligprep"
+include { SPLIT_PREPARED  } from "../modules/schrodinger/split_prepared"
 
 workflow PREPARE_RECEPTOR {
     take:
@@ -83,20 +83,16 @@ workflow PREPARE_RECEPTOR {
             ch_orient_in
         )
 
-        ch_prep_in          = ORIENT_COMPLEX.out.receptor_raw_mae
-        ch_final_ref_native = ORIENT_COMPLEX.out.ref_native_mae
-        ch_final_ref_sdf    = ORIENT_COMPLEX.out.ref_native_sdf
-        ch_mem_json         = IMMERS.out.membrane_json
-        ch_mem_txt          = IMMERS.out.membrane_txt
+        ch_prep_in  = ORIENT_COMPLEX.out.oriented_mae
+        ch_mem_json = IMMERS.out.membrane_json
+        ch_mem_txt  = IMMERS.out.membrane_txt
     } else {
-        ch_prep_in          = EXTRACT_COMPLEX.out.raw_receptor_mae
-        ch_final_ref_native = EXTRACT_COMPLEX.out.ref_native_mae
-        ch_final_ref_sdf    = EXTRACT_COMPLEX.out.ref_native_sdf
-        ch_mem_json         = Channel.empty()
-        ch_mem_txt          = Channel.empty()
+        ch_prep_in  = EXTRACT_COMPLEX.out.complex_mae
+        ch_mem_json = Channel.empty()
+        ch_mem_txt  = Channel.empty()
     }
 
-    // 6. Protein Preparation Wizard in parallel across Slurm nodes
+    // 6. Protein Preparation Wizard on the FULL complex (in-situ protonation)
     PREPWIZARD(
         ch_prep_in,
         target_ph,
@@ -111,34 +107,17 @@ workflow PREPARE_RECEPTOR {
             .join(ch_mem_txt)
 
         APPLY_MEMBRANE(ch_apply_in)
-        ch_final_mae = APPLY_MEMBRANE.out.prepared_mae
-        ch_final_pdb = APPLY_MEMBRANE.out.prepared_pdb
+        ch_final_complex_mae = APPLY_MEMBRANE.out.prepared_mae
     } else {
-        ch_final_mae = PREPWIZARD.out.prepared_mae
-        ch_final_pdb = PREPWIZARD.out.prepared_pdb
+        ch_final_complex_mae = PREPWIZARD.out.prepared_mae
     }
 
-    // 8. Explicitly Prepare Native Ligand (Protonation/Epik)
-    ch_native_to_prep = ch_final_ref_native.map { meta, mae ->
-        def new_meta = meta + [id: "${meta.id}_ref_native"]
-        [ new_meta, mae ]
-    }
-    
-    LIGPREP(ch_native_to_prep, target_ph, ph_tol, 16, 1)
-    
-    ch_prepped_native_sdf = LIGPREP.out.prepared_sdf.map { meta, sdf ->
-        def orig_meta = meta + [id: meta.id.replaceAll("_ref_native\$", "")]
-        [ orig_meta, sdf ]
-    }
-    
-    ch_prepped_native_mae = LIGPREP.out.prepared_maegz.map { meta, mae ->
-        def orig_meta = meta + [id: meta.id.replaceAll("_ref_native\$", "")]
-        [ orig_meta, mae ]
-    }
+    // 8. Split the fully prepared complex into receptor and native ligand
+    SPLIT_PREPARED(ch_final_complex_mae)
 
     // 9. Output Mapping & Updating State Contract
-    ch_fully_prepared_pdb = ch_final_pdb.map { meta, file -> [ meta + [is_prepared: true], file ] }
-    ch_fully_prepared_mae = ch_final_mae.map { meta, file -> [ meta + [is_prepared: true], file ] }
+    ch_fully_prepared_pdb = SPLIT_PREPARED.out.prepared_pdb.map { meta, file -> [ meta + [is_prepared: true], file ] }
+    ch_fully_prepared_mae = SPLIT_PREPARED.out.prepared_mae.map { meta, file -> [ meta + [is_prepared: true], file ] }
 
     // Mix raw streams (now prepared) with bypass streams (already prepared)
     ch_all_prepared_pdb = ch_fully_prepared_pdb.mix(ch_branched_targets.ready)
@@ -146,7 +125,7 @@ workflow PREPARE_RECEPTOR {
     emit:
     prepared_pdb     = ch_all_prepared_pdb
     prepared_mae     = ch_fully_prepared_mae
-    ref_native_mae   = ch_prepped_native_mae
-    ref_native_sdf   = ch_prepped_native_sdf
+    ref_native_mae   = SPLIT_PREPARED.out.ref_native_mae
+    ref_native_sdf   = SPLIT_PREPARED.out.ref_native_sdf
     membrane_json    = ch_mem_json
 }

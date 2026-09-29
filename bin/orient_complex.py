@@ -31,15 +31,8 @@ def main():
         "--oriented_protein", required=True, help="Input PPM-oriented protein PDB"
     )
     parser.add_argument("--complex_mae", required=True, help="Input raw complex MAE")
-    parser.add_argument("--ligand", default="", help="Native ligand residue name")
     parser.add_argument(
-        "--cofactors", nargs="*", default=[], help="Cofactors to retain with receptor"
-    )
-    parser.add_argument(
-        "--out_receptor", required=True, help="Output oriented receptor+cofactors MAE"
-    )
-    parser.add_argument(
-        "--out_ligand", required=True, help="Output oriented native ligand MAE"
+        "--out_complex_mae", required=True, help="Output oriented full complex MAE"
     )
     args = parser.parse_args()
 
@@ -67,40 +60,8 @@ def main():
     transform.transform_structure(complex_st, matrix)
     logging.info("Successfully applied PPM 3.0 transformation to the full complex.")
 
-    # 1. Extract native ligand (MAE & SDF) if provided
-    if args.ligand and args.out_ligand:
-        lig_asl = f"res.ptype '{args.ligand}'"
-        lig_atoms = analyze.evaluate_asl(complex_st, lig_asl)
-        sdf_out = str(Path(args.out_ligand).with_suffix(".sdf"))
-        if not lig_atoms:
-            logging.error(
-                f"STRICT MODE: Native ligand '{args.ligand}' not found in complex."
-            )
-            sys.exit(1)
-
-        lig_st = complex_st.extract(lig_atoms)
-        lig_st.title = args.ligand
-        lig_st.write(args.out_ligand)
-        lig_st.write(sdf_out)
-        logging.info(f"Wrote oriented native ligand to {args.out_ligand} and {sdf_out}")
-
-    # 2. Extract receptor + cofactors (MAE)
-    cofactors_asl = (
-        " OR ".join([f"res.ptype '{c}'" for c in args.cofactors])
-        if args.cofactors
-        else ""
-    )
-    keep_asl = f"(protein) OR ({cofactors_asl})" if cofactors_asl else "(protein)"
-    rec_atoms = analyze.evaluate_asl(complex_st, keep_asl)
-    if not rec_atoms:
-        logging.error("No protein atoms found in oriented complex!")
-        sys.exit(1)
-
-    rec_st = complex_st.extract(rec_atoms)
-    rec_st.write(args.out_receptor)
-    logging.info(
-        f"Wrote oriented raw receptor to {args.out_receptor} ({len(rec_atoms)} atoms)"
-    )
+    complex_st.write(args.out_complex_mae)
+    logging.info(f"Wrote oriented full complex to {args.out_complex_mae}")
 
 
 if __name__ == "__main__":

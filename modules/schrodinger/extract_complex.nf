@@ -14,40 +14,20 @@ process EXTRACT_COMPLEX {
 
     output:
     tuple val(meta), path("${meta.id}_pure_protein.pdb"), emit: pure_protein_pdb, optional: true
-    tuple val(meta), path("${meta.id}_complex.mae"), emit: complex_mae, optional: true
-    tuple val(meta), path("${meta.id}_raw_receptor.mae"), emit: raw_receptor_mae, optional: true
-    tuple val(meta), path("${meta.id}_ref_native.mae"), emit: ref_native_mae, optional: true
-    tuple val(meta), path("${meta.id}_ref_native.sdf"), emit: ref_native_sdf, optional: true
+    tuple val(meta), path("${meta.id}_complex.mae"), emit: complex_mae
 
     script:
-    def lig_arg = meta.native_ligand ? "--ligand ${meta.native_ligand}" : ""
-    def cof_list = meta.cofactors instanceof List ? meta.cofactors.join(' ') : meta.cofactors
-    def cof_arg = cof_list ? "--cofactors ${cof_list}" : ""
-    if (membrane_enabled.toString() == 'true') {
-        """
-        schrodinger run ${projectDir}/bin/extract_complex.py \\
-            --input ${complex_file} \\
-            --frame_index ${frame_idx} \\
-            ${lig_arg} ${cof_arg} \\
-            --out_pure_protein ${meta.id}_pure_protein.pdb \\
-            --out_complex_mae ${meta.id}_complex.mae
-        """
-    } else {
-        """
-        schrodinger run ${projectDir}/bin/extract_complex.py \\
-            --input ${complex_file} \\
-            --frame_index ${frame_idx} \\
-            ${lig_arg} ${cof_arg} \\
-            --out_receptor_mae ${meta.id}_raw_receptor.mae \\
-            --out_ligand_mae ${meta.id}_ref_native.mae
-        """
-    }
+    def pure_prot_arg = (membrane_enabled.toString() == 'true') ? "--out_pure_protein ${meta.id}_pure_protein.pdb" : ""
+    """
+    schrodinger run ${projectDir}/bin/extract_complex.py \\
+        --input ${complex_file} \\
+        --frame_index ${frame_idx} \\
+        \${pure_prot_arg} \\
+        --out_complex_mae ${meta.id}_complex.mae
+    """
     stub:
     """
     touch ${meta.id}_pure_protein.pdb
     touch ${meta.id}_complex.mae
-    touch ${meta.id}_raw_receptor.mae
-    touch ${meta.id}_ref_native.mae
-    touch ${meta.id}_ref_native.sdf
     """
 }

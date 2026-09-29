@@ -11,27 +11,18 @@ process ORIENT_COMPLEX {
     tuple val(meta), path(raw_protein), path(oriented_protein), path(complex_mae)
 
     output:
-    tuple val(meta), path("${meta.id}_receptor_raw.mae"), emit: receptor_raw_mae
-    tuple val(meta), path("${meta.id}_ref_native.mae"), emit: ref_native_mae, optional: true
-    tuple val(meta), path("${meta.id}_ref_native.sdf"), emit: ref_native_sdf, optional: true
+    tuple val(meta), path("${meta.id}_complex_oriented.mae"), emit: oriented_mae
 
     script:
-    def lig_arg = meta.native_ligand ? "--ligand ${meta.native_ligand}" : ""
-    def cof_list = meta.cofactors instanceof List ? meta.cofactors.join(' ') : meta.cofactors
-    def cof_arg = cof_list ? "--cofactors ${cof_list}" : ""
     """
     schrodinger run ${projectDir}/bin/orient_complex.py \\
         --raw_protein ${raw_protein} \\
         --oriented_protein ${oriented_protein} \\
         --complex_mae ${complex_mae} \\
-        ${lig_arg} ${cof_arg} \\
-        --out_receptor ${meta.id}_receptor_raw.mae \\
-        --out_ligand ${meta.id}_ref_native.mae
+        --out_complex_mae ${meta.id}_complex_oriented.mae
     """
     stub:
     """
-    touch ${meta.id}_receptor_raw.mae
-    touch ${meta.id}_ref_native.mae
-    touch ${meta.id}_ref_native.sdf
+    touch ${meta.id}_complex_oriented.mae
     """
 }
