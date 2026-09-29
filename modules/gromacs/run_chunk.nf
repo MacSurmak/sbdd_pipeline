@@ -34,7 +34,7 @@ process RUN_MD_CHUNK {
             -e "s/nstenergy\\s*=.*/nstenergy = \${NSTENERGY}/g" \\
             md.mdp > md_run.mdp
 
-        gmx grompp -f md_run.mdp -o out.tpr -c ${prev_gro} -t ${prev_cpt} -p ${topol_top} -n ${index_ndx} -maxwarn 2
+        gmx grompp -f md_run.mdp -o out.tpr -c ${prev_gro} -r ${prev_gro} -t ${prev_cpt} -p ${topol_top} -n ${index_ndx} -maxwarn 3
         gmx mdrun -deffnm md_${chunk_idx} -s out.tpr -nb gpu -pme gpu -ntmpi 1 -ntomp ${task.cpus}
         cp out.tpr sys_ref.tpr
     else
