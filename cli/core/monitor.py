@@ -47,18 +47,22 @@ def run_monitor(port: int = 8089, default_chunk_steps: int = 5000000):
 
                     # 1. GROMACS Step Telemetry
                     # 1. GROMACS Step Telemetry (Matches 'Step 500' and 'Step= 50')
-                    match_gmx = re.search(r'(?i)step[=\s]+(\d+)', log_line)
+                    match_gmx = re.search(r"(?i)step[=\s]+(\d+)", log_line)
                     if match_gmx:
                         current_step = int(match_gmx.group(1))
                         if task_name not in task_bars:
                             # Strip Nextflow pipeline paths for clean display
                             clean_name = task_name.split(":")[-1].strip()
-                            clean_name = clean_name.replace("RUN_MD_CHUNK ", "").replace("GMX_EQUILIBRATION ", "EQ: ")
+                            clean_name = clean_name.replace(
+                                "RUN_MD_CHUNK ", ""
+                            ).replace("GMX_EQUILIBRATION ", "EQ: ")
                             is_eq = "EQUI" in task_name.upper()
                             total = 50000 if is_eq else default_chunk_steps
-                            task_bars[task_name] = progress.add_task(f"[green]{clean_name}", total=total)
+                            task_bars[task_name] = progress.add_task(
+                                f"[green]{clean_name}", total=total
+                            )
                         progress.update(task_bars[task_name], completed=current_step)
-                        continue                        continue
+                        continue
 
                     # 2. GNINA Percentage Telemetry
                     match_gnina = re.search(r"\[\s*(\d+)%\]", log_line)
