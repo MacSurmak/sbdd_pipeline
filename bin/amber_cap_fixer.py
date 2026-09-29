@@ -39,6 +39,10 @@ def main():
     current_res = None
 
     for line in lines:
+        if line.startswith("TER"):
+            current_key = None
+            current_res = None
+            continue
         if not (line.startswith("ATOM") or line.startswith("HETATM")):
             continue
 
@@ -53,7 +57,7 @@ def main():
         y = float(line[38:46])
         z = float(line[46:54])
 
-        res_key = (chain_id, res_seq, i_code)
+        res_key = (chain_id, res_seq, i_code, res_name)
         if res_key != current_key:
             current_key = res_key
             current_res = {
@@ -193,8 +197,10 @@ def main():
     prev_chain = None
 
     for r_idx, r in enumerate(residues):
-        # Insert TER ONLY if chain physically changes
-        if prev_chain is not None and r["chain_id"] != prev_chain:
+        # Insert TER if chain physically changes or between distinct non-protein residues
+        if prev_chain is not None and (
+            r["chain_id"] != prev_chain or r["chain_id"] in "ZYXWVUTSRQPONMLKJIHGFEDCB"
+        ):
             out_lines.append(
                 f"TER   {global_atom_idx:5d}      {residues[r_idx-1]['res_name']:>3s} {prev_chain}{residues[r_idx-1]['res_seq']:4d}"
             )

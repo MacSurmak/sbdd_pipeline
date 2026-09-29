@@ -15,12 +15,10 @@ process MERGE_PDB {
 
     script:
     """
-    grep -v -E "^(END|TER)" ${rec_pdb} > complex_dry.pdb
-    for f in ${org_pdbs}; do
-        grep -E "^(ATOM|HETATM)" \$f >> complex_dry.pdb
-    done
-    echo "TER" >> complex_dry.pdb
-    echo "END" >> complex_dry.pdb
+    python3 ${projectDir}/bin/merge_complex.py \\
+        --rec_pdb ${rec_pdb} \\
+        --org_pdbs ${org_pdbs} \\
+        --out_pdb complex_dry.pdb
     """
 
     stub:
