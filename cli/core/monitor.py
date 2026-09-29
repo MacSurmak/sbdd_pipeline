@@ -78,13 +78,12 @@ def run_monitor(port: int = 8089):
                                 f"[green]{clean_name}", total=None
                             )
 
-                        task_obj = progress.tasks[task_bars[task_name]]
+                        task_obj = progress._tasks[task_bars[task_name]]
                         if task_obj.total is not None and current_step > task_obj.total:
                             progress.update(task_bars[task_name], total=None)
 
                         progress.update(task_bars[task_name], completed=current_step)
                         continue
-
                 except socket.timeout:
                     continue
                 except Exception:
