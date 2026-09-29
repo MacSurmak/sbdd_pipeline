@@ -143,20 +143,20 @@ def main():
             else:
                 r["res_name"] = "HIE"
 
-        # C-terminal Cap (NMA/NME -> NME)
+        # C-terminal Cap (NMA/NME -> NME: methyl carbon is 'C' in AMBER)
         elif res_name in ["NMA", "NME"]:
             r["res_name"] = "NME"
             for a in r["atoms"]:
                 an = a["atom_name"]
-                if an in ["CA", "C"]:
-                    a["atom_name"] = "CH3"
-                elif an == "HN":
+                if an in ["CA", "CH3", "C"]:
+                    a["atom_name"] = "C"
+                elif an in ["HN", "H"]:
                     a["atom_name"] = "H"
-                elif an in ["1HA", "1H", "HH31"]:
+                elif an in ["1HA", "1H", "HH31", "H1", "1HH3", "HA1"]:
                     a["atom_name"] = "H1"
-                elif an in ["2HA", "2H", "HH32"]:
+                elif an in ["2HA", "2H", "HH32", "H2", "2HH3", "HA2"]:
                     a["atom_name"] = "H2"
-                elif an in ["3HA", "3H", "HH33"]:
+                elif an in ["3HA", "3H", "HH33", "H3", "3HH3", "HA3"]:
                     a["atom_name"] = "H3"
 
         # N-terminal Cap (ACE)
