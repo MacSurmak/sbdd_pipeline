@@ -22,7 +22,7 @@ process EXTRACT_COMPLEX {
     schrodinger run ${projectDir}/bin/extract_complex.py \\
         --input ${complex_file} \\
         --frame_index ${frame_idx} \\
-        \${pure_prot_arg} \\
+        ${pure_prot_arg} \\
         --out_complex_mae ${meta.id}_complex.mae
     """
     stub:
