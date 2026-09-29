@@ -143,30 +143,32 @@ def execute_nextflow(
     total_c = max(1, int(round(total_ns / chunk_ns)))
 
     pipeline_code_dir = scratch_base / ".pipeline_code"
-    if pipeline_code_dir.exists():
-        shutil.rmtree(pipeline_code_dir)
-    pipeline_code_dir.mkdir(parents=True)
+    pipeline_code_dir.mkdir(parents=True, exist_ok=True)
 
     for d in ["workflows", "subworkflows", "modules", "assets", "conf", "bin"]:
         src = FRAMEWORK_DIR / d
         if src.exists():
-            shutil.copytree(src, pipeline_code_dir / d)
+            shutil.copytree(
+                src,
+                pipeline_code_dir / d,
+                dirs_exist_ok=True,
+                copy_function=shutil.copy2,
+            )
     for f in ["main.nf", "nextflow.config"]:
         src = FRAMEWORK_DIR / f
         if src.exists():
-            shutil.copy(src, pipeline_code_dir / f)
+            shutil.copy2(src, pipeline_code_dir / f)
 
     unrolled_code = build_unrolled_md_dag(total_c)
-    (pipeline_code_dir / "subworkflows" / "run_chunked_md.nf").write_text(unrolled_code)
-
-    main_nf = pipeline_code_dir / "main.nf"
+    unrolled_nf = pipeline_code_dir / "subworkflows" / "run_chunked_md.nf"
+    if not unrolled_nf.exists() or unrolled_nf.read_text() != unrolled_code:
+        unrolled_nf.write_text(unrolled_code)
 
     for script_file in (pipeline_code_dir / "bin").glob("*.py"):
         try:
             script_file.chmod(0o755)
         except Exception:
             pass
-
     env = os.environ.copy()
     env["NXF_HOME"] = str(scratch_nxf_home.resolve())
     env["NXF_WORK"] = str(scratch_work.resolve())
