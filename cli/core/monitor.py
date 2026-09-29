@@ -84,8 +84,7 @@ def run_monitor(port: int = 8089):
                         pct = int(match_gnina.group(1))
                         if task_name not in task_bars:
                             clean_name = task_name.replace("GNINA_DOCK ", "DOCK: ").replace("GNINA_RESCORE ", "RESC: ")
-                            task_bars[task_name] = progress.add_task(f"[magenta]{clean_name}", total=100)
-                        progress.update(task_bars[task_name], completed=pct)                            ).replace("GNINA_RESCORE ", "RESC: ")
+                            task_bars[task_name] = progress.add_task(f"[magenta]{clean_name}", total=100).replace("GNINA_RESCORE ", "RESC: ")
                             task_bars[task_name] = progress.add_task(
                                 f"[magenta]{clean_name}", total=100
                             )
