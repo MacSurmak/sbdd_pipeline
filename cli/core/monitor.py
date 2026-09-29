@@ -3,7 +3,6 @@ import json
 import re
 import time
 import subprocess
-from collections import deque
 from rich.console import Console
 from rich.markup import escape
 from rich.progress import (
@@ -42,7 +41,9 @@ def run_monitor(port: int = 8089):
     )
 
     task_bars = {}
-    task_stats = {}  # task_name -> {"history": deque, "dt_ps": float, "speed_str": str}
+    task_stats = (
+        {}
+    )  # task_name -> {"last_step": int, "last_time": float, "dt_ps": float, "speed_str": str}
     last_seen = {}
     last_reap = time.time()
 
@@ -135,7 +136,8 @@ def run_monitor(port: int = 8089):
 
                         if task_name not in task_stats:
                             task_stats[task_name] = {
-                                "history": deque([(now, current_step)], maxlen=120),
+                                "last_step": current_step,
+                                "last_time": now,
                                 "dt_ps": dt_ps,
                                 "speed_str": "-- ns/day" if dt_ps else "-- step/s",
                             }
@@ -144,27 +146,10 @@ def run_monitor(port: int = 8089):
                             if dt_ps and not stats["dt_ps"]:
                                 stats["dt_ps"] = dt_ps
 
-                            # Reset sliding window on step rollback (e.g. stage transition)
-                            if (
-                                stats["history"]
-                                and current_step < stats["history"][-1][1]
-                            ):
-                                stats["history"].clear()
-
-                            stats["history"].append((now, current_step))
-
-                            # Prune samples older than 15.0 seconds
-                            while (
-                                len(stats["history"]) > 2
-                                and (now - stats["history"][0][0]) > 15.0
-                            ):
-                                stats["history"].popleft()
-
-                            # Compute rolling average rate over the sliding window
-                            t0, s0 = stats["history"][0]
-                            dt_wall = now - t0
-                            if dt_wall >= 3.0:
-                                d_step = current_step - s0
+                            # Calculate rate every ~2 seconds
+                            dt_wall = now - stats["last_time"]
+                            if dt_wall >= 2.0:
+                                d_step = current_step - stats["last_step"]
                                 if d_step >= 0:
                                     if stats["dt_ps"]:
                                         # (steps * dt_ps * 86400) / (dt_wall * 1000) = ns/day
@@ -175,6 +160,9 @@ def run_monitor(port: int = 8089):
                                     else:
                                         steps_sec = d_step / dt_wall
                                         stats["speed_str"] = f"{steps_sec:>5.0f} st/s"
+
+                                stats["last_step"] = current_step
+                                stats["last_time"] = now
 
                         speed_display = task_stats[task_name]["speed_str"]
 
