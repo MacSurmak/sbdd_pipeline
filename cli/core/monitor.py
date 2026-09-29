@@ -1,9 +1,9 @@
 import socket
 import json
+import math
 import re
 import time
 import subprocess
-from collections import deque
 from rich.console import Console
 from rich.markup import escape
 from rich.progress import (
@@ -42,7 +42,9 @@ def run_monitor(port: int = 8089):
     )
 
     task_bars = {}
-    task_stats = {}  # task_name -> {"history": deque, "dt_ps": float, "speed_str": str}
+    task_stats = (
+        {}
+    )  # task_name -> {"last_step": int, "last_time": float, "ema_rate": float, "dt_ps": float, "speed_str": str}
     last_seen = {}
     last_reap = time.time()
 
@@ -135,7 +137,9 @@ def run_monitor(port: int = 8089):
 
                         if task_name not in task_stats:
                             task_stats[task_name] = {
-                                "history": deque([(now, current_step)], maxlen=120),
+                                "last_step": current_step,
+                                "last_time": now,
+                                "ema_rate": None,
                                 "dt_ps": dt_ps,
                                 "speed_str": "-- ns/day" if dt_ps else "-- step/s",
                             }
@@ -144,37 +148,38 @@ def run_monitor(port: int = 8089):
                             if dt_ps and not stats["dt_ps"]:
                                 stats["dt_ps"] = dt_ps
 
-                            # Reset sliding window on step rollback (e.g. stage transition)
-                            if (
-                                stats["history"]
-                                and current_step < stats["history"][-1][1]
-                            ):
-                                stats["history"].clear()
+                            # Reset on stage transition or step rollback
+                            if current_step < stats["last_step"]:
+                                stats["last_step"] = current_step
+                                stats["last_time"] = now
+                                stats["ema_rate"] = None
 
-                            stats["history"].append((now, current_step))
-
-                            # Prune samples older than 15.0 seconds
-                            while (
-                                len(stats["history"]) > 2
-                                and (now - stats["history"][0][0]) > 15.0
-                            ):
-                                stats["history"].popleft()
-
-                            # Compute rolling average rate over the sliding window
-                            t0, s0 = stats["history"][0]
-                            dt_wall = now - t0
-                            if dt_wall >= 3.0:
-                                d_step = current_step - s0
+                            dt_wall = now - stats["last_time"]
+                            if dt_wall >= 1.0:
+                                d_step = current_step - stats["last_step"]
                                 if d_step >= 0:
+                                    inst_rate = d_step / dt_wall
+                                    if stats["ema_rate"] is None:
+                                        stats["ema_rate"] = inst_rate
+                                    else:
+                                        # Exponential moving average with time constant tau = 8.0s
+                                        alpha = 1.0 - math.exp(-dt_wall / 8.0)
+                                        stats["ema_rate"] = (
+                                            alpha * inst_rate
+                                            + (1.0 - alpha) * stats["ema_rate"]
+                                        )
+
+                                    smoothed_rate = stats["ema_rate"]
                                     if stats["dt_ps"]:
-                                        # (steps * dt_ps * 86400) / (dt_wall * 1000) = ns/day
-                                        ns_day = (
-                                            d_step * stats["dt_ps"] * 86.4
-                                        ) / dt_wall
+                                        ns_day = smoothed_rate * stats["dt_ps"] * 86.4
                                         stats["speed_str"] = f"{ns_day:>5.1f} ns/d"
                                     else:
-                                        steps_sec = d_step / dt_wall
-                                        stats["speed_str"] = f"{steps_sec:>5.0f} st/s"
+                                        stats["speed_str"] = (
+                                            f"{smoothed_rate:>5.0f} st/s"
+                                        )
+
+                                stats["last_step"] = current_step
+                                stats["last_time"] = now
 
                         speed_display = task_stats[task_name]["speed_str"]
 
