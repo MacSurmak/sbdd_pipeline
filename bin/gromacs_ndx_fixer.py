@@ -88,15 +88,61 @@ def add_thermostat_groups_by_name(ndx_path: Path):
         write_ndx_group(f, "SOL_ION", sorted(list(water_and_ion_atoms)))
 
 
-def inject_posre(top_file: Path, org_names: str):
-    """Injects dynamic POSRES macro blocks into topol.top based on moleculetype."""
-    if not top_file.exists():
-        return
-
-    orgs = set(org_names.split(",")) if org_names else set()
+def generate_posre(top_file: Path):
+    """Parses topology and generates strictly local position restraints for heavy atoms."""
     lines = top_file.read_text().splitlines()
-    out = []
+    current_mol = None
+    in_atoms = False
 
+    mols = {}  # name -> list of heavy atom local indices
+
+    for line in lines:
+        stripped = line.strip()
+        if not stripped or stripped.startswith(";"):
+            continue
+        if stripped.startswith("["):
+            section = stripped.strip("[]").strip()
+            if section == "moleculetype":
+                current_mol = "EXPECT_NAME"
+                in_atoms = False
+            elif section == "atoms":
+                in_atoms = True
+            else:
+                in_atoms = False
+            continue
+
+        if current_mol == "EXPECT_NAME":
+            current_mol = stripped.split()[0]
+            mols[current_mol] = []
+            continue
+
+        if in_atoms and current_mol:
+            parts = stripped.split()
+            if len(parts) >= 8:
+                atom_nr = parts[0]
+                mass = float(parts[7])
+                if mass > 1.5:  # Heavy atom threshold
+                    mols[current_mol].append(atom_nr)
+
+    ions = {
+        "K+",
+        "NA+",
+        "CL-",
+        "Cl-",
+        "Na+",
+        "ZN",
+        "MG",
+        "CA",
+        "ZN2",
+        "MG2",
+        "CA2",
+        "K",
+        "CL",
+        "NA",
+    }
+    water = {"SOL", "Water", "HOH", "WAT"}
+
+    out_lines = []
     state = "NONE"
     current_mol = None
 
@@ -104,10 +150,10 @@ def inject_posre(top_file: Path, org_names: str):
         stripped = line.strip()
 
         if stripped.startswith("[ moleculetype ]") or stripped.startswith("[ system ]"):
-            if current_mol == "system1" or current_mol == "Protein":
-                out.append('#ifdef POSRES\n#include "posre_PROT.itp"\n#endif')
-            elif current_mol in orgs or current_mol == "UNK":
-                out.append(f'#ifdef POSRES\n#include "posre_{current_mol}.itp"\n#endif')
+            if current_mol and current_mol not in ions and current_mol not in water:
+                out_lines.append(f"#ifdef POSRES")
+                out_lines.append(f'#include "posre_{current_mol}.itp"')
+                out_lines.append(f"#endif")
 
             state = "MOL_START" if stripped.startswith("[ moleculetype ]") else "SYSTEM"
             current_mol = None
@@ -116,9 +162,29 @@ def inject_posre(top_file: Path, org_names: str):
             current_mol = stripped.split()[0]
             state = "INSIDE_MOL"
 
-        out.append(line)
+        out_lines.append(line)
 
-    top_file.write_text("\n".join(out) + "\n")
+    top_file.write_text("\n".join(out_lines) + "\n")
+
+    for mol, heavy_atoms in mols.items():
+        if mol in ions or mol in water:
+            continue
+
+        # Determine macro name
+        if mol.startswith("system") or mol.startswith("Protein"):
+            macro = "POSRES_PROT_FC"
+        else:
+            macro = f"POSRES_{mol}_FC"
+
+        itp_lines = ["[ position_restraints ]", "; atom  type      fx      fy      fz"]
+        for nr in heavy_atoms:
+            itp_lines.append(f"{nr:>6}     1  {macro}  {macro}  {macro}")
+
+        itp_file = Path(f"posre_{mol}.itp")
+        itp_file.write_text("\n".join(itp_lines) + "\n")
+        print(
+            f"Generated {itp_file} with macro {macro} ({len(heavy_atoms)} heavy atoms)"
+        )
 
 
 if __name__ == "__main__":
@@ -129,17 +195,16 @@ if __name__ == "__main__":
     parser.add_argument("--top", required=False)
     parser.add_argument(
         "--action",
-        choices=["add_groups", "inject_posre", "ensure_complex"],
+        choices=["add_groups", "generate_posre", "ensure_complex"],
         required=True,
     )
     parser.add_argument("--orgs", default="")
     args = parser.parse_args()
 
-    ndx_path = Path(args.ndx)
     if args.action == "add_groups":
-        add_thermostat_groups_by_name(ndx_path)
-    elif args.action == "inject_posre":
+        add_thermostat_groups_by_name(Path(args.ndx))
+    elif args.action == "generate_posre":
         if args.top:
-            inject_posre(Path(args.top), args.orgs)
+            generate_posre(Path(args.top))
     elif args.action == "ensure_complex":
-        ensure_complex_ndx_group(ndx_path)
+        ensure_complex_ndx_group(Path(args.ndx))
