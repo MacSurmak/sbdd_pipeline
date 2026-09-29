@@ -59,15 +59,16 @@ $$$$
 
 SAMPLE_DATAPAR1 = "TSPO_orchestra;20.7; 0.9;  28;   2; -20.2;   0.0;\n"
 
+
 @pytest.fixture
 def sample_sdf(tmp_path):
     sdf_file = tmp_path / "test_lib.sdf"
     sdf_file.write_text(SAMPLE_SDF)
     return sdf_file
 
+
 @pytest.fixture
 def sample_datapar1(tmp_path):
     dat_file = tmp_path / "datapar1"
     dat_file.write_text(SAMPLE_DATAPAR1)
     return dat_file
-

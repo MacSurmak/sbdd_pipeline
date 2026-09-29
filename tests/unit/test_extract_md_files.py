@@ -11,6 +11,7 @@ TER
 END
 """
 
+
 def test_extract_md_files_rdkit(sample_sdf, tmp_path):
     rec_pdb = tmp_path / "receptor.pdb"
     rec_pdb.write_text(SAMPLE_PDB)
@@ -21,10 +22,14 @@ def test_extract_md_files_rdkit(sample_sdf, tmp_path):
     cmd = [
         sys.executable,
         str(extract_script),
-        "--lig_file", str(sample_sdf),
-        "--lig_title", "MOL1",
-        "--rec_file", str(rec_pdb),
-        "--out_dir", str(outdir)
+        "--lig_file",
+        str(sample_sdf),
+        "--lig_title",
+        "MOL1",
+        "--rec_file",
+        str(rec_pdb),
+        "--out_dir",
+        str(outdir),
     ]
     res = subprocess.run(cmd, capture_output=True, text=True)
     assert res.returncode == 0, f"extract_md_files failed: {res.stderr}\n{res.stdout}"
@@ -32,4 +37,3 @@ def test_extract_md_files_rdkit(sample_sdf, tmp_path):
     assert (outdir / "receptor.pdb").exists()
     assert (outdir / "lig_charge.txt").exists()
     assert (outdir / "ligand.mol2").exists() or (outdir / "ligand.sdf").exists()
-

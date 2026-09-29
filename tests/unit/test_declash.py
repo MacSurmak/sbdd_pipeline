@@ -11,8 +11,10 @@ SAMPLE_GRO = """Declash Test System
    5.00000   5.00000   5.00000
 """
 
+
 def make_gro_line(resid, resname, atomname, atomnr, x, y, z):
     return f"{resid:5d}{resname[:5]:<5}{atomname[:5]:>5}{atomnr:5d}{x:8.3f}{y:8.3f}{z:8.3f}\n"
+
 
 SAMPLE_TOP = """[ moleculetype ]
 ; Name   nrexcl
@@ -40,6 +42,7 @@ MOL1  1
 MOL2  1
 """
 
+
 def test_declash_gmx(tmp_path):
     gro_content = "Declash Test System\n    4\n"
     gro_content += make_gro_line(1, "MOL1", "C1", 1, 1.000, 1.000, 1.000)
@@ -62,12 +65,18 @@ def test_declash_gmx(tmp_path):
     cmd = [
         sys.executable,
         str(declash_script),
-        "-f", str(gro_file),
-        "-p", str(top_file),
-        "-o", str(out_gro),
-        "--cutoff", "0.15",
-        "--niter", "50",
-        "--report", str(report_txt)
+        "-f",
+        str(gro_file),
+        "-p",
+        str(top_file),
+        "-o",
+        str(out_gro),
+        "--cutoff",
+        "0.15",
+        "--niter",
+        "50",
+        "--report",
+        str(report_txt),
     ]
     res = subprocess.run(cmd, capture_output=True, text=True)
     assert res.returncode == 0, f"declash failed: {res.stderr}\n{res.stdout}"
@@ -83,4 +92,3 @@ def test_declash_gmx(tmp_path):
     x1 = float(lines[2][20:28])
     x3 = float(lines[4][20:28])
     assert abs(x3 - x1) > 0.03
-

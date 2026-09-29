@@ -75,7 +75,9 @@ def read_text_with_includes(path: Path, max_depth: int = 20) -> str:
     return _read(path, 0)
 
 
-def read_gro(path: Path) -> Tuple[str, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+def read_gro(
+    path: Path,
+) -> Tuple[str, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Return (title, coords[n,3], resid[n], resname[n], atomname[n], box[3])."""
     lines = path.read_text(errors="ignore").splitlines()
     if len(lines) < 3:
@@ -102,24 +104,40 @@ def read_gro(path: Path) -> Tuple[str, np.ndarray, np.ndarray, np.ndarray, np.nd
     return title, coords, resid, resname, atomname, box
 
 
-def write_gro(path: Path, title: str, coords: np.ndarray, resid: np.ndarray, resname: np.ndarray, atomname: np.ndarray, box: np.ndarray):
+def write_gro(
+    path: Path,
+    title: str,
+    coords: np.ndarray,
+    resid: np.ndarray,
+    resname: np.ndarray,
+    atomname: np.ndarray,
+    box: np.ndarray,
+):
     nat = coords.shape[0]
     with path.open("w") as f:
         f.write(f"{title}\n")
         f.write(f"{nat:5d}\n")
         for i in range(nat):
-            f.write(f"{resid[i]:5d}{str(resname[i])[:5]:<5}{str(atomname[i])[:5]:>5}{(i+1)%100000:5d}"
-                    f"{coords[i,0]:8.3f}{coords[i,1]:8.3f}{coords[i,2]:8.3f}\n")
+            f.write(
+                f"{resid[i]:5d}{str(resname[i])[:5]:<5}{str(atomname[i])[:5]:>5}{(i+1)%100000:5d}"
+                f"{coords[i,0]:8.3f}{coords[i,1]:8.3f}{coords[i,2]:8.3f}\n"
+            )
         f.write(f"{box[0]:10.5f}{box[1]:10.5f}{box[2]:10.5f}\n")
 
 
 def parse_moleculetype_atomcounts(top_text: str) -> Dict[str, int]:
     lines = top_text.splitlines()
-    mt_idx = [i for i, l in enumerate(lines) if re.match(r"^\s*\[\s*moleculetype\s*\]\s*$", l, re.I)]
+    mt_idx = [
+        i
+        for i, l in enumerate(lines)
+        if re.match(r"^\s*\[\s*moleculetype\s*\]\s*$", l, re.I)
+    ]
     out: Dict[str, int] = {}
     for idx in mt_idx:
         j = idx + 1
-        while j < len(lines) and (lines[j].strip() == "" or lines[j].lstrip().startswith(";")):
+        while j < len(lines) and (
+            lines[j].strip() == "" or lines[j].lstrip().startswith(";")
+        ):
             j += 1
         if j >= len(lines):
             continue
@@ -185,7 +203,9 @@ class MolRange:
     end: int
 
 
-def build_molecule_ranges(natoms: int, atomcounts: Dict[str, int], mol_list: List[Tuple[str, int]]) -> List[MolRange]:
+def build_molecule_ranges(
+    natoms: int, atomcounts: Dict[str, int], mol_list: List[Tuple[str, int]]
+) -> List[MolRange]:
     ranges: List[MolRange] = []
     idx = 0
     for mt, count in mol_list:
@@ -215,8 +235,15 @@ def is_heavy(atomname: str) -> bool:
     return not (a.startswith("H") or a.startswith("D"))
 
 
-def find_clashes(coords: np.ndarray, box: np.ndarray, atom_molid: np.ndarray, atomname: np.ndarray,
-                 cutoff: float, max_pairs: int, heavy_only: bool) -> List[Tuple[int, int, np.ndarray, float]]:
+def find_clashes(
+    coords: np.ndarray,
+    box: np.ndarray,
+    atom_molid: np.ndarray,
+    atomname: np.ndarray,
+    cutoff: float,
+    max_pairs: int,
+    heavy_only: bool,
+) -> List[Tuple[int, int, np.ndarray, float]]:
     L = box.astype(np.float64)
     coords = coords.astype(np.float64)
 
@@ -248,18 +275,24 @@ def find_clashes(coords: np.ndarray, box: np.ndarray, atom_molid: np.ndarray, at
     unique, start = np.unique(cell_id, return_index=True)
     end = np.r_[start[1:], len(cell_id)]
     slices = {int(u): (int(s), int(e)) for u, s, e in zip(unique, start, end)}
-    neigh = [(dx, dy, dz) for dx in (-1, 0, 1) for dy in (-1, 0, 1) for dz in (-1, 0, 1)]
+    neigh = [
+        (dx, dy, dz) for dx in (-1, 0, 1) for dy in (-1, 0, 1) for dz in (-1, 0, 1)
+    ]
     c2 = cutoff * cutoff
 
     out: List[Tuple[int, int, np.ndarray, float]] = []
     for u, st, en in zip(unique, start, end):
-        u = int(u); st = int(st); en = int(en)
+        u = int(u)
+        st = int(st)
+        en = int(en)
         cz_u = u % nz
         tmp = u // nz
         cy_u = tmp % ny
         cx_u = tmp // ny
         for dx, dy, dz in neigh:
-            u_n = (((cx_u + dx) % nx) * ny + ((cy_u + dy) % ny)) * nz + ((cz_u + dz) % nz)
+            u_n = (((cx_u + dx) % nx) * ny + ((cy_u + dy) % ny)) * nz + (
+                (cz_u + dz) % nz
+            )
             if u_n not in slices:
                 continue
             st2, en2 = slices[u_n]
@@ -277,18 +310,34 @@ def find_clashes(coords: np.ndarray, box: np.ndarray, atom_molid: np.ndarray, at
                     r2 = float(d.dot(d))
                     if r2 < c2:
                         r = math.sqrt(r2) if r2 > 1e-16 else 0.0
-                        uvec = d / r if r > 1e-6 else np.array([1.0, 0.0, 0.0], dtype=np.float64)
+                        uvec = (
+                            d / r
+                            if r > 1e-6
+                            else np.array([1.0, 0.0, 0.0], dtype=np.float64)
+                        )
                         out.append((int(idxs[ii]), int(idxs[jj]), uvec, float(r)))
                         if len(out) >= max_pairs:
                             return out
     return out
 
 
-def declash_sequential(coords: np.ndarray, box: np.ndarray, mol_ranges: List[MolRange],
-                       atom_molid: np.ndarray, atomname: np.ndarray,
-                       mobile_mol: np.ndarray, restrict_xy_mol: np.ndarray,
-                       cutoff: float, niter: int, damping: float, max_move: float,
-                       max_pairs: int, heavy_only: bool, seed: int, verbose: bool):
+def declash_sequential(
+    coords: np.ndarray,
+    box: np.ndarray,
+    mol_ranges: List[MolRange],
+    atom_molid: np.ndarray,
+    atomname: np.ndarray,
+    mobile_mol: np.ndarray,
+    restrict_xy_mol: np.ndarray,
+    cutoff: float,
+    niter: int,
+    damping: float,
+    max_move: float,
+    max_pairs: int,
+    heavy_only: bool,
+    seed: int,
+    verbose: bool,
+):
     rng = np.random.default_rng(seed if seed >= 0 else None)
     L = box.astype(np.float64)
     coords = wrap(coords.astype(np.float64), L)
@@ -296,11 +345,23 @@ def declash_sequential(coords: np.ndarray, box: np.ndarray, mol_ranges: List[Mol
     mol_slices = [slice(m.start, m.end) for m in mol_ranges]
 
     for it in range(niter):
-        clashes = find_clashes(coords, L, atom_molid, atomname, cutoff, max_pairs=max_pairs, heavy_only=heavy_only)
+        clashes = find_clashes(
+            coords,
+            L,
+            atom_molid,
+            atomname,
+            cutoff,
+            max_pairs=max_pairs,
+            heavy_only=heavy_only,
+        )
         if not clashes:
             if verbose:
                 print(f"iter {it:3d}: clashes=0")
-            return coords, {"cutoff_nm": float(cutoff), "iterations": float(it), "final_clashes": 0.0}
+            return coords, {
+                "cutoff_nm": float(cutoff),
+                "iterations": float(it),
+                "final_clashes": 0.0,
+            }
 
         clashes.sort(key=lambda x: x[3])
         worst_r = clashes[0][3]
@@ -322,11 +383,13 @@ def declash_sequential(coords: np.ndarray, box: np.ndarray, mol_ranges: List[Mol
             return d * (rem / dn)
 
         for ai, aj, uvec, r in clashes:
-            mi = int(atom_molid[ai]); mj = int(atom_molid[aj])
+            mi = int(atom_molid[ai])
+            mj = int(atom_molid[aj])
             if (not mobile_mol[mi]) and (not mobile_mol[mj]):
                 continue
             if r < 1e-6:
-                uvec = rng.normal(size=3); uvec /= (np.linalg.norm(uvec) + 1e-12)
+                uvec = rng.normal(size=3)
+                uvec /= np.linalg.norm(uvec) + 1e-12
 
             push = (cutoff - r) * damping
             if push <= 0:
@@ -342,21 +405,28 @@ def declash_sequential(coords: np.ndarray, box: np.ndarray, mol_ranges: List[Mol
                 di = np.zeros(3, dtype=np.float64)
                 dj = +push * uvec
 
-            di = cap(mi, di); dj = cap(mj, dj)
+            di = cap(mi, di)
+            dj = cap(mj, dj)
             if restrict_xy_mol[mi]:
                 di[2] = 0.0
             if restrict_xy_mol[mj]:
                 dj[2] = 0.0
 
             if np.any(di):
-                coords[mol_slices[mi]] += di; moved[mi] += di; applied += 1
+                coords[mol_slices[mi]] += di
+                moved[mi] += di
+                applied += 1
             if np.any(dj):
-                coords[mol_slices[mj]] += dj; moved[mj] += dj; applied += 1
+                coords[mol_slices[mj]] += dj
+                moved[mj] += dj
+                applied += 1
 
         coords = wrap(coords, L)
 
         if verbose:
-            print(f"iter {it:3d}: clashes={len(clashes):6d} applied={applied:6d} worst={worst_r:8.4f} nm")
+            print(
+                f"iter {it:3d}: clashes={len(clashes):6d} applied={applied:6d} worst={worst_r:8.4f} nm"
+            )
 
         if applied == 0:
             # escape local trap
@@ -368,8 +438,14 @@ def declash_sequential(coords: np.ndarray, box: np.ndarray, mol_ranges: List[Mol
                     coords[mol_slices[mid]] += jitter[mid]
             coords = wrap(coords, L)
 
-    final = find_clashes(coords, L, atom_molid, atomname, cutoff, max_pairs=500000, heavy_only=heavy_only)
-    return coords, {"cutoff_nm": float(cutoff), "iterations": float(niter), "final_clashes": float(len(final))}
+    final = find_clashes(
+        coords, L, atom_molid, atomname, cutoff, max_pairs=500000, heavy_only=heavy_only
+    )
+    return coords, {
+        "cutoff_nm": float(cutoff),
+        "iterations": float(niter),
+        "final_clashes": float(len(final)),
+    }
 
 
 def main():
@@ -410,13 +486,13 @@ def main():
     atom_molid = np.empty(coords.shape[0], dtype=np.int32)
     moltype_of_molid: List[str] = []
     for mid, m in enumerate(mol_ranges):
-        atom_molid[m.start:m.end] = mid
+        atom_molid[m.start : m.end] = mid
         moltype_of_molid.append(m.moltype)
     moltype_of_molid = np.array(moltype_of_molid, dtype=object)
 
     mobile = np.ones(len(mol_ranges), dtype=bool)
     if args.fix_first_n > 0:
-        mobile[:args.fix_first_n] = False
+        mobile[: args.fix_first_n] = False
     for mt in args.fix_moltype:
         mobile[moltype_of_molid == mt] = False
 
@@ -426,15 +502,38 @@ def main():
 
     heavy_only = not args.no_heavy_only
 
-    new_coords, stats = declash_sequential(coords, box, mol_ranges, atom_molid, atomname,
-                                          mobile, restrict_xy, args.cutoff, args.niter,
-                                          args.damping, args.max_move, args.max_pairs,
-                                          heavy_only, args.seed, args.verbose)
+    new_coords, stats = declash_sequential(
+        coords,
+        box,
+        mol_ranges,
+        atom_molid,
+        atomname,
+        mobile,
+        restrict_xy,
+        args.cutoff,
+        args.niter,
+        args.damping,
+        args.max_move,
+        args.max_pairs,
+        heavy_only,
+        args.seed,
+        args.verbose,
+    )
 
-    write_gro(args.out, title + " (declashed)", new_coords, resid, resname, atomname, box)
+    write_gro(
+        args.out, title + " (declashed)", new_coords, resid, resname, atomname, box
+    )
 
     if args.report is not None:
-        pairs = find_clashes(new_coords, box, atom_molid, atomname, args.cutoff, max_pairs=500000, heavy_only=True)
+        pairs = find_clashes(
+            new_coords,
+            box,
+            atom_molid,
+            atomname,
+            args.cutoff,
+            max_pairs=500000,
+            heavy_only=True,
+        )
         pairs = [(ai, aj, r) for ai, aj, _, r in pairs]
         pairs.sort(key=lambda x: x[2])
         with args.report.open("w") as f:

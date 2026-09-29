@@ -152,14 +152,40 @@ def generate_posre(top_file: Path):
         if stripped.startswith("[ moleculetype ]") or stripped.startswith("[ system ]"):
             if current_mol and current_mol not in ions and current_mol not in water:
                 # Decouple protein and ligand/organic preprocessor flags
-                if current_mol.startswith("system") or current_mol.startswith("Protein"):
-                    out_lines.append('#ifdef POSRES\n#include "posre_' + current_mol + '.itp"\n#endif')
-                    out_lines.append('#ifdef POSRES_250\n#include "posre_' + current_mol + '_250.itp"\n#endif')
-                    out_lines.append('#ifdef POSRES_50\n#include "posre_' + current_mol + '_50.itp"\n#endif')
+                if current_mol.startswith("system") or current_mol.startswith(
+                    "Protein"
+                ):
+                    out_lines.append(
+                        '#ifdef POSRES\n#include "posre_'
+                        + current_mol
+                        + '.itp"\n#endif'
+                    )
+                    out_lines.append(
+                        '#ifdef POSRES_250\n#include "posre_'
+                        + current_mol
+                        + '_250.itp"\n#endif'
+                    )
+                    out_lines.append(
+                        '#ifdef POSRES_50\n#include "posre_'
+                        + current_mol
+                        + '_50.itp"\n#endif'
+                    )
                 else:
-                    out_lines.append('#ifdef POSRES_LIG\n#include "posre_' + current_mol + '.itp"\n#endif')
-                    out_lines.append('#ifdef POSRES_LIG_250\n#include "posre_' + current_mol + '_250.itp"\n#endif')
-                    out_lines.append('#ifdef POSRES_LIG_50\n#include "posre_' + current_mol + '_50.itp"\n#endif')
+                    out_lines.append(
+                        '#ifdef POSRES_LIG\n#include "posre_'
+                        + current_mol
+                        + '.itp"\n#endif'
+                    )
+                    out_lines.append(
+                        '#ifdef POSRES_LIG_250\n#include "posre_'
+                        + current_mol
+                        + '_250.itp"\n#endif'
+                    )
+                    out_lines.append(
+                        '#ifdef POSRES_LIG_50\n#include "posre_'
+                        + current_mol
+                        + '_50.itp"\n#endif'
+                    )
 
             state = "MOL_START" if stripped.startswith("[ moleculetype ]") else "SYSTEM"
             current_mol = None
@@ -174,24 +200,29 @@ def generate_posre(top_file: Path):
 
     # Generate explicit, multi-level physical force constant tables without text macros
     force_levels = [
-        ("", 1000),      # Standard full restraint
-        ("_250", 250),   # Medium restraint
-        ("_50", 50),     # Soft backbone restraint
+        ("", 1000),  # Standard full restraint
+        ("_250", 250),  # Medium restraint
+        ("_50", 50),  # Soft backbone restraint
     ]
 
     for mol, heavy_atoms in mols.items():
         if mol in ions or mol in water:
             continue
-        
+
         for suffix, fc in force_levels:
-            itp_lines = ["[ position_restraints ]", "; atom  type      fx      fy      fz"]
+            itp_lines = [
+                "[ position_restraints ]",
+                "; atom  type      fx      fy      fz",
+            ]
             for nr in heavy_atoms:
                 itp_lines.append(f"{nr:>6}     1  {fc:6d}  {fc:6d}  {fc:6d}")
-                
+
             itp_file = Path(f"posre_{mol}{suffix}.itp")
             itp_file.write_text("\n".join(itp_lines) + "\n")
-            
-        print(f"Generated physical multi-level restraints for {mol} ({len(heavy_atoms)} atoms, FC=1000/250/50)")        )
+
+        print(
+            f"Generated physical multi-level restraints for {mol} ({len(heavy_atoms)} atoms, FC=1000/250/50)"
+        )
 
 
 if __name__ == "__main__":

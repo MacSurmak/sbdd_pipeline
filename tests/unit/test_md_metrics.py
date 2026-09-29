@@ -15,6 +15,7 @@ TER
 END
 """
 
+
 def test_md_metrics_calculation(tmp_path):
     pdb_file = tmp_path / "complex.pdb"
     pdb_file.write_text(SAMPLE_PDB_COMPLEX)
@@ -25,9 +26,12 @@ def test_md_metrics_calculation(tmp_path):
     cmd = [
         sys.executable,
         str(metrics_script),
-        "--pdb", str(pdb_file),
-        "--xtc", str(pdb_file),
-        "--outdir", str(outdir)
+        "--pdb",
+        str(pdb_file),
+        "--xtc",
+        str(pdb_file),
+        "--outdir",
+        str(outdir),
     ]
     res = subprocess.run(cmd, capture_output=True, text=True)
     assert res.returncode == 0, f"md_metrics failed: {res.stderr}\n{res.stdout}"
@@ -42,4 +46,3 @@ def test_md_metrics_calculation(tmp_path):
 
     assert "Prot_BB_RMSD_Mean_A" in summary
     assert "Lig_Heavy_RMSD_Mean_A" in summary
-
