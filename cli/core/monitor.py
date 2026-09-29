@@ -52,16 +52,22 @@ def run_monitor(port: int = 8089):
                     active_job_ids = None
                     try:
                         sq_out = subprocess.check_output(
-                            ["squeue", "-h", "-o", "%i"], text=True, stderr=subprocess.DEVNULL
+                            ["squeue", "-h", "-o", "%i"],
+                            text=True,
+                            stderr=subprocess.DEVNULL,
                         )
                         active_job_ids = set(sq_out.split())
                     except Exception:
                         pass
 
                     for t_name in list(task_bars.keys()):
-                        m_job = re.search(r'#(\d+)', t_name)
+                        m_job = re.search(r"#(\d+)", t_name)
                         # When job has a Slurm ID and is no longer present in squeue (even if squeue is completely empty)
-                        if m_job and active_job_ids is not None and m_job.group(1) not in active_job_ids:
+                        if (
+                            m_job
+                            and active_job_ids is not None
+                            and m_job.group(1) not in active_job_ids
+                        ):
                             progress.remove_task(task_bars[t_name])
                             del task_bars[t_name]
                             last_seen.pop(t_name, None)
@@ -90,11 +96,12 @@ def run_monitor(port: int = 8089):
                     last_seen[task_name] = now
                     log_line = msg.get("log", "").replace("\r", " ").strip()
 
+                    # Make description compact so it never wraps on narrow terminal windows
                     clean_name = task_name.split(":")[-1].strip()
-                    clean_name = clean_name.replace("RUN_MD_CHUNK ", "").replace(
-                        "GMX_EQUILIBRATION ", "EQ: "
-                    )
-
+                    clean_name = clean_name.replace("GMX_EQUILIBRATION_", "EQ: ")
+                    clean_name = clean_name.replace("GMX_EQUILIBRATION", "EQ")
+                    clean_name = clean_name.replace("RUN_MD_CHUNK_", "MD: ")
+                    clean_name = clean_name.replace("RUN_MD_CHUNK", "MD")
                     # 1. Dynamically parse target total steps from GROMACS startup header
                     match_total = (
                         re.search(r"(\d+)\s+steps,\s+[\d.]+\s+ps", log_line)
