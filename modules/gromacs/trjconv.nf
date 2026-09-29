@@ -13,7 +13,7 @@ process TRJCONV {
     val(pbc_extract)
 
     output:
-    tuple val(meta), path("trajectory_clean.xtc"), path("complex_ref.pdb"), path(topol_top), path(index_ndx), emit: clean_traj
+    tuple val(meta), path("trajectory_clean.xtc"), path("complex_ref.pdb"), path(topol_top, includeInputs: true), path(index_ndx, includeInputs: true), emit: clean_traj
 
     script:
     """

@@ -15,13 +15,20 @@ process RUN_MD_CHUNK {
     val(chunk_idx)
 
     output:
-    tuple val(meta), path("out.gro"), path("out.cpt"), path("out.tpr"), path(topol_top), path(index_ndx), path("posre_*.itp"), emit: state
+    tuple val(meta), path("out.gro"), path("out.cpt"), path("out.tpr"), path(topol_top, includeInputs: true), path(index_ndx, includeInputs: true), path("posre_*.itp", includeInputs: true), emit: state
     tuple val(meta), path("md_${chunk_idx}.xtc"), emit: xtc
-    tuple val(meta), path("sys_ref.tpr"), path(topol_top), path(index_ndx), emit: sys_files
+    tuple val(meta), path("sys_ref.tpr"), path(topol_top, includeInputs: true), path(index_ndx, includeInputs: true), emit: sys_files
 
     script:
     """
     echo "=== Worker: \$(hostname) | Chunk: ${chunk_idx} ==="
+
+    # Materialize staged restraints and topology as real local files for output collection
+    for p in posre_*.itp; do
+        if [ -L "\$p" ]; then
+            cp --remove-destination "\$(readlink -f "\$p")" "\$p"
+        fi
+    done
     
     CHUNK_STEPS=\$(awk "BEGIN {printf \\"%.0f\\", (${chunk_ns} * 1000.0) / 0.002}")
     EXTENSION_PS=\$(awk "BEGIN {printf \\"%.0f\\", ${chunk_ns} * 1000.0}")
