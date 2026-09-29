@@ -29,15 +29,20 @@ def run_monitor(port: int = 8089):
 
     progress = Progress(
         TextColumn("[bold cyan]{task.description}"),
+        TextColumn("[bold yellow][{task.fields[node]}][/bold yellow]"),
         BarColumn(),
         TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
         MofNCompleteColumn(),
+        TextColumn("[bold green]{task.fields[speed]}[/bold green]"),
         TimeElapsedColumn(),
         TimeRemainingColumn(),
         console=console,
     )
 
     task_bars = {}
+    task_stats = (
+        {}
+    )  # task_name -> {"last_step": int, "last_time": float, "dt_ps": float, "speed_str": str}
     last_seen = {}
     last_reap = time.time()
 
@@ -100,40 +105,90 @@ def run_monitor(port: int = 8089):
                     clean_name = task_name.split(":")[-1].strip()
                     clean_name = clean_name.replace("GMX_EQUILIBRATION_", "EQ: ")
                     clean_name = clean_name.replace("GMX_EQUILIBRATION", "EQ")
+                    clean_name = task_name.split(":")[-1].strip()
+                    clean_name = clean_name.replace("GMX_EQUILIBRATION_", "EQ: ")
+                    clean_name = clean_name.replace("GMX_EQUILIBRATION", "EQ")
                     clean_name = clean_name.replace("RUN_MD_CHUNK_", "MD: ")
                     clean_name = clean_name.replace("RUN_MD_CHUNK", "MD")
-                    # 1. Dynamically parse target total steps from GROMACS startup header
-                    match_total = (
-                        re.search(r"(\d+)\s+steps,\s+[\d.]+\s+ps", log_line)
-                        or re.search(r"(?i)number of steps\s*=\s*(\d+)", log_line)
-                        or re.search(
-                            r"(?i)overriding nsteps.*:\s*(\d+)\s+steps", log_line
-                        )
-                    )
+
+                    node_name = msg.get("node", "local")
+                    dt_ps = msg.get("dt_ps")
+
+                    # Extract total from packet metadata or log line
+                    total_steps = msg.get("total")
+                    match_total = re.search(r"(\d+)\s+steps,\s+([\d.]+)\s+ps", log_line)
                     if match_total:
                         total_steps = int(match_total.group(1))
-                        if task_name not in task_bars:
-                            task_bars[task_name] = progress.add_task(
-                                f"[green]{clean_name}", total=total_steps
-                            )
-                        else:
-                            progress.update(task_bars[task_name], total=total_steps)
-                        continue
+                        total_ps = float(match_total.group(2))
+                        if total_steps > 0:
+                            dt_ps = total_ps / total_steps
+                    else:
+                        m_steps_only = re.search(
+                            r"(?i)number of steps\s*=\s*(\d+)", log_line
+                        ) or re.search(
+                            r"(?i)overriding nsteps.*:\s*(\d+)\s+steps", log_line
+                        )
+                        if m_steps_only:
+                            total_steps = int(m_steps_only.group(1))
 
-                    # 2. GROMACS Step Progress (Matches 'step 11280500' and 'Step= 50')
+                    # GROMACS Step Progress (Matches 'step 11280500' and 'Step= 50')
                     match_step = re.search(r"(?i)step[=\s]+(\d+)", log_line)
                     if match_step:
                         current_step = int(match_step.group(1))
+
+                        if task_name not in task_stats:
+                            task_stats[task_name] = {
+                                "last_step": current_step,
+                                "last_time": now,
+                                "dt_ps": dt_ps,
+                                "speed_str": "-- ns/day" if dt_ps else "-- step/s",
+                            }
+                        else:
+                            stats = task_stats[task_name]
+                            if dt_ps and not stats["dt_ps"]:
+                                stats["dt_ps"] = dt_ps
+
+                            # Calculate rate every ~2 seconds
+                            dt_wall = now - stats["last_time"]
+                            if dt_wall >= 2.0:
+                                d_step = current_step - stats["last_step"]
+                                if d_step >= 0:
+                                    if stats["dt_ps"]:
+                                        # (steps * dt_ps * 86400) / (dt_wall * 1000) = ns/day
+                                        ns_day = (
+                                            d_step * stats["dt_ps"] * 86.4
+                                        ) / dt_wall
+                                        stats["speed_str"] = f"{ns_day:>5.1f} ns/d"
+                                    else:
+                                        steps_sec = d_step / dt_wall
+                                        stats["speed_str"] = f"{steps_sec:>5.0f} st/s"
+
+                                stats["last_step"] = current_step
+                                stats["last_time"] = now
+
+                        speed_display = task_stats[task_name]["speed_str"]
+
                         if task_name not in task_bars:
                             task_bars[task_name] = progress.add_task(
-                                f"[green]{clean_name}", total=None
+                                f"[green]{clean_name}",
+                                total=total_steps,
+                                node=node_name,
+                                speed=speed_display,
                             )
+                        else:
+                            task_obj = progress._tasks[task_bars[task_name]]
+                            if (
+                                total_steps is not None
+                                and task_obj.total != total_steps
+                            ):
+                                progress.update(task_bars[task_name], total=total_steps)
 
-                        task_obj = progress._tasks[task_bars[task_name]]
-                        if task_obj.total is not None and current_step > task_obj.total:
-                            progress.update(task_bars[task_name], total=None)
-
-                        progress.update(task_bars[task_name], completed=current_step)
+                            progress.update(
+                                task_bars[task_name],
+                                completed=current_step,
+                                node=node_name,
+                                speed=speed_display,
+                            )
                         continue
 
                 except socket.timeout:
