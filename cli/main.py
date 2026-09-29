@@ -253,6 +253,16 @@ def main():
         "status", help="Inspect Slurm queue and Nextflow job status"
     )
 
+    # 10. watch / progress
+    p_watch = subparsers.add_parser(
+        "watch",
+        aliases=["progress", "top"],
+        help="Monitor real-time task progress via cluster UDP telemetry",
+    )
+    p_watch.add_argument(
+        "--port", type=int, default=8089, help="Telemetry UDP port (default: 8089)"
+    )
+
     args = parser.parse_args()
 
     if not args.subcommand:
@@ -274,6 +284,10 @@ def main():
         sys.exit(run_workflow("screen", args))
     elif subcmd in ["dynamics", "md", "md-run", "md-setup", "md-analyze"]:
         sys.exit(run_workflow("dynamics", args))
+    elif subcmd in ["watch", "progress", "top"]:
+        from cli.core.monitor import run_monitor
+
+        run_monitor(port=args.port)
 
 
 if __name__ == "__main__":
