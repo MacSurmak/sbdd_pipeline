@@ -60,11 +60,11 @@ workflow RUN_CHUNKED_MD {{
     
     def num_reps = replicates as int
     ch_state_0 = GMX_EQUILIBRATION.out.equilibrated_state
-        .join(ch_system.map{{ m, gro, top, ndx, pos -> [m, top, ndx] }}, by: 0)
-        .flatMap {{ meta, eq_gro, eq_cpt, eq_tpr, topol, ndx ->
+        .join(ch_system.map{{ m, gro, top, ndx, pos -> [m, top, ndx, pos] }}, by: 0)
+        .flatMap {{ meta, eq_gro, eq_cpt, eq_tpr, topol, ndx, posre_files ->
             (1..num_reps).collect {{ rep_id ->
                 def rep_meta = meta + [rep: rep_id]
-                [ rep_meta, eq_gro, eq_cpt, eq_tpr, topol, ndx ]
+                [ rep_meta, eq_gro, eq_cpt, eq_tpr, topol, ndx, posre_files ]
             }}
         }}
 
@@ -73,7 +73,7 @@ workflow RUN_CHUNKED_MD {{
     for i in range(1, total_chunks + 1):
         code += f"""
     step_{i} = RUN_MD_CHUNK_{i}(ch_state_{i-1}, ch_md_protocol, chunk_ns, {i})
-    ch_state_{i} = step_{i}.state.map {{ meta, out_gro, out_cpt, out_tpr, top, ndx -> [meta, out_gro, out_cpt, out_tpr, top, ndx] }}
+    ch_state_{i} = step_{i}.state.map {{ meta, out_gro, out_cpt, out_tpr, top, ndx, pos -> [meta, out_gro, out_cpt, out_tpr, top, ndx, pos] }}
     ch_all_xtcs = ch_all_xtcs.mix(step_{i}.xtc)
 """
     code += f"""

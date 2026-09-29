@@ -9,13 +9,13 @@ process RUN_MD_CHUNK {
     label 'process_gpu'
 
     input:
-    tuple val(meta), path(prev_gro), path(prev_cpt), path(prev_tpr), path(topol_top), path(index_ndx)
+    tuple val(meta), path(prev_gro), path(prev_cpt), path(prev_tpr), path(topol_top), path(index_ndx), path(posre_files)
     path md_protocol
     val(chunk_ns)
     val(chunk_idx)
 
     output:
-    tuple val(meta), path("out.gro"), path("out.cpt"), path("out.tpr"), path(topol_top), path(index_ndx), emit: state
+    tuple val(meta), path("out.gro"), path("out.cpt"), path("out.tpr"), path(topol_top), path(index_ndx), path("posre_*.itp"), emit: state
     tuple val(meta), path("md_${chunk_idx}.xtc"), emit: xtc
     tuple val(meta), path("sys_ref.tpr"), path(topol_top), path(index_ndx), emit: sys_files
 
@@ -64,5 +64,6 @@ process RUN_MD_CHUNK {
     touch out.tpr
     touch md_${chunk_idx}.xtc
     touch sys_ref.tpr
+    touch posre_system1.itp
     """
 }
