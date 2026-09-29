@@ -4,6 +4,7 @@ import re
 import time
 import subprocess
 from rich.console import Console
+from rich.markup import escape
 from rich.progress import (
     Progress,
     BarColumn,
@@ -29,7 +30,7 @@ def run_monitor(port: int = 8089):
 
     progress = Progress(
         TextColumn("[bold cyan]{task.description}"),
-        TextColumn("[bold yellow][{task.fields[node]}][/bold yellow]"),
+        TextColumn("[bold yellow]({task.fields[node]})[/bold yellow]"),
         BarColumn(),
         TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
         MofNCompleteColumn(),
@@ -105,9 +106,6 @@ def run_monitor(port: int = 8089):
                     clean_name = task_name.split(":")[-1].strip()
                     clean_name = clean_name.replace("GMX_EQUILIBRATION_", "EQ: ")
                     clean_name = clean_name.replace("GMX_EQUILIBRATION", "EQ")
-                    clean_name = task_name.split(":")[-1].strip()
-                    clean_name = clean_name.replace("GMX_EQUILIBRATION_", "EQ: ")
-                    clean_name = clean_name.replace("GMX_EQUILIBRATION", "EQ")
                     clean_name = clean_name.replace("RUN_MD_CHUNK_", "MD: ")
                     clean_name = clean_name.replace("RUN_MD_CHUNK", "MD")
 
@@ -170,9 +168,9 @@ def run_monitor(port: int = 8089):
 
                         if task_name not in task_bars:
                             task_bars[task_name] = progress.add_task(
-                                f"[green]{clean_name}",
+                                f"[green]{escape(clean_name)}",
                                 total=total_steps,
-                                node=node_name,
+                                node=escape(node_name),
                                 speed=speed_display,
                             )
                         else:
@@ -186,7 +184,7 @@ def run_monitor(port: int = 8089):
                             progress.update(
                                 task_bars[task_name],
                                 completed=current_step,
-                                node=node_name,
+                                node=escape(node_name),
                                 speed=speed_display,
                             )
                         continue
