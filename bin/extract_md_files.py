@@ -50,7 +50,8 @@ def extract_via_schrodinger(args):
     rec_out = out_dir / "receptor_dry.pdb"
     rec_st.write(str(rec_out))
 
-    # 2. Extract Ligand if provided
+    # 2. Extract Ligand preserving canonical residue name
+    lig_code = (args.lig_name or "LIG").strip()[:4].upper()
     if (
         args.lig_file
         and args.lig_file.lower() != "none"
@@ -58,14 +59,14 @@ def extract_via_schrodinger(args):
     ):
         with structure.StructureReader(args.lig_file) as reader:
             for i, st in enumerate(reader):
-                st.title = "UNK"
+                st.title = lig_code
                 for res in st.residue:
-                    res.pdbres = "UNK"
-                lig_out = org_dir / "UNK.mol2"
+                    res.pdbres = lig_code
+                lig_out = org_dir / f"{lig_code}.mol2"
                 st.write(str(lig_out))
-                (org_dir / "UNK_charge.txt").write_text(str(st.formal_charge))
+                (org_dir / f"{lig_code}_charge.txt").write_text(str(st.formal_charge))
                 organics.append(
-                    {"name": "UNK", "mol2": "UNK.mol2", "charge": "UNK_charge.txt"}
+                    {"name": lig_code, "mol2": f"{lig_code}.mol2", "charge": f"{lig_code}_charge.txt"}
                 )
                 break
 
@@ -107,8 +108,8 @@ def extract_via_rdkit(args):
 
         charge = Chem.GetFormalCharge(target_mol)
 
-        # Save mol2 via antechamber prep
-        sdf_out = org_dir / "UNK.sdf"
+        lig_code = (args.lig_name or "LIG").strip()[:4].upper()
+        sdf_out = org_dir / f"{lig_code}.sdf"
         writer = Chem.SDWriter(str(sdf_out))
         writer.write(target_mol)
         writer.close()
@@ -122,13 +123,15 @@ def extract_via_rdkit(args):
         cmd = [
             antechamber_bin,
             "-i",
-            "UNK.sdf",
+            f"{lig_code}.sdf",
             "-fi",
             "sdf",
             "-o",
-            "UNK.mol2",
+            f"{lig_code}.mol2",
             "-fo",
             "mol2",
+            "-rn",
+            lig_code,
         ]
         subprocess.run(cmd, check=True, cwd=str(org_dir))
 
@@ -137,8 +140,8 @@ def extract_via_rdkit(args):
         for tmp in org_dir.glob("ATOMTYPE*"):
             tmp.unlink(missing_ok=True)
 
-        (org_dir / "UNK_charge.txt").write_text(str(charge))
-        organics.append({"name": "UNK", "mol2": "UNK.mol2", "charge": "UNK_charge.txt"})
+        (org_dir / f"{lig_code}_charge.txt").write_text(str(charge))
+        organics.append({"name": lig_code, "mol2": f"{lig_code}.mol2", "charge": f"{lig_code}_charge.txt"})
 
     with open(out_dir / "organics.json", "w") as f:
         json.dump(organics, f)
@@ -155,6 +158,9 @@ def main():
     )
     parser.add_argument(
         "--lig_file", default="none", help="Input docked pose file (.sdf or .mae)"
+    )
+    parser.add_argument(
+        "--lig_name", default="", help="Canonical 3-letter residue name for ligand"
     )
     parser.add_argument("--cofactors", nargs="*", default=[], help="Cofactors list")
     parser.add_argument("--out_dir", required=True, help="Output directory")

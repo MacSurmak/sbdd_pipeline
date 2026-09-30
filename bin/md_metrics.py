@@ -24,7 +24,7 @@ def compute_rmsd_rmsf(pdb_path: str, xtc_path: str, ligand_resname: str, cofacto
     prot_heavy = u.select_atoms("protein and not name H*")
     ref_prot_heavy = ref.select_atoms("protein and not name H*")
 
-    # Explicit targets from declarative metadata (with automatic UNK alias check)
+    # Strict declarative targets (Fail-Fast if residue not present)
     targets = []
     if ligand_resname:
         lig_sel = u.select_atoms(f"resname {ligand_resname} and not name H*")
@@ -33,16 +33,14 @@ def compute_rmsd_rmsf(pdb_path: str, xtc_path: str, ligand_resname: str, cofacto
             lig_sel = u.select_atoms(f"resname {ligand_resname}")
             ref_lig = ref.select_atoms(f"resname {ligand_resname}")
 
-        # Antechamber/GAFF2 alias fallback to UNK
         if lig_sel.n_atoms == 0:
-            lig_sel = u.select_atoms("resname UNK and not name H*")
-            ref_lig = ref.select_atoms("resname UNK and not name H*")
-        if lig_sel.n_atoms == 0:
-            lig_sel = u.select_atoms("resname UNK")
-            ref_lig = ref.select_atoms("resname UNK")
+            available = [r.resname for r in u.residues if r.atoms.select_atoms("protein").n_atoms == 0]
+            raise ValueError(
+                f"FATAL: Ligand residue '{ligand_resname}' not found in structure! "
+                f"Available non-protein residues: {set(available)}"
+            )
 
-        if lig_sel.n_atoms > 0:
-            targets.append((f"Lig_{ligand_resname}_RMSD_A", lig_sel, ref_lig))
+        targets.append((f"Lig_{ligand_resname}_RMSD_A", lig_sel, ref_lig))
 
     for cof in cofactor_resnames:
         cof = cof.strip()
@@ -106,10 +104,6 @@ def compute_contacts(
     lig = u.select_atoms(f"resname {ligand_resname} and not name H*")
     if lig.n_atoms == 0:
         lig = u.select_atoms(f"resname {ligand_resname}")
-    if lig.n_atoms == 0:
-        lig = u.select_atoms("resname UNK and not name H*")
-    if lig.n_atoms == 0:
-        lig = u.select_atoms("resname UNK")
 
     if lig.n_atoms == 0:
         return pd.DataFrame()

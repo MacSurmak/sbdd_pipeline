@@ -35,6 +35,11 @@ process TRJCONV {
     # 6. Extract reference 3D structure of the dry COMPLEX at t=0
     echo "${pbc_extract}" | gmx trjconv -s ${tpr} -f trajectory_clean.xtc -n index.ndx -o complex_ref.pdb -dump 0
 
+    # Ensure canonical ligand residue name consistency
+    if [ -n "${meta.ligand}" ]; then
+        sed -i "s/UNK/${meta.ligand}/g" complex_ref.pdb
+    fi
+
     rm -f pbc_whole.xtc pbc_centered.xtc
     """
 

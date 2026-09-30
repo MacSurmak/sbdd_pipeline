@@ -25,10 +25,12 @@ process EXTRACT_MD_SYSTEM {
     script:
     def cof_list = cofactors instanceof List ? cofactors.join(' ') : cofactors
     def cof_arg = cof_list ? "--cofactors ${cof_list}" : ""
+    def lig_arg = meta.native_ligand ? "--lig_name ${meta.native_ligand}" : ""
     """
     schrodinger run ${projectDir}/bin/extract_md_files.py \\
         --rec_file ${rec_file} \\
         --lig_file ${lig_file} \\
+        ${lig_arg} \\
         ${cof_arg} \\
         --out_dir .
     """
