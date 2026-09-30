@@ -325,23 +325,34 @@ def main():
     p_mda.add_argument("--ndx", help="Direct path to custom index.ndx file")
     add_common_wf_args(p_mda)
 
+    # 7.1 traj-clean
+    p_clean_tr = subparsers.add_parser(
+        "traj-clean",
+        help="Remove solvent, fix PBC, center on protein, and fit trajectory",
+    )
+    p_clean_tr.add_argument("--receptors", help="Comma-separated list of Receptor names to clean all their replicas")
+    p_clean_tr.add_argument("--all", action="store_true", help="Clean trajectories for ALL receptors in DB")
+    p_clean_tr.add_argument("--traj", help="Explicit comma-separated list of Trajectory names")
+    add_common_wf_args(p_clean_tr)
+
+    # 7.2 traj-metrics
+    p_metrics = subparsers.add_parser(
+        "traj-metrics",
+        help="Calculate RMSD (protein, ligand, and cofactors), RMSF, and contacts",
+    )
+    p_metrics.add_argument("--receptors", help="Comma-separated list of Receptor names to analyze")
+    p_metrics.add_argument("--all", action="store_true", help="Analyze metrics for ALL receptors in DB")
+    p_metrics.add_argument("--traj", help="Explicit comma-separated list of Trajectory names")
+    add_common_wf_args(p_metrics)
+
     # 8. traj-cluster
     p_cluster = subparsers.add_parser(
         "traj-cluster",
-        help="Cluster MD trajectory ensembles and automatically register frames in DB for docking",
+        help="Cluster clean MD trajectory ensembles and automatically register frames in DB for docking",
     )
-    p_cluster.add_argument(
-        "--receptors",
-        help="Comma-separated list of Receptor names (clusters all their replicas)",
-    )
-    p_cluster.add_argument(
-        "--all",
-        action="store_true",
-        help="Cluster trajectories for ALL receptors in DB",
-    )
-    p_cluster.add_argument(
-        "--traj", help="Explicit comma-separated list of Trajectory names"
-    )
+    p_cluster.add_argument("--receptors", help="Comma-separated list of Receptor names (clusters all their clean replicas)")
+    p_cluster.add_argument("--all", action="store_true", help="Cluster trajectories for ALL receptors in DB")
+    p_cluster.add_argument("--traj", help="Explicit comma-separated list of Trajectory names")
     p_cluster.add_argument(
         "--cutoff", type=float, default=0.15, help="RMSD cutoff in nm (default 0.15)"
     )
