@@ -7,6 +7,10 @@ include { RUN_MD_CHUNK as RUN_MD_CHUNK_3 } from '../modules/gromacs/run_chunk'
 include { RUN_MD_CHUNK as RUN_MD_CHUNK_4 } from '../modules/gromacs/run_chunk'
 include { RUN_MD_CHUNK as RUN_MD_CHUNK_5 } from '../modules/gromacs/run_chunk'
 include { RUN_MD_CHUNK as RUN_MD_CHUNK_6 } from '../modules/gromacs/run_chunk'
+include { RUN_MD_CHUNK as RUN_MD_CHUNK_7 } from '../modules/gromacs/run_chunk'
+include { RUN_MD_CHUNK as RUN_MD_CHUNK_8 } from '../modules/gromacs/run_chunk'
+include { RUN_MD_CHUNK as RUN_MD_CHUNK_9 } from '../modules/gromacs/run_chunk'
+include { RUN_MD_CHUNK as RUN_MD_CHUNK_10 } from '../modules/gromacs/run_chunk'
 
 workflow RUN_CHUNKED_MD {
     take:
@@ -55,9 +59,25 @@ workflow RUN_CHUNKED_MD {
     ch_state_6 = step_6.state.map { meta, out_gro, out_cpt, out_tpr, top, ndx, pos -> [meta, out_gro, out_cpt, out_tpr, top, ndx, pos] }
     ch_all_xtcs = ch_all_xtcs.mix(step_6.xtc)
 
+    step_7 = RUN_MD_CHUNK_7(ch_state_6, ch_md_protocol, chunk_ns, 7)
+    ch_state_7 = step_7.state.map { meta, out_gro, out_cpt, out_tpr, top, ndx, pos -> [meta, out_gro, out_cpt, out_tpr, top, ndx, pos] }
+    ch_all_xtcs = ch_all_xtcs.mix(step_7.xtc)
+
+    step_8 = RUN_MD_CHUNK_8(ch_state_7, ch_md_protocol, chunk_ns, 8)
+    ch_state_8 = step_8.state.map { meta, out_gro, out_cpt, out_tpr, top, ndx, pos -> [meta, out_gro, out_cpt, out_tpr, top, ndx, pos] }
+    ch_all_xtcs = ch_all_xtcs.mix(step_8.xtc)
+
+    step_9 = RUN_MD_CHUNK_9(ch_state_8, ch_md_protocol, chunk_ns, 9)
+    ch_state_9 = step_9.state.map { meta, out_gro, out_cpt, out_tpr, top, ndx, pos -> [meta, out_gro, out_cpt, out_tpr, top, ndx, pos] }
+    ch_all_xtcs = ch_all_xtcs.mix(step_9.xtc)
+
+    step_10 = RUN_MD_CHUNK_10(ch_state_9, ch_md_protocol, chunk_ns, 10)
+    ch_state_10 = step_10.state.map { meta, out_gro, out_cpt, out_tpr, top, ndx, pos -> [meta, out_gro, out_cpt, out_tpr, top, ndx, pos] }
+    ch_all_xtcs = ch_all_xtcs.mix(step_10.xtc)
+
     sys_files = step_1.sys_files
 
-    ch_grouped_xtcs = ch_all_xtcs.groupTuple(by: 0, size: 6, sort: true)
+    ch_grouped_xtcs = ch_all_xtcs.groupTuple(by: 0, size: 10, sort: true)
     TRJCAT(ch_grouped_xtcs)
 
     emit:
