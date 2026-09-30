@@ -16,14 +16,16 @@ workflow ANALYZE_WF {
         def planList = jsonSlurper.parseText(planFile.text)
 
         ch_cluster_in = Channel.fromList(planList).map { item ->
-            def meta = [id: item.traj_name, project: params.project_name]
-            [ meta, file(item.xtc), file(item.tpr), file(item.tpr), item.cutoff, item.method ]
+            def meta = [id: item.task_id, project: params.project_name]
+            def xtcs = item.xtcs.collect { file(it) }
+            def tpr = file(item.tpr)
+            [ meta, xtcs, tpr, item.cutoff, item.method ]
         }
 
         GMX_CLUSTER(
-            ch_cluster_in.map { m, xtc, tpr, dummy, cut, met -> [ m, xtc, tpr, dummy ] },
-            ch_cluster_in.map { it[4] },
-            ch_cluster_in.map { it[5] }
+            ch_cluster_in.map { m, xtcs, tpr, cut, met -> [ m, xtcs, tpr ] },
+            ch_cluster_in.map { it[3] },
+            ch_cluster_in.map { it[4] }
         )
 
         // Flatten output list of pdbs and emit receipt

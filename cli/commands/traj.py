@@ -29,23 +29,37 @@ def cmd_cluster(args):
         )
         sys.exit(1)
 
-    # Build Plan for all requested trajectories
+    # 1. Group requested trajectories by parent Receptor
+    groups = {}
+    for t in trajs:
+        groups.setdefault(t.receptor_name, []).append(t)
+
+    # 2. Build Execution Plan (One task per Receptor Ensemble)
     plan_list = []
     parent_map = {}
-    for traj in trajs:
-        parent_rec = session.query(Receptor).filter_by(name=traj.receptor_name).first()
+
+    for rec_name, t_list in groups.items():
+        parent_rec = session.query(Receptor).filter_by(name=rec_name).first()
         if not parent_rec:
             console.print(
-                f"[bold red]FATAL: Parent receptor '{traj.receptor_name}' not found.[/bold red]"
+                f"[bold red]FATAL: Parent receptor '{rec_name}' not found.[/bold red]"
             )
             sys.exit(1)
-        parent_map[traj.name] = parent_rec
+
+        task_id = f"{rec_name}_ens"
+        parent_map[task_id] = parent_rec
+
+        xtc_paths = [t.path_xtc for t in t_list]
+        tpr_path = t_list[
+            0
+        ].path_tpr  # TPR is identical for all replicas of the same receptor
 
         plan_list.append(
             {
-                "traj_name": traj.name,
-                "xtc": traj.path_xtc,
-                "tpr": traj.path_tpr,
+                "task_id": task_id,
+                "receptor": rec_name,
+                "xtcs": xtc_paths,
+                "tpr": tpr_path,
                 "cutoff": args.cutoff,
                 "method": args.method,
             }
@@ -56,7 +70,7 @@ def cmd_cluster(args):
         json.dump(plan_list, f, indent=2)
 
     console.print(
-        f"[bold cyan]Clustering {len(trajs)} trajectory(ies) in parallel on cluster (Cutoff: {args.cutoff} nm)...[/bold cyan]"
+        f"[bold cyan]Clustering {len(trajs)} trajectory(ies) across {len(groups)} Receptor Ensemble(s) (Cutoff: {args.cutoff} nm)...[/bold cyan]"
     )
 
     configs = load_project_configs(cwd)
