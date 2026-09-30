@@ -216,6 +216,10 @@ def main():
         "tree", aliases=["ls"], help="Show database lineage tree"
     )
 
+    # 0.4 rm
+    p_rm = subparsers.add_parser("rm", help="Remove an item from the database by name")
+    p_rm.add_argument("target", help="Name of the item to remove")
+
     # 1. init
     p_init = subparsers.add_parser("init", help="Initialize new project workspace")
     p_init.add_argument(
@@ -352,6 +356,10 @@ def main():
         from cli.commands.tree import cmd_tree
 
         cmd_tree(args)
+    elif subcmd == "rm":
+        from cli.commands.rm import cmd_rm
+
+        cmd_rm(args)
     elif subcmd == "init":
         cmd_init(args)
     elif subcmd == "md-init":

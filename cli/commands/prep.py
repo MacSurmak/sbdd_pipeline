@@ -19,7 +19,7 @@ def cmd_prep(args):
     session = init_db()
 
     # 1. Fetch receptors needing preparation
-    query = session.query(Receptor).filter(Receptor.status != "ready")
+    query = session.query(Receptor).filter(Receptor.status == "unprepared")
     if getattr(args, "receptors", None):
         target_names = [n.strip() for n in args.receptors.split(",")]
         query = query.filter(Receptor.name.in_(target_names))

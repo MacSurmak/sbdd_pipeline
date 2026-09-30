@@ -33,6 +33,28 @@ process SPLIT_SDF {
     """
 }
 
+process CONVERT_READY_LIGAND {
+    tag "${meta.id}"
+    label 'process_single'
+
+    input:
+    tuple val(meta), path(sdf), val(idx)
+
+    output:
+    tuple val(meta), path("${meta.id}.maegz"), emit: prepared_maegz
+    tuple val(meta), path(sdf), emit: prepared_sdf
+
+    script:
+    """
+    schrodinger structconvert ${sdf} ${meta.id}.maegz
+    """
+
+    stub:
+    """
+    touch ${meta.id}.maegz
+    """
+}
+
 process MERGE_LIGPREP {
     tag "${project_name}"
     executor 'local'
@@ -60,7 +82,6 @@ process MERGE_LIGPREP {
 workflow PREPARE_LIGANDS {
     take:
     ch_library    // channel: [ val(meta), path(library_file) ]
-    ch_ref_native // channel: [ val(meta), path(ref_native_sdf) ]
     dock_engine   // val: "both", "gnina", "glide"
     batch_size    // val: 15
     target_ph     // val: 7.4
@@ -69,44 +90,40 @@ workflow PREPARE_LIGANDS {
     max_states    // val: 32
 
     main:
-    // 1. Split raw SDF library into chunks for distributed computing across Slurm
+    // 1. Split raw SDF library into chunks
     SPLIT_SDF(ch_library, batch_size)
-    ch_raw_chunks = SPLIT_SDF.out.chunks.flatMap { meta, files ->
-        def fileList = files instanceof List ? files : [files]
+    ch_all_chunks = SPLIT_SDF.out.chunks.flatMap { meta, files ->
+        def fileList = files instanceof List ? files : (files ? [files] : [])
         fileList.withIndex().collect { f, idx ->
             def chunk_meta = [
                 id: "${meta.id}_c${idx}",
                 chunk_idx: idx,
                 project: meta.project ?: meta.id,
-                is_native: false
+                status: meta.status ?: 'unprepared',
+                is_native: meta.is_native ?: false
             ]
             [ chunk_meta, f, idx ]
         }
     }
 
-    // 2. Add native reference ligand as a distinct chunk (indexed as "native" to avoid arbitrary limits)
-    ch_native_chunk = ch_ref_native.first().map { meta, native_sdf ->
-        def nat_meta = [
-            id: "${meta.project ?: params.project_name}_native",
-            chunk_idx: "native",
-            project: meta.project ?: params.project_name,
-            is_native: true
-        ]
-        [ nat_meta, native_sdf, "native" ]
-    }
+    // 2. Branch: Ready ligands bypass LigPrep, Unprepared go through LigPrep
+    ch_all_chunks.branch {
+        ready: it[0].status == 'ready'
+        prep:  true
+    }.set { branched_chunks }
 
-    ch_all_chunks = ch_raw_chunks.mix(ch_native_chunk)
+    // 3. Process
+    LIGPREP(branched_chunks.prep.map { m, f, i -> [m, f] }, target_ph, ph_tol, ff_version, max_states)
+    CONVERT_READY_LIGAND(branched_chunks.ready)
 
-    // 3. Prepare 3D protonated / Epik states at physiological pH across Slurm
-    ch_ligprep_in = ch_all_chunks.map { chunk_meta, f, idx -> [ chunk_meta, f ] }
-    LIGPREP(ch_ligprep_in, target_ph, ph_tol, ff_version, max_states)
+    // 4. Mix outputs
+    ch_prepared_mae = LIGPREP.out.prepared_maegz.mix(CONVERT_READY_LIGAND.out.prepared_maegz)
+    
+    ch_prepared_sdf = LIGPREP.out.prepared_sdf
+        .mix(CONVERT_READY_LIGAND.out.prepared_sdf)
+        .map { chunk_meta, sdf -> [ chunk_meta, sdf, chunk_meta.chunk_idx ] }
 
-    ch_prepared_mae = LIGPREP.out.prepared_maegz
-    ch_prepared_sdf = LIGPREP.out.prepared_sdf.map { chunk_meta, sdf ->
-        [ chunk_meta, sdf, chunk_meta.chunk_idx ]
-    }
-
-    ch_all_maegz = LIGPREP.out.prepared_maegz
+    ch_all_maegz = ch_prepared_mae
         .map { chunk_meta, maegz -> maegz }
         .collect()
 
