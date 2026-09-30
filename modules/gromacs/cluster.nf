@@ -17,11 +17,12 @@ process GMX_CLUSTER {
 
     script:
     """
-    # 1. Create strict index with Protein group if needed
-    echo "q" | gmx make_ndx -f ${ref_pdb} -o index.ndx
+    # 1. Generate index strictly from binary system topology (TPR)
+    echo "q" | gmx make_ndx -f ${tpr} -o index.ndx
 
-    # 2. Run clustering (fit on Protein, calculate RMSD on Protein)
-    echo "Protein Protein" | gmx cluster -f ${xtc} -s ${tpr} -n index.ndx -method ${method} -cutoff ${cutoff} -cl clusters_multi.pdb
+    # 2. Run clustering (fit on Protein, RMSD on Protein, output Protein to clusters)
+    # GROMACS cluster prompts for: (1) fit group, (2) RMSD group, and uses fit/RMSD group for structures
+    printf "Protein\nProtein\n" | gmx cluster -f ${xtc} -s ${tpr} -n index.ndx -method ${method} -cutoff ${cutoff} -cl clusters_multi.pdb
 
     # 3. Split multi-model PDB into separate files for database registration
     python3 -c "

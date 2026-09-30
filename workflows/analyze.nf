@@ -13,12 +13,18 @@ workflow ANALYZE_WF {
     if (params.cluster_plan) {
         def planFile = file(params.cluster_plan)
         def jsonSlurper = new groovy.json.JsonSlurper()
-        def plan = jsonSlurper.parseText(planFile.text)
+        def planList = jsonSlurper.parseText(planFile.text)
 
-        def meta = [id: plan.traj_name, project: params.project_name]
-        ch_in = Channel.value([ meta, file(plan.xtc), file(plan.tpr), file(plan.ref_pdb) ])
-        
-        GMX_CLUSTER(ch_in, plan.cutoff, plan.method)
+        ch_cluster_in = Channel.fromList(planList).map { item ->
+            def meta = [id: item.traj_name, project: params.project_name]
+            [ meta, file(item.xtc), file(item.tpr), file(item.tpr), item.cutoff, item.method ]
+        }
+
+        GMX_CLUSTER(
+            ch_cluster_in.map { m, xtc, tpr, dummy, cut, met -> [ m, xtc, tpr, dummy ] },
+            ch_cluster_in.map { it[4] },
+            ch_cluster_in.map { it[5] }
+        )
 
         // Flatten output list of pdbs and emit receipt
         GMX_CLUSTER.out.cluster_pdbs.flatMap { m, pdbs ->
@@ -28,7 +34,7 @@ workflow ANALYZE_WF {
                 "${frame_id}\t${p.toAbsolutePath()}"
             }
         }.collectFile(name: 'cluster_receipt.tsv', storeDir: params.outdir, newLine: true)
-        
+
         return
     }
 
