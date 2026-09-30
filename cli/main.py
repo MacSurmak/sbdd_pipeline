@@ -164,6 +164,55 @@ def main():
     )
     subparsers = parser.add_subparsers(dest="subcommand", help="Available subcommands")
 
+    # 0. add (Database Registration)
+    p_add = subparsers.add_parser(
+        "add", help="Register external files into the project database"
+    )
+    add_subs = p_add.add_subparsers(dest="add_type", required=True)
+
+    # 0.1 add receptor
+    p_add_rec = add_subs.add_parser(
+        "receptor", help="Register a macromolecular structure"
+    )
+    p_add_rec.add_argument(
+        "path", help="Absolute or relative path to the structure (.pdb, .cif, .mae)"
+    )
+    p_add_rec.add_argument(
+        "--name", required=True, help="Unique identifier for this receptor"
+    )
+    p_add_rec.add_argument(
+        "--prep",
+        choices=["full", "light", "ready"],
+        required=True,
+        help="Preparation mode",
+    )
+    p_add_rec.add_argument(
+        "--cofactors", nargs="*", help="List of cofactors to keep (e.g., MG ZN)"
+    )
+    p_add_rec.add_argument(
+        "--force", action="store_true", help="Overwrite if name exists"
+    )
+
+    # 0.2 add ligand
+    p_add_lig = add_subs.add_parser(
+        "ligand", help="Register a ligand library or native ligand"
+    )
+    p_add_lig.add_argument("path", help="Path to the ligand file (.sdf)")
+    p_add_lig.add_argument(
+        "--name", required=True, help="Unique identifier for this ligand"
+    )
+    p_add_lig.add_argument(
+        "--native", action="store_true", help="Mark as native reference ligand"
+    )
+    p_add_lig.add_argument(
+        "--force", action="store_true", help="Overwrite if name exists"
+    )
+
+    # 0.3 tree
+    p_tree = subparsers.add_parser(
+        "tree", aliases=["ls"], help="Show database lineage tree"
+    )
+
     # 1. init
     p_init = subparsers.add_parser("init", help="Initialize new project workspace")
     p_init.add_argument(
@@ -270,7 +319,25 @@ def main():
         sys.exit(0)
 
     subcmd = args.subcommand
-    if subcmd == "init":
+
+    # Init DB unconditionally to ensure it exists on any command run inside a project
+    if subcmd not in ["init", "help"]:
+        from cli.core.db import init_db
+
+        init_db()
+
+    if subcmd == "add":
+        from cli.commands.add import add_receptor, add_ligand
+
+        if args.add_type == "receptor":
+            add_receptor(args)
+        elif args.add_type == "ligand":
+            add_ligand(args)
+    elif subcmd in ["tree", "ls"]:
+        from cli.commands.tree import cmd_tree
+
+        cmd_tree(args)
+    elif subcmd == "init":
         cmd_init(args)
     elif subcmd == "md-init":
         cmd_md_init(args)
