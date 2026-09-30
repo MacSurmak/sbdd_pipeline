@@ -18,7 +18,7 @@ workflow ANALYZE_WF {
 
         ch_clean_in = Channel.fromList(planList).map { item ->
             def meta = [id: item.name, rep: item.rep, project: params.project_name]
-            [ meta, file(item.xtc), file(item.tpr), file(item.tpr), file(item.ndx) ]
+            [ meta, file(item.xtc), file(item.tpr) ]
         }
 
         TRJCONV(
@@ -28,7 +28,7 @@ workflow ANALYZE_WF {
         )
 
         // Emit receipt for database registration
-        TRJCONV.out.clean_traj.map { meta, clean_xtc, ref_pdb, top, ndx ->
+        TRJCONV.out.clean_traj.map { meta, clean_xtc, ref_pdb ->
             "${meta.id}\t${clean_xtc.toAbsolutePath()}\t${ref_pdb.toAbsolutePath()}"
         }.collectFile(name: 'clean_receipt.tsv', storeDir: params.outdir, newLine: true)
 
@@ -97,9 +97,7 @@ workflow ANALYZE_WF {
     ch_trjconv_in = Channel.value(meta)
         .combine(ch_traj)
         .combine(ch_tpr)
-        .combine(ch_topol)
-        .combine(ch_ndx)
-        .map { m, traj, tpr, top, ndx -> [m, traj, tpr, top, ndx] }
+        .map { m, traj, tpr -> [m, traj, tpr] }
 
     TRJCONV(
         ch_trjconv_in,
@@ -107,8 +105,13 @@ workflow ANALYZE_WF {
         params.pbc_extract
     )
 
+    ch_analyze_in = TRJCONV.out.clean_traj
+        .combine(ch_topol)
+        .combine(ch_ndx)
+        .map { m, clean_xtc, ref_pdb, top, ndx -> [m, clean_xtc, ref_pdb, top, ndx] }
+
     ANALYZE_MD_TRAJ(
-        TRJCONV.out.clean_traj,
+        ch_analyze_in,
         params.mmpbsa_start_ns,
         params.mmpbsa_step_frames,
         params.md_temperature,

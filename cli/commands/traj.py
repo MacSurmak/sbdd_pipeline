@@ -86,7 +86,6 @@ def cmd_clean_traj(args):
                 "rep": rep_idx,
                 "xtc": t.path_xtc,
                 "tpr": t.path_tpr,
-                "ndx": str(ndx_path),
             }
         )
 
