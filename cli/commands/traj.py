@@ -18,41 +18,51 @@ def cmd_cluster(args):
     cwd = Path.cwd()
     session = init_db()
 
-    traj_names = [t.strip() for t in args.traj.split(",") if t.strip()]
-    trajs = session.query(Trajectory).filter(Trajectory.name.in_(traj_names)).all()
-
-    if len(trajs) != len(traj_names):
-        found = {t.name for t in trajs}
-        missing = set(traj_names) - found
-        console.print(
-            f"[bold red]FATAL: Trajectories not found in DB: {missing}[/bold red]"
-        )
+    # 1. Query Trajectories depending on flags
+    trajs = []
+    if getattr(args, "all", False):
+        trajs = session.query(Trajectory).all()
+        if not trajs:
+            console.print("[bold red]FATAL: No trajectories registered in database.[/bold red]")
+            sys.exit(1)
+    elif getattr(args, "receptors", None):
+        target_recs = [r.strip() for r in args.receptors.split(",") if r.strip()]
+        trajs = session.query(Trajectory).filter(Trajectory.receptor_name.in_(target_recs)).all()
+        if not trajs:
+            console.print(f"[bold red]FATAL: No trajectories found for receptor(s): {target_recs}[/bold red]")
+            sys.exit(1)
+    elif getattr(args, "traj", None):
+        traj_names = [t.strip() for t in args.traj.split(",") if t.strip()]
+        trajs = session.query(Trajectory).filter(Trajectory.name.in_(traj_names)).all()
+        if len(trajs) != len(traj_names):
+            found = {t.name for t in trajs}
+            missing = set(traj_names) - found
+            console.print(f"[bold red]FATAL: Trajectories not found in DB: {missing}[/bold red]")
+            sys.exit(1)
+    else:
+        console.print("[bold red]FATAL: Please specify --receptors, --all, or --traj[/bold red]")
         sys.exit(1)
 
-    # 1. Group requested trajectories by parent Receptor
+    # 2. Group requested trajectories automatically by parent Receptor
     groups = {}
     for t in trajs:
         groups.setdefault(t.receptor_name, []).append(t)
 
-    # 2. Build Execution Plan (One task per Receptor Ensemble)
+    # 3. Build Execution Plan (One task per Receptor Ensemble)
     plan_list = []
     parent_map = {}
-
+    
     for rec_name, t_list in groups.items():
         parent_rec = session.query(Receptor).filter_by(name=rec_name).first()
         if not parent_rec:
-            console.print(
-                f"[bold red]FATAL: Parent receptor '{rec_name}' not found.[/bold red]"
-            )
+            console.print(f"[bold red]FATAL: Parent receptor '{rec_name}' not found.[/bold red]")
             sys.exit(1)
-
+            
         task_id = f"{rec_name}_ens"
         parent_map[task_id] = parent_rec
-
+        
         xtc_paths = [t.path_xtc for t in t_list]
-        tpr_path = t_list[
-            0
-        ].path_tpr  # TPR is identical for all replicas of the same receptor
+        tpr_path = t_list[0].path_tpr
 
         plan_list.append(
             {
