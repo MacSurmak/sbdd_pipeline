@@ -26,6 +26,7 @@ def add_receptor(args):
     name = args.name
     prep_mode = args.prep
     cofactors = args.cofactors if args.cofactors else []
+    native_ligand = args.ligand if args.ligand else ""
 
     # 2. Check if already exists
     existing = session.query(Receptor).filter_by(name=name).first()
@@ -34,7 +35,10 @@ def add_receptor(args):
             existing.path = str(target_path)
             existing.prep_mode = prep_mode
             existing.status = "ready" if prep_mode == "ready" else "unprepared"
-            existing.meta_dict = {"cofactors": cofactors}
+            existing.meta_dict = {
+                "cofactors": cofactors,
+                "native_ligand": native_ligand,
+            }
             console.print(
                 f"[yellow]Updated existing receptor '{name}' in database.[/yellow]"
             )
@@ -48,7 +52,7 @@ def add_receptor(args):
         new_rec = Receptor(
             name=name, path=str(target_path), status=status, prep_mode=prep_mode
         )
-        new_rec.meta_dict = {"cofactors": cofactors}
+        new_rec.meta_dict = {"cofactors": cofactors, "native_ligand": native_ligand}
         session.add(new_rec)
         console.print(
             f"[bold green]✓ Registered receptor '{name}'[/bold green] [dim]({prep_mode} mode)[/dim]"

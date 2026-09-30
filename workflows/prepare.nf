@@ -25,6 +25,7 @@ workflow PREPARE_WF {
             name: target.name,
             prep_mode: target.prep_mode,
             project: params.project_name,
+            native_ligand: target.native_ligand ?: "",
             cofactors: target.cofactors ?: []
         ]
         

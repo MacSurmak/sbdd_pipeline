@@ -41,6 +41,7 @@ def cmd_prep(args):
                 "path": r.path,
                 "prep_mode": r.prep_mode,
                 "cofactors": r.meta_dict.get("cofactors", []),
+                "native_ligand": r.meta_dict.get("native_ligand", ""),
             }
         )
 
@@ -84,31 +85,57 @@ def cmd_prep(args):
     lines = receipt_file.read_text().strip().splitlines()
     success_count = 0
 
+    # DB models needed for auto-registering native ligands
+    from cli.core.db import Ligand
+
     for line in lines:
         if not line.strip():
             continue
-        name, out_path = line.split("\t")
+        name, raw_out_path = line.split("\t")
+
+        # Resolve the published path (in prepared/ folder) instead of work/ cache
+        published_path = cwd / "prepared" / Path(raw_out_path).name
+        if not published_path.exists():
+            published_path = Path(raw_out_path)  # Fallback
 
         ready_name = f"{name}_ready"
         existing = session.query(Receptor).filter_by(name=ready_name).first()
 
         if existing:
-            existing.path = out_path
+            existing.path = str(published_path)
             existing.status = "ready"
         else:
             new_rec = Receptor(
                 name=ready_name,
-                path=out_path,
+                path=str(published_path),
                 status="ready",
                 prep_mode="ready",
                 parent_name=name,
             )
             session.add(new_rec)
 
-        # Update original to indicate it was processed
         orig = session.query(Receptor).filter_by(name=name).first()
         if orig:
             orig.status = "processed"
+
+            # Auto-register extracted native ligand if it exists
+            native_lig = orig.meta_dict.get("native_ligand")
+            if native_lig:
+                lig_path = cwd / "prepared" / f"{name}_ref_native_prepared.sdf"
+                if not lig_path.exists():
+                    lig_path = cwd / "prepared" / f"{name}_ref_native.sdf"
+
+                if lig_path.exists():
+                    lig_name = f"{name}_native"
+                    ex_lig = session.query(Ligand).filter_by(name=lig_name).first()
+                    if not ex_lig:
+                        new_lig = Ligand(
+                            name=lig_name,
+                            path=str(lig_path),
+                            status="ready",
+                            is_native=True,
+                        )
+                        session.add(new_lig)
 
         success_count += 1
 

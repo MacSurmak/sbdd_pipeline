@@ -190,6 +190,9 @@ def main():
         "--cofactors", nargs="*", help="List of cofactors to keep (e.g., MG ZN)"
     )
     p_add_rec.add_argument(
+        "--ligand", help="Native ligand residue name inside structure (e.g., BTN, PKA)"
+    )
+    p_add_rec.add_argument(
         "--force", action="store_true", help="Overwrite if name exists"
     )
 
