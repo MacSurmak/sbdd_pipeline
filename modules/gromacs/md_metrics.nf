@@ -5,7 +5,7 @@
  */
 
 process MD_METRICS {
-    tag "${meta.id}_rep${meta.rep}"
+    tag "${meta.id}"
     label "process_medium"
 
     input:

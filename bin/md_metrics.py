@@ -39,6 +39,8 @@ def compute_rmsd_rmsf(pdb_path: str, xtc_path: str):
         "CA",
         "POPC",
         "POPE",
+        "CHL1",
+        "POPS",
     }
     small_mols = []
     for res in u.residues:
@@ -93,13 +95,20 @@ def compute_rmsd_rmsf(pdb_path: str, xtc_path: str):
         }
     )
 
-    return df_rmsd, df_rmsf
+    return df_rmsd, df_rmsf, [sm[0] for sm in small_mols]
 
 
-def compute_contacts(pdb_path: str, xtc_path: str, c_heavy=3.5, c_hyd=4.0, c_pol=3.4):
+def compute_contacts(
+    pdb_path: str, xtc_path: str, small_mol_names: list, c_heavy=3.5, c_hyd=4.0, c_pol=3.4
+):
     u = mda.Universe(pdb_path, xtc_path)
-    lig = u.select_atoms("resname UNK")
     prot = u.select_atoms("protein")
+
+    if prot.n_atoms == 0 or not small_mol_names:
+        return pd.DataFrame()
+
+    sel_str = " or ".join([f"resname {r}" for r in small_mol_names])
+    lig = u.select_atoms(f"({sel_str}) and not name H*")
 
     if lig.n_atoms == 0 or prot.n_atoms == 0:
         return pd.DataFrame()
@@ -185,13 +194,14 @@ def main():
     out_dir.mkdir(parents=True, exist_ok=True)
 
     try:
-        df_rmsd, df_rmsf = compute_rmsd_rmsf(args.pdb, args.xtc)
+        df_rmsd, df_rmsf, sm_names = compute_rmsd_rmsf(args.pdb, args.xtc)
         df_rmsd.to_csv(out_dir / "rmsd.csv", index=False)
         df_rmsf.to_csv(out_dir / "rmsf.csv", index=False)
 
         df_contacts = compute_contacts(
             args.pdb,
             args.xtc,
+            sm_names,
             c_heavy=args.heavy_cutoff,
             c_hyd=args.hydrophobic_cutoff,
             c_pol=args.polar_cutoff,
@@ -202,22 +212,36 @@ def main():
             "Prot_BB_RMSD_Mean_A": round(float(df_rmsd["Prot_BB_RMSD_A"].mean()), 3),
             "Prot_BB_RMSD_Std_A": round(float(df_rmsd["Prot_BB_RMSD_A"].std()), 3),
             "Prot_BB_RMSD_Last_A": round(float(df_rmsd["Prot_BB_RMSD_A"].iloc[-1]), 3),
-            "Lig_Heavy_RMSD_Mean_A": (
-                round(float(df_rmsd["Lig_Heavy_RMSD_A"].dropna().mean()), 3)
-                if not df_rmsd["Lig_Heavy_RMSD_A"].dropna().empty
-                else None
-            ),
-            "Lig_Heavy_RMSD_Last_A": (
-                round(float(df_rmsd["Lig_Heavy_RMSD_A"].dropna().iloc[-1]), 3)
-                if not df_rmsd["Lig_Heavy_RMSD_A"].dropna().empty
-                else None
-            ),
-            "Top_Contacts": (
-                df_contacts.head(10).to_dict(orient="records")
-                if not df_contacts.empty
-                else []
-            ),
+            "Molecules": {},
         }
+
+        # Dynamically record stats for each ligand and cofactor
+        first_lig = None
+        for col in df_rmsd.columns:
+            if col.startswith("Lig_") or col.startswith("Cofactor_"):
+                if col.startswith("Lig_") and first_lig is None:
+                    first_lig = col
+                s = df_rmsd[col].dropna()
+                if not s.empty:
+                    summary["Molecules"][col] = {
+                        "Mean_A": round(float(s.mean()), 3),
+                        "Std_A": round(float(s.std()), 3),
+                        "Last_A": round(float(s.iloc[-1]), 3),
+                    }
+
+        # Backwards-compatible fields
+        if first_lig:
+            summary["Lig_Heavy_RMSD_Mean_A"] = summary["Molecules"][first_lig]["Mean_A"]
+            summary["Lig_Heavy_RMSD_Last_A"] = summary["Molecules"][first_lig]["Last_A"]
+        else:
+            summary["Lig_Heavy_RMSD_Mean_A"] = None
+            summary["Lig_Heavy_RMSD_Last_A"] = None
+
+        summary["Top_Contacts"] = (
+            df_contacts.head(10).to_dict(orient="records")
+            if not df_contacts.empty
+            else []
+        )
 
         with open(out_dir / "md_metrics_summary.json", "w") as f:
             json.dump(summary, f, indent=2)
