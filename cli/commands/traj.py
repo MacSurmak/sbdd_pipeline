@@ -150,6 +150,8 @@ def cmd_clean_traj(args):
 
 def cmd_metrics(args):
     """CLI handler for 'sbdd traj-metrics': calculates RMSD for protein, ligand, and cofactors."""
+    from rich.table import Table
+
     cwd = Path.cwd()
     session = init_db()
     trajs = _query_trajectories(session, args)
@@ -173,15 +175,25 @@ def cmd_metrics(args):
         parent_rec = session.query(Receptor).filter_by(name=t.receptor_name).first()
         native_lig = parent_rec.meta_dict.get("native_ligand", "") if parent_rec else ""
         cofactors = parent_rec.meta_dict.get("cofactors", []) if parent_rec else []
+        rec_id = t.receptor_name.replace("_ready", "")
+
+        # Route metrics directly into replicate folder
+        clean_xtc_path = Path(t.path_clean_xtc).resolve()
+        if clean_xtc_path.parent.name == "clean":
+            metrics_dir = clean_xtc_path.parent.parent / "metrics"
+        else:
+            metrics_dir = cwd / "md" / rec_id / f"rep_{rep_idx}" / "metrics"
 
         plan_list.append(
             {
                 "name": t.name,
+                "rec_id": rec_id,
                 "rep": rep_idx,
                 "clean_xtc": t.path_clean_xtc,
                 "ref_pdb": t.path_ref_pdb,
                 "ligand": native_lig,
                 "cofactors": cofactors,
+                "metrics_dir": str(metrics_dir.resolve()),
             }
         )
 
@@ -210,6 +222,39 @@ def cmd_metrics(args):
     console.print(
         f"\n[bold green]✓ Trajectory metrics calculated successfully![/bold green]"
     )
+
+    # Render summary table in console
+    table = Table(title="Molecular Dynamics Ensemble Stability Summary", show_header=True)
+    table.add_column("Trajectory", style="bold cyan")
+    table.add_column("Prot BB RMSD (Å)", justify="center")
+    table.add_column("Ligand RMSD (Å)", justify="center", style="green")
+    table.add_column("Cofactors RMSD (Å)", justify="center", style="yellow")
+    table.add_column("Plot Deliverable", style="dim")
+
+    for item in plan_list:
+        summary_f = Path(item["metrics_dir"]) / "md_metrics_summary.json"
+        plot_f = Path(item["metrics_dir"]) / "rmsd_plot.png"
+        if summary_f.exists():
+            data = json.loads(summary_f.read_text())
+            p_mean = data.get("Prot_BB_RMSD_Mean_A", "-")
+            p_std = data.get("Prot_BB_RMSD_Std_A", "-")
+            prot_str = f"{p_mean} ± {p_std}" if p_mean != "-" else "-"
+
+            lig_str = "-"
+            cof_strs = []
+            mols = data.get("Molecules", {})
+            for m_key, m_val in mols.items():
+                if m_key.startswith("Lig_"):
+                    lig_str = f"{m_val.get('Mean_A', '-')} ± {m_val.get('Std_A', '-')}"
+                elif m_key.startswith("Cofactor_"):
+                    c_name = m_key.replace("Cofactor_", "").replace("_RMSD_A", "")
+                    cof_strs.append(f"{c_name}: {m_val.get('Mean_A', '-')}")
+
+            cof_display = ", ".join(cof_strs) if cof_strs else "None"
+            rel_plot = str(plot_f.relative_to(cwd)) if plot_f.exists() else "-"
+            table.add_row(item["name"], prot_str, lig_str, cof_display, rel_plot)
+
+    console.print(table)
     session.close()
 
 

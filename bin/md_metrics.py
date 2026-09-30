@@ -24,15 +24,23 @@ def compute_rmsd_rmsf(pdb_path: str, xtc_path: str, ligand_resname: str, cofacto
     prot_heavy = u.select_atoms("protein and not name H*")
     ref_prot_heavy = ref.select_atoms("protein and not name H*")
 
-    # Explicit targets from declarative metadata
+    # Explicit targets from declarative metadata (with automatic UNK alias check)
     targets = []
     if ligand_resname:
         lig_sel = u.select_atoms(f"resname {ligand_resname} and not name H*")
         ref_lig = ref.select_atoms(f"resname {ligand_resname} and not name H*")
         if lig_sel.n_atoms == 0:
-            # Fallback for monoatomic species or coarse-grained representations
             lig_sel = u.select_atoms(f"resname {ligand_resname}")
             ref_lig = ref.select_atoms(f"resname {ligand_resname}")
+
+        # Antechamber/GAFF2 alias fallback to UNK
+        if lig_sel.n_atoms == 0:
+            lig_sel = u.select_atoms("resname UNK and not name H*")
+            ref_lig = ref.select_atoms("resname UNK and not name H*")
+        if lig_sel.n_atoms == 0:
+            lig_sel = u.select_atoms("resname UNK")
+            ref_lig = ref.select_atoms("resname UNK")
+
         if lig_sel.n_atoms > 0:
             targets.append((f"Lig_{ligand_resname}_RMSD_A", lig_sel, ref_lig))
 
@@ -98,10 +106,13 @@ def compute_contacts(
     lig = u.select_atoms(f"resname {ligand_resname} and not name H*")
     if lig.n_atoms == 0:
         lig = u.select_atoms(f"resname {ligand_resname}")
+    if lig.n_atoms == 0:
+        lig = u.select_atoms("resname UNK and not name H*")
+    if lig.n_atoms == 0:
+        lig = u.select_atoms("resname UNK")
 
-    if lig.n_atoms == 0 or prot.n_atoms == 0:
+    if lig.n_atoms == 0:
         return pd.DataFrame()
-
     l_heavy = lig.select_atoms("not name H*")
     p_heavy = prot.select_atoms("not name H*")
     l_c = lig.select_atoms("name C*")
@@ -167,6 +178,41 @@ def compute_contacts(
     return df_contacts
 
 
+def generate_rmsd_plot(df_rmsd: pd.DataFrame, out_png: Path):
+    """Renders a clean multi-component RMSD plot without graphical display."""
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+
+        plt.figure(figsize=(10, 5), dpi=300)
+        time_col = df_rmsd["Time_ns"]
+
+        if "Prot_BB_RMSD_A" in df_rmsd.columns:
+            plt.plot(time_col, df_rmsd["Prot_BB_RMSD_A"], label="Protein Backbone", color="#1f77b4", linewidth=1.5)
+        if "Prot_Heavy_RMSD_A" in df_rmsd.columns:
+            plt.plot(time_col, df_rmsd["Prot_Heavy_RMSD_A"], label="Protein Heavy Atoms", color="#aec7e8", linewidth=1.0, alpha=0.7)
+
+        for col in df_rmsd.columns:
+            if col.startswith("Lig_"):
+                label_name = col.replace("Lig_", "").replace("_RMSD_A", " (Ligand)")
+                plt.plot(time_col, df_rmsd[col], label=label_name, color="#d62728", linewidth=1.8)
+            elif col.startswith("Cofactor_"):
+                label_name = col.replace("Cofactor_", "").replace("_RMSD_A", " (Cofactor)")
+                plt.plot(time_col, df_rmsd[col], label=label_name, linestyle="--", linewidth=1.4)
+
+        plt.title("Molecular Dynamics RMSD Trajectory", fontsize=12, fontweight="bold")
+        plt.xlabel("Simulation Time (ns)", fontsize=10)
+        plt.ylabel("RMSD (Å)", fontsize=10)
+        plt.grid(True, linestyle=":", alpha=0.6)
+        plt.legend(loc="upper left", frameon=True)
+        plt.tight_layout()
+        plt.savefig(out_png)
+        plt.close()
+    except Exception as e:
+        print(f"Warning: Could not render RMSD plot: {e}")
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Calculate MD metrics (RMSD, RMSF, Contacts)"
@@ -190,6 +236,7 @@ def main():
         )
         df_rmsd.to_csv(out_dir / "rmsd.csv", index=False)
         df_rmsf.to_csv(out_dir / "rmsf.csv", index=False)
+        generate_rmsd_plot(df_rmsd, out_dir / "rmsd_plot.png")
 
         df_contacts = compute_contacts(
             args.pdb,
