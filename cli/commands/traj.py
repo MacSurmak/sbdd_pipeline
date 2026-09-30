@@ -170,12 +170,18 @@ def cmd_metrics(args):
                 except ValueError:
                     pass
 
+        parent_rec = session.query(Receptor).filter_by(name=t.receptor_name).first()
+        native_lig = parent_rec.meta_dict.get("native_ligand", "") if parent_rec else ""
+        cofactors = parent_rec.meta_dict.get("cofactors", []) if parent_rec else []
+
         plan_list.append(
             {
                 "name": t.name,
                 "rep": rep_idx,
                 "clean_xtc": t.path_clean_xtc,
                 "ref_pdb": t.path_ref_pdb,
+                "ligand": native_lig,
+                "cofactors": cofactors,
             }
         )
 

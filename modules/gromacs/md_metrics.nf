@@ -16,10 +16,15 @@ process MD_METRICS {
     tuple val(meta), path("md_metrics_summary.json"), emit: summary_json
 
     script:
+    def lig_arg = meta.ligand ? "--ligand ${meta.ligand}" : ""
+    def cof_list = meta.cofactors ? (meta.cofactors instanceof List ? meta.cofactors.join(' ') : meta.cofactors) : ""
+    def cof_arg = cof_list ? "--cofactors ${cof_list}" : ""
     """
     python3 ${projectDir}/bin/md_metrics.py \\
         --pdb ${ref_pdb} \\
         --xtc ${clean_xtc} \\
+        ${lig_arg} \\
+        ${cof_arg} \\
         --outdir .
     """
 

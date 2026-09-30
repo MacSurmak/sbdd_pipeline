@@ -15,7 +15,7 @@ from MDAnalysis.analysis import align, rms
 from MDAnalysis.lib.distances import capped_distance
 
 
-def compute_rmsd_rmsf(pdb_path: str, xtc_path: str):
+def compute_rmsd_rmsf(pdb_path: str, xtc_path: str, ligand_resname: str, cofactor_resnames: list):
     u = mda.Universe(pdb_path, xtc_path)
     ref = mda.Universe(pdb_path)
 
@@ -24,36 +24,30 @@ def compute_rmsd_rmsf(pdb_path: str, xtc_path: str):
     prot_heavy = u.select_atoms("protein and not name H*")
     ref_prot_heavy = ref.select_atoms("protein and not name H*")
 
-    # Discover small molecules (ligands & cofactors): everything not protein, not water, not simple ions
-    standard_skip = {
-        "SOL",
-        "WAT",
-        "HOH",
-        "TIP3",
-        "OPC",
-        "NA",
-        "CL",
-        "K",
-        "MG",
-        "ZN",
-        "CA",
-        "POPC",
-        "POPE",
-        "CHL1",
-        "POPS",
-    }
-    small_mols = []
-    for res in u.residues:
-        rname = res.resname.strip()
-        if (
-            rname not in standard_skip
-            and res.atoms.select_atoms("protein").n_atoms == 0
-        ):
-            if rname not in [sm[0] for sm in small_mols]:
-                u_sel = u.select_atoms(f"resname {rname} and not name H*")
-                ref_sel = ref.select_atoms(f"resname {rname} and not name H*")
-                if u_sel.n_atoms > 0:
-                    small_mols.append((rname, u_sel, ref_sel))
+    # Explicit targets from declarative metadata
+    targets = []
+    if ligand_resname:
+        lig_sel = u.select_atoms(f"resname {ligand_resname} and not name H*")
+        ref_lig = ref.select_atoms(f"resname {ligand_resname} and not name H*")
+        if lig_sel.n_atoms == 0:
+            # Fallback for monoatomic species or coarse-grained representations
+            lig_sel = u.select_atoms(f"resname {ligand_resname}")
+            ref_lig = ref.select_atoms(f"resname {ligand_resname}")
+        if lig_sel.n_atoms > 0:
+            targets.append((f"Lig_{ligand_resname}_RMSD_A", lig_sel, ref_lig))
+
+    for cof in cofactor_resnames:
+        cof = cof.strip()
+        if not cof:
+            continue
+        cof_sel = u.select_atoms(f"resname {cof} and not name H*")
+        ref_cof = ref.select_atoms(f"resname {cof} and not name H*")
+        if cof_sel.n_atoms == 0:
+            # Monoatomic ions (MG, ZN, CA)
+            cof_sel = u.select_atoms(f"resname {cof}")
+            ref_cof = ref.select_atoms(f"resname {cof}")
+        if cof_sel.n_atoms > 0:
+            targets.append((f"Cofactor_{cof}_RMSD_A", cof_sel, ref_cof))
 
     rmsd_results = []
     for ts in u.trajectory:
@@ -70,13 +64,7 @@ def compute_rmsd_rmsf(pdb_path: str, xtc_path: str):
             ),
         }
 
-        # Track RMSD for each ligand and cofactor separately
-        for rname, u_sel, ref_sel in small_mols:
-            col_name = (
-                f"Lig_{rname}_RMSD_A"
-                if rname in ["UNK", "KVR"]
-                else f"Cofactor_{rname}_RMSD_A"
-            )
+        for col_name, u_sel, ref_sel in targets:
             r_val = float(rms.rmsd(u_sel.positions, ref_sel.positions))
             entry[col_name] = round(r_val, 3)
 
@@ -95,20 +83,21 @@ def compute_rmsd_rmsf(pdb_path: str, xtc_path: str):
         }
     )
 
-    return df_rmsd, df_rmsf, [sm[0] for sm in small_mols]
+    return df_rmsd, df_rmsf
 
 
 def compute_contacts(
-    pdb_path: str, xtc_path: str, small_mol_names: list, c_heavy=3.5, c_hyd=4.0, c_pol=3.4
+    pdb_path: str, xtc_path: str, ligand_resname: str, c_heavy=3.5, c_hyd=4.0, c_pol=3.4
 ):
     u = mda.Universe(pdb_path, xtc_path)
     prot = u.select_atoms("protein")
 
-    if prot.n_atoms == 0 or not small_mol_names:
+    if prot.n_atoms == 0 or not ligand_resname:
         return pd.DataFrame()
 
-    sel_str = " or ".join([f"resname {r}" for r in small_mol_names])
-    lig = u.select_atoms(f"({sel_str}) and not name H*")
+    lig = u.select_atoms(f"resname {ligand_resname} and not name H*")
+    if lig.n_atoms == 0:
+        lig = u.select_atoms(f"resname {ligand_resname}")
 
     if lig.n_atoms == 0 or prot.n_atoms == 0:
         return pd.DataFrame()
@@ -185,6 +174,8 @@ def main():
     parser.add_argument("--pdb", required=True, help="Topology or Reference PDB/GRO")
     parser.add_argument("--xtc", required=True, help="Clean Centered Trajectory XTC")
     parser.add_argument("--outdir", required=True, help="Output directory")
+    parser.add_argument("--ligand", default="", help="Ligand residue name (e.g. KVR, UNK)")
+    parser.add_argument("--cofactors", nargs="*", default=[], help="Cofactor residue names (e.g. ATP MG)")
     parser.add_argument("--heavy_cutoff", type=float, default=3.5)
     parser.add_argument("--hydrophobic_cutoff", type=float, default=4.0)
     parser.add_argument("--polar_cutoff", type=float, default=3.4)
@@ -194,14 +185,16 @@ def main():
     out_dir.mkdir(parents=True, exist_ok=True)
 
     try:
-        df_rmsd, df_rmsf, sm_names = compute_rmsd_rmsf(args.pdb, args.xtc)
+        df_rmsd, df_rmsf = compute_rmsd_rmsf(
+            args.pdb, args.xtc, args.ligand, args.cofactors
+        )
         df_rmsd.to_csv(out_dir / "rmsd.csv", index=False)
         df_rmsf.to_csv(out_dir / "rmsf.csv", index=False)
 
         df_contacts = compute_contacts(
             args.pdb,
             args.xtc,
-            sm_names,
+            args.ligand,
             c_heavy=args.heavy_cutoff,
             c_hyd=args.hydrophobic_cutoff,
             c_pol=args.polar_cutoff,

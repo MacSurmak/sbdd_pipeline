@@ -74,7 +74,13 @@ workflow ANALYZE_WF {
         def planList = jsonSlurper.parseText(planFile.text)
 
         ch_metrics_in = Channel.fromList(planList).map { item ->
-            def meta = [id: item.name, rep: item.rep, project: params.project_name]
+            def meta = [
+                id: item.name,
+                rep: item.rep,
+                ligand: item.ligand ?: "",
+                cofactors: item.cofactors ?: [],
+                project: params.project_name
+            ]
             [ meta, file(item.clean_xtc), file(item.ref_pdb) ]
         }
 
