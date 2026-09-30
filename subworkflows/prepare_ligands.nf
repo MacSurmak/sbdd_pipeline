@@ -90,9 +90,15 @@ workflow PREPARE_LIGANDS {
     max_states    // val: 32
 
     main:
-    // 1. Split raw SDF library into chunks
-    SPLIT_SDF(ch_library, batch_size)
-    ch_all_chunks = SPLIT_SDF.out.chunks.flatMap { meta, files ->
+    // 1. Branch libraries *before* processing based on DB status
+    ch_library.branch {
+        ready: it[0].status == 'ready'
+        prep:  true
+    }.set { branched_libs }
+
+    // 2. Unprepared libraries go through splitting and full LigPrep
+    SPLIT_SDF(branched_libs.prep, batch_size)
+    ch_prep_chunks = SPLIT_SDF.out.chunks.flatMap { meta, files ->
         def fileList = files instanceof List ? files : (files ? [files] : [])
         fileList.withIndex().collect { f, idx ->
             def chunk_meta = [
@@ -102,19 +108,24 @@ workflow PREPARE_LIGANDS {
                 status: meta.status ?: 'unprepared',
                 is_native: meta.is_native ?: false
             ]
-            [ chunk_meta, f, idx ]
+            [ chunk_meta, f ]
         }
     }
 
-    // 2. Branch: Ready ligands bypass LigPrep, Unprepared go through LigPrep
-    ch_all_chunks.branch {
-        ready: it[0].status == 'ready'
-        prep:  true
-    }.set { branched_chunks }
+    LIGPREP(ch_prep_chunks, target_ph, ph_tol, ff_version, max_states)
 
-    // 3. Process
-    LIGPREP(branched_chunks.prep.map { m, f, i -> [m, f] }, target_ph, ph_tol, ff_version, max_states)
-    CONVERT_READY_LIGAND(branched_chunks.ready)
+    // 3. Ready libraries bypass LigPrep entirely
+    ch_ready_in = branched_libs.ready.map { meta, f ->
+        def chunk_meta = [
+            id: "${meta.id}_ready",
+            chunk_idx: "native",
+            project: meta.project ?: meta.id,
+            status: "ready",
+            is_native: meta.is_native ?: false
+        ]
+        [ chunk_meta, f, "native" ]
+    }
+    CONVERT_READY_LIGAND(ch_ready_in)
 
     // 4. Mix outputs
     ch_prepared_mae = LIGPREP.out.prepared_maegz.mix(CONVERT_READY_LIGAND.out.prepared_maegz)

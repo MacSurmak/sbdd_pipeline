@@ -5,8 +5,34 @@
 
 include { TRJCONV         } from '../modules/gromacs/trjconv'
 include { ANALYZE_MD_TRAJ } from '../subworkflows/analyze_md_traj'
+include { GMX_CLUSTER     } from '../modules/gromacs/cluster'
 
 workflow ANALYZE_WF {
+
+    // MODE 1: Clustering from DB plan
+    if (params.cluster_plan) {
+        def planFile = file(params.cluster_plan)
+        def jsonSlurper = new groovy.json.JsonSlurper()
+        def plan = jsonSlurper.parseText(planFile.text)
+
+        def meta = [id: plan.traj_name, project: params.project_name]
+        ch_in = Channel.value([ meta, file(plan.xtc), file(plan.tpr), file(plan.ref_pdb) ])
+        
+        GMX_CLUSTER(ch_in, plan.cutoff, plan.method)
+
+        // Flatten output list of pdbs and emit receipt
+        GMX_CLUSTER.out.cluster_pdbs.flatMap { m, pdbs ->
+            def plist = pdbs instanceof List ? pdbs : [pdbs]
+            plist.withIndex().collect { p, i ->
+                def frame_id = "${m.id}_c${i+1}"
+                "${frame_id}\t${p.toAbsolutePath()}"
+            }
+        }.collectFile(name: 'cluster_receipt.tsv', storeDir: params.outdir, newLine: true)
+        
+        return
+    }
+
+    // MODE 2: Legacy manual analysis
     if (!params.traj || !params.tpr || !params.topol || !params.ndx) {
         error "Analysis workflow requires explicitly provided --traj, --tpr, --topol, and --ndx parameters."
     }

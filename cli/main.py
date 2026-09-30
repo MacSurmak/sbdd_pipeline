@@ -211,7 +211,21 @@ def main():
         "--force", action="store_true", help="Overwrite if name exists"
     )
 
-    # 0.3 tree
+    # 0.3 add traj (For migrating old MDs)
+    p_add_traj = add_subs.add_parser("traj", help="Register an existing MD trajectory")
+    p_add_traj.add_argument(
+        "--name", required=True, help="Unique name for this trajectory"
+    )
+    p_add_traj.add_argument(
+        "--receptor",
+        required=True,
+        help="Name of the Receptor in DB this MD belongs to",
+    )
+    p_add_traj.add_argument("--xtc", required=True, help="Path to .xtc file")
+    p_add_traj.add_argument("--tpr", required=True, help="Path to .tpr file")
+    p_add_traj.add_argument("--force", action="store_true", help="Overwrite if exists")
+
+    # 0.4 tree
     p_tree = subparsers.add_parser(
         "tree", aliases=["ls"], help="Show database lineage tree"
     )
@@ -311,7 +325,21 @@ def main():
     p_mda.add_argument("--ndx", help="Direct path to custom index.ndx file")
     add_common_wf_args(p_mda)
 
-    # 7. clean
+    # 8. traj-cluster
+    p_cluster = subparsers.add_parser(
+        "traj-cluster",
+        help="Cluster MD trajectory and automatically register frames in DB for docking",
+    )
+    p_cluster.add_argument("--traj", required=True, help="Name of the Trajectory in DB")
+    p_cluster.add_argument(
+        "--cutoff", type=float, default=0.15, help="RMSD cutoff in nm (default 0.15)"
+    )
+    p_cluster.add_argument(
+        "--method", default="gromos", help="Clustering method (default: gromos)"
+    )
+    add_common_wf_args(p_cluster)
+
+    # 9. clean
     p_clean = subparsers.add_parser(
         "clean", help="Clean /shared/work scratch directory for current project"
     )
@@ -346,12 +374,14 @@ def main():
         init_db()
 
     if subcmd == "add":
-        from cli.commands.add import add_receptor, add_ligand
+        from cli.commands.add import add_receptor, add_ligand, add_traj
 
         if args.add_type == "receptor":
             add_receptor(args)
         elif args.add_type == "ligand":
             add_ligand(args)
+        elif args.add_type == "traj":
+            add_traj(args)
     elif subcmd in ["tree", "ls"]:
         from cli.commands.tree import cmd_tree
 
@@ -378,6 +408,10 @@ def main():
         cmd_dock(args)
     elif subcmd in ["dynamics", "md", "md-run", "md-setup", "md-analyze"]:
         sys.exit(run_workflow("dynamics", args))
+    elif subcmd == "traj-cluster":
+        from cli.commands.traj import cmd_cluster
+
+        cmd_cluster(args)
     elif subcmd in ["watch", "progress", "top"]:
         from cli.core.monitor import run_monitor
 
