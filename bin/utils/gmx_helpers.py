@@ -32,22 +32,78 @@ def write_ndx_group(f, name: str, atom_ids: List[int]):
 
 
 def ensure_complex_ndx_group(ndx_path: Path):
-    """Parses index.ndx and injects [ COMPLEX ] (Protein + UNK) if missing."""
+    """
+    Builds [ COMPLEX ] strictly containing Protein + Ligands + all Cofactors.
+    Excludes water (SOL), bulk ions (NA, CL, K, etc.), and membrane lipids.
+    """
     if not ndx_path.exists():
         raise FileNotFoundError(f"FATAL: index.ndx not found at {ndx_path}")
-    text = ndx_path.read_text(encoding="utf-8", errors="ignore")
-    if "[ COMPLEX ]" in text or "[ complex ]" in text:
-        return
 
     groups = parse_ndx(ndx_path)
-    prot_atoms = groups.get("Protein", [])
-    unk_atoms = groups.get("UNK", [])
-    if not prot_atoms:
-        raise ValueError("FATAL: 'Protein' group not found in index.ndx")
+    if "System" not in groups:
+        raise KeyError("Group [ System ] not found in index.ndx")
 
-    complex_atoms = sorted(list(set(prot_atoms + unk_atoms)))
+    solvent_and_lipid_names = {
+        "SOL",
+        "Water",
+        "HOH",
+        "WAT",
+        "TIP3",
+        "OPC",
+        "NA",
+        "CL",
+        "K",
+        "POT",
+        "SOD",
+        "CLA",
+        "CAL",
+        "MG",
+        "ZN",
+        "CA",
+        "NA+",
+        "CL-",
+        "K+",
+        "MG2+",
+        "CA2+",
+        "ZN2+",
+        "POPC",
+        "POPE",
+        "CHL1",
+        "POPS",
+        "DPSM",
+        "PAPC",
+    }
+
+    solvent_atoms: set[int] = set()
+    for name in solvent_and_lipid_names:
+        if name in groups:
+            solvent_atoms.update(groups[name])
+
+    system_atoms = set(groups["System"])
+    complex_atoms = sorted(list(system_atoms - solvent_atoms))
+
+    if not complex_atoms:
+        # Fallback to Protein if calculation yielded empty set
+        complex_atoms = groups.get("Protein", [])
+
+    # Replace or append [ COMPLEX ]
+    lines = ndx_path.read_text(encoding="utf-8", errors="ignore").splitlines()
+    out_lines = []
+    skip = False
+    for line in lines:
+        if line.strip().lower() in ["[ complex ]"]:
+            skip = True
+            continue
+        if skip and line.strip().startswith("["):
+            skip = False
+        if not skip:
+            out_lines.append(line)
+
+    ndx_path.write_text("\n".join(out_lines) + "\n", encoding="utf-8")
+
     with open(ndx_path, "a", encoding="utf-8") as f:
         write_ndx_group(f, "COMPLEX", complex_atoms)
+
     logging.info(
-        f"Injected [ COMPLEX ] group ({len(complex_atoms)} atoms) into index.ndx"
+        f"Injected complete [ COMPLEX ] group ({len(complex_atoms)} atoms: Protein + Ligand + Cofactors) into index.ndx"
     )

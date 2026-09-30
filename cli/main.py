@@ -330,9 +330,16 @@ def main():
         "traj-clean",
         help="Remove solvent, fix PBC, center on protein, and fit trajectory",
     )
-    p_clean_tr.add_argument("--receptors", help="Comma-separated list of Receptor names to clean all their replicas")
-    p_clean_tr.add_argument("--all", action="store_true", help="Clean trajectories for ALL receptors in DB")
-    p_clean_tr.add_argument("--traj", help="Explicit comma-separated list of Trajectory names")
+    p_clean_tr.add_argument(
+        "--receptors",
+        help="Comma-separated list of Receptor names to clean all their replicas",
+    )
+    p_clean_tr.add_argument(
+        "--all", action="store_true", help="Clean trajectories for ALL receptors in DB"
+    )
+    p_clean_tr.add_argument(
+        "--traj", help="Explicit comma-separated list of Trajectory names"
+    )
     add_common_wf_args(p_clean_tr)
 
     # 7.2 traj-metrics
@@ -340,9 +347,15 @@ def main():
         "traj-metrics",
         help="Calculate RMSD (protein, ligand, and cofactors), RMSF, and contacts",
     )
-    p_metrics.add_argument("--receptors", help="Comma-separated list of Receptor names to analyze")
-    p_metrics.add_argument("--all", action="store_true", help="Analyze metrics for ALL receptors in DB")
-    p_metrics.add_argument("--traj", help="Explicit comma-separated list of Trajectory names")
+    p_metrics.add_argument(
+        "--receptors", help="Comma-separated list of Receptor names to analyze"
+    )
+    p_metrics.add_argument(
+        "--all", action="store_true", help="Analyze metrics for ALL receptors in DB"
+    )
+    p_metrics.add_argument(
+        "--traj", help="Explicit comma-separated list of Trajectory names"
+    )
     add_common_wf_args(p_metrics)
 
     # 8. traj-cluster
@@ -350,9 +363,18 @@ def main():
         "traj-cluster",
         help="Cluster clean MD trajectory ensembles and automatically register frames in DB for docking",
     )
-    p_cluster.add_argument("--receptors", help="Comma-separated list of Receptor names (clusters all their clean replicas)")
-    p_cluster.add_argument("--all", action="store_true", help="Cluster trajectories for ALL receptors in DB")
-    p_cluster.add_argument("--traj", help="Explicit comma-separated list of Trajectory names")
+    p_cluster.add_argument(
+        "--receptors",
+        help="Comma-separated list of Receptor names (clusters all their clean replicas)",
+    )
+    p_cluster.add_argument(
+        "--all",
+        action="store_true",
+        help="Cluster trajectories for ALL receptors in DB",
+    )
+    p_cluster.add_argument(
+        "--traj", help="Explicit comma-separated list of Trajectory names"
+    )
     p_cluster.add_argument(
         "--cutoff", type=float, default=0.15, help="RMSD cutoff in nm (default 0.15)"
     )
@@ -430,6 +452,14 @@ def main():
         cmd_dock(args)
     elif subcmd in ["dynamics", "md", "md-run", "md-setup", "md-analyze"]:
         sys.exit(run_workflow("dynamics", args))
+    elif subcmd == "traj-clean":
+        from cli.commands.traj import cmd_clean_traj
+
+        cmd_clean_traj(args)
+    elif subcmd == "traj-metrics":
+        from cli.commands.traj import cmd_metrics
+
+        cmd_metrics(args)
     elif subcmd == "traj-cluster":
         from cli.commands.traj import cmd_cluster
 

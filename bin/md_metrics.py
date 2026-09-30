@@ -21,30 +21,64 @@ def compute_rmsd_rmsf(pdb_path: str, xtc_path: str):
 
     prot_bb = u.select_atoms("protein and backbone")
     ref_bb = ref.select_atoms("protein and backbone")
-    lig_heavy = u.select_atoms("resname UNK and not name H*")
-    ref_lig = ref.select_atoms("resname UNK and not name H*")
+    prot_heavy = u.select_atoms("protein and not name H*")
+    ref_prot_heavy = ref.select_atoms("protein and not name H*")
+
+    # Discover small molecules (ligands & cofactors): everything not protein, not water, not simple ions
+    standard_skip = {
+        "SOL",
+        "WAT",
+        "HOH",
+        "TIP3",
+        "OPC",
+        "NA",
+        "CL",
+        "K",
+        "MG",
+        "ZN",
+        "CA",
+        "POPC",
+        "POPE",
+    }
+    small_mols = []
+    for res in u.residues:
+        rname = res.resname.strip()
+        if (
+            rname not in standard_skip
+            and res.atoms.select_atoms("protein").n_atoms == 0
+        ):
+            if rname not in [sm[0] for sm in small_mols]:
+                u_sel = u.select_atoms(f"resname {rname} and not name H*")
+                ref_sel = ref.select_atoms(f"resname {rname} and not name H*")
+                if u_sel.n_atoms > 0:
+                    small_mols.append((rname, u_sel, ref_sel))
 
     rmsd_results = []
     for ts in u.trajectory:
         align.alignto(u.atoms, ref.atoms, select="protein and backbone")
         time_ns = ts.time / 1000.0
 
-        prot_rmsd = float(rms.rmsd(prot_bb.positions, ref_bb.positions))
-        lig_rmsd = (
-            float(rms.rmsd(lig_heavy.positions, ref_lig.positions))
-            if lig_heavy.n_atoms > 0
-            else np.nan
-        )
+        entry = {
+            "Time_ns": round(time_ns, 3),
+            "Prot_BB_RMSD_A": round(
+                float(rms.rmsd(prot_bb.positions, ref_bb.positions)), 3
+            ),
+            "Prot_Heavy_RMSD_A": round(
+                float(rms.rmsd(prot_heavy.positions, ref_prot_heavy.positions)), 3
+            ),
+        }
 
-        rmsd_results.append(
-            {
-                "Time_ns": round(time_ns, 3),
-                "Prot_BB_RMSD_A": round(prot_rmsd, 3),
-                "Lig_Heavy_RMSD_A": (
-                    round(lig_rmsd, 3) if not np.isnan(lig_rmsd) else None
-                ),
-            }
-        )
+        # Track RMSD for each ligand and cofactor separately
+        for rname, u_sel, ref_sel in small_mols:
+            col_name = (
+                f"Lig_{rname}_RMSD_A"
+                if rname in ["UNK", "KVR"]
+                else f"Cofactor_{rname}_RMSD_A"
+            )
+            r_val = float(rms.rmsd(u_sel.positions, ref_sel.positions))
+            entry[col_name] = round(r_val, 3)
+
+        rmsd_results.append(entry)
 
     df_rmsd = pd.DataFrame(rmsd_results)
 

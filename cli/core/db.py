@@ -66,6 +66,7 @@ class Ligand(Base):
 class Trajectory(Base):
     """
     Stores results of Molecular Dynamics simulations.
+    Tracks both raw and cleaned (PBC whole, centered, fitted, solvent-stripped) trajectories.
     """
 
     __tablename__ = "trajectories"
@@ -75,8 +76,10 @@ class Trajectory(Base):
     receptor_name = Column(String, ForeignKey("receptors.name"), nullable=False)
     path_xtc = Column(String, nullable=False)
     path_tpr = Column(String, nullable=False)
+    path_clean_xtc = Column(String, nullable=True)
+    path_ref_pdb = Column(String, nullable=True)
     length_ns = Column(Float, nullable=True)
-    status = Column(String, default="ready", nullable=False)
+    status = Column(String, default="raw", nullable=False)  # raw, cleaned, error
 
     receptor = relationship("Receptor")
 

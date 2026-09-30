@@ -8,7 +8,7 @@ process GMX_CLUSTER {
     label 'process_medium'
 
     input:
-    tuple val(meta), path(xtcs, stageAs: 'trajs_?/*'), path(tpr)
+    tuple val(meta), path(clean_xtcs, stageAs: 'trajs_?/*'), path(ref_pdb)
     val(cutoff)
     val(method)
 
@@ -17,21 +17,22 @@ process GMX_CLUSTER {
 
     script:
     """
-    # 1. Generate index strictly from binary system topology (TPR)
-    echo "q" | gmx make_ndx -f ${tpr} -o index.ndx
-
-    # 2. Automatically discover and concatenate multiple staged replica trajectories
+    # 1. Discover clean, pre-centered, solvent-stripped trajectories
     XTC_FILES=(trajs_*/*.xtc)
     if [ \${#XTC_FILES[@]} -gt 1 ]; then
-        echo "Concatenating \${#XTC_FILES[@]} replica trajectories for ensemble clustering..."
-        gmx trjcat -f \${XTC_FILES[@]} -o combined_ensemble.xtc -cat
-        TARGET_XTC="combined_ensemble.xtc"
+        echo "Pooling \${#XTC_FILES[@]} clean replica trajectories into single conformational ensemble..."
+        gmx trjcat -f \${XTC_FILES[@]} -o combined_clean.xtc -cat
+        TARGET_XTC="combined_clean.xtc"
     else
         TARGET_XTC="\${XTC_FILES[0]}"
     fi
 
-    # 3. Run clustering (fit on Protein, RMSD on Protein, output Protein to clusters)
-    printf "Protein\nProtein\n" | gmx cluster -f \${TARGET_XTC} -s ${tpr} -n index.ndx -method ${method} -cutoff ${cutoff} -cl clusters_multi.pdb
+    # 2. Cluster the complete COMPLEX (Protein + Ligand + Cofactors)
+    # Generates strict index from the dry reference PDB
+    echo "q" | gmx make_ndx -f ${ref_pdb} -o index.ndx
+
+    # Fit on Protein, calculate RMSD on Protein, output the full COMPLEX into cluster centroids
+    printf "Protein\nProtein\n" | gmx cluster -f \${TARGET_XTC} -s ${ref_pdb} -n index.ndx -method ${method} -cutoff ${cutoff} -cl clusters_multi.pdb
 
     # 3. Split multi-model PDB into separate files for database registration
     python3 -c "

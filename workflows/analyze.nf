@@ -9,7 +9,32 @@ include { GMX_CLUSTER     } from '../modules/gromacs/cluster'
 
 workflow ANALYZE_WF {
 
-    // MODE 1: Clustering from DB plan
+    // MODE 1: Trajectory Cleaning (PBC whole -> center -> fit -> solvent strip)
+    if (params.clean_plan) {
+        def planFile = file(params.clean_plan)
+        def jsonSlurper = new groovy.json.JsonSlurper()
+        def planList = jsonSlurper.parseText(planFile.text)
+
+        ch_clean_in = Channel.fromList(planList).map { item ->
+            def meta = [id: item.name, rep: item.rep, project: params.project_name]
+            [ meta, file(item.xtc), file(item.tpr), file(item.tpr), file(item.ndx) ]
+        }
+
+        TRJCONV(
+            ch_clean_in,
+            params.pbc_center,
+            "COMPLEX"
+        )
+
+        // Emit receipt for database registration
+        TRJCONV.out.clean_traj.map { meta, clean_xtc, ref_pdb, top, ndx ->
+            "${meta.id}\t${clean_xtc.toAbsolutePath()}\t${ref_pdb.toAbsolutePath()}"
+        }.collectFile(name: 'clean_receipt.tsv', storeDir: params.outdir, newLine: true)
+
+        return
+    }
+
+    // MODE 2: Ensemble Clustering on Clean Trajectories
     if (params.cluster_plan) {
         def planFile = file(params.cluster_plan)
         def jsonSlurper = new groovy.json.JsonSlurper()
@@ -17,13 +42,13 @@ workflow ANALYZE_WF {
 
         ch_cluster_in = Channel.fromList(planList).map { item ->
             def meta = [id: item.task_id, project: params.project_name]
-            def xtcs = item.xtcs.collect { file(it) }
-            def tpr = file(item.tpr)
-            [ meta, xtcs, tpr, item.cutoff, item.method ]
+            def xtcs = item.clean_xtcs.collect { file(it) }
+            def ref_pdb = file(item.ref_pdb)
+            [ meta, xtcs, ref_pdb, item.cutoff, item.method ]
         }
 
         GMX_CLUSTER(
-            ch_cluster_in.map { m, xtcs, tpr, cut, met -> [ m, xtcs, tpr ] },
+            ch_cluster_in.map { m, xtcs, ref, cut, met -> [ m, xtcs, ref ] },
             ch_cluster_in.map { it[3] },
             ch_cluster_in.map { it[4] }
         )
@@ -40,7 +65,22 @@ workflow ANALYZE_WF {
         return
     }
 
-    // MODE 2: Legacy manual analysis
+    // MODE 3: Trajectory Metrics (RMSD, RMSF, Contacts)
+    if (params.metrics_plan) {
+        def planFile = file(params.metrics_plan)
+        def jsonSlurper = new groovy.json.JsonSlurper()
+        def planList = jsonSlurper.parseText(planFile.text)
+
+        ch_metrics_in = Channel.fromList(planList).map { item ->
+            def meta = [id: item.name, rep: item.rep, project: params.project_name]
+            [ meta, file(item.clean_xtc), file(item.ref_pdb) ]
+        }
+
+        MD_METRICS(ch_metrics_in)
+        return
+    }
+
+    // MODE 4: Legacy manual analysis
     if (!params.traj || !params.tpr || !params.topol || !params.ndx) {
         error "Analysis workflow requires explicitly provided --traj, --tpr, --topol, and --ndx parameters."
     }
