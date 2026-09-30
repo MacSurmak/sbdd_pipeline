@@ -8,7 +8,7 @@ process GMX_CLUSTER {
     label 'process_medium'
 
     input:
-    tuple val(meta), path(xtcs), path(tpr)
+    tuple val(meta), path(xtcs, stageAs: 'trajs_?/*'), path(tpr)
     val(cutoff)
     val(method)
 
@@ -20,14 +20,14 @@ process GMX_CLUSTER {
     # 1. Generate index strictly from binary system topology (TPR)
     echo "q" | gmx make_ndx -f ${tpr} -o index.ndx
 
-    # 2. Automatically concatenate multiple replicas if provided
-    XTC_ARRAY=(${xtcs})
-    if [ \${#XTC_ARRAY[@]} -gt 1 ]; then
-        echo "Concatenating \${#XTC_ARRAY[@]} replica trajectories for ensemble clustering..."
-        gmx trjcat -f ${xtcs} -o combined_ensemble.xtc -cat
+    # 2. Automatically discover and concatenate multiple staged replica trajectories
+    XTC_FILES=(trajs_*/*.xtc)
+    if [ \${#XTC_FILES[@]} -gt 1 ]; then
+        echo "Concatenating \${#XTC_FILES[@]} replica trajectories for ensemble clustering..."
+        gmx trjcat -f \${XTC_FILES[@]} -o combined_ensemble.xtc -cat
         TARGET_XTC="combined_ensemble.xtc"
     else
-        TARGET_XTC="${xtcs}"
+        TARGET_XTC="\${XTC_FILES[0]}"
     fi
 
     # 3. Run clustering (fit on Protein, RMSD on Protein, output Protein to clusters)

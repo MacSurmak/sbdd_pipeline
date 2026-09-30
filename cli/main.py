@@ -328,9 +328,20 @@ def main():
     # 8. traj-cluster
     p_cluster = subparsers.add_parser(
         "traj-cluster",
-        help="Cluster MD trajectory and automatically register frames in DB for docking",
+        help="Cluster MD trajectory ensembles and automatically register frames in DB for docking",
     )
-    p_cluster.add_argument("--traj", required=True, help="Name of the Trajectory in DB")
+    p_cluster.add_argument(
+        "--receptors",
+        help="Comma-separated list of Receptor names (clusters all their replicas)",
+    )
+    p_cluster.add_argument(
+        "--all",
+        action="store_true",
+        help="Cluster trajectories for ALL receptors in DB",
+    )
+    p_cluster.add_argument(
+        "--traj", help="Explicit comma-separated list of Trajectory names"
+    )
     p_cluster.add_argument(
         "--cutoff", type=float, default=0.15, help="RMSD cutoff in nm (default 0.15)"
     )
