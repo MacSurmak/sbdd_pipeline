@@ -136,10 +136,7 @@ def run_monitor(port: int = 8089):
                     if match_step:
                         current_step = int(match_step.group(1))
 
-                        # Determine task-relative steps from telemetry or chunk heuristic
-                        display_step = current_step
-                        display_total = total_steps
-
+                        # Strictly adhere to telemetry metadata: use start_step if present, otherwise raw steps
                         if (
                             start_step is not None
                             and total_steps is not None
@@ -149,17 +146,9 @@ def run_monitor(port: int = 8089):
                             display_step = max(
                                 0, min(display_total, current_step - start_step)
                             )
-                        elif total_steps is not None and total_steps > 0:
-                            m_chunk = re.search(r"(?:md_|C)(\d+)", task_name, re.I)
-                            if m_chunk:
-                                chunk_idx = int(m_chunk.group(1))
-                                if chunk_idx >= 1:
-                                    chunk_size = total_steps // chunk_idx
-                                    base_step = (chunk_idx - 1) * chunk_size
-                                    display_total = total_steps - base_step
-                                    display_step = max(
-                                        0, min(display_total, current_step - base_step)
-                                    )
+                        else:
+                            display_total = total_steps
+                            display_step = current_step
 
                         if task_name not in task_stats:
                             task_stats[task_name] = {
