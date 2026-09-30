@@ -8,9 +8,7 @@ process GMX_CLUSTER {
     label 'process_medium'
 
     input:
-    tuple val(meta), path(clean_xtcs, stageAs: 'trajs_?/*'), path(ref_pdb)
-    val(cutoff)
-    val(method)
+    tuple val(meta), path(clean_xtcs, stageAs: 'trajs_?/*'), path(ref_pdb), val(cutoff), val(method)
 
     output:
     tuple val(meta), path("cluster_*.pdb"), emit: cluster_pdbs

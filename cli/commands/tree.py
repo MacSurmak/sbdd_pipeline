@@ -34,8 +34,10 @@ def cmd_tree(args):
                     session.query(Trajectory).filter_by(receptor_name=child.name).all()
                 )
                 for t in trajs:
+                    status_col = "green" if t.status == "cleaned" else "yellow"
+                    clean_info = f" -> {t.path_clean_xtc}" if t.path_clean_xtc else ""
                     node.add(
-                        f"[magenta]{t.name}[/magenta] [dim](MD: {t.length_ns} ns)[/dim]"
+                        f"[magenta]{t.name}[/magenta] [{status_col}]({t.status})[/{status_col}][dim]{clean_info}[/dim]"
                     )
 
                 add_children(node, child.name)
@@ -51,8 +53,10 @@ def cmd_tree(args):
             # Check for Trajectories
             trajs = session.query(Trajectory).filter_by(receptor_name=r.name).all()
             for t in trajs:
+                status_col = "green" if t.status == "cleaned" else "yellow"
+                clean_info = f" -> {t.path_clean_xtc}" if t.path_clean_xtc else ""
                 node.add(
-                    f"[magenta]{t.name}[/magenta] [dim](MD: {t.length_ns} ns)[/dim]"
+                    f"[magenta]{t.name}[/magenta] [{status_col}]({t.status})[/{status_col}][dim]{clean_info}[/dim]"
                 )
 
             add_children(node, r.name)

@@ -48,11 +48,7 @@ workflow ANALYZE_WF {
             [ meta, xtcs, ref_pdb, item.cutoff, item.method ]
         }
 
-        GMX_CLUSTER(
-            ch_cluster_in.map { m, xtcs, ref, cut, met -> [ m, xtcs, ref ] },
-            ch_cluster_in.map { it[3] },
-            ch_cluster_in.map { it[4] }
-        )
+        GMX_CLUSTER(ch_cluster_in)
 
         // Flatten output list of pdbs and emit receipt
         GMX_CLUSTER.out.cluster_pdbs.flatMap { m, pdbs ->
