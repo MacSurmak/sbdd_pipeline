@@ -80,12 +80,23 @@ def cmd_clean_traj(args):
                 except ValueError:
                     pass
 
+        rec_id = t.receptor_name.replace("_ready", "")
+        xtc_path = Path(t.path_xtc).resolve()
+
+        # Destination inside project directory next to replicate
+        if xtc_path.parent.name == "raw":
+            clean_dir = xtc_path.parent.parent / "clean"
+        else:
+            clean_dir = cwd / "md" / rec_id / f"rep_{rep_idx}" / "clean"
+
         plan_list.append(
             {
                 "name": t.name,
+                "rec_id": rec_id,
                 "rep": rep_idx,
-                "xtc": t.path_xtc,
-                "tpr": t.path_tpr,
+                "xtc": str(xtc_path),
+                "tpr": str(Path(t.path_tpr).resolve()),
+                "clean_dir": str(clean_dir.resolve()),
             }
         )
 
@@ -119,14 +130,12 @@ def cmd_clean_traj(args):
         console.print("[bold red]FATAL: clean_receipt.tsv not found![/bold red]")
         sys.exit(1)
 
-    for line in receipt_file.read_text().strip().splitlines():
-        if not line.strip():
-            continue
-        tname, clean_xtc, ref_pdb = line.split("\t")
-        t_record = session.query(Trajectory).filter_by(name=tname).first()
+    for item in plan_list:
+        t_record = session.query(Trajectory).filter_by(name=item["name"]).first()
         if t_record:
-            t_record.path_clean_xtc = clean_xtc
-            t_record.path_ref_pdb = ref_pdb
+            clean_dir = Path(item["clean_dir"])
+            t_record.path_clean_xtc = str(clean_dir / "trajectory_clean.xtc")
+            t_record.path_ref_pdb = str(clean_dir / "complex_ref.pdb")
             t_record.status = "cleaned"
 
     session.commit()

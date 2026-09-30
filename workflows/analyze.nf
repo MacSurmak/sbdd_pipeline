@@ -17,7 +17,13 @@ workflow ANALYZE_WF {
         def planList = jsonSlurper.parseText(planFile.text)
 
         ch_clean_in = Channel.fromList(planList).map { item ->
-            def meta = [id: item.name, rep: item.rep, project: params.project_name]
+            def meta = [
+                id: item.name,
+                rec_id: item.rec_id,
+                rep: item.rep,
+                clean_dir: item.clean_dir,
+                project: params.project_name
+            ]
             [ meta, file(item.xtc), file(item.tpr) ]
         }
 
@@ -27,9 +33,8 @@ workflow ANALYZE_WF {
             "COMPLEX"
         )
 
-        // Emit receipt for database registration
         TRJCONV.out.clean_traj.map { meta, clean_xtc, ref_pdb ->
-            "${meta.id}\t${clean_xtc.toAbsolutePath()}\t${ref_pdb.toAbsolutePath()}"
+            "${meta.id}\t${clean_xtc.name}\t${ref_pdb.name}"
         }.collectFile(name: 'clean_receipt.tsv', storeDir: params.outdir, newLine: true)
 
         return
