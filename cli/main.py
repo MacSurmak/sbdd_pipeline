@@ -261,15 +261,23 @@ def main():
 
     # 3. dock / screen
     p_dock = subparsers.add_parser(
-        "dock", aliases=["screen"], help="Run distributed docking across GPU nodes"
+        "dock", aliases=["screen"], help="Run database-driven distributed cross-docking"
     )
+    p_dock.add_argument(
+        "--receptors",
+        required=True,
+        help="Comma-separated list of receptor names from DB",
+    )
+    p_dock.add_argument(
+        "--ligands", required=True, help="Comma-separated list of ligand names from DB"
+    )
+    p_dock.add_argument("--name", help="Name for the output PoseSet in DB")
     p_dock.add_argument(
         "--engine",
         choices=["gnina", "glide", "both"],
         default=None,
         help="Docking engine choice (default: from configs)",
     )
-    p_dock.add_argument("--library", help="Path to ligand library (.sdf)")
     add_common_wf_args(p_dock)
 
     # 4. rescore
@@ -357,7 +365,9 @@ def main():
 
         cmd_prep(args)
     elif subcmd in ["dock", "screen"]:
-        sys.exit(run_workflow("screen", args))
+        from cli.commands.dock import cmd_dock
+
+        cmd_dock(args)
     elif subcmd in ["dynamics", "md", "md-run", "md-setup", "md-analyze"]:
         sys.exit(run_workflow("dynamics", args))
     elif subcmd in ["watch", "progress", "top"]:
