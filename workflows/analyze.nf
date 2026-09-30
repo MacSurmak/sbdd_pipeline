@@ -4,8 +4,9 @@
  */
 
 include { TRJCONV         } from '../modules/gromacs/trjconv'
-include { ANALYZE_MD_TRAJ } from '../subworkflows/analyze_md_traj'
+include { MD_METRICS      } from '../modules/gromacs/md_metrics'
 include { GMX_CLUSTER     } from '../modules/gromacs/cluster'
+include { ANALYZE_MD_TRAJ } from '../subworkflows/analyze_md_traj'
 
 workflow ANALYZE_WF {
 
