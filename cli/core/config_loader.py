@@ -45,16 +45,6 @@ def build_nextflow_args(
         )
     args.extend(["--project_name", str(proj_cfg["name"])])
 
-    # 2. Manifest
-    manifest_path = project_dir / "configs" / "manifest.yaml"
-    if not manifest_path.exists():
-        manifest_path = project_dir / "manifest.yaml"
-    if not manifest_path.exists():
-        raise FileNotFoundError(
-            f"FATAL: manifest.yaml not found in {project_dir}/configs or {project_dir}"
-        )
-    args.extend(["--manifest", str(manifest_path.resolve())])
-
     # Global PrepWizard defaults (can be customized via config in the future)
     args.extend(
         [

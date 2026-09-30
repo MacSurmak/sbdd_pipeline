@@ -6,32 +6,26 @@
 include { PREPARE_RECEPTOR } from '../subworkflows/prepare_receptor'
 
 workflow PREPARE_WF {
-    if (!params.manifest) { error "FATAL: Parameter --manifest is required." }
-
-    def manifestFile = file(params.manifest)
-    if (!manifestFile.exists()) { error "FATAL: Manifest file not found at ${params.manifest}" }
+    if (!params.plan) { error "FATAL: Parameter --plan (JSON) is required for database-driven preparation." }
     
-    def yaml = new org.yaml.snakeyaml.Yaml()
-    def manifestData = yaml.load(manifestFile.text)
-    if (!manifestData.targets) { error "FATAL: 'targets' list missing in manifest.yaml" }
+    def planFile = file(params.plan)
+    if (!planFile.exists()) { error "FATAL: Plan file not found at ${params.plan}" }
+    
+    def jsonSlurper = new groovy.json.JsonSlurper()
+    def planData = jsonSlurper.parseText(planFile.text)
 
-    ch_targets = Channel.fromList(manifestData.targets).map { target ->
-        def target_id = target.id ?: "unknown"
-        def struct_file = target.structure
-        if (!struct_file) error "FATAL: Target ${target_id} has no 'structure' defined."
-        
-        def rec_path = file("${manifestFile.parent}/${struct_file}")
+    ch_targets = Channel.fromList(planData).map { target ->
+        def rec_path = file(target.path)
         if (!rec_path.exists()) {
-            rec_path = file("${params.outdir}/${struct_file}")
+            error "FATAL: Path explicitly provided by DB does not exist: ${target.path}"
         }
-        if (!rec_path.exists()) error "FATAL: Structure file ${struct_file} not found for target ${target_id}."
 
         def meta = [
-            id: target_id,
+            id: target.name,
+            name: target.name,
+            prep_mode: target.prep_mode,
             project: params.project_name,
-            native_ligand: target.native_ligand ?: "",
-            cofactors: target.cofactors ?: [],
-            is_prepared: false
+            cofactors: target.cofactors ?: []
         ]
         
         [ meta, rec_path.toAbsolutePath() ]

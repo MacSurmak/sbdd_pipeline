@@ -19,12 +19,13 @@ include { EXTRACT_COMPLEX } from "../modules/schrodinger/extract_complex"
 include { IMMERS          } from "../modules/membrane/immers"
 include { ORIENT_COMPLEX  } from "../modules/schrodinger/orient_complex"
 include { PREPWIZARD      } from "../modules/schrodinger/prepwizard"
-include { APPLY_MEMBRANE  } from "../modules/membrane/apply_membrane"
-include { SPLIT_PREPARED  } from "../modules/schrodinger/split_prepared"
+include { APPLY_MEMBRANE   } from "../modules/membrane/apply_membrane"
+include { SPLIT_PREPARED   } from "../modules/schrodinger/split_prepared"
+include { LIGHT_PREPWIZARD } from "../modules/schrodinger/light_prep"
 
 workflow PREPARE_RECEPTOR {
     take:
-    ch_receptor       // channel: [ val(meta), path(complex_file) ] (meta contains native_ligand and cofactors)
+    ch_receptor       // channel: [ val(meta), path(complex_file) ]
     membrane_enabled  // val: true/false
     membrane_type     // val: "MOM"
     membrane_topo     // val: "in"
@@ -35,16 +36,18 @@ workflow PREPARE_RECEPTOR {
     cap_termini       // val: true
 
     main:
-    // 1. Intelligent Branching based on State Contract (is_prepared)
+    // 1. Strict branching based on DB prep_mode
     ch_receptor.branch {
-        raw:   it[0].is_prepared == false
-        ready: it[0].is_prepared == true
-    }.set { ch_branched_targets }
+        full:  it[0].prep_mode == 'full'
+        light: it[0].prep_mode == 'light'
+    }.set { routed_targets }
 
-    // 2. Dynamic determination of NMR ensemble frames (Only for RAW)
-    COUNT_MODELS(ch_branched_targets.raw)
+    // ==========================================
+    // ROUTE A: FULL PREPARATION (Crystals/Raw structures)
+    // ==========================================
+    COUNT_MODELS(routed_targets.full)
 
-    ch_extracted_in = ch_branched_targets.raw
+    ch_extracted_in = routed_targets.full
         .join(COUNT_MODELS.out.count_file)
         .flatMap { meta, rec_file, count_txt ->
             def total = count_txt.text.trim() as int
@@ -59,14 +62,12 @@ workflow PREPARE_RECEPTOR {
             }
         }
 
-    // 3. Separate models and extract components
     EXTRACT_COMPLEX(
         ch_extracted_in,
         membrane_enabled
     )
 
     if (membrane_enabled.toString() == 'true') {
-        // 4. Parallel PPM 3.0 immersion on pure protein
         IMMERS(
             EXTRACT_COMPLEX.out.pure_protein_pdb,
             membrane_type,
@@ -74,7 +75,6 @@ workflow PREPARE_RECEPTOR {
             membrane_chains
         )
 
-        // 5. Superimpose and transform entire complex structure (protein + cofactors + ligand)
         ch_orient_in = EXTRACT_COMPLEX.out.pure_protein_pdb
             .join(IMMERS.out.oriented_pdb)
             .join(EXTRACT_COMPLEX.out.complex_mae)
@@ -92,7 +92,6 @@ workflow PREPARE_RECEPTOR {
         ch_mem_txt  = Channel.empty()
     }
 
-    // 6. Protein Preparation Wizard on the FULL complex (in-situ protonation)
     PREPWIZARD(
         ch_prep_in,
         target_ph,
@@ -101,30 +100,34 @@ workflow PREPARE_RECEPTOR {
         cap_termini
     )
 
-    // 7. Implicit membrane property injection for Prime MM-GBSA
     if (membrane_enabled.toString() == 'true') {
-        ch_apply_in = PREPWIZARD.out.prepared_mae
-            .join(ch_mem_txt)
-
+        ch_apply_in = PREPWIZARD.out.prepared_mae.join(ch_mem_txt)
         APPLY_MEMBRANE(ch_apply_in)
         ch_final_complex_mae = APPLY_MEMBRANE.out.prepared_mae
     } else {
         ch_final_complex_mae = PREPWIZARD.out.prepared_mae
     }
 
-    // 8. Split the fully prepared complex into receptor and native ligand
     SPLIT_PREPARED(ch_final_complex_mae)
+    ch_full_prepared_mae = SPLIT_PREPARED.out.prepared_mae
 
-    // 9. Output Mapping & Updating State Contract
-    ch_fully_prepared_pdb = SPLIT_PREPARED.out.prepared_pdb.map { meta, file -> [ meta + [is_prepared: true], file ] }
-    ch_fully_prepared_mae = SPLIT_PREPARED.out.prepared_mae.map { meta, file -> [ meta + [is_prepared: true], file ] }
+    // ==========================================
+    // ROUTE B: LIGHT PREPARATION (MD frames)
+    // ==========================================
+    LIGHT_PREPWIZARD(routed_targets.light)
+    ch_light_prepared_mae = LIGHT_PREPWIZARD.out.prepared_mae
 
-    // Mix raw streams (now prepared) with bypass streams (already prepared)
-    ch_all_prepared_pdb = ch_fully_prepared_pdb.mix(ch_branched_targets.ready)
+
+    // ==========================================
+    // EMIT RECEIPT FOR CLI DATABASE
+    // ==========================================
+    ch_all_maes = ch_full_prepared_mae.mix(ch_light_prepared_mae)
+
+    ch_all_maes.map { meta, mae -> "${meta.name}\t${mae.toAbsolutePath()}" }
+               .collectFile(name: 'prep_receipt.tsv', storeDir: params.outdir, newLine: true)
 
     emit:
-    prepared_pdb     = ch_all_prepared_pdb
-    prepared_mae     = ch_fully_prepared_mae
+    prepared_mae     = ch_all_maes
     ref_native_mae   = SPLIT_PREPARED.out.ref_native_mae
     ref_native_sdf   = SPLIT_PREPARED.out.ref_native_sdf
     membrane_json    = ch_mem_json

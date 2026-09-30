@@ -246,10 +246,14 @@ def main():
 
     # 2. prep / prepare
     p_prep = subparsers.add_parser(
-        "prep", aliases=["prepare"], help="Run receptor & ligand preparation"
+        "prep",
+        aliases=["prepare"],
+        help="Run smart receptor preparation based on DB state",
     )
-    p_prep.add_argument("--receptor", help="Path to input structure (.cif/.pdb)")
-    p_prep.add_argument("--library", help="Path to ligand library (.sdf)")
+    p_prep.add_argument(
+        "--receptors",
+        help="Comma-separated list of receptor names to prepare (default: all unprepared)",
+    )
     add_common_wf_args(p_prep)
 
     # 3. dock / screen
@@ -346,7 +350,9 @@ def main():
     elif subcmd == "clean":
         cmd_clean(args)
     elif subcmd in ["prep", "prepare"]:
-        sys.exit(run_workflow("prepare", args))
+        from cli.commands.prep import cmd_prep
+
+        cmd_prep(args)
     elif subcmd in ["dock", "screen"]:
         sys.exit(run_workflow("screen", args))
     elif subcmd in ["dynamics", "md", "md-run", "md-setup", "md-analyze"]:
