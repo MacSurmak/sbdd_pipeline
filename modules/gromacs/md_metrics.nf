@@ -14,6 +14,7 @@ process MD_METRICS {
     output:
     tuple val(meta), path("rmsd.csv"), path("rmsf.csv"), path("contacts.csv"), emit: tables
     tuple val(meta), path("md_metrics_summary.json"), emit: summary_json
+    tuple val(meta), path("*.png"), emit: plots, optional: true
 
     script:
     def lig_arg = meta.ligand ? "--ligand ${meta.ligand}" : ""
