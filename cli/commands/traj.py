@@ -370,6 +370,7 @@ def cmd_cluster(args):
         console.print("[bold red]FATAL: cluster_receipt.tsv not found![/bold red]")
         sys.exit(1)
 
+    count = 0
     for line in receipt_file.read_text().strip().splitlines():
         if not line.strip():
             continue
