@@ -32,10 +32,21 @@ process GMX_CLUSTER {
 
     TARGET_GROUP="${cluster_group}"
     if [ "${cluster_group}" = "Pocket" ] || [ "${cluster_group}" = "pocket" ]; then
-        lig_res="${meta.ligand}"
-        [ -z "\$lig_res" ] && lig_res="KVR"
-        gmx select -s ${ref_pdb} -select "Pocket = same residue as within 0.5 of resname \${lig_res}" -on pocket.ndx
-        cat pocket.ndx >> index.ndx
+        python3 -c "
+import MDAnalysis as mda
+
+u = mda.Universe('${ref_pdb}')
+lig_res = '${meta.ligand}'.strip().upper() or 'KVR'
+pocket = u.select_atoms(f'(same residue as (protein and around 5.0 of resname {lig_res})) or resname {lig_res}')
+if len(pocket) == 0:
+    pocket = u.select_atoms('protein')
+
+with open('index.ndx', 'a') as f:
+    f.write('\n[ Pocket ]\n')
+    atom_ids = pocket.atoms.ids
+    for i in range(0, len(atom_ids), 15):
+        f.write(' '.join(f'{x:5d}' for x in atom_ids[i:i+15]) + '\n')
+"
         TARGET_GROUP="Pocket"
     fi
 
