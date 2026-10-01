@@ -118,8 +118,7 @@ def cmd_prep(args):
                     new_rec.meta_data = orig.meta_data
                 session.add(new_rec)
 
-            if orig and orig.name != ready_name:
-                orig.status = "processed"
+            if orig and orig.name != ready_name:                orig.status = "processed"
             target_rec_name = ready_name
 
         # Check if an extracted native ligand SDF exists
