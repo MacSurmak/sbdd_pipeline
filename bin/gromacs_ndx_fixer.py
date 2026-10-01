@@ -29,6 +29,26 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from utils.gmx_helpers import parse_ndx, write_ndx_group, ensure_complex_ndx_group
 
 
+def add_pocket_group(ndx_path: Path, pdb_path: Path, ligand_name: str):
+    """Selects protein residues within 5.0 A of ligand plus ligand itself."""
+    import MDAnalysis as mda
+
+    u = mda.Universe(str(pdb_path))
+    lig_res = (ligand_name or "KVR").strip().upper()
+    pocket = u.select_atoms(
+        f"(same residue as (protein and around 5.0 of resname {lig_res})) or resname {lig_res}"
+    )
+    if len(pocket) == 0:
+        pocket = u.select_atoms("protein")
+
+    atom_ids = list(map(int, pocket.atoms.ids))
+    with open(ndx_path, "a") as f:
+        write_ndx_group(f, "Pocket", atom_ids)
+    logging.info(
+        f"Injected [ Pocket ] group ({len(atom_ids)} atoms around {lig_res}) into {ndx_path}"
+    )
+
+
 def add_thermostat_groups_by_name(ndx_path: Path):
     """
     Builds PROT_LIG and SOL_ION groups strictly by string matching names in index.ndx.
@@ -231,9 +251,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--ndx", required=True)
     parser.add_argument("--top", required=False)
+    parser.add_argument("--pdb", required=False)
+    parser.add_argument("--ligand", default="KVR")
     parser.add_argument(
         "--action",
-        choices=["add_groups", "generate_posre", "ensure_complex"],
+        choices=["add_groups", "generate_posre", "ensure_complex", "add_pocket"],
         required=True,
     )
     parser.add_argument("--orgs", default="")
@@ -246,3 +268,5 @@ if __name__ == "__main__":
             generate_posre(Path(args.top))
     elif args.action == "ensure_complex":
         ensure_complex_ndx_group(Path(args.ndx))
+    elif args.action == "add_pocket":
+        add_pocket_group(Path(args.ndx), Path(args.pdb), args.ligand)
