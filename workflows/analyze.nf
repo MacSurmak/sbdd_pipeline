@@ -62,7 +62,7 @@ workflow ANALYZE_WF {
 
         GMX_CLUSTER.out.cluster_pdbs.flatMap { m, pdbs ->
             def plist = pdbs instanceof List ? pdbs : [pdbs]
-            plist.collect { p ->
+            plist.sort { it.name }.collect { p ->
                 def frame_id = p.baseName
                 def idx_str = frame_id.tokenize('_').last()
                 def pose_file = file("${p.parent}/${m.id}_pose_${idx_str}.pdb")

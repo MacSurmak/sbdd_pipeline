@@ -62,12 +62,15 @@ with open('clusters_multi.pdb', 'r') as f:
     lines = f.readlines()
 
 lig_name = '${meta.ligand}'.strip().upper()
+max_c = int('${meta.max_clusters}' or 0)
 
 out_c = None
 out_p = None
 idx = 1
 for line in lines:
     if line.startswith('MODEL'):
+        if max_c > 0 and idx > max_c:
+            break
         if out_c: out_c.close()
         if out_p: out_p.close()
         out_c = open(f'${meta.id}_centroid_{idx}.pdb', 'w')
