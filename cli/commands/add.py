@@ -48,6 +48,7 @@ def add_receptor(args):
         rec.status = status
         rec.prep_mode = prep_mode
         rec.meta_dict = {"cofactors": cofactors, "native_ligand": ligand_name or ""}
+        console.print(f"[yellow]Updated Receptor '{name}'[/yellow] [dim]({prep_mode})[/dim]")
 
     # 2. Build initial System and Pose with receptor-isolated chemistry
     if ligand_name:
@@ -63,6 +64,7 @@ def add_receptor(args):
         else:
             lig.path = str(target_path)
             lig.status = status
+            console.print(f"[yellow]Updated Ligand '{lig_entity_name}'[/yellow]")
 
         # Register Crystal Pose
         pose_name = f"{name}_{lig_code}_pose"
@@ -77,6 +79,10 @@ def add_receptor(args):
                 status=status,
             )
             session.add(pose)
+        else:
+            pose.path = str(target_path)
+            pose.status = status
+            console.print(f"[yellow]Updated Pose '{pose_name}'[/yellow]")
 
         # Register Holo System
         sys_name = f"{name}_holo"
@@ -90,6 +96,11 @@ def add_receptor(args):
             console.print(
                 f"[bold green]✓ Created Holo System '{sys_name}'[/bold green] [dim](Receptor: {name} + Pose: {pose_name})[/dim]"
             )
+        else:
+            sys_obj.status = status
+            sys_obj.pose_name = pose_name
+            sys_obj.meta_dict = {"cofactors": cofactors}
+            console.print(f"[yellow]Updated Holo System '{sys_name}'[/yellow]")
     else:
         # Register Apo System
         sys_name = f"{name}_apo"
@@ -103,6 +114,10 @@ def add_receptor(args):
             console.print(
                 f"[bold green]✓ Created Apo System '{sys_name}'[/bold green] [dim](Receptor: {name}, No Ligand)[/dim]"
             )
+        else:
+            sys_obj.status = status
+            sys_obj.meta_dict = {"cofactors": cofactors}
+            console.print(f"[yellow]Updated Apo System '{sys_name}'[/yellow]")
 
     session.commit()
     session.close()
