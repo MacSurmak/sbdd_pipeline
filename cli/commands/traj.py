@@ -7,7 +7,7 @@ import json
 import sys
 from pathlib import Path
 from rich.console import Console
-from cli.core.db import init_db, Receptor, Trajectory
+from cli.core.db import init_db, Receptor, Trajectory, System, Pose
 from cli.core.runner import execute_nextflow
 from cli.core.config_loader import load_project_configs, build_nextflow_args
 
@@ -77,7 +77,9 @@ def cmd_clean_traj(args):
                 except ValueError:
                     pass
 
-        rec_id = t.receptor_name.replace("_ready", "")
+        sys_obj = session.query(System).filter_by(name=t.system_name).first()
+        rec_name = sys_obj.receptor_name if sys_obj else t.system_name
+        rec_id = rec_name.replace("_ready", "")
         xtc_path = Path(t.path_xtc).resolve()
 
         # Destination inside project directory next to replicate
@@ -169,10 +171,16 @@ def cmd_metrics(args):
                 except ValueError:
                     pass
 
-        parent_rec = session.query(Receptor).filter_by(name=t.receptor_name).first()
+        sys_obj = session.query(System).filter_by(name=t.system_name).first()
+        parent_rec = (
+            session.query(Receptor).filter_by(name=sys_obj.receptor_name).first()
+            if sys_obj
+            else None
+        )
         native_lig = parent_rec.meta_dict.get("native_ligand", "") if parent_rec else ""
         cofactors = parent_rec.meta_dict.get("cofactors", []) if parent_rec else []
-        rec_id = t.receptor_name.replace("_ready", "")
+        rec_name = sys_obj.receptor_name if sys_obj else t.system_name
+        rec_id = rec_name.replace("_ready", "")
 
         # Route metrics directly into replicate folder
         clean_xtc_path = Path(t.path_clean_xtc).resolve()

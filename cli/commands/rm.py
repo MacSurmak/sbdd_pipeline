@@ -16,11 +16,27 @@ def cmd_rm(args):
     # Search and delete across all tables
     deleted = False
 
+    sys_obj = session.query(System).filter_by(name=target).first()
+    if sys_obj:
+        session.delete(sys_obj)
+        console.print(
+            f"[bold green]✓ Deleted System '{target}' from database.[/bold green]"
+        )
+        deleted = True
+
     rec = session.query(Receptor).filter_by(name=target).first()
     if rec:
         session.delete(rec)
         console.print(
             f"[bold green]✓ Deleted Receptor '{target}' from database.[/bold green]"
+        )
+        deleted = True
+
+    pose = session.query(Pose).filter_by(name=target).first()
+    if pose:
+        session.delete(pose)
+        console.print(
+            f"[bold green]✓ Deleted Pose '{target}' from database.[/bold green]"
         )
         deleted = True
 
