@@ -318,9 +318,11 @@ def cmd_cluster(args):
 
         clean_xtcs = [t.path_clean_xtc for t in t_list]
         ref_pdb = t_list[0].path_ref_pdb
-        lig_code = (
-            sys_obj.pose.ligand.meta_dict.get("resname", "") if sys_obj.pose else ""
-        )
+        lig_code = ""
+        if sys_obj.pose and sys_obj.pose.ligand:
+            lig_code = sys_obj.pose.ligand.meta_dict.get(
+                "resname", sys_obj.pose.ligand.name.split("_")[-1]
+            )[:4].upper()
 
         plan_list.append(
             {

@@ -63,6 +63,17 @@ class Ligand(Base):
     status = Column(String, default="unprepared", nullable=False)  # unprepared, ready
     meta_data = Column(Text, default="{}")
 
+    @property
+    def meta_dict(self):
+        try:
+            return json.loads(self.meta_data) if self.meta_data else {}
+        except Exception:
+            return {}
+
+    @meta_dict.setter
+    def meta_dict(self, val):
+        self.meta_data = json.dumps(val) if val is not None else "{}"
+
 
 class Pose(Base):
     """
@@ -108,6 +119,17 @@ class System(Base):
     receptor = relationship("Receptor")
     pose = relationship("Pose")
     parent_system = relationship("System", remote_side=[name], backref="conformations")
+
+    @property
+    def meta_dict(self):
+        try:
+            return json.loads(self.meta_data) if self.meta_data else {}
+        except Exception:
+            return {}
+
+    @meta_dict.setter
+    def meta_dict(self, val):
+        self.meta_data = json.dumps(val) if val is not None else "{}"
 
 
 class Trajectory(Base):
