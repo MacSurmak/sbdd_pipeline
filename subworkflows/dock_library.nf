@@ -18,14 +18,14 @@ process MERGE_DOCK_CHUNKS {
     label 'process_single'
 
     input:
-    tuple val(meta), path(chunk_sdfs)
+    tuple val(meta), path(chunk_sdfs, stageAs: 'chunks_?/*')
 
     output:
     tuple val(meta), path("${meta.id}_gnina_docked_all.sdf"), emit: merged_sdf
 
     script:
     """
-    find -L . -maxdepth 1 -type f -name "*.sdf" ! -name "${meta.id}_gnina_docked_all.sdf" -exec cat {} + > ${meta.id}_gnina_docked_all.sdf
+    find -L . -type f -name "*.sdf" ! -name "${meta.id}_gnina_docked_all.sdf" -exec cat {} + > ${meta.id}_gnina_docked_all.sdf
     """
 
     stub:

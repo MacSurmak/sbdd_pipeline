@@ -13,12 +13,12 @@ process GNINA_DOCK {
     val(cnn_scoring)
     val(num_modes)
     val(autobox_add)
-
     output:
-    tuple val(meta), path("docked_chunk_${chunk_idx}.sdf"), emit: docked_sdf
-    tuple val(meta), path("gnina_chunk_${chunk_idx}.log"), emit: log
+    tuple val(meta), path("${meta.id}_docked.sdf"), emit: docked_sdf
+    tuple val(meta), path("${meta.id}_gnina.log"), emit: log
 
     script:
+    def autobox_flag = ""
     """
     REF_BASE=\$(basename "${ref_lig_sdf}")
     if [[ "\$REF_BASE" != "NO_FILE" && -f "${ref_lig_sdf}" ]]; then
@@ -38,13 +38,12 @@ process GNINA_DOCK {
         --exhaustiveness ${exhaustiveness} \
         --cnn_scoring ${cnn_scoring} \
         --num_modes ${num_modes} \
-        -o docked_chunk_${chunk_idx}.sdf > gnina_chunk_${chunk_idx}.log
+        -o ${meta.id}_docked.sdf > ${meta.id}_gnina.log
     """
 
     stub:
     """
-    touch docked_chunk_${chunk_idx}.sdf
-    touch gnina_chunk_${chunk_idx}.log
-    """
-}
+    touch ${meta.id}_docked.sdf
+    touch ${meta.id}_gnina.log
+    """}
 
