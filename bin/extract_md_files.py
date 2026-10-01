@@ -52,7 +52,7 @@ def extract_via_schrodinger(args):
                 cof_st.write(str(cof_out))
                 (org_dir / f"{clean_cof}_charge.txt").write_text(str(cof_st.formal_charge))
                 organics.append(
-                    {"name": clean_cof, "mol2": f"{clean_cof}.mol2", "charge": f"{cof_clean}_charge.txt"}
+                    {"name": clean_cof, "mol2": f"{clean_cof}.mol2", "charge": f"{clean_cof}_charge.txt"}
                 )
                 rec_st.deleteAtoms(atoms)
                 print(f"Successfully extracted cofactor '{clean_cof}' ({len(atoms)} atoms).", flush=True)
