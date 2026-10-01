@@ -414,6 +414,7 @@ def cmd_cluster(args):
         ex_rec = session.query(Receptor).filter_by(name=cluster_id).first()
         if ex_rec:
             ex_rec.path = str(pub_pdb)
+            ex_rec.status = "unprepared"
         else:
             new_rec = Receptor(
                 name=cluster_id,
@@ -435,6 +436,7 @@ def cmd_cluster(args):
             ex_pose = session.query(Pose).filter_by(name=pose_entity_name).first()
             if ex_pose:
                 ex_pose.path = str(pub_pose)
+                ex_pose.status = "unprepared"
             else:
                 new_pose = Pose(
                     name=pose_entity_name,
