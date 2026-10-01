@@ -29,12 +29,29 @@ process GLIDE_GRIDGEN {
         REF_MAE="${ref_lig_mae}"
     fi
 
+    # Compute exact centroid coordinates of reference pose for Glide GRID_CENTER
+    GRID_CENTER=\$(schrodinger run python3 -c "
+from schrodinger import structure
+try:
+    st = structure.StructureReader.read('\${REF_MAE}')
+    if st.atom_total > 0:
+        cx = sum(a.x for a in st.atom) / st.atom_total
+        cy = sum(a.y for a in st.atom) / st.atom_total
+        cz = sum(a.z for a in st.atom) / st.atom_total
+        print(f'{cx:.4f}, {cy:.4f}, {cz:.4f}')
+    else:
+        print('0.0, 0.0, 0.0')
+except Exception:
+    print('0.0, 0.0, 0.0')
+")
+
     export SCHRODINGER_JOBDB="/tmp/schrodinger_jobdb_\${SLURM_JOB_ID:-\$\$}"
     mkdir -p "\$SCHRODINGER_JOBDB"
 
     cat << EOF > gridgen.in
 GRIDFILE ${meta.id}_grid.zip
 RECEP_FILE ${receptor_mae}
+GRID_CENTER \${GRID_CENTER}
 REF_LIGAND_FILE \${REF_MAE}
 INNERBOX ${inner_box}
 OUTERBOX ${outer_box}
