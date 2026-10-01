@@ -214,11 +214,12 @@ def main():
     # 0.3 add traj
     p_add_traj = add_subs.add_parser("traj", help="Register an existing MD trajectory linked to a System")
     p_add_traj.add_argument("--name", required=True, help="Unique name for this trajectory (e.g. 7UA1_rep1)")
-    p_add_traj.add_argument("--system", required=True, help="Name of the System in DB (e.g. 7UA1_holo or 7UA1_apo)")
-    p_add_traj.add_argument("--xtc", required=True, help="Path to .xtc file")
+    p_add_traj.add_argument("--system", required=True, help="Name of the System in DB (e.g. 7UA1_ready_holo)")
+    p_add_traj.add_argument("--xtc", required=True, help="Path to raw .xtc file")
     p_add_traj.add_argument("--tpr", required=True, help="Path to .tpr file")
+    p_add_traj.add_argument("--clean-xtc", help="Explicit path to pre-cleaned .xtc (optional, if already cleaned)")
+    p_add_traj.add_argument("--ref-pdb", help="Explicit path to dry reference .pdb (optional, if already cleaned)")
     p_add_traj.add_argument("--force", action="store_true", help="Overwrite if exists")
-
     # 0.4 tree
     p_tree = subparsers.add_parser(
         "tree", aliases=["ls"], help="Show database lineage tree"

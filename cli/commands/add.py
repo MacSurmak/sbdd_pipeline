@@ -126,7 +126,6 @@ def add_traj(args):
     target_sys = args.system
     sys_obj = session.query(System).filter_by(name=target_sys).first()
     if not sys_obj:
-        # Fallback: attempt lookup by receptor name
         sys_obj = session.query(System).filter_by(receptor_name=target_sys).first()
 
     if not sys_obj:
@@ -145,24 +144,51 @@ def add_traj(args):
             except ValueError:
                 pass
 
-    # Auto-detect if registering pre-cleaned trajectory
-    ref_pdb = xtc_path.parent / "complex_ref.pdb"
-    is_clean = xtc_path.name == "trajectory_clean.xtc" and ref_pdb.exists()
+    # Strict explicit paths: only cleaned if both files are explicitly provided
+    clean_xtc_path = None
+    ref_pdb_path = None
+    status = "raw"
 
-    new_traj = Trajectory(
-        name=args.name,
-        system_name=sys_name,
-        replicate=rep_idx,
-        path_xtc=str(xtc_path),
-        path_tpr=str(tpr_path),
-        path_clean_xtc=str(xtc_path) if is_clean else None,
-        path_ref_pdb=str(ref_pdb) if is_clean else None,
-        length_ns=0.0,
-        status="cleaned" if is_clean else "raw",
-    )
-    session.merge(new_traj)
+    if getattr(args, "clean_xtc", None) and getattr(args, "ref_pdb", None):
+        c_xtc = Path(args.clean_xtc).resolve()
+        r_pdb = Path(args.ref_pdb).resolve()
+        if not c_xtc.exists() or not r_pdb.exists():
+            console.print(
+                f"[bold red]FATAL: Explicitly passed --clean-xtc ({c_xtc}) or --ref-pdb ({r_pdb}) does not exist![/bold red]"
+            )
+            sys.exit(1)
+        clean_xtc_path = str(c_xtc)
+        ref_pdb_path = str(r_pdb)
+        status = "cleaned"
+
+    existing = session.query(Trajectory).filter_by(name=args.name).first()
+    if existing:
+        existing.system_name = sys_name
+        existing.replicate = rep_idx
+        existing.path_xtc = str(xtc_path)
+        existing.path_tpr = str(tpr_path)
+        existing.path_clean_xtc = clean_xtc_path
+        existing.path_ref_pdb = ref_pdb_path
+        existing.status = status
+        console.print(
+            f"[yellow]Updated Trajectory '{args.name}' linked to System '{sys_name}' ({status})[/yellow]"
+        )
+    else:
+        new_traj = Trajectory(
+            name=args.name,
+            system_name=sys_name,
+            replicate=rep_idx,
+            path_xtc=str(xtc_path),
+            path_tpr=str(tpr_path),
+            path_clean_xtc=clean_xtc_path,
+            path_ref_pdb=ref_pdb_path,
+            length_ns=0.0,
+            status=status,
+        )
+        session.add(new_traj)
+        console.print(
+            f"[bold green]✓ Registered Trajectory '{args.name}' linked to System '{sys_name}' ({status})[/bold green]"
+        )
+
     session.commit()
     session.close()
-    console.print(
-        f"[bold green]✓ Registered Trajectory '{args.name}' linked to System '{sys_name}'[/bold green]"
-    )
