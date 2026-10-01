@@ -41,7 +41,21 @@ def main():
         sys.exit(1)
 
     if args.ligand:
-        lig_atoms = analyze.evaluate_asl(st, f"res.ptype '{args.ligand}'")
+        target_res = args.ligand.strip().upper()
+        lig_atoms = []
+
+        # 1. Direct Python residue match immune to Maestro 4-char space padding
+        for res in st.residue:
+            r_name = res.pdbres.strip().upper()
+            if r_name == target_res or r_name.startswith(target_res):
+                lig_atoms.extend(res.getAtomIndices())
+
+        # 2. Fallback ASL with wildcards
+        if not lig_atoms:
+            lig_atoms = analyze.evaluate_asl(
+                st, f"res.ptype '{target_res}*' OR res.ptype '{target_res} ' OR res.ptype '{target_res}'"
+            )
+
         if lig_atoms:
             lig_st = st.extract(lig_atoms)
             lig_st.title = args.ligand
@@ -52,11 +66,11 @@ def main():
                 f"Extracted prepared native ligand '{args.ligand}' ({len(lig_atoms)} atoms)."
             )
         else:
-            print(
-                f"Warning: Native ligand '{args.ligand}' not found in prepared complex."
+            avail = set(r.pdbres.strip() for r in st.residue)
+            raise ValueError(
+                f"FATAL: Native ligand '{args.ligand}' not found in prepared complex! "
+                f"Available residues: {avail}"
             )
-            Path(args.out_ligand_mae).touch()
-            Path(args.out_ligand_sdf).touch()
     else:
         Path(args.out_ligand_mae).touch()
         Path(args.out_ligand_sdf).touch()
