@@ -174,11 +174,9 @@ def cmd_dock(args):
         sys.exit(ret_code)
 
     # 6. Register results in Database
-    poses_name = (
-        args.name
-        if getattr(args, "name", None)
-        else f"screen_{len(receptors)}x{len(ligands)}"
-    )
+    num_ligs = len(plan.get("ligands", []))
+    default_name = f"redock_{len(receptors)}" if is_self else f"screen_{len(receptors)}x{num_ligs}"
+    poses_name = args.name if getattr(args, "name", None) else default_name
     res_csv = cwd / "reports" / "ranking.csv"
     res_sdf = (
         cwd / "docking" / f"{poses_name}_poses.sdf"
