@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 import sys
 from rich.console import Console
-from cli.core.db import init_db, Receptor
+from cli.core.db import init_db, Receptor, Ligand, System, Pose
 from cli.core.runner import execute_nextflow
 from cli.core.config_loader import load_project_configs, build_nextflow_args
 
@@ -84,9 +84,6 @@ def cmd_prep(args):
 
     lines = receipt_file.read_text().strip().splitlines()
     success_count = 0
-
-    # DB models needed for auto-registering native ligands
-    from cli.core.db import Ligand
 
     for line in lines:
         if not line.strip():
