@@ -35,7 +35,13 @@ def main():
     args = parser.parse_args()
 
     try:
-        st = structure.StructureReader.read(args.complex_mae)
+        with structure.StructureReader(args.complex_mae) as reader:
+            sts = list(reader)
+        if not sts:
+            raise ValueError(f"No structures found in {args.complex_mae}")
+        st = sts[0]
+        for next_st in sts[1:]:
+            st.extend(next_st)
     except Exception as e:
         print(f"FATAL: Could not read {args.complex_mae}: {e}")
         sys.exit(1)
