@@ -379,6 +379,10 @@ def cmd_cluster(args):
         pdb_path = parts[1]
         pose_path = parts[2] if len(parts) > 2 else "NO_POSE"
 
+        # Ignore ligand pose files from being registered as standalone receptors
+        if "_pose" in cluster_id:
+            continue
+
         pub_pdb = cwd / "prepared" / Path(pdb_path).name
         if not pub_pdb.exists():
             pub_pdb = Path(pdb_path)
@@ -421,7 +425,7 @@ def cmd_cluster(args):
         # 2. Register in-situ Pose if extracted from cluster
         pose_entity_name = None
         if pub_pose and lig_name:
-            pose_entity_name = f"{cluster_id}_{lig_name}_pose"
+            pose_entity_name = f"{cluster_id}_pose"
             ex_pose = session.query(Pose).filter_by(name=pose_entity_name).first()
             if ex_pose:
                 ex_pose.path = str(pub_pose)

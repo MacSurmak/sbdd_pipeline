@@ -4,7 +4,7 @@ Description: CLI handler to remove items from the SBDD database.
 """
 
 from rich.console import Console
-from cli.core.db import init_db, Receptor, Ligand, Trajectory, PoseSet, Complex
+from cli.core.db import init_db, Receptor, Ligand, Trajectory, PoseSet, System, Pose
 
 console = Console()
 
@@ -64,11 +64,19 @@ def cmd_rm(args):
         )
         deleted = True
 
-    cmplx = session.query(Complex).filter_by(name=target).first()
-    if cmplx:
-        session.delete(cmplx)
+    sys_obj = session.query(System).filter_by(name=target).first()
+    if sys_obj:
+        session.delete(sys_obj)
         console.print(
-            f"[bold green]✓ Deleted Complex '{target}' from database.[/bold green]"
+            f"[bold green]✓ Deleted System '{target}' from database.[/bold green]"
+        )
+        deleted = True
+
+    pose = session.query(Pose).filter_by(name=target).first()
+    if pose:
+        session.delete(pose)
+        console.print(
+            f"[bold green]✓ Deleted Pose '{target}' from database.[/bold green]"
         )
         deleted = True
 
