@@ -335,6 +335,7 @@ def cmd_cluster(args):
                 "method": args.method,
                 "dt": args.dt,
                 "group": args.group,
+                "max_clusters": getattr(args, "max_clusters", 5),
             }
         )
 

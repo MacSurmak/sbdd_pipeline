@@ -50,6 +50,7 @@ workflow ANALYZE_WF {
             def meta = [
                 id: item.task_id,
                 ligand: item.ligand ?: "",
+                max_clusters: item.max_clusters ?: 5,
                 project: params.project_name
             ]
             def xtcs = item.clean_xtcs.collect { file(it) }

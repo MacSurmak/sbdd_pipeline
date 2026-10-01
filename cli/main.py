@@ -432,6 +432,12 @@ def main():
     p_cluster.add_argument(
         "--method", default="gromos", help="Clustering method (default: gromos)"
     )
+    p_cluster.add_argument(
+        "--max-clusters",
+        type=int,
+        default=5,
+        help="Maximum number of top-populated clusters to retain (default: 5)",
+    )
     add_common_wf_args(p_cluster)
 
     # 9. clean
