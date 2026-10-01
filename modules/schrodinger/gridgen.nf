@@ -29,6 +29,9 @@ process GLIDE_GRIDGEN {
         REF_MAE="${ref_lig_mae}"
     fi
 
+    export SCHRODINGER_JOBDB="/tmp/schrodinger_jobdb_\${SLURM_JOB_ID:-\$\$}"
+    mkdir -p "\$SCHRODINGER_JOBDB"
+
     cat << EOF > gridgen.in
 GRIDFILE ${meta.id}_grid.zip
 RECEP_FILE ${receptor_mae}
@@ -38,8 +41,7 @@ OUTERBOX ${outer_box}
 FORCEFIELD ${forcefield}
 EOF
 
-    schrodinger glide gridgen.in -OVERWRITE -WAIT
-    """
+    schrodinger glide gridgen.in -OVERWRITE -WAIT -LOCAL -NOJOBID    """
 
     stub:
     """

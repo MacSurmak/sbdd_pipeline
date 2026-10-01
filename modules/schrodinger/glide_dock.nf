@@ -20,6 +20,9 @@ process GLIDE_DOCK {
 
     script:
     """
+    export SCHRODINGER_JOBDB="/tmp/schrodinger_jobdb_\${SLURM_JOB_ID:-\$\$}"
+    mkdir -p "\$SCHRODINGER_JOBDB"
+
     cat << EOF > dock.in
 GRIDFILE        ${grid_zip}
 LIGANDFILE      ${ligands_mae}
@@ -32,7 +35,7 @@ WRITE_CSV       yes
 FORCEFIELD      ${forcefield}
 EOF
 
-    schrodinger glide dock.in -OVERWRITE -WAIT
+    schrodinger glide dock.in -OVERWRITE -WAIT -LOCAL -NOJOBID
     mv dock_pv.maegz ${meta.id}_dock_pv.maegz
     mv dock.csv ${meta.id}_dock.csv
 
