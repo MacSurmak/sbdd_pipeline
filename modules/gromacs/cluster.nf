@@ -44,8 +44,8 @@ process GMX_CLUSTER {
         wcl_flag="-wcl ${meta.max_clusters}"
     fi
 
-    # Fit on Protein scaffold, calculate RMSD matrix on selected group, limit to top N clusters
-    printf "Protein\n\${TARGET_GROUP}\n" | gmx cluster \
+    # Fit and calculate RMSD strictly on TARGET_GROUP, output full COMPLEX to PDB
+    printf "\${TARGET_GROUP}\nCOMPLEX\n" | gmx cluster \
         -f \${TARGET_XTC} \
         -s ${ref_pdb} \
         -n index.ndx \
