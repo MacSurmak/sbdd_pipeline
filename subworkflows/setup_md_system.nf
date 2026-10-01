@@ -77,7 +77,8 @@ workflow SETUP_MD_SYSTEM {
 
     ch_ante_grouped = ANTECHAMBER.out.gaff_params
         .map { mol_meta, mol2, frcmod, pdb ->
-            [ [id: mol_meta.id, project: mol_meta.project], mol2, frcmod, pdb ]
+            def orig_meta = mol_meta.findAll { it.key != 'mol_id' }
+            [ orig_meta, mol2, frcmod, pdb ]
         }
         .groupTuple(by: 0, sort: true)
 
