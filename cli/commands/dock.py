@@ -68,7 +68,33 @@ def cmd_dock(args):
         )
 
     for l in ligands:
-        # Determine if this ligand originates from a crystal structure in any system
+        # Auto-extract pure ligand SDF if path still points to an aggregated macromolecular complex
+        lig_path = Path(l.path).resolve()
+        if lig_path.suffix.lower() in [".mae", ".maegz", ".pdb"] and not lig_path.name.endswith(".sdf"):
+            clean_sdf = cwd / "prepared" / f"{l.name}_isolated.sdf"
+            if not clean_sdf.exists():
+                console.print(f"[cyan]Extracting isolated 3D ligand SDF for '{l.name}' from {lig_path.name}...[/cyan]")
+                resname = l.meta_dict.get("resname", l.name.split("_")[-1])[:4].upper()
+                import subprocess
+                extract_cmd = [
+                    "schrodinger", "run", "python3", "-c",
+                    f"""
+from schrodinger import structure
+st = structure.StructureReader.read(r'{lig_path}')
+atoms = [a.index for a in st.atom if a.pdbres.strip().upper() == '{resname}']
+if atoms:
+    lig = st.extract(atoms)
+    lig.title = '{l.name}'
+    lig.write(r'{clean_sdf}')
+"""
+                ]
+                subprocess.run(extract_cmd, check=True)
+            if clean_sdf.exists():
+                l.path = str(clean_sdf)
+                l.status = "ready"
+                session.commit()
+                lig_path = clean_sdf
+
         has_crystal_pose = (
             session.query(Pose).filter_by(ligand_name=l.name, origin="crystal").first()
             is not None
@@ -76,7 +102,7 @@ def cmd_dock(args):
         plan["ligands"].append(
             {
                 "name": l.name,
-                "path": l.path,
+                "path": str(lig_path),
                 "status": l.status,
                 "is_native": has_crystal_pose,
             }
