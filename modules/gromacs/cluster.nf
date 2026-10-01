@@ -12,6 +12,7 @@ process GMX_CLUSTER {
 
     output:
     tuple val(meta), path("${meta.id}_centroid_*.pdb"), emit: cluster_pdbs
+    tuple val(meta), path("${meta.id}_pose_*.pdb"), emit: pose_pdbs, optional: true
 
     script:
     def dt_flag = (dt && dt.toString() != '0') ? "-dt ${dt}" : ""
@@ -66,9 +67,9 @@ for line in lines:
         out_p = open(f'${meta.id}_pose_{idx}.pdb', 'w') if lig_name else None
         idx += 1
     if line.startswith(('ATOM', 'HETATM')):
-        res = line[17:20].strip().upper()
         if out_c: out_c.write(line)
-        if out_p and res == lig_name: out_p.write(line)
+        if out_p and (f' {lig_name} ' in line or line[17:21].strip().upper() == lig_name):
+            out_p.write(line)
     elif line.startswith(('TER', 'ENDMDL')):
         if out_c: out_c.write(line)
         if out_p: out_p.write(line)
