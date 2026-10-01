@@ -126,12 +126,16 @@ def add_traj(args):
     target_sys = args.system
     sys_obj = session.query(System).filter_by(name=target_sys).first()
     if not sys_obj:
-        # Fallback: attempt lookup by receptor
+        # Fallback: attempt lookup by receptor name
         sys_obj = session.query(System).filter_by(receptor_name=target_sys).first()
 
     if not sys_obj:
-        console.print(f"[bold red]FATAL: Target System '{target_sys}' not found in DB![/bold red]")
+        console.print(
+            f"[bold red]FATAL: Target System '{target_sys}' not found in DB![/bold red]"
+        )
         sys.exit(1)
+
+    sys_name = sys_obj.name
 
     rep_idx = 1
     for part in args.name.split("_"):
@@ -141,16 +145,24 @@ def add_traj(args):
             except ValueError:
                 pass
 
+    # Auto-detect if registering pre-cleaned trajectory
+    ref_pdb = xtc_path.parent / "complex_ref.pdb"
+    is_clean = xtc_path.name == "trajectory_clean.xtc" and ref_pdb.exists()
+
     new_traj = Trajectory(
         name=args.name,
-        system_name=sys_obj.name,
+        system_name=sys_name,
         replicate=rep_idx,
         path_xtc=str(xtc_path),
         path_tpr=str(tpr_path),
+        path_clean_xtc=str(xtc_path) if is_clean else None,
+        path_ref_pdb=str(ref_pdb) if is_clean else None,
         length_ns=0.0,
-        status="raw",
+        status="cleaned" if is_clean else "raw",
     )
     session.merge(new_traj)
     session.commit()
     session.close()
-    console.print(f"[bold green]✓ Registered Trajectory '{args.name}' linked to System '{sys_obj.name}'[/bold green]")
+    console.print(
+        f"[bold green]✓ Registered Trajectory '{args.name}' linked to System '{sys_name}'[/bold green]"
+    )
