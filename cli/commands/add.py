@@ -45,14 +45,20 @@ def add_receptor(args):
         rec.prep_mode = prep_mode
         rec.meta_dict = {"cofactors": cofactors, "native_ligand": ligand_name or ""}
 
-    # 2. Build initial System and Pose
+    # 2. Build initial System and Pose with receptor-isolated chemistry
     if ligand_name:
         lig_code = ligand_name[:4].upper()
-        # Ensure Ligand entry exists
-        lig = session.query(Ligand).filter_by(name=lig_code).first()
+        lig_entity_name = f"{name}_{lig_code}"
+
+        # Register Ligand uniquely bound to its structural source
+        lig = session.query(Ligand).filter_by(name=lig_entity_name).first()
         if not lig:
-            lig = Ligand(name=lig_code, path=str(target_path), status=status)
+            lig = Ligand(name=lig_entity_name, path=str(target_path), status=status)
+            lig.meta_dict = {"resname": lig_code}
             session.add(lig)
+        else:
+            lig.path = str(target_path)
+            lig.status = status
 
         # Register Crystal Pose
         pose_name = f"{name}_{lig_code}_pose"
@@ -60,7 +66,7 @@ def add_receptor(args):
         if not pose:
             pose = Pose(
                 name=pose_name,
-                ligand_name=lig_code,
+                ligand_name=lig_entity_name,
                 receptor_name=name,
                 origin="crystal",
                 path=str(target_path),
