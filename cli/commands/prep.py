@@ -114,6 +114,8 @@ def cmd_prep(args):
                     prep_mode="ready",
                     parent_name=name,
                 )
+                if orig:
+                    new_rec.meta_data = orig.meta_data
                 session.add(new_rec)
 
             if orig and orig.name != ready_name:
