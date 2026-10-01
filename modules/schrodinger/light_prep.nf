@@ -16,10 +16,9 @@ process LIGHT_PREPWIZARD {
 
     script:
     """
-    schrodinger prepwizard \\
-        -reassign_charges -noimpref -nopka -delwater_nocons \\
-        -WAIT ${input_pdb} ${meta.id}_lightprep.mae
-    """
+    schrodinger prepwizard \
+        -noimpref -nopka -delwater_nocons \
+        -WAIT ${input_pdb} ${meta.id}_lightprep.mae    """
 
     stub:
     """

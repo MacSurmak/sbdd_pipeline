@@ -63,28 +63,42 @@ def cmd_tree(args):
                             len_info = f" ({t.length_ns} ns)" if t.length_ns else ""
                             traj_branch.add(f"[magenta]{t.name}[/magenta] [{t_color}]({t.status})[/{t_color}]{len_info}")
 
-    # 2. Receptors (Raw structures & intermediates)
+    # 2. Receptors & Structural Conformations (True Hierarchical Tree)
     receptors = session.query(Receptor).all()
     if receptors:
-        rec_branch = root_tree.add("[bold cyan]Raw Receptors & Intermediates[/bold cyan]")
+        rec_branch = root_tree.add("[bold cyan]Receptors & Conformational Ensembles[/bold cyan]")
+        
+        # Build children lookup
+        children_map = {}
         for r in receptors:
-            r_color = "green" if r.status == "ready" else "yellow"
-            parent_info = f" [dim](parent: {r.parent_name})[/dim]" if r.parent_name else ""
-            rec_branch.add(f"[{r_color}]{r.name}[/{r_color}] [dim]({r.prep_mode})[/dim]{parent_info}")
+            children_map.setdefault(r.parent_name, []).append(r)
 
-    # 3. Ligands & Binding Poses
+        def render_rec_node(parent_node, rec_obj):
+            r_color = "green" if rec_obj.status == "ready" else "yellow"
+            node = parent_node.add(f"[{r_color}]{rec_obj.name}[/{r_color}] [dim]({rec_obj.prep_mode}, {rec_obj.status})[/dim]")
+            for child in sorted(children_map.get(rec_obj.name, []), key=lambda x: x.name):
+                render_rec_node(node, child)
+
+        # Roots are receptors with no parent
+        root_receptors = [r for r in receptors if r.parent_name is None]
+        for root_rec in sorted(root_receptors, key=lambda x: x.name):
+            render_rec_node(rec_branch, root_rec)
+
+    # 3. Chemical Ligands & Their 3D Poses (Grouped by Chemical Entity)
     ligands = session.query(Ligand).all()
     if ligands:
-        lig_branch = root_tree.add("[bold yellow]Ligands & Binding Poses[/bold yellow]")
+        lig_branch = root_tree.add("[bold yellow]Chemical Ligands & 3D Poses[/bold yellow]")
         for lig in ligands:
+            chem_name = lig.meta_dict.get("resname", lig.name)
+            l_color = "green" if lig.status == "ready" else "yellow"
             lig_node = lig_branch.add(
-                f"[bold]{lig.name}[/bold] [dim]({lig.status}) -> {lig.path}[/dim]"
+                f"[{l_color}]{chem_name}[/{l_color}] [dim]({lig.name}) -> {lig.path}[/dim]"
             )
             poses = session.query(Pose).filter_by(ligand_name=lig.name).all()
             for p in poses:
                 p_color = "green" if p.status == "ready" else "yellow"
                 lig_node.add(
-                    f"Pose: [{p_color}]{p.name}[/{p_color}] [dim]({p.origin}, in {p.receptor_name}) -> {p.path}[/dim]"
+                    f"Pose: [{p_color}]{p.name}[/{p_color}] [dim]({p.origin} in {p.receptor_name}) -> {p.path}[/dim]"
                 )
 
     session.close()
