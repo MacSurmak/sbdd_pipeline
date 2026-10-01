@@ -33,7 +33,10 @@ def cmd_tree(args):
             if s.pose_name:
                 pose = session.query(Pose).filter_by(name=s.pose_name).first()
                 if pose:
-                    lig = pose.ligand_name
+                    if pose.ligand and pose.ligand.meta_dict.get("resname"):
+                        lig = pose.ligand.meta_dict["resname"]
+                    else:
+                        lig = pose.ligand_name
             tree_data.setdefault(target, {}).setdefault(lig, []).append(s)
 
         sys_branch = root_tree.add("[bold green]Biological Targets & Conformations[/bold green]")

@@ -278,6 +278,14 @@ def add_traj(args):
             f"[yellow]Updated Trajectory '{args.name}' linked to System '{sys_name}' ({status})[/yellow]"
         )
     else:
+        traj_len = 0.0
+        try:
+            import MDAnalysis as mda
+            u_check = mda.Universe(ref_pdb_path or str(tpr_path), clean_xtc_path or str(xtc_path))
+            traj_len = round(float(u_check.trajectory.totaltime / 1000.0), 2)
+        except Exception:
+            pass
+
         new_traj = Trajectory(
             name=args.name,
             system_name=sys_name,
@@ -286,7 +294,7 @@ def add_traj(args):
             path_tpr=str(tpr_path),
             path_clean_xtc=clean_xtc_path,
             path_ref_pdb=ref_pdb_path,
-            length_ns=0.0,
+            length_ns=traj_len,
             status=status,
         )
         session.add(new_traj)
