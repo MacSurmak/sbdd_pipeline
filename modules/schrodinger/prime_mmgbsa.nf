@@ -27,8 +27,6 @@ process PRIME_MMGBSA {
         fi
     done
 
-    res_dist_flag="-residue_distance ${params.prime_residue_distance ?: 15.0}"
-
     export SCHRODINGER_JOBDB="/tmp/schrodinger_jobdb_\${SLURM_JOB_ID:-\$\$}"
     mkdir -p "\$SCHRODINGER_JOBDB"
 
@@ -41,7 +39,6 @@ process PRIME_MMGBSA {
         -NOJOBID \
         -OVERWRITE \
         -WAIT \
-        \${res_dist_flag} \
         ${mem_flag} \
         ${pv_maegz}
 
