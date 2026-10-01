@@ -19,23 +19,39 @@ def _query_trajectories(session, args):
     if getattr(args, "all", False):
         trajs = session.query(Trajectory).all()
         if not trajs:
-            console.print("[bold red]FATAL: No trajectories registered in database.[/bold red]")
+            console.print(
+                "[bold red]FATAL: No trajectories registered in database.[/bold red]"
+            )
             sys.exit(1)
         return trajs
     elif getattr(args, "systems", None):
         target_sys = [s.strip() for s in args.systems.split(",") if s.strip()]
-        trajs = session.query(Trajectory).filter(Trajectory.system_name.in_(target_sys)).all()
+        trajs = (
+            session.query(Trajectory)
+            .filter(Trajectory.system_name.in_(target_sys))
+            .all()
+        )
         if not trajs:
-            console.print(f"[bold red]FATAL: No trajectories found for system(s): {target_sys}[/bold red]")
+            console.print(
+                f"[bold red]FATAL: No trajectories found for system(s): {target_sys}[/bold red]"
+            )
             sys.exit(1)
         return trajs
     elif getattr(args, "receptors", None):
         target_recs = [r.strip() for r in args.receptors.split(",") if r.strip()]
-        systems = session.query(System).filter(System.receptor_name.in_(target_recs)).all()
+        systems = (
+            session.query(System).filter(System.receptor_name.in_(target_recs)).all()
+        )
         sys_names = [s.name for s in systems]
-        trajs = session.query(Trajectory).filter(Trajectory.system_name.in_(sys_names)).all()
+        trajs = (
+            session.query(Trajectory)
+            .filter(Trajectory.system_name.in_(sys_names))
+            .all()
+        )
         if not trajs:
-            console.print(f"[bold red]FATAL: No trajectories found for receptor(s): {target_recs}[/bold red]")
+            console.print(
+                f"[bold red]FATAL: No trajectories found for receptor(s): {target_recs}[/bold red]"
+            )
             sys.exit(1)
         return trajs
     elif getattr(args, "traj", None):
@@ -44,11 +60,15 @@ def _query_trajectories(session, args):
         if len(trajs) != len(traj_names):
             found = {t.name for t in trajs}
             missing = set(traj_names) - found
-            console.print(f"[bold red]FATAL: Trajectories not found in DB: {missing}[/bold red]")
+            console.print(
+                f"[bold red]FATAL: Trajectories not found in DB: {missing}[/bold red]"
+            )
             sys.exit(1)
         return trajs
     else:
-        console.print("[bold red]FATAL: Please specify --systems, --receptors, --all, or --traj[/bold red]")
+        console.print(
+            "[bold red]FATAL: Please specify --systems, --receptors, --all, or --traj[/bold red]"
+        )
         sys.exit(1)
 
 
@@ -229,7 +249,9 @@ def cmd_metrics(args):
     )
 
     # Render summary table in console
-    table = Table(title="Molecular Dynamics Ensemble Stability Summary", show_header=True)
+    table = Table(
+        title="Molecular Dynamics Ensemble Stability Summary", show_header=True
+    )
     table.add_column("Trajectory", style="bold cyan")
     table.add_column("Prot BB RMSD (Å)", justify="center")
     table.add_column("Ligand RMSD (Å)", justify="center", style="green")
@@ -272,7 +294,9 @@ def cmd_cluster(args):
     # 1. Verify all trajectories are cleaned
     for t in trajs:
         if t.status != "cleaned" or not t.path_clean_xtc or not t.path_ref_pdb:
-            console.print(f"[bold red]FATAL: Trajectory '{t.name}' must be cleaned first. Run 'sbdd traj-clean'![/bold red]")
+            console.print(
+                f"[bold red]FATAL: Trajectory '{t.name}' must be cleaned first. Run 'sbdd traj-clean'![/bold red]"
+            )
             sys.exit(1)
 
     # 2. Group requested trajectories by System
@@ -294,7 +318,9 @@ def cmd_cluster(args):
 
         clean_xtcs = [t.path_clean_xtc for t in t_list]
         ref_pdb = t_list[0].path_ref_pdb
-        lig_code = sys_obj.pose.ligand.meta_dict.get("resname", "") if sys_obj.pose else ""
+        lig_code = (
+            sys_obj.pose.ligand.meta_dict.get("resname", "") if sys_obj.pose else ""
+        )
 
         plan_list.append(
             {
@@ -355,9 +381,7 @@ def cmd_cluster(args):
             pub_pdb = Path(pdb_path)
 
         pub_pose = (
-            cwd / "prepared" / Path(pose_path).name
-            if pose_path != "NO_POSE"
-            else None
+            cwd / "prepared" / Path(pose_path).name if pose_path != "NO_POSE" else None
         )
         if pub_pose and not pub_pose.exists():
             pub_pose = Path(pose_path) if Path(pose_path).exists() else None

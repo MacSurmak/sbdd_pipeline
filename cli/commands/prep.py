@@ -119,9 +119,13 @@ def cmd_prep(args):
             orig.status = "processed"
 
         # Update associated Systems and Poses to ready
-        linked_systems = session.query(System).filter(
-            (System.receptor_name == name) | (System.receptor_name == ready_name)
-        ).all()
+        linked_systems = (
+            session.query(System)
+            .filter(
+                (System.receptor_name == name) | (System.receptor_name == ready_name)
+            )
+            .all()
+        )
         for sys_obj in linked_systems:
             sys_obj.status = "ready"
             if sys_obj.pose_name:

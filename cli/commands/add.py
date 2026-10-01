@@ -35,10 +35,14 @@ def add_receptor(args):
     # 1. Register Receptor
     rec = session.query(Receptor).filter_by(name=name).first()
     if not rec:
-        rec = Receptor(name=name, path=str(target_path), status=status, prep_mode=prep_mode)
+        rec = Receptor(
+            name=name, path=str(target_path), status=status, prep_mode=prep_mode
+        )
         rec.meta_dict = {"cofactors": cofactors, "native_ligand": ligand_name or ""}
         session.add(rec)
-        console.print(f"[bold green]✓ Registered Receptor '{name}'[/bold green] [dim]({prep_mode})[/dim]")
+        console.print(
+            f"[bold green]✓ Registered Receptor '{name}'[/bold green] [dim]({prep_mode})[/dim]"
+        )
     else:
         rec.path = str(target_path)
         rec.status = status
@@ -78,19 +82,27 @@ def add_receptor(args):
         sys_name = f"{name}_holo"
         sys_obj = session.query(System).filter_by(name=sys_name).first()
         if not sys_obj:
-            sys_obj = System(name=sys_name, receptor_name=name, pose_name=pose_name, status=status)
+            sys_obj = System(
+                name=sys_name, receptor_name=name, pose_name=pose_name, status=status
+            )
             sys_obj.meta_dict = {"cofactors": cofactors}
             session.add(sys_obj)
-            console.print(f"[bold green]✓ Created Holo System '{sys_name}'[/bold green] [dim](Receptor: {name} + Pose: {pose_name})[/dim]")
+            console.print(
+                f"[bold green]✓ Created Holo System '{sys_name}'[/bold green] [dim](Receptor: {name} + Pose: {pose_name})[/dim]"
+            )
     else:
         # Register Apo System
         sys_name = f"{name}_apo"
         sys_obj = session.query(System).filter_by(name=sys_name).first()
         if not sys_obj:
-            sys_obj = System(name=sys_name, receptor_name=name, pose_name=None, status=status)
+            sys_obj = System(
+                name=sys_name, receptor_name=name, pose_name=None, status=status
+            )
             sys_obj.meta_dict = {"cofactors": cofactors}
             session.add(sys_obj)
-            console.print(f"[bold green]✓ Created Apo System '{sys_name}'[/bold green] [dim](Receptor: {name}, No Ligand)[/dim]")
+            console.print(
+                f"[bold green]✓ Created Apo System '{sys_name}'[/bold green] [dim](Receptor: {name}, No Ligand)[/dim]"
+            )
 
     session.commit()
     session.close()

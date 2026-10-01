@@ -15,7 +15,9 @@ from MDAnalysis.analysis import align, rms
 from MDAnalysis.lib.distances import capped_distance
 
 
-def compute_rmsd_rmsf(pdb_path: str, xtc_path: str, ligand_resname: str, cofactor_resnames: list):
+def compute_rmsd_rmsf(
+    pdb_path: str, xtc_path: str, ligand_resname: str, cofactor_resnames: list
+):
     u = mda.Universe(pdb_path, xtc_path)
     ref = mda.Universe(pdb_path)
 
@@ -34,7 +36,11 @@ def compute_rmsd_rmsf(pdb_path: str, xtc_path: str, ligand_resname: str, cofacto
             ref_lig = ref.select_atoms(f"resname {ligand_resname}")
 
         if lig_sel.n_atoms == 0:
-            available = [r.resname for r in u.residues if r.atoms.select_atoms("protein").n_atoms == 0]
+            available = [
+                r.resname
+                for r in u.residues
+                if r.atoms.select_atoms("protein").n_atoms == 0
+            ]
             raise ValueError(
                 f"FATAL: Ligand residue '{ligand_resname}' not found in structure! "
                 f"Available non-protein residues: {set(available)}"
@@ -176,6 +182,7 @@ def generate_rmsd_plot(df_rmsd: pd.DataFrame, out_png: Path):
     """Renders a clean multi-component RMSD plot without graphical display."""
     try:
         import matplotlib
+
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
 
@@ -183,17 +190,44 @@ def generate_rmsd_plot(df_rmsd: pd.DataFrame, out_png: Path):
         time_col = df_rmsd["Time_ns"]
 
         if "Prot_BB_RMSD_A" in df_rmsd.columns:
-            plt.plot(time_col, df_rmsd["Prot_BB_RMSD_A"], label="Protein Backbone", color="#1f77b4", linewidth=1.5)
+            plt.plot(
+                time_col,
+                df_rmsd["Prot_BB_RMSD_A"],
+                label="Protein Backbone",
+                color="#1f77b4",
+                linewidth=1.5,
+            )
         if "Prot_Heavy_RMSD_A" in df_rmsd.columns:
-            plt.plot(time_col, df_rmsd["Prot_Heavy_RMSD_A"], label="Protein Heavy Atoms", color="#aec7e8", linewidth=1.0, alpha=0.7)
+            plt.plot(
+                time_col,
+                df_rmsd["Prot_Heavy_RMSD_A"],
+                label="Protein Heavy Atoms",
+                color="#aec7e8",
+                linewidth=1.0,
+                alpha=0.7,
+            )
 
         for col in df_rmsd.columns:
             if col.startswith("Lig_"):
                 label_name = col.replace("Lig_", "").replace("_RMSD_A", " (Ligand)")
-                plt.plot(time_col, df_rmsd[col], label=label_name, color="#d62728", linewidth=1.8)
+                plt.plot(
+                    time_col,
+                    df_rmsd[col],
+                    label=label_name,
+                    color="#d62728",
+                    linewidth=1.8,
+                )
             elif col.startswith("Cofactor_"):
-                label_name = col.replace("Cofactor_", "").replace("_RMSD_A", " (Cofactor)")
-                plt.plot(time_col, df_rmsd[col], label=label_name, linestyle="--", linewidth=1.4)
+                label_name = col.replace("Cofactor_", "").replace(
+                    "_RMSD_A", " (Cofactor)"
+                )
+                plt.plot(
+                    time_col,
+                    df_rmsd[col],
+                    label=label_name,
+                    linestyle="--",
+                    linewidth=1.4,
+                )
 
         plt.title("Molecular Dynamics RMSD Trajectory", fontsize=12, fontweight="bold")
         plt.xlabel("Simulation Time (ns)", fontsize=10)
@@ -214,8 +248,15 @@ def main():
     parser.add_argument("--pdb", required=True, help="Topology or Reference PDB/GRO")
     parser.add_argument("--xtc", required=True, help="Clean Centered Trajectory XTC")
     parser.add_argument("--outdir", required=True, help="Output directory")
-    parser.add_argument("--ligand", default="", help="Ligand residue name (e.g. KVR, UNK)")
-    parser.add_argument("--cofactors", nargs="*", default=[], help="Cofactor residue names (e.g. ATP MG)")
+    parser.add_argument(
+        "--ligand", default="", help="Ligand residue name (e.g. KVR, UNK)"
+    )
+    parser.add_argument(
+        "--cofactors",
+        nargs="*",
+        default=[],
+        help="Cofactor residue names (e.g. ATP MG)",
+    )
     parser.add_argument("--heavy_cutoff", type=float, default=3.5)
     parser.add_argument("--hydrophobic_cutoff", type=float, default=4.0)
     parser.add_argument("--polar_cutoff", type=float, default=3.4)

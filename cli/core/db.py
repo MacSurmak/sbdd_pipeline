@@ -75,7 +75,9 @@ class Pose(Base):
     name = Column(String, unique=True, index=True, nullable=False)
     ligand_name = Column(String, ForeignKey("ligands.name"), nullable=False)
     receptor_name = Column(String, ForeignKey("receptors.name"), nullable=False)
-    origin = Column(String, default="docking", nullable=False)  # crystal, docking, manual
+    origin = Column(
+        String, default="docking", nullable=False
+    )  # crystal, docking, manual
     path = Column(String, nullable=False)
     status = Column(String, default="unprepared", nullable=False)  # unprepared, ready
     scores = Column(Text, default="{}")
@@ -97,15 +99,15 @@ class System(Base):
     receptor_name = Column(String, ForeignKey("receptors.name"), nullable=False)
     pose_name = Column(String, ForeignKey("poses.name"), nullable=True)
     parent_system_name = Column(String, ForeignKey("systems.name"), nullable=True)
-    origin = Column(String, default="crystal", nullable=False)  # crystal, docking, md_cluster
+    origin = Column(
+        String, default="crystal", nullable=False
+    )  # crystal, docking, md_cluster
     status = Column(String, default="unprepared", nullable=False)  # unprepared, ready
     meta_data = Column(Text, default="{}")
 
     receptor = relationship("Receptor")
     pose = relationship("Pose")
-    parent_system = relationship(
-        "System", remote_side=[name], backref="conformations"
-    )
+    parent_system = relationship("System", remote_side=[name], backref="conformations")
 
 
 class Trajectory(Base):

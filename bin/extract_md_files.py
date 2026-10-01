@@ -66,7 +66,11 @@ def extract_via_schrodinger(args):
                 st.write(str(lig_out))
                 (org_dir / f"{lig_code}_charge.txt").write_text(str(st.formal_charge))
                 organics.append(
-                    {"name": lig_code, "mol2": f"{lig_code}.mol2", "charge": f"{lig_code}_charge.txt"}
+                    {
+                        "name": lig_code,
+                        "mol2": f"{lig_code}.mol2",
+                        "charge": f"{lig_code}_charge.txt",
+                    }
                 )
                 break
 
@@ -141,7 +145,13 @@ def extract_via_rdkit(args):
             tmp.unlink(missing_ok=True)
 
         (org_dir / f"{lig_code}_charge.txt").write_text(str(charge))
-        organics.append({"name": lig_code, "mol2": f"{lig_code}.mol2", "charge": f"{lig_code}_charge.txt"})
+        organics.append(
+            {
+                "name": lig_code,
+                "mol2": f"{lig_code}.mol2",
+                "charge": f"{lig_code}_charge.txt",
+            }
+        )
 
     with open(out_dir / "organics.json", "w") as f:
         json.dump(organics, f)

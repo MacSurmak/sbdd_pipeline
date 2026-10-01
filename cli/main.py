@@ -212,13 +212,27 @@ def main():
     )
 
     # 0.3 add traj
-    p_add_traj = add_subs.add_parser("traj", help="Register an existing MD trajectory linked to a System")
-    p_add_traj.add_argument("--name", required=True, help="Unique name for this trajectory (e.g. 7UA1_rep1)")
-    p_add_traj.add_argument("--system", required=True, help="Name of the System in DB (e.g. 7UA1_ready_holo)")
+    p_add_traj = add_subs.add_parser(
+        "traj", help="Register an existing MD trajectory linked to a System"
+    )
+    p_add_traj.add_argument(
+        "--name", required=True, help="Unique name for this trajectory (e.g. 7UA1_rep1)"
+    )
+    p_add_traj.add_argument(
+        "--system",
+        required=True,
+        help="Name of the System in DB (e.g. 7UA1_ready_holo)",
+    )
     p_add_traj.add_argument("--xtc", required=True, help="Path to raw .xtc file")
     p_add_traj.add_argument("--tpr", required=True, help="Path to .tpr file")
-    p_add_traj.add_argument("--clean-xtc", help="Explicit path to pre-cleaned .xtc (optional, if already cleaned)")
-    p_add_traj.add_argument("--ref-pdb", help="Explicit path to dry reference .pdb (optional, if already cleaned)")
+    p_add_traj.add_argument(
+        "--clean-xtc",
+        help="Explicit path to pre-cleaned .xtc (optional, if already cleaned)",
+    )
+    p_add_traj.add_argument(
+        "--ref-pdb",
+        help="Explicit path to dry reference .pdb (optional, if already cleaned)",
+    )
     p_add_traj.add_argument("--force", action="store_true", help="Overwrite if exists")
     # 0.4 tree
     p_tree = subparsers.add_parser(
@@ -378,10 +392,15 @@ def main():
         "--cutoff", type=float, default=0.15, help="RMSD cutoff in nm (default: 0.15)"
     )
     p_cluster.add_argument(
-        "--dt", type=int, default=100, help="Frame stride in ps to accelerate clustering (default: 100 ps)"
+        "--dt",
+        type=int,
+        default=100,
+        help="Frame stride in ps to accelerate clustering (default: 100 ps)",
     )
     p_cluster.add_argument(
-        "--group", default="COMPLEX", help="Group for RMSD distance matrix (default: COMPLEX)"
+        "--group",
+        default="COMPLEX",
+        help="Group for RMSD distance matrix (default: COMPLEX)",
     )
     p_cluster.add_argument(
         "--method", default="gromos", help="Clustering method (default: gromos)"
