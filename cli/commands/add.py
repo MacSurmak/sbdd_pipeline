@@ -116,16 +116,102 @@ def add_ligand(args):
         console.print(f"[bold red]FATAL: File does not exist: {target_path}[/bold red]")
         sys.exit(1)
 
-    name = args.name
-    existing = session.query(Ligand).filter_by(name=name).first()
-    if existing:
-        existing.path = str(target_path)
-        existing.status = "unprepared"
-        console.print(f"[yellow]Updated Ligand '{name}' in database.[/yellow]")
+    # Check molecule count by counting delimiters
+    mol_count = 0
+    with open(target_path, "r", encoding="utf-8", errors="ignore") as f:
+        for line in f:
+            if line.startswith("$$$$"):
+                mol_count += 1
+
+    if mol_count <= 1:
+        name = args.name or target_path.stem
+        smiles = None
+        try:
+            from rdkit import Chem
+
+            suppl = Chem.SDMolSupplier(str(target_path), removeHs=False)
+            mol = next((m for m in suppl if m is not None), None)
+            if mol:
+                smiles = Chem.MolToSmiles(mol)
+                if (
+                    not args.name
+                    and mol.HasProp("_Name")
+                    and mol.GetProp("_Name").strip()
+                ):
+                    name = mol.GetProp("_Name").strip()
+        except Exception:
+            pass
+
+        existing = session.query(Ligand).filter_by(name=name).first()
+        if existing:
+            existing.path = str(target_path)
+            existing.smiles = smiles
+            existing.status = "unprepared"
+            console.print(f"[yellow]Updated Ligand '{name}' in database.[/yellow]")
+        else:
+            new_lig = Ligand(
+                name=name, path=str(target_path), smiles=smiles, status="unprepared"
+            )
+            session.add(new_lig)
+            console.print(f"[bold green]✓ Registered Ligand '{name}'[/bold green]")
     else:
-        new_lig = Ligand(name=name, path=str(target_path), status="unprepared")
-        session.add(new_lig)
-        console.print(f"[bold green]✓ Registered Ligand '{name}'[/bold green]")
+        console.print(
+            f"[bold cyan]Scanning and importing library with {mol_count} molecules from {target_path.name}...[/bold cyan]"
+        )
+        try:
+            from rdkit import Chem
+
+            suppl = Chem.ForwardSDMolSupplier(str(target_path), removeHs=False)
+            batch = []
+            seen_names = set()
+            idx = 1
+            for mol in suppl:
+                if mol is None:
+                    continue
+                title = (
+                    mol.GetProp("_Name").strip()
+                    if mol.HasProp("_Name") and mol.GetProp("_Name").strip()
+                    else f"MOL_{idx:06d}"
+                )
+                unique_name = title
+                suffix = 1
+                while (
+                    unique_name in seen_names
+                    or session.query(Ligand).filter_by(name=unique_name).first()
+                ):
+                    unique_name = f"{title}_{suffix}"
+                    suffix += 1
+                seen_names.add(unique_name)
+
+                smi = Chem.MolToSmiles(mol)
+                batch.append(
+                    Ligand(
+                        name=unique_name,
+                        path=str(target_path),
+                        smiles=smi,
+                        status="unprepared",
+                    )
+                )
+                idx += 1
+                if len(batch) >= 1000:
+                    session.bulk_save_objects(batch)
+                    session.commit()
+                    batch = []
+
+            if batch:
+                session.bulk_save_objects(batch)
+                session.commit()
+
+            console.print(
+                f"[bold green]✓ Successfully imported {idx - 1} individual ligands into database.[/bold green]"
+            )
+        except ImportError:
+            name = args.name or target_path.stem
+            new_lig = Ligand(name=name, path=str(target_path), status="unprepared")
+            session.add(new_lig)
+            console.print(
+                f"[bold green]✓ Registered Ligand Library '{name}' ({mol_count} molecules)[/bold green]"
+            )
 
     session.commit()
     session.close()

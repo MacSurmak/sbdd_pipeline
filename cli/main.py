@@ -198,14 +198,11 @@ def main():
 
     # 0.2 add ligand
     p_add_lig = add_subs.add_parser(
-        "ligand", help="Register a ligand library or native ligand"
+        "ligand", help="Register a ligand library or individual molecule"
     )
     p_add_lig.add_argument("path", help="Path to the ligand file (.sdf)")
     p_add_lig.add_argument(
-        "--name", required=True, help="Unique identifier for this ligand"
-    )
-    p_add_lig.add_argument(
-        "--native", action="store_true", help="Mark as native reference ligand"
+        "--name", help="Identifier for ligand (optional for multi-molecule SDF)"
     )
     p_add_lig.add_argument(
         "--force", action="store_true", help="Overwrite if name exists"
@@ -307,6 +304,23 @@ def main():
     )
     add_common_wf_args(p_dock)
 
+    # 3.1 select-hits
+    p_hits = subparsers.add_parser(
+        "select-hits",
+        help="Select top candidate hits from docking rankings and promote to Systems",
+    )
+    p_hits.add_argument(
+        "--poses", help="Name of PoseSet in DB to select hits from (default: latest)"
+    )
+    p_hits.add_argument(
+        "--top", type=int, default=5, help="Number of top hits to extract (default: 5)"
+    )
+    p_hits.add_argument(
+        "--system-prefix",
+        default="hit",
+        help="Prefix for generated Holo systems (default: hit)",
+    )
+
     # 4. rescore
     p_rescore = subparsers.add_parser("rescore", help="Run MM-GBSA and CNN rescoring")
     add_common_wf_args(p_rescore)
@@ -320,7 +334,16 @@ def main():
     p_dyn = subparsers.add_parser(
         "dynamics",
         aliases=["md", "md-run", "md-setup"],
-        help="Execute chunked MD simulations using protocol.txt playlist",
+        help="Execute chunked MD simulations for a System using protocol.txt playlist",
+    )
+    p_dyn.add_argument(
+        "--system", help="Name of the physical System to simulate (from 'sbdd tree')"
+    )
+    p_dyn.add_argument(
+        "--replicates", type=int, help="Number of independent replicates (default: from config)"
+    )
+    p_dyn.add_argument(
+        "--total_ns", type=float, help="Total simulation duration in ns (default: from config)"
     )
     add_common_wf_args(p_dyn)
 
@@ -474,7 +497,15 @@ def main():
         from cli.commands.dock import cmd_dock
 
         cmd_dock(args)
-    elif subcmd in ["dynamics", "md", "md-run", "md-setup", "md-analyze"]:
+    elif subcmd == "select-hits":
+        from cli.commands.select_hits import cmd_select_hits
+
+        cmd_select_hits(args)
+    elif subcmd in ["dynamics", "md", "md-run", "md-setup"]:
+        from cli.commands.dynamics import cmd_dynamics
+
+        cmd_dynamics(args)
+    elif subcmd == "md-analyze":
         sys.exit(run_workflow("dynamics", args))
     elif subcmd == "traj-clean":
         from cli.commands.traj import cmd_clean_traj

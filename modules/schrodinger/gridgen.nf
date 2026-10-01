@@ -18,10 +18,20 @@ process GLIDE_GRIDGEN {
 
     script:
     """
+    REF_MAE="ref_ligand.mae"
+    if [[ "${ref_lig_mae}" == *.mae || "${ref_lig_mae}" == *.maegz ]]; then
+        REF_MAE="${ref_lig_mae}"
+    elif [[ "${ref_lig_mae}" != "NO_FILE" && -f "${ref_lig_mae}" ]]; then
+        schrodinger structconvert "${ref_lig_mae}" ref_ligand.mae
+        REF_MAE="ref_ligand.mae"
+    else
+        REF_MAE="${ref_lig_mae}"
+    fi
+
     cat << EOF > gridgen.in
 GRIDFILE ${meta.id}_grid.zip
 RECEP_FILE ${receptor_mae}
-REF_LIGAND_FILE ${ref_lig_mae}
+REF_LIGAND_FILE \${REF_MAE}
 INNERBOX ${inner_box}
 OUTERBOX ${outer_box}
 FORCEFIELD ${forcefield}

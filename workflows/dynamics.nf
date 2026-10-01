@@ -9,38 +9,55 @@ include { RUN_CHUNKED_MD   } from '../subworkflows/run_chunked_md'
 include { ANALYZE_MD_TRAJ  } from '../subworkflows/analyze_md_traj'
 
 workflow DYNAMICS_WF {
-    if (!params.manifest) { error "FATAL: Parameter --manifest is required." }
     if (!params.md_protocol) { error "FATAL: Parameter --md_protocol is required. Did you run 'sbdd md-init'?" }
 
-    def manifestFile = file(params.manifest)
-    def yaml = new org.yaml.snakeyaml.Yaml()
-    def manifestData = yaml.load(manifestFile.text)
+    if (params.md_plan) {
+        def planFile = file(params.md_plan)
+        def jsonSlurper = new groovy.json.JsonSlurper()
+        def planData = jsonSlurper.parseText(planFile.text)
 
-    ch_targets = Channel.fromList(manifestData.targets).map { target ->
-        def target_id = target.id
-        def struct_file = target.structure
-        def lig_file = target.ligand
-        
-        def rec_path = file("${params.outdir}/prepared/${target_id}_prepared.mae")
-        if (!rec_path.exists()) rec_path = file("${params.outdir}/prepared/${target_id}_prepared.pdb")
-        if (!rec_path.exists()) rec_path = file("${manifestFile.parent}/${struct_file}")
-        if (!rec_path.exists()) rec_path = file("${params.outdir}/${struct_file}")
-        
-        def lig_path
-        if (lig_file) {
-            lig_path = file("${params.outdir}/${lig_file}")
-        } else {
-            lig_path = file("${params.outdir}/prepared/${target_id}_ref_native_prepared.sdf")
-            if (!lig_path.exists()) lig_path = file("${params.outdir}/prepared/${target_id}_ref_native.sdf")
-            if (!lig_path.exists()) lig_path = file("NO_LIGAND")
+        ch_targets = Channel.fromList(planData).map { target ->
+            def meta = [
+                id: target.id,
+                project: params.project_name,
+                native_ligand: target.lig_name ?: ""
+            ]
+            def lig_f = target.lig_path != "NO_LIGAND" ? file(target.lig_path).toAbsolutePath() : file("NO_LIGAND")
+            [ meta, file(target.rec_path).toAbsolutePath(), lig_f, target.cofactors ?: [] ]
         }
-        
-        def meta = [
-            id: target_id,
-            project: params.project_name
-        ]
-        
-        [ meta, rec_path.toAbsolutePath(), lig_path.toAbsolutePath(), target.cofactors ?: [] ]
+    } else if (params.manifest) {
+        def manifestFile = file(params.manifest)
+        def yaml = new org.yaml.snakeyaml.Yaml()
+        def manifestData = yaml.load(manifestFile.text)
+
+        ch_targets = Channel.fromList(manifestData.targets).map { target ->
+            def target_id = target.id
+            def struct_file = target.structure
+            def lig_file = target.ligand
+            
+            def rec_path = file("${params.outdir}/prepared/${target_id}_prepared.mae")
+            if (!rec_path.exists()) rec_path = file("${params.outdir}/prepared/${target_id}_prepared.pdb")
+            if (!rec_path.exists()) rec_path = file("${manifestFile.parent}/${struct_file}")
+            if (!rec_path.exists()) rec_path = file("${params.outdir}/${struct_file}")
+            
+            def lig_path
+            if (lig_file) {
+                lig_path = file("${params.outdir}/${lig_file}")
+            } else {
+                lig_path = file("${params.outdir}/prepared/${target_id}_ref_native_prepared.sdf")
+                if (!lig_path.exists()) lig_path = file("${params.outdir}/prepared/${target_id}_ref_native.sdf")
+                if (!lig_path.exists()) lig_path = file("NO_LIGAND")
+            }
+            
+            def meta = [
+                id: target_id,
+                project: params.project_name
+            ]
+            
+            [ meta, rec_path.toAbsolutePath(), lig_path.toAbsolutePath(), target.cofactors ?: [] ]
+        }
+    } else {
+        error "FATAL: Either --md_plan or --manifest must be provided for dynamics."
     }
 
     // 1. Omnivorous System Build

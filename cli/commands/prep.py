@@ -118,7 +118,12 @@ def cmd_prep(args):
         if orig:
             orig.status = "processed"
 
-        # Update associated Systems and Poses to ready
+        # Check if an extracted native ligand SDF exists
+        native_sdf = cwd / "prepared" / f"{name}_ref_native_prepared.sdf"
+        if not native_sdf.exists():
+            native_sdf = cwd / "prepared" / f"{name}_ref_native.sdf"
+
+        # Update associated Systems and Poses to ready and bind permanent paths
         linked_systems = (
             session.query(System)
             .filter(
@@ -128,10 +133,16 @@ def cmd_prep(args):
         )
         for sys_obj in linked_systems:
             sys_obj.status = "ready"
+            sys_obj.receptor_name = ready_name
             if sys_obj.pose_name:
                 pose_obj = session.query(Pose).filter_by(name=sys_obj.pose_name).first()
                 if pose_obj:
                     pose_obj.status = "ready"
+                    if native_sdf.exists():
+                        pose_obj.path = str(native_sdf)
+                        if pose_obj.ligand:
+                            pose_obj.ligand.path = str(native_sdf)
+                            pose_obj.ligand.status = "ready"
 
         success_count += 1
     session.commit()

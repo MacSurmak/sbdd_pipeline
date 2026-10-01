@@ -68,8 +68,20 @@ def cmd_dock(args):
         )
 
     for l in ligands:
+        # Determine if this ligand originates from a crystal structure in any system
+        has_crystal_pose = (
+            session.query(Pose)
+            .filter_by(ligand_name=l.name, origin="crystal")
+            .first()
+            is not None
+        )
         plan["ligands"].append(
-            {"name": l.name, "path": l.path, "is_native": l.is_native}
+            {
+                "name": l.name,
+                "path": l.path,
+                "status": l.status,
+                "is_native": has_crystal_pose,
+            }
         )
 
     plan_file = cwd / "dock_plan.json"

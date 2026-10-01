@@ -27,6 +27,8 @@ process PRIME_MMGBSA {
         fi
     done
 
+    res_dist_flag="-residue_distance ${params.prime_residue_distance ?: 15.0}"
+
     schrodinger prime_mmgbsa \
         -job_type ${job_type} \
         -csv_output yes \
@@ -36,6 +38,7 @@ process PRIME_MMGBSA {
         -NJOBS 1 \
         -OVERWRITE \
         -WAIT \
+        \${res_dist_flag} \
         ${mem_flag} \
         ${pv_maegz}
 
