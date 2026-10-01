@@ -45,9 +45,10 @@ EOF
     done
 
     cat << EOF >> tleap.in
+addPdbResMap { {"Zn2+" "ZN"} {"Ca2+" "CA"} {"Mg2+" "MG"} {"Na+" "NA"} {"K+" "K"} {"Cl-" "CL"} }
+addPdbAtomMap { {"HZ" "HZ3"} }
 complex = loadPdb complex_clean.pdb
 set default PBRadii mbondi3
-addPdbResMap { {"Zn2+" "ZN"} {"Ca2+" "CA"} {"Mg2+" "MG"} {"Na+" "NA"} {"K+" "K"} {"Cl-" "CL"} }
 source apply_bonds.in
 ${solvate_cmd}
 addIonsRand complex Cl- 0

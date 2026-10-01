@@ -130,11 +130,21 @@ def main():
         elif res_name == "GLU" and any(n in ["HE2", "2HE"] for n in atom_names):
             r["res_name"] = "GLH"
 
-        # Neutral Lysine (LYN)
-        elif res_name == "LYS" and not any(
-            n in ["HZ3", "3HZ", "HZ"] for n in atom_names
-        ):
-            r["res_name"] = "LYN"
+        # Lysine / Neutral Lysine (LYN)
+        elif res_name in ["LYS", "LYN"]:
+            existing_names = [a["atom_name"].strip() for a in r["atoms"]]
+            for a in r["atoms"]:
+                if a["atom_name"].strip() == "HZ":
+                    if "HZ1" in existing_names and "HZ2" in existing_names:
+                        a["atom_name"] = "HZ3"
+                    elif "HZ1" in existing_names:
+                        a["atom_name"] = "HZ2"
+                    else:
+                        a["atom_name"] = "HZ1"
+
+            updated_names = [a["atom_name"].strip() for a in r["atoms"]]
+            if not any(n in ["HZ3", "3HZ"] for n in updated_names):
+                r["res_name"] = "LYN"
 
         # Histidine States
         elif res_name in ["HIS", "HSD", "HSE", "HSP"]:
