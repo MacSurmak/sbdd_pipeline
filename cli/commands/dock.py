@@ -56,7 +56,17 @@ def cmd_dock(args):
         if sys_obj and sys_obj.pose_name:
             pose_obj = session.query(Pose).filter_by(name=sys_obj.pose_name).first()
             if pose_obj and Path(pose_obj.path).exists():
-                ref_pose_path = pose_obj.path
+                pose_p = Path(pose_obj.path)
+                
+                # If the DB points to an SDF, try to find the matching MAE for Glide
+                if pose_p.suffix == ".sdf":
+                    mae_cand = pose_p.with_suffix(".mae")
+                    if mae_cand.exists():
+                        ref_pose_path = str(mae_cand)
+                    else:
+                        ref_pose_path = str(pose_p)
+                else:
+                    ref_pose_path = str(pose_p)
 
         plan["receptors"].append(
             {
