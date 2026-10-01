@@ -386,11 +386,16 @@ def cmd_cluster(args):
         pub_pose = (
             cwd / "prepared" / Path(pose_path).name if pose_path != "NO_POSE" else None
         )
-        if pub_pose and not pub_pose.exists():
-            pub_pose = Path(pose_path) if Path(pose_path).exists() else None
+        if pub_pose and not pub_pose.exists() and Path(pose_path).exists():
+            import shutil
+            shutil.copy(Path(pose_path), pub_pose)
 
-        traj_prefix = "_".join(cluster_id.split("_")[:-1])
+        # Parse parent system prefix (e.g. 7UA1_ready_holo_ens_centroid_1 -> 7UA1_ready_holo_ens)
+        traj_prefix = cluster_id.split("_centroid_")[0]
         parent_sys = parent_map.get(traj_prefix)
+        if not parent_sys:
+            parent_sys = session.query(System).filter_by(name=traj_prefix.replace("_ens", "")).first()
+
         rec_name = parent_sys.receptor_name if parent_sys else None
         parent_pose = parent_sys.pose if parent_sys else None
         lig_name = parent_pose.ligand_name if parent_pose else None

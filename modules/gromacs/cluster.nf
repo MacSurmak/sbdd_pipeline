@@ -11,7 +11,7 @@ process GMX_CLUSTER {
     tuple val(meta), path(clean_xtcs, stageAs: 'trajs_?/*'), path(ref_pdb), val(cutoff), val(method), val(dt), val(cluster_group)
 
     output:
-    tuple val(meta), path("${meta.id}_c*.pdb"), emit: cluster_pdbs
+    tuple val(meta), path("${meta.id}_centroid_*.pdb"), emit: cluster_pdbs
 
     script:
     def dt_flag = (dt && dt.toString() != '0') ? "-dt ${dt}" : ""
@@ -26,21 +26,30 @@ process GMX_CLUSTER {
         TARGET_XTC="\${XTC_FILES[0]}"
     fi
 
-    # 2. Build index from dry reference PDB (Protein + Ligand + Cofactors)
+    # 2. Build index and dynamic Pocket group if requested
     echo "q" | gmx make_ndx -f ${ref_pdb} -o index.ndx
     python3 ${projectDir}/bin/gromacs_ndx_fixer.py --ndx index.ndx --action ensure_complex
 
-    # Fit on Protein scaffold, calculate RMSD matrix on selected group (default COMPLEX)
-    printf "Protein\n${cluster_group}\n" | gmx cluster \\
-        -f \${TARGET_XTC} \\
-        -s ${ref_pdb} \\
-        -n index.ndx \\
-        -method ${method} \\
-        -cutoff ${cutoff} \\
-        ${dt_flag} \\
+    TARGET_GROUP="${cluster_group}"
+    if [ "${cluster_group}" = "Pocket" ] || [ "${cluster_group}" = "pocket" ]; then
+        lig_res="${meta.ligand}"
+        [ -z "\$lig_res" ] && lig_res="KVR"
+        gmx select -s ${ref_pdb} -select "Pocket = same residue as within 0.5 of resname \${lig_res}" -on pocket.ndx
+        cat pocket.ndx >> index.ndx
+        TARGET_GROUP="Pocket"
+    fi
+
+    # Fit on Protein scaffold, calculate RMSD matrix strictly on target group
+    printf "Protein\n\${TARGET_GROUP}\n" | gmx cluster \
+        -f \${TARGET_XTC} \
+        -s ${ref_pdb} \
+        -n index.ndx \
+        -method ${method} \
+        -cutoff ${cutoff} \
+        ${dt_flag} \
         -cl clusters_multi.pdb
 
-    # 3. Split multi-model PDB into prefixed centroid complexes and in-situ ligand poses
+    # 3. Split multi-model PDB into distinct centroid complexes and separate in-situ ligand poses
     python3 -c "
 import sys
 
@@ -56,8 +65,8 @@ for line in lines:
     if line.startswith('MODEL'):
         if out_c: out_c.close()
         if out_p: out_p.close()
-        out_c = open(f'${meta.id}_c{idx}.pdb', 'w')
-        out_p = open(f'${meta.id}_c{idx}_pose.pdb', 'w') if lig_name else None
+        out_c = open(f'${meta.id}_centroid_{idx}.pdb', 'w')
+        out_p = open(f'${meta.id}_pose_{idx}.pdb', 'w') if lig_name else None
         idx += 1
     if line.startswith(('ATOM', 'HETATM')):
         res = line[17:20].strip().upper()
@@ -74,7 +83,6 @@ if out_p: out_p.close()
 
     stub:
     """
-    touch ${meta.id}_c1.pdb
-    touch ${meta.id}_c1_pose.pdb
-    """
-}
+    touch ${meta.id}_centroid_1.pdb
+    touch ${meta.id}_pose_1.pdb
+    """}

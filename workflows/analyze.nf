@@ -63,7 +63,8 @@ workflow ANALYZE_WF {
             def plist = pdbs instanceof List ? pdbs : [pdbs]
             plist.collect { p ->
                 def frame_id = p.baseName
-                def pose_file = file("${p.parent}/${frame_id}_pose.pdb")
+                def idx_str = frame_id.tokenize('_').last()
+                def pose_file = file("${p.parent}/${m.id}_pose_${idx_str}.pdb")
                 def pose_path = pose_file.exists() ? pose_file.toAbsolutePath() : "NO_POSE"
                 "${frame_id}\t${p.toAbsolutePath()}\t${pose_path}"
             }
