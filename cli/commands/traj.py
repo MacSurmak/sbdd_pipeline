@@ -474,3 +474,75 @@ def cmd_cluster(args):
     console.print(
         "[dim]Protein, Ligand, and Cofactors are preserved in each cluster centroid.[/dim]"
     )
+
+def cmd_mmpbsa(args):
+    """CLI handler for 'sbdd traj-mmpbsa': standalone free energy calculations."""
+    cwd = Path.cwd()
+    session = init_db()
+    trajs = _query_trajectories(session, args)
+
+    plan_list = []
+    for t in trajs:
+        if t.status != "cleaned" or not t.path_clean_xtc or not t.path_ref_pdb:
+            console.print(
+                f"[bold red]FATAL: Trajectory '{t.name}' must be cleaned first. Run 'sbdd traj-clean'![/bold red]"
+            )
+            sys.exit(1)
+
+        rep_idx = 1
+        for part in t.name.split("_"):
+            if part.startswith("rep") or part.startswith("R"):
+                try:
+                    rep_idx = int("".join(filter(str.isdigit, part)))
+                except ValueError:
+                    pass
+
+        sys_obj = session.query(System).filter_by(name=t.system_name).first()
+        rec_name = sys_obj.receptor_name if sys_obj else t.system_name
+        rec_id = rec_name.replace("_ready", "")
+        
+        # We need the topology and index file which should be next to the TPR
+        tpr_path = Path(t.path_tpr).resolve()
+        topol_path = tpr_path.parent / "topol.top"
+        ndx_path = tpr_path.parent / "index.ndx"
+        
+        if not topol_path.exists():
+            console.print(f"[bold red]FATAL: topol.top not found next to {tpr_path}[/bold red]")
+            sys.exit(1)
+
+        plan_list.append(
+            {
+                "name": t.name,
+                "rec_id": rec_id,
+                "rep": rep_idx,
+                "clean_xtc": t.path_clean_xtc,
+                "ref_pdb": t.path_ref_pdb,
+                "topol": str(topol_path),
+                "ndx": str(ndx_path)
+            }
+        )
+
+    plan_file = cwd / "mmpbsa_plan.json"
+    with open(plan_file, "w") as f:
+        json.dump(plan_list, f, indent=2)
+
+    console.print(
+        f"[bold cyan]Running standalone MM-PBSA on {len(trajs)} clean trajectory(ies)...[/bold cyan]"
+    )
+
+    configs = load_project_configs(cwd)
+    nf_args = build_nextflow_args(configs, cwd, entrypoint="md-analyze")
+    nf_args.extend(["--mmpbsa_plan", str(plan_file.resolve())])
+
+    profile = "local" if getattr(args, "local", False) else "slurm"
+    resume = not getattr(args, "no_resume", False)
+
+    ret_code = execute_nextflow(
+        "md-analyze", nf_args, cwd, profile=profile, resume=resume, configs=configs
+    )
+    if ret_code != 0:
+        console.print("[bold red]Nextflow MM-PBSA failed.[/bold red]")
+        sys.exit(ret_code)
+
+    console.print(f"\n[bold green]✓ MM-PBSA calculations completed successfully![/bold green]")
+    session.close()

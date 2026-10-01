@@ -97,7 +97,37 @@ workflow ANALYZE_WF {
         return
     }
 
-    // MODE 4: Legacy manual analysis
+    // MODE 4: Standalone MM-PBSA from DB
+    if (params.mmpbsa_plan) {
+        def planFile = file(params.mmpbsa_plan)
+        def jsonSlurper = new groovy.json.JsonSlurper()
+        def planList = jsonSlurper.parseText(planFile.text)
+
+        ch_mmpbsa_in = Channel.fromList(planList).map { item ->
+            def meta = [
+                id: item.name,
+                rec_id: item.rec_id,
+                rep: item.rep,
+                project: params.project_name
+            ]
+            [ meta, file(item.clean_xtc), file(item.ref_pdb), file(item.topol), file(item.ndx) ]
+        }
+
+        include { GMX_MMPBSA } from '../modules/gromacs/mmpbsa'
+        GMX_MMPBSA(
+            ch_mmpbsa_in,
+            params.mmpbsa_start_ns,
+            params.mmpbsa_step_frames,
+            params.md_temperature,
+            params.md_salt_conc,
+            params.membrane,
+            params.membrane_thickness,
+            params.per_residue_decomp
+        )
+        return
+    }
+
+    // MODE 5: Legacy manual analysis
     if (!params.traj || !params.tpr || !params.topol || !params.ndx) {
         error "Analysis workflow requires explicitly provided --traj, --tpr, --topol, and --ndx parameters."
     }

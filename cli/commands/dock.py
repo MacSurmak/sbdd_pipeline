@@ -140,6 +140,37 @@ def cmd_dock(args):
                 status="ready",
             )
             session.add(new_pose)
+            
+        # Bulk insert top poses if single receptor (Cross-dock bulk mapping is deferred)
+        if len(receptors) == 1:
+            rec_name = receptors[0].name
+            poses_to_insert = []
+            import csv
+            try:
+                with open(res_csv, 'r', encoding='utf-8', errors='ignore') as f:
+                    reader = csv.DictReader(f)
+                    for row in reader:
+                        title = row.get("Title", "").strip()
+                        score = row.get("Ultimate_Score", 0.0)
+                        if title:
+                            lig = session.query(Ligand).filter_by(name=title).first()
+                            if lig:
+                                pose_name = f"{title}_{poses_name}"
+                                if not session.query(Pose).filter_by(name=pose_name).first():
+                                    poses_to_insert.append(Pose(
+                                        name=pose_name,
+                                        ligand_name=title,
+                                        receptor_name=rec_name,
+                                        origin="docking",
+                                        path=str(res_sdf),
+                                        status="ready",
+                                        scores=json.dumps({"Ultimate_Score": float(score)})
+                                    ))
+                if poses_to_insert:
+                    session.bulk_save_objects(poses_to_insert)
+            except Exception as e:
+                console.print(f"[yellow]Warning: Could not bulk insert poses: {e}[/yellow]")
+
         session.commit()
         console.print(
             f"[bold green]✓ Docking complete! Results registered as PoseSet '{poses_name}'.[/bold green]"

@@ -351,6 +351,15 @@ def main():
     )
     add_common_wf_args(p_dyn)
 
+    # 7. traj-mmpbsa
+    p_mmpbsa = subparsers.add_parser(
+        "traj-mmpbsa", help="Run standalone MM-PBSA free energy calculation on clean trajectories"
+    )
+    p_mmpbsa.add_argument(
+        "--traj", required=True, help="Explicit comma-separated list of Trajectory names to analyze"
+    )
+    add_common_wf_args(p_mmpbsa)
+
     # 7. md-analyze
     p_mda = subparsers.add_parser(
         "md-analyze", help="Run trajectory PBC fix, metrics, and MM-PBSA"
@@ -521,6 +530,10 @@ def main():
         from cli.commands.traj import cmd_clean_traj
 
         cmd_clean_traj(args)
+    elif subcmd == "traj-mmpbsa":
+        from cli.commands.traj import cmd_mmpbsa
+
+        cmd_mmpbsa(args)
     elif subcmd == "traj-metrics":
         from cli.commands.traj import cmd_metrics
 

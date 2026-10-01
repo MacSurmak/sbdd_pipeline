@@ -29,13 +29,16 @@ process PRIME_MMGBSA {
 
     res_dist_flag="-residue_distance ${params.prime_residue_distance ?: 15.0}"
 
+    export SCHRODINGER_JOBDB="/tmp/schrodinger_jobdb_\${SLURM_JOB_ID:-\$\$}"
+    mkdir -p "\$SCHRODINGER_JOBDB"
+
     schrodinger prime_mmgbsa \
         -job_type ${job_type} \
         -csv_output yes \
         -out_type PV \
         -jobname ${meta.id}_mmgbsa \
-        -HOST localhost \
-        -NJOBS 1 \
+        -LOCAL \
+        -NOJOBID \
         -OVERWRITE \
         -WAIT \
         \${res_dist_flag} \

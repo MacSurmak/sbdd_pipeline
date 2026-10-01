@@ -17,66 +17,57 @@ def cmd_tree(args):
     session = init_db()
     root_tree = Tree("[bold blue]SBDD Project Relational Database[/bold blue]")
 
-    # 1. Systems & Their Conformational Ensembles
+    def get_root_target(rec_name):
+        rec = session.query(Receptor).filter_by(name=rec_name).first()
+        while rec and rec.parent_name:
+            rec = session.query(Receptor).filter_by(name=rec.parent_name).first()
+        return rec.name if rec else rec_name
+
+    # 1. Biological Grouping: Target -> Ligand -> Systems (Conformations)
     systems = session.query(System).all()
     if systems:
-        sys_branch = root_tree.add(
-            "[bold green]Systems (Complexes & Ensembles)[/bold green]"
-        )
-        root_systems = [s for s in systems if s.parent_system_name is None]
+        tree_data = {}
+        for s in systems:
+            target = get_root_target(s.receptor_name)
+            lig = "Apo"
+            if s.pose_name:
+                pose = session.query(Pose).filter_by(name=s.pose_name).first()
+                if pose:
+                    lig = pose.ligand_name
+            tree_data.setdefault(target, {}).setdefault(lig, []).append(s)
 
-        def render_system(node, sys_obj):
-            s_color = "green" if sys_obj.status == "ready" else "yellow"
-            pose_info = (
-                f"[cyan]+ Pose: {sys_obj.pose_name}[/cyan]"
-                if sys_obj.pose_name
-                else "[dim](Apo)[/dim]"
-            )
-            sys_node = node.add(
-                f"[{s_color}]{sys_obj.name}[/{s_color}] [dim]({sys_obj.status}, {sys_obj.origin})[/dim] : Receptor [cyan]{sys_obj.receptor_name}[/cyan] {pose_info}"
-            )
-
-            # Direct trajectories of this system
-            trajs = session.query(Trajectory).filter_by(system_name=sys_obj.name).all()
-            if trajs:
-                traj_branch = sys_node.add("[dim]Trajectories[/dim]")
-                for t in trajs:
-                    t_color = "green" if t.status == "cleaned" else "yellow"
-                    clean_info = (
-                        f" -> {t.path_clean_xtc}"
-                        if t.path_clean_xtc
-                        else f" -> {t.path_xtc}"
+        sys_branch = root_tree.add("[bold green]Biological Targets & Conformations[/bold green]")
+        
+        for target, ligs in tree_data.items():
+            target_node = sys_branch.add(f"[bold magenta]Target:[/bold magenta] {target}")
+            
+            for lig, sys_list in ligs.items():
+                lig_color = "cyan" if lig != "Apo" else "dim"
+                lig_node = target_node.add(f"[{lig_color}]Ligand: {lig}[/{lig_color}]")
+                
+                for sys_obj in sys_list:
+                    s_color = "green" if sys_obj.status == "ready" else "yellow"
+                    pose_info = f"[dim](Pose: {sys_obj.pose_name})[/dim]" if sys_obj.pose_name else ""
+                    sys_node = lig_node.add(
+                        f"[{s_color}]{sys_obj.name}[/{s_color}] [dim]({sys_obj.origin})[/dim] {pose_info}"
                     )
-                    traj_branch.add(
-                        f"[magenta]{t.name}[/magenta] [{t_color}]({t.status})[/{t_color}][dim]{clean_info}[/dim]"
-                    )
+                    
+                    trajs = session.query(Trajectory).filter_by(system_name=sys_obj.name).all()
+                    if trajs:
+                        traj_branch = sys_node.add("[dim]Trajectories[/dim]")
+                        for t in trajs:
+                            t_color = "green" if t.status == "cleaned" else "yellow"
+                            len_info = f" ({t.length_ns} ns)" if t.length_ns else ""
+                            traj_branch.add(f"[magenta]{t.name}[/magenta] [{t_color}]({t.status})[/{t_color}]{len_info}")
 
-            # Alternative conformations (MD cluster centroids)
-            child_confs = [s for s in systems if s.parent_system_name == sys_obj.name]
-            if child_confs:
-                conf_branch = sys_node.add(
-                    "[bold cyan]Alternative Conformations (MD Centroids)[/bold cyan]"
-                )
-                for child_sys in child_confs:
-                    render_system(conf_branch, child_sys)
-
-        for r_sys in root_systems:
-            render_system(sys_branch, r_sys)
-
-    # 2. Receptors
+    # 2. Receptors (Raw structures & intermediates)
     receptors = session.query(Receptor).all()
     if receptors:
-        rec_branch = root_tree.add(
-            "[bold cyan]Receptors (Conformational Models)[/bold cyan]"
-        )
+        rec_branch = root_tree.add("[bold cyan]Raw Receptors & Intermediates[/bold cyan]")
         for r in receptors:
             r_color = "green" if r.status == "ready" else "yellow"
-            parent_info = (
-                f" [dim](parent: {r.parent_name})[/dim]" if r.parent_name else ""
-            )
-            rec_branch.add(
-                f"[{r_color}]{r.name}[/{r_color}] [dim]({r.status}, {r.prep_mode}) -> {r.path}[/dim]{parent_info}"
-            )
+            parent_info = f" [dim](parent: {r.parent_name})[/dim]" if r.parent_name else ""
+            rec_branch.add(f"[{r_color}]{r.name}[/{r_color}] [dim]({r.prep_mode})[/dim]{parent_info}")
 
     # 3. Ligands & Binding Poses
     ligands = session.query(Ligand).all()
