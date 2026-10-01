@@ -278,7 +278,13 @@ def cmd_dock(args):
                         except ValueError:
                             rmsd_display = rmsd_str
 
-                    table.add_row(rec, lig, str(gscore), str(cnn), str(mmgbsa), rmsd_display, verdict)
+                    def _fmt(val):
+                        try:
+                            return f"{float(val):.2f}"
+                        except (ValueError, TypeError):
+                            return str(val) if val else "-"
+
+                    table.add_row(rec, lig, _fmt(gscore), _fmt(cnn), _fmt(mmgbsa), rmsd_display, verdict)
             console.print(table)
         except Exception as e:
             console.print(f"[yellow]Warning: Could not render console table: {e}[/yellow]")

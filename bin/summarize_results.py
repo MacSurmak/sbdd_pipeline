@@ -141,8 +141,8 @@ def main():
         for sfx in ["_dock.csv", "_dock_pv.maegz", "_dock.sdf", "_rescored.sdf", "_gnina_docked_all.sdf", "_mmgbsa-out.csv"]:
             if name.endswith(sfx):
                 rec_name = name[:-len(sfx)]
-                # Clean sub-chunk prefixes if any
-                rec_name = re.sub(r"_c\d+$", "", rec_name)
+                # Clean sub-chunk prefixes and mmc task suffixes
+                rec_name = re.sub(r"(_mmc\d+|_c\d+|_cnative)$", "", rec_name)
                 all_receptors.add(rec_name)
                 break
 
@@ -219,16 +219,14 @@ def main():
             rec_id = str(row.get("Receptor", row.get("Frame", "")))
             title = row["Title"]
             
-            # Explicit, deterministic path reconstruction without globbing
+            # Search for reference pose in workdir (staged) and in prepared/
             ref_sdf = None
             if "centroid" in rec_id:
-                # md_cluster origin: 8UQ3_ready_holo_ens_centroid_3 -> 8UQ3_ready_holo_ens_pose_3.pdb
                 parts = rec_id.split("_centroid_")
-                if len(parts) == 2:
-                    ref_sdf = Path("prepared") / f"{parts[0]}_pose_{parts[1]}.pdb"
+                cand_name = f"*{parts[0]}*pose_{parts[1]}.pdb" if len(parts) == 2 else f"*{rec_id}*pose*.pdb"
+                ref_sdf = next(dock_dir.glob(cand_name), None) or next(Path("prepared").glob(cand_name), None)
             else:
-                # Crystal origin
-                ref_sdf = Path("prepared") / f"{rec_id}_ref_native_prepared.sdf"
+                ref_sdf = next(dock_dir.glob(f"*{rec_id}*ref_native*"), None) or next(Path("prepared").glob(f"*{rec_id}*ref_native*"), None)
 
             rmsd_val = np.nan
             if ref_sdf and ref_sdf.exists():
@@ -236,13 +234,16 @@ def main():
                 if dock_candidates:
                     with open(dock_candidates[0], "r", errors="ignore") as f:
                         for b in f.read().split("$$$$"):
-                            lines = b.strip().splitlines()
-                            if lines and (lines[0].strip() == title or title in lines[0]):
+                            if not b.strip():
+                                continue
+                            try:
                                 m_dock = Chem.RemoveHs(Chem.MolFromMolBlock(b.strip() + "\n$$$$\n"))
                                 m_ref = Chem.RemoveHs(Chem.MolFromMolFile(str(ref_sdf)) if ref_sdf.suffix == '.sdf' else Chem.MolFromPDBFile(str(ref_sdf)))
                                 if m_dock and m_ref and m_dock.GetNumAtoms() == m_ref.GetNumAtoms():
                                     rmsd_val = round(rdMolAlign.GetBestRMS(m_dock, m_ref), 2)
-                                break
+                                    break
+                            except Exception:
+                                pass
             insitu_rmsds.append(rmsd_val)
         df_resolved["InSitu_RMSD_A"] = insitu_rmsds
     except Exception:

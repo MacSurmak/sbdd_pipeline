@@ -224,6 +224,7 @@ workflow DOCK_LIBRARY {
                 .mix(MERGE_GLIDE_CHUNKS.out.poses_sdf.map { meta, sdf -> sdf })
                 .mix(MERGE_RESC_CHUNKS.out.rescored_sdf.map { meta, sdf -> sdf })
                 .mix(PRIME_MMGBSA.out.scores_csv.map { meta, csv -> csv })
+                .mix(ch_ref_lig_sdf.map { meta, sdf -> sdf })
         } else {
             // Screening Triage Funnel (Top 50%)
             ch_all_glide_csvs = MERGE_GLIDE_CHUNKS.out.scores_csv.map { meta, csv -> csv }.collect()
