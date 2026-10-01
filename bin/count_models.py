@@ -53,14 +53,28 @@ def main():
     count = 1
 
     try:
-        from schrodinger.structure import count_structures
+        from schrodinger.structure import StructureReader
+        from schrodinger.structutils import analyze
 
-        count = count_structures(str(p.resolve()))
+        with StructureReader(str(p.resolve())) as reader:
+            sts = list(reader)
+
+        if len(sts) > 1:
+            # If CT 1 has protein and other CTs have ligand/ions, it is a single multi-CT complex, not an NMR ensemble
+            has_prot = any(bool(analyze.evaluate_asl(s, "protein")) for s in sts)
+            has_lig = any(bool(analyze.evaluate_asl(s, "not protein and not water and not ion")) for s in sts)
+            is_same_size = all(s.atom_total == sts[0].atom_total for s in sts)
+
+            if has_prot and has_lig and not is_same_size:
+                count = 1
+            else:
+                count = len(sts)
+        else:
+            count = max(1, len(sts))
     except Exception:
         if p.suffix.lower() in [".cif", ".mmcif"]:
             count = count_cif_models(p)
         elif p.suffix.lower() == ".pdb":
-            # count MODEL records in PDB
             models = 0
             with open(p, "r", errors="ignore") as f:
                 for line in f:

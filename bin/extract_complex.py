@@ -45,7 +45,18 @@ def main():
     logging.info(f"Reading model {idx} from {input_file}...")
 
     try:
-        st = structure.StructureReader.read(str(input_file), index=idx)
+        with structure.StructureReader(str(input_file)) as reader:
+            sts = list(reader)
+
+        # If it is a multi-CT complex (Receptor CT + Ligand CT), merge all CTs into one unified structure
+        if len(sts) > 1 and any(analyze.evaluate_asl(s, "protein") for s in sts) and any(analyze.evaluate_asl(s, "not protein and not water") for s in sts) and not all(s.atom_total == sts[0].atom_total for s in sts):
+            logging.info("Detected multi-CT complex in MAE file. Merging all CT blocks into unified complex.")
+            complex_st = sts[0]
+            for other_st in sts[1:]:
+                complex_st.extend(other_st)
+            st = complex_st
+        else:
+            st = sts[idx - 1]
     except Exception as e:
         logging.error(f"Failed to read model index {idx} from {input_file}: {e}")
         sys.exit(1)
