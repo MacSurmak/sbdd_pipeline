@@ -25,9 +25,19 @@ workflow SCREEN_WF {
         }
         def rec_pdb = file(rec.path.replace(".mae", ".pdb").replace(".maegz", ".pdb"))
 
-        def ref_path = (rec.ref_pose_path && rec.ref_pose_path != "NO_FILE") ? file(rec.ref_pose_path) : file("NO_FILE")
-        def ref_sdf = ref_path
-        def ref_mae = ref_path
+        def ref_file = (rec.ref_pose_path && rec.ref_pose_path != "NO_FILE") ? file(rec.ref_pose_path) : file("NO_FILE")
+        
+        // Glide requires MAE/PDB; GNINA strictly requires SDF/PDB
+        def ref_mae = ref_file
+        def ref_sdf = ref_file
+
+        if (ref_file.name.endsWith('.sdf')) {
+            def mae_cand = file(rec.ref_pose_path.replaceAll(/\.sdf$/, '.mae'))
+            if (mae_cand.exists()) ref_mae = mae_cand
+        } else if (ref_file.name.endsWith('.mae') || ref_file.name.endsWith('.maegz')) {
+            def sdf_cand = file(rec.ref_pose_path.replaceAll(/\.mae(gz)?$/, '.sdf'))
+            if (sdf_cand.exists()) ref_sdf = sdf_cand
+        }
 
         def meta = [
             id: target_id,
