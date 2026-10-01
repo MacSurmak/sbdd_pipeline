@@ -6,6 +6,7 @@
 include { TRJCONV         } from '../modules/gromacs/trjconv'
 include { MD_METRICS      } from '../modules/gromacs/md_metrics'
 include { GMX_CLUSTER     } from '../modules/gromacs/cluster'
+include { GMX_MMPBSA      } from '../modules/gromacs/mmpbsa'
 include { ANALYZE_MD_TRAJ } from '../subworkflows/analyze_md_traj'
 
 workflow ANALYZE_WF {
@@ -113,7 +114,6 @@ workflow ANALYZE_WF {
             [ meta, file(item.clean_xtc), file(item.ref_pdb), file(item.topol), file(item.ndx) ]
         }
 
-        include { GMX_MMPBSA } from '../modules/gromacs/mmpbsa'
         GMX_MMPBSA(
             ch_mmpbsa_in,
             params.mmpbsa_start_ns,
