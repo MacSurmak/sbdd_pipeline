@@ -41,7 +41,7 @@ process MERGE_GLIDE_CHUNKS {
     label 'process_single'
 
     input:
-    tuple val(meta), path(pv_files), path(csv_files), path(sdf_files)
+    tuple val(meta), path(pv_files, stageAs: 'pvs_?/*'), path(csv_files, stageAs: 'csvs_?/*'), path(sdf_files, stageAs: 'sdfs_?/*')
 
     output:
     tuple val(meta), path("${meta.id}_dock_pv.maegz"), emit: pv_maegz
@@ -74,7 +74,7 @@ process MERGE_RESC_CHUNKS {
     label 'process_single'
 
     input:
-    tuple val(meta), path(chunk_sdfs)
+    tuple val(meta), path(chunk_sdfs, stageAs: 'resc_?/*')
 
     output:
     tuple val(meta), path("${meta.id}_rescored.sdf"), emit: rescored_sdf
@@ -97,7 +97,7 @@ process MERGE_MMGBSA_CHUNKS {
     label 'process_single'
 
     input:
-    tuple val(meta), path(csv_files)
+    tuple val(meta), path(csv_files, stageAs: 'mmgbsa_?/*')
 
     output:
     tuple val(meta), path("${meta.id}_mmgbsa-out.csv"), emit: scores_csv
