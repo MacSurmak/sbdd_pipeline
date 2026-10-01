@@ -29,8 +29,8 @@ process EXTRACT_MD_SYSTEM {
     if (lig_file_path.toString() != "NO_LIGAND" && file(lig_file_path).exists()) {
         def lig_name = meta.native_ligand ?: "LIG"
         def ext = file(lig_file_path).extension
-        lig_arg = "--lig_file ./staged_ligand.\${ext} --lig_name ${lig_name}"
-        staging_cmd = "cp ${lig_file_path} ./staged_ligand.\${ext}"
+        lig_arg = "--lig_file ./staged_ligand.${ext} --lig_name ${lig_name}"
+        staging_cmd = "cp ${lig_file_path} ./staged_ligand.${ext}"
     }
     """
     ${staging_cmd}
