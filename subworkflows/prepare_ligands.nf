@@ -38,7 +38,7 @@ process CONVERT_READY_LIGAND {
     label 'process_single'
 
     input:
-    tuple val(meta), path(sdf), val(idx)
+    tuple val(meta), path(sdf, stageAs: 'ligand.sdf'), val(idx)
 
     output:
     tuple val(meta), path("${meta.id}.maegz"), emit: prepared_maegz
@@ -46,7 +46,22 @@ process CONVERT_READY_LIGAND {
 
     script:
     """
-    schrodinger structconvert ${sdf} ${meta.id}.maegz
+    if [ ! -s "ligand.sdf" ]; then
+        echo "FATAL: Ligand file ${sdf} is empty! The ligand was likely not found in the receptor during extraction."
+        exit 1
+    fi
+
+    schrodinger run python3 -c "
+import sys
+from schrodinger import structure
+try:
+    with structure.StructureReader('ligand.sdf') as reader, structure.StructureWriter('${meta.id}.maegz') as writer:
+        for st in reader:
+            writer.append(st)
+except Exception as e:
+    print(f'Conversion failed: {e}', file=sys.stderr)
+    sys.exit(1)
+"
     """
 
     stub:
