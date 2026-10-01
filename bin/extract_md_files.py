@@ -28,23 +28,38 @@ def extract_via_schrodinger(args):
     # 1. Extract organic cofactors (Leave ions in protein)
     if args.cofactors:
         for cof in args.cofactors:
-            cof = cof.strip()
-            if not cof or cof.upper() in ION_RESNAMES:
+            clean_cof = str(cof).strip().strip("[]'\"").strip().upper()
+            if not clean_cof or clean_cof in ION_RESNAMES:
                 continue
-            asl = f"res.ptype '{cof}'"
-            atoms = analyze.evaluate_asl(rec_st, asl)
+
+            # Direct residue match immune to Maestro 4-char space padding
+            atoms = []
+            for res in rec_st.residue:
+                r_name = res.pdbres.strip().upper()
+                if r_name == clean_cof or r_name.startswith(clean_cof):
+                    atoms.extend(res.getAtomIndices())
+
+            if not atoms:
+                asl = f"res.ptype '{clean_cof}*' OR res.ptype '{clean_cof} ' OR res.ptype '{clean_cof}'"
+                atoms = analyze.evaluate_asl(rec_st, asl)
+
             if atoms:
                 cof_st = rec_st.extract(atoms)
-                cof_st.title = cof
+                cof_st.title = clean_cof
                 for res in cof_st.residue:
-                    res.pdbres = cof
-                cof_out = org_dir / f"{cof}.mol2"
+                    res.pdbres = clean_cof
+                cof_out = org_dir / f"{clean_cof}.mol2"
                 cof_st.write(str(cof_out))
-                (org_dir / f"{cof}_charge.txt").write_text(str(cof_st.formal_charge))
+                (org_dir / f"{clean_cof}_charge.txt").write_text(str(cof_st.formal_charge))
                 organics.append(
-                    {"name": cof, "mol2": f"{cof}.mol2", "charge": f"{cof}_charge.txt"}
+                    {"name": clean_cof, "mol2": f"{clean_cof}.mol2", "charge": f"{cof_clean}_charge.txt"}
                 )
                 rec_st.deleteAtoms(atoms)
+                print(f"Successfully extracted cofactor '{clean_cof}' ({len(atoms)} atoms).", flush=True)
+            else:
+                avail = set(r.pdbres.strip().upper() for r in rec_st.residue)
+                print(f"FATAL: Specified cofactor '{clean_cof}' was not found in structure! Available residues: {avail}", file=sys.stderr, flush=True)
+                sys.exit(1)
 
     # Save dry receptor (Protein + Ions)
     rec_out = out_dir / "receptor_dry.pdb"
