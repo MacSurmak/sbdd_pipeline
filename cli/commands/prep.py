@@ -118,27 +118,18 @@ def cmd_prep(args):
         if orig:
             orig.status = "processed"
 
-            # Auto-register extracted native ligand if it exists
-            native_lig = orig.meta_dict.get("native_ligand")
-            if native_lig:
-                lig_path = cwd / "prepared" / f"{name}_ref_native_prepared.sdf"
-                if not lig_path.exists():
-                    lig_path = cwd / "prepared" / f"{name}_ref_native.sdf"
-
-                if lig_path.exists():
-                    lig_name = f"{name}_native"
-                    ex_lig = session.query(Ligand).filter_by(name=lig_name).first()
-                    if not ex_lig:
-                        new_lig = Ligand(
-                            name=lig_name,
-                            path=str(lig_path),
-                            status="ready",
-                            is_native=True,
-                        )
-                        session.add(new_lig)
+        # Update associated Systems and Poses to ready
+        linked_systems = session.query(System).filter(
+            (System.receptor_name == name) | (System.receptor_name == ready_name)
+        ).all()
+        for sys_obj in linked_systems:
+            sys_obj.status = "ready"
+            if sys_obj.pose_name:
+                pose_obj = session.query(Pose).filter_by(name=sys_obj.pose_name).first()
+                if pose_obj:
+                    pose_obj.status = "ready"
 
         success_count += 1
-
     session.commit()
     session.close()
 

@@ -294,6 +294,7 @@ def cmd_cluster(args):
 
         clean_xtcs = [t.path_clean_xtc for t in t_list]
         ref_pdb = t_list[0].path_ref_pdb
+        lig_code = sys_obj.pose.ligand.meta_dict.get("resname", "") if sys_obj.pose else ""
 
         plan_list.append(
             {
@@ -301,6 +302,7 @@ def cmd_cluster(args):
                 "system": sys_name,
                 "clean_xtcs": clean_xtcs,
                 "ref_pdb": ref_pdb,
+                "ligand": lig_code,
                 "cutoff": args.cutoff,
                 "method": args.method,
                 "dt": args.dt,
@@ -340,46 +342,87 @@ def cmd_cluster(args):
         console.print("[bold red]FATAL: cluster_receipt.tsv not found![/bold red]")
         sys.exit(1)
 
-    lines = receipt_file.read_text().strip().splitlines()
-    count = 0
-    for line in lines:
+    for line in receipt_file.read_text().strip().splitlines():
         if not line.strip():
             continue
-        cluster_id, pdb_path = line.split("\t")
+        parts = line.split("\t")
+        cluster_id = parts[0]
+        pdb_path = parts[1]
+        pose_path = parts[2] if len(parts) > 2 else "NO_POSE"
 
-        pub_path = cwd / "prepared" / Path(pdb_path).name
-        if not pub_path.exists():
-            pub_path = Path(pdb_path)
+        pub_pdb = cwd / "prepared" / Path(pdb_path).name
+        if not pub_pdb.exists():
+            pub_pdb = Path(pdb_path)
+
+        pub_pose = (
+            cwd / "prepared" / Path(pose_path).name
+            if pose_path != "NO_POSE"
+            else None
+        )
+        if pub_pose and not pub_pose.exists():
+            pub_pose = Path(pose_path) if Path(pose_path).exists() else None
 
         traj_prefix = "_".join(cluster_id.split("_")[:-1])
         parent_sys = parent_map.get(traj_prefix)
         rec_name = parent_sys.receptor_name if parent_sys else None
+        parent_pose = parent_sys.pose if parent_sys else None
+        lig_name = parent_pose.ligand_name if parent_pose else None
 
-        ex = session.query(Receptor).filter_by(name=cluster_id).first()
-        if ex:
-            ex.path = str(pub_path)
+        # 1. Register Centroid as a Receptor
+        ex_rec = session.query(Receptor).filter_by(name=cluster_id).first()
+        if ex_rec:
+            ex_rec.path = str(pub_pdb)
         else:
-            # Register centroid as a Receptor in light mode
             new_rec = Receptor(
                 name=cluster_id,
-                path=str(pub_path),
+                path=str(pub_pdb),
                 status="unprepared",
                 prep_mode="light",
                 parent_name=rec_name,
             )
+            new_rec.meta_dict = {
+                "native_ligand": lig_name or "",
+                "origin": "md_cluster",
+            }
             session.add(new_rec)
 
-            # Auto-register corresponding cluster System
-            cluster_sys_name = f"{cluster_id}_sys"
+        # 2. Register in-situ Pose if extracted from cluster
+        pose_entity_name = None
+        if pub_pose and lig_name:
+            pose_entity_name = f"{cluster_id}_{lig_name}_pose"
+            ex_pose = session.query(Pose).filter_by(name=pose_entity_name).first()
+            if ex_pose:
+                ex_pose.path = str(pub_pose)
+            else:
+                new_pose = Pose(
+                    name=pose_entity_name,
+                    ligand_name=lig_name,
+                    receptor_name=cluster_id,
+                    origin="md_cluster",
+                    path=str(pub_pose),
+                    status="unprepared",
+                )
+                session.add(new_pose)
+
+        # 3. Register child System (Alternative Conformation)
+        cluster_sys_name = (
+            f"{cluster_id}_holo" if pose_entity_name else f"{cluster_id}_apo"
+        )
+        ex_sys = session.query(System).filter_by(name=cluster_sys_name).first()
+        if ex_sys:
+            ex_sys.pose_name = pose_entity_name
+            ex_sys.status = "unprepared"
+        else:
             new_sys = System(
                 name=cluster_sys_name,
                 receptor_name=cluster_id,
-                pose_name=parent_sys.pose_name if parent_sys else None,
+                pose_name=pose_entity_name,
+                parent_system_name=parent_sys.name if parent_sys else None,
+                origin="md_cluster",
                 status="unprepared",
             )
             session.add(new_sys)
         count += 1
-
     session.commit()
     session.close()
 

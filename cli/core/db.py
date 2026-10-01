@@ -87,6 +87,7 @@ class Pose(Base):
 class System(Base):
     """
     The physical thermodynamic unit ready for MD or Scoring: Receptor + optional Pose (None = Apo).
+    Supports hierarchical conformational ensembles via parent_system_name.
     """
 
     __tablename__ = "systems"
@@ -95,11 +96,16 @@ class System(Base):
     name = Column(String, unique=True, index=True, nullable=False)
     receptor_name = Column(String, ForeignKey("receptors.name"), nullable=False)
     pose_name = Column(String, ForeignKey("poses.name"), nullable=True)
+    parent_system_name = Column(String, ForeignKey("systems.name"), nullable=True)
+    origin = Column(String, default="crystal", nullable=False)  # crystal, docking, md_cluster
     status = Column(String, default="unprepared", nullable=False)  # unprepared, ready
     meta_data = Column(Text, default="{}")
 
     receptor = relationship("Receptor")
     pose = relationship("Pose")
+    parent_system = relationship(
+        "System", remote_side=[name], backref="conformations"
+    )
 
 
 class Trajectory(Base):

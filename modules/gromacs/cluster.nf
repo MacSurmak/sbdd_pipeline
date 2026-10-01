@@ -40,28 +40,41 @@ process GMX_CLUSTER {
         ${dt_flag} \\
         -cl clusters_multi.pdb
 
-    # 3. Split multi-model PDB into prefixed centroid PDBs
+    # 3. Split multi-model PDB into prefixed centroid complexes and in-situ ligand poses
     python3 -c "
 import sys
+
 with open('clusters_multi.pdb', 'r') as f:
     lines = f.readlines()
 
-out_f = None
+lig_name = '${meta.ligand}'.strip().upper()
+
+out_c = None
+out_p = None
 idx = 1
 for line in lines:
     if line.startswith('MODEL'):
-        if out_f: out_f.close()
-        out_f = open(f'${meta.id}_c{idx}.pdb', 'w')
+        if out_c: out_c.close()
+        if out_p: out_p.close()
+        out_c = open(f'${meta.id}_c{idx}.pdb', 'w')
+        out_p = open(f'${meta.id}_c{idx}_pose.pdb', 'w') if lig_name else None
         idx += 1
-    if out_f:
-        out_f.write(line)
-if out_f: out_f.close()
+    if line.startswith(('ATOM', 'HETATM')):
+        res = line[17:20].strip().upper()
+        if out_c: out_c.write(line)
+        if out_p and res == lig_name: out_p.write(line)
+    elif line.startswith(('TER', 'ENDMDL')):
+        if out_c: out_c.write(line)
+        if out_p: out_p.write(line)
+
+if out_c: out_c.close()
+if out_p: out_p.close()
 "
     """
 
     stub:
     """
     touch ${meta.id}_c1.pdb
-    touch ${meta.id}_c2.pdb
+    touch ${meta.id}_c1_pose.pdb
     """
 }

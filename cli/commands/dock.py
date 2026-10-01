@@ -51,10 +51,18 @@ def cmd_dock(args):
     plan = {"receptors": [], "ligands": []}
 
     for r in receptors:
+        ref_pose_path = "NO_FILE"
+        sys_obj = session.query(System).filter_by(receptor_name=r.name).first()
+        if sys_obj and sys_obj.pose_name:
+            pose_obj = session.query(Pose).filter_by(name=sys_obj.pose_name).first()
+            if pose_obj and Path(pose_obj.path).exists():
+                ref_pose_path = pose_obj.path
+
         plan["receptors"].append(
             {
                 "name": r.name,
                 "path": r.path,
+                "ref_pose_path": ref_pose_path,
                 "native_ligand": r.meta_dict.get("native_ligand", ""),
             }
         )

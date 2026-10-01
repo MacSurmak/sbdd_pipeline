@@ -18,33 +18,16 @@ workflow SCREEN_WF {
     // 1. Parse Receptors (They are already strictly verified as 'ready' with absolute paths by CLI)
     ch_targets = Channel.fromList(planData.receptors).map { rec ->
         def target_id = rec.name
-        
-        // Infer the generated files based on the primary path
-        def basePath = file(rec.path).parent
-        
-        // It could be a MAE or PDB. We know the preparation step generates both.
-        def baseName = rec.name
-        // Because of auto-suffix _ready from DB, we strip it to find original prepared files, 
-        // OR we just use standard naming convention. 
-        // In Step 2 we forced DB path to be the .mae or .pdb file.
-        def rec_mae = file(rec.path)
+        def rec_path = file(rec.path)
+        def rec_mae = rec_path
         if (!rec_mae.name.endsWith(".mae")) {
             rec_mae = file(rec.path.replace(".pdb", ".mae"))
         }
         def rec_pdb = file(rec.path.replace(".mae", ".pdb").replace(".maegz", ".pdb"))
-        
-        // Re-construct native ligand path. Since name format is {original_name}_ready,
-        def orig_name = rec.name.replaceAll("_ready\$", "")
-        def ref_sdf = file("${basePath}/${orig_name}_ref_native_prepared.sdf")
-        if (!ref_sdf.exists()) ref_sdf = file("${basePath}/${orig_name}_ref_native.sdf")
-        def ref_mae = file("${basePath}/${orig_name}_ref_native_prepared.mae")
-        if (!ref_mae.exists()) ref_mae = file("${basePath}/${orig_name}_ref_native.mae")
 
-        if (!ref_sdf.exists() || !ref_mae.exists()) {
-            // Provide dummy if absolutely no native ligand
-            ref_sdf = file("NO_FILE")
-            ref_mae = file("NO_FILE")
-        }
+        def ref_path = (rec.ref_pose_path && rec.ref_pose_path != "NO_FILE") ? file(rec.ref_pose_path) : file("NO_FILE")
+        def ref_sdf = ref_path
+        def ref_mae = ref_path
 
         def meta = [
             id: target_id,

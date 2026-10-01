@@ -47,7 +47,11 @@ workflow ANALYZE_WF {
         def planList = jsonSlurper.parseText(planFile.text)
 
         ch_cluster_in = Channel.fromList(planList).map { item ->
-            def meta = [id: item.task_id, project: params.project_name]
+            def meta = [
+                id: item.task_id,
+                ligand: item.ligand ?: "",
+                project: params.project_name
+            ]
             def xtcs = item.clean_xtcs.collect { file(it) }
             def ref_pdb = file(item.ref_pdb)
             [ meta, xtcs, ref_pdb, item.cutoff, item.method, item.dt, item.group ]
@@ -55,12 +59,13 @@ workflow ANALYZE_WF {
 
         GMX_CLUSTER(ch_cluster_in)
 
-        // Flatten output list of pdbs and emit receipt
         GMX_CLUSTER.out.cluster_pdbs.flatMap { m, pdbs ->
             def plist = pdbs instanceof List ? pdbs : [pdbs]
             plist.collect { p ->
                 def frame_id = p.baseName
-                "${frame_id}\t${p.toAbsolutePath()}"
+                def pose_file = file("${p.parent}/${frame_id}_pose.pdb")
+                def pose_path = pose_file.exists() ? pose_file.toAbsolutePath() : "NO_POSE"
+                "${frame_id}\t${p.toAbsolutePath()}\t${pose_path}"
             }
         }.collectFile(name: 'cluster_receipt.tsv', storeDir: params.outdir, newLine: true)
 
