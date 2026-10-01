@@ -17,92 +17,134 @@ console = Console()
 def cmd_dock(args):
     cwd = Path.cwd()
     session = init_db()
+    is_self = getattr(args, "self_dock", False)
 
     # 1. Fetch requested Receptors
-    rec_names = [n.strip() for n in args.receptors.split(",")]
-    receptors = session.query(Receptor).filter(Receptor.name.in_(rec_names)).all()
-
-    if len(receptors) != len(rec_names):
-        found = {r.name for r in receptors}
-        missing = set(rec_names) - found
-        console.print(
-            f"[bold red]FATAL: Receptors not found in DB: {missing}[/bold red]"
-        )
-        sys.exit(1)
+    if getattr(args, "receptors", None):
+        rec_names = [n.strip() for n in args.receptors.split(",")]
+        receptors = session.query(Receptor).filter(Receptor.name.in_(rec_names)).all()
+        if len(receptors) != len(rec_names):
+            found = {r.name for r in receptors}
+            missing = set(rec_names) - found
+            console.print(f"[bold red]FATAL: Receptors not found in DB: {missing}[/bold red]")
+            sys.exit(1)
+    else:
+        if is_self:
+            receptors = session.query(Receptor).filter_by(status="ready").all()
+        else:
+            console.print("[bold red]FATAL: Please specify --receptors or use --self / --redock mode.[/bold red]")
+            sys.exit(1)
 
     for r in receptors:
         if r.status != "ready":
-            console.print(
-                f"[bold red]FATAL: Receptor '{r.name}' is not ready! Run 'sbdd prep' first.[/bold red]"
-            )
+            console.print(f"[bold red]FATAL: Receptor '{r.name}' is not ready! Run 'sbdd prep' first.[/bold red]")
             sys.exit(1)
 
-    # 2. Fetch requested Ligands
-    lig_names = [n.strip() for n in args.ligands.split(",")]
-    ligands = session.query(Ligand).filter(Ligand.name.in_(lig_names)).all()
+    # 2. Build Plan (Self 1-to-1 vs Matrix Screening)
+    plan = {
+        "mode": "self" if is_self else "matrix",
+        "receptors": [],
+        "ligands": [],
+        "pairs": []
+    }
 
-    if len(ligands) != len(lig_names):
-        found = {l.name for l in ligands}
-        missing = set(lig_names) - found
-        console.print(f"[bold red]FATAL: Ligands not found in DB: {missing}[/bold red]")
-        sys.exit(1)
+    if is_self:
+        ligand_set = set()
+        for r in receptors:
+            # Walk up to root target to resolve the canonical native ligand
+            curr = r
+            while curr.parent_name:
+                curr = session.query(Receptor).filter_by(name=curr.parent_name).first()
+            root_target = curr
 
-    # 3. Build Docking Plan
-    plan = {"receptors": [], "ligands": []}
+            root_sys = session.query(System).filter_by(receptor_name=root_target.name).first()
+            if not root_sys or not root_sys.pose or not root_sys.pose.ligand:
+                console.print(f"[bold red]FATAL: No native ligand found in database for receptor '{r.name}' (Root Target: {root_target.name}).[/bold red]")
+                sys.exit(1)
 
-    for r in receptors:
-        ref_pose_path = "NO_FILE"
-        sys_obj = session.query(System).filter_by(receptor_name=r.name).first()
-        if sys_obj and sys_obj.pose_name:
-            pose_obj = session.query(Pose).filter_by(name=sys_obj.pose_name).first()
-            if pose_obj and Path(pose_obj.path).exists():
-                pose_p = Path(pose_obj.path)
-                
-                # If the DB points to an SDF, try to find the matching MAE for Glide
-                if pose_p.suffix == ".sdf":
-                    mae_cand = pose_p.with_suffix(".mae")
-                    if mae_cand.exists():
-                        ref_pose_path = str(mae_cand)
-                    else:
-                        ref_pose_path = str(pose_p)
+            native_lig = root_sys.pose.ligand
+            ligand_set.add(native_lig)
+
+            # Reference pose for grid positioning & RMSD
+            ref_pose_path = "NO_FILE"
+            r_sys = session.query(System).filter_by(receptor_name=r.name).first()
+            if r_sys and r_sys.pose and Path(r_sys.pose.path).exists():
+                pose_p = Path(r_sys.pose.path)
+                if pose_p.suffix == ".sdf" and pose_p.with_suffix(".mae").exists():
+                    ref_pose_path = str(pose_p.with_suffix(".mae"))
                 else:
                     ref_pose_path = str(pose_p)
 
-        plan["receptors"].append(
-            {
+            plan["receptors"].append({
+                "name": r.name,
+                "path": r.path,
+                "ref_pose_path": ref_pose_path,
+                "native_ligand": root_target.meta_dict.get("native_ligand", ""),
+            })
+
+            plan["pairs"].append({
+                "receptor": r.name,
+                "ligand": native_lig.name
+            })
+
+        for l in sorted(list(ligand_set), key=lambda x: x.name):
+            plan["ligands"].append({
+                "name": l.name,
+                "path": str(Path(l.path).resolve()),
+                "status": l.status,
+                "is_native": True
+            })
+
+        console.print(f"[bold green]✓ 1-to-1 Redocking Mode: Matched {len(plan['pairs'])} receptors directly to their native ligands (0 cross-docking jobs).[/bold green]")
+
+    else:
+        if not getattr(args, "ligands", None):
+            console.print("[bold red]FATAL: Parameter --ligands is required for cross-docking matrix mode.[/bold red]")
+            sys.exit(1)
+
+        lig_names = [n.strip() for n in args.ligands.split(",")]
+        ligands = session.query(Ligand).filter(Ligand.name.in_(lig_names)).all()
+        if len(ligands) != len(lig_names):
+            found = {l.name for l in ligands}
+            missing = set(lig_names) - found
+            console.print(f"[bold red]FATAL: Ligands not found in DB: {missing}[/bold red]")
+            sys.exit(1)
+
+        for r in receptors:
+            ref_pose_path = "NO_FILE"
+            sys_obj = session.query(System).filter_by(receptor_name=r.name).first()
+            if sys_obj and sys_obj.pose_name:
+                pose_obj = session.query(Pose).filter_by(name=sys_obj.pose_name).first()
+                if pose_obj and Path(pose_obj.path).exists():
+                    pose_p = Path(pose_obj.path)
+                    if pose_p.suffix == ".sdf" and pose_p.with_suffix(".mae").exists():
+                        ref_pose_path = str(pose_p.with_suffix(".mae"))
+                    else:
+                        ref_pose_path = str(pose_p)
+
+            plan["receptors"].append({
                 "name": r.name,
                 "path": r.path,
                 "ref_pose_path": ref_pose_path,
                 "native_ligand": r.meta_dict.get("native_ligand", ""),
-            }
-        )
+            })
 
-    for l in ligands:
-        lig_path = Path(l.path).resolve()
-        if not lig_path.name.endswith(".sdf"):
-            console.print(f"[bold red]FATAL: Ligand '{l.name}' path ({lig_path.name}) is not an SDF file! The database must contain pure isolated ligand SDFs. Please fix the DB or re-extract.[/bold red]")
-            sys.exit(1)
-
-        has_crystal_pose = (
-            session.query(Pose).filter_by(ligand_name=l.name, origin="crystal").first()
-            is not None
-        )
-        plan["ligands"].append(
-            {
+        for l in ligands:
+            has_crystal_pose = (
+                session.query(Pose).filter_by(ligand_name=l.name, origin="crystal").first() is not None
+            )
+            plan["ligands"].append({
                 "name": l.name,
-                "path": str(lig_path),
+                "path": str(Path(l.path).resolve()),
                 "status": l.status,
                 "is_native": has_crystal_pose,
-            }
-        )
+            })
+
+        console.print(f"[bold cyan]Cross-Docking Matrix Plan generated: {len(receptors)} Receptors × {len(ligands)} Ligand Sets[/bold cyan]")
 
     plan_file = cwd / "dock_plan.json"
     with open(plan_file, "w") as f:
         json.dump(plan, f, indent=2)
-
-    console.print(
-        f"[bold cyan]Cross-Docking Plan generated: {len(receptors)} Receptors × {len(ligands)} Ligand Sets[/bold cyan]"
-    )
 
     # 4. Build Nextflow args
     configs = load_project_configs(cwd)

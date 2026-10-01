@@ -285,15 +285,21 @@ def main():
 
     # 3. dock / screen
     p_dock = subparsers.add_parser(
-        "dock", aliases=["screen"], help="Run database-driven distributed cross-docking"
+        "dock", aliases=["screen"], help="Run database-driven distributed docking"
     )
     p_dock.add_argument(
         "--receptors",
-        required=True,
-        help="Comma-separated list of receptor names from DB",
+        help="Comma-separated list of receptor names from DB (default: all ready receptors)",
     )
     p_dock.add_argument(
-        "--ligands", required=True, help="Comma-separated list of ligand names from DB"
+        "--ligands",
+        help="Comma-separated list of ligand names from DB (optional in --self / --redock mode)",
+    )
+    p_dock.add_argument(
+        "--self", "--redock",
+        dest="self_dock",
+        action="store_true",
+        help="Run 1-to-1 self-docking (redocking) of each receptor with its own native ligand without cross-docking matrix",
     )
     p_dock.add_argument("--name", help="Name for the output PoseSet in DB")
     p_dock.add_argument(
