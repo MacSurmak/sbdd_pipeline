@@ -12,147 +12,145 @@ from cli.core.db import init_db, Receptor, Ligand, Trajectory
 console = Console()
 
 
+from cli.core.db import init_db, Receptor, Ligand, Pose, System, Trajectory
+
+
 def add_receptor(args):
+    """
+    Registers a receptor and automatically sets up its canonical System and crystal Pose if ligand is present.
+    """
     session = init_db()
 
-    # 1. Enforce Fail-Fast on paths
     target_path = Path(args.path).resolve()
     if not target_path.exists():
-        console.print(
-            f"[bold red]FATAL: Receptor file does not exist: {target_path}[/bold red]"
-        )
+        console.print(f"[bold red]FATAL: File does not exist: {target_path}[/bold red]")
         sys.exit(1)
 
     name = args.name
     prep_mode = args.prep
     cofactors = args.cofactors if args.cofactors else []
-    native_ligand = args.ligand if args.ligand else ""
+    ligand_name = args.ligand.strip() if args.ligand else None
+    status = "ready" if prep_mode == "ready" else "unprepared"
 
-    # 2. Check if already exists
-    existing = session.query(Receptor).filter_by(name=name).first()
-    if existing:
-        if args.force:
-            existing.path = str(target_path)
-            existing.prep_mode = prep_mode
-            existing.status = "ready" if prep_mode == "ready" else "unprepared"
-            existing.meta_dict = {
-                "cofactors": cofactors,
-                "native_ligand": native_ligand,
-            }
-            console.print(
-                f"[yellow]Updated existing receptor '{name}' in database.[/yellow]"
-            )
-        else:
-            console.print(
-                f"[bold red]FATAL: Receptor '{name}' already exists. Use --force to overwrite.[/bold red]"
-            )
-            sys.exit(1)
+    # 1. Register Receptor
+    rec = session.query(Receptor).filter_by(name=name).first()
+    if not rec:
+        rec = Receptor(name=name, path=str(target_path), status=status, prep_mode=prep_mode)
+        rec.meta_dict = {"cofactors": cofactors, "native_ligand": ligand_name or ""}
+        session.add(rec)
+        console.print(f"[bold green]✓ Registered Receptor '{name}'[/bold green] [dim]({prep_mode})[/dim]")
     else:
-        status = "ready" if prep_mode == "ready" else "unprepared"
-        new_rec = Receptor(
-            name=name, path=str(target_path), status=status, prep_mode=prep_mode
-        )
-        new_rec.meta_dict = {"cofactors": cofactors, "native_ligand": native_ligand}
-        session.add(new_rec)
-        console.print(
-            f"[bold green]✓ Registered receptor '{name}'[/bold green] [dim]({prep_mode} mode)[/dim]"
-        )
+        rec.path = str(target_path)
+        rec.status = status
+        rec.prep_mode = prep_mode
+        rec.meta_dict = {"cofactors": cofactors, "native_ligand": ligand_name or ""}
+
+    # 2. Build initial System and Pose
+    if ligand_name:
+        lig_code = ligand_name[:4].upper()
+        # Ensure Ligand entry exists
+        lig = session.query(Ligand).filter_by(name=lig_code).first()
+        if not lig:
+            lig = Ligand(name=lig_code, path=str(target_path), status=status)
+            session.add(lig)
+
+        # Register Crystal Pose
+        pose_name = f"{name}_{lig_code}_pose"
+        pose = session.query(Pose).filter_by(name=pose_name).first()
+        if not pose:
+            pose = Pose(
+                name=pose_name,
+                ligand_name=lig_code,
+                receptor_name=name,
+                origin="crystal",
+                path=str(target_path),
+                status=status,
+            )
+            session.add(pose)
+
+        # Register Holo System
+        sys_name = f"{name}_holo"
+        sys_obj = session.query(System).filter_by(name=sys_name).first()
+        if not sys_obj:
+            sys_obj = System(name=sys_name, receptor_name=name, pose_name=pose_name, status=status)
+            sys_obj.meta_dict = {"cofactors": cofactors}
+            session.add(sys_obj)
+            console.print(f"[bold green]✓ Created Holo System '{sys_name}'[/bold green] [dim](Receptor: {name} + Pose: {pose_name})[/dim]")
+    else:
+        # Register Apo System
+        sys_name = f"{name}_apo"
+        sys_obj = session.query(System).filter_by(name=sys_name).first()
+        if not sys_obj:
+            sys_obj = System(name=sys_name, receptor_name=name, pose_name=None, status=status)
+            sys_obj.meta_dict = {"cofactors": cofactors}
+            session.add(sys_obj)
+            console.print(f"[bold green]✓ Created Apo System '{sys_name}'[/bold green] [dim](Receptor: {name}, No Ligand)[/dim]")
 
     session.commit()
     session.close()
 
 
 def add_ligand(args):
+    """Registers unpositioned chemical molecules (single or streaming multi-molecule SDF)."""
     session = init_db()
-
     target_path = Path(args.path).resolve()
     if not target_path.exists():
-        console.print(
-            f"[bold red]FATAL: Ligand file does not exist: {target_path}[/bold red]"
-        )
+        console.print(f"[bold red]FATAL: File does not exist: {target_path}[/bold red]")
         sys.exit(1)
 
     name = args.name
-
     existing = session.query(Ligand).filter_by(name=name).first()
     if existing:
-        if args.force:
-            existing.path = str(target_path)
-            existing.is_native = args.native
-            existing.status = "unprepared"
-            console.print(
-                f"[yellow]Updated existing ligand '{name}' in database.[/yellow]"
-            )
-        else:
-            console.print(
-                f"[bold red]FATAL: Ligand '{name}' already exists. Use --force to overwrite.[/bold red]"
-            )
-            sys.exit(1)
+        existing.path = str(target_path)
+        existing.status = "unprepared"
+        console.print(f"[yellow]Updated Ligand '{name}' in database.[/yellow]")
     else:
-        new_lig = Ligand(
-            name=name, path=str(target_path), is_native=args.native, status="unprepared"
-        )
+        new_lig = Ligand(name=name, path=str(target_path), status="unprepared")
         session.add(new_lig)
-        native_tag = "[bold cyan](Native)[/bold cyan]" if args.native else "(Library)"
-        console.print(
-            f"[bold green]✓ Registered ligand '{name}' {native_tag}[/bold green]"
-        )
+        console.print(f"[bold green]✓ Registered Ligand '{name}'[/bold green]")
 
     session.commit()
     session.close()
 
 
 def add_traj(args):
+    """Registers an MD trajectory directly linked to a physical System."""
     session = init_db()
 
     xtc_path = Path(args.xtc).resolve()
     tpr_path = Path(args.tpr).resolve()
-
-    if not xtc_path.exists():
-        console.print(
-            f"[bold red]FATAL: XTC file does not exist: {xtc_path}[/bold red]"
-        )
-        sys.exit(1)
-    if not tpr_path.exists():
-        console.print(
-            f"[bold red]FATAL: TPR file does not exist: {tpr_path}[/bold red]"
-        )
+    if not xtc_path.exists() or not tpr_path.exists():
+        console.print("[bold red]FATAL: XTC or TPR file not found![/bold red]")
         sys.exit(1)
 
-    rec = session.query(Receptor).filter_by(name=args.receptor).first()
-    if not rec:
-        console.print(
-            f"[bold red]FATAL: Parent Receptor '{args.receptor}' not found in DB![/bold red]"
-        )
+    target_sys = args.system
+    sys_obj = session.query(System).filter_by(name=target_sys).first()
+    if not sys_obj:
+        # Fallback: attempt lookup by receptor
+        sys_obj = session.query(System).filter_by(receptor_name=target_sys).first()
+
+    if not sys_obj:
+        console.print(f"[bold red]FATAL: Target System '{target_sys}' not found in DB![/bold red]")
         sys.exit(1)
 
-    name = args.name
-    existing = session.query(Trajectory).filter_by(name=name).first()
-    if existing:
-        if args.force:
-            existing.path_xtc = str(xtc_path)
-            existing.path_tpr = str(tpr_path)
-            existing.receptor_name = args.receptor
-            console.print(
-                f"[yellow]Updated existing trajectory '{name}' in database.[/yellow]"
-            )
-        else:
-            console.print(
-                f"[bold red]FATAL: Trajectory '{name}' already exists. Use --force to overwrite.[/bold red]"
-            )
-            sys.exit(1)
-    else:
-        new_traj = Trajectory(
-            name=name,
-            receptor_name=args.receptor,
-            path_xtc=str(xtc_path),
-            path_tpr=str(tpr_path),
-            length_ns=0.0,
-        )
-        session.add(new_traj)
-        console.print(
-            f"[bold green]✓ Registered MD trajectory '{name}' linked to receptor '{args.receptor}'[/bold green]"
-        )
+    rep_idx = 1
+    for part in args.name.split("_"):
+        if part.startswith("rep") or part.startswith("R"):
+            try:
+                rep_idx = int("".join(filter(str.isdigit, part)))
+            except ValueError:
+                pass
 
+    new_traj = Trajectory(
+        name=args.name,
+        system_name=sys_obj.name,
+        replicate=rep_idx,
+        path_xtc=str(xtc_path),
+        path_tpr=str(tpr_path),
+        length_ns=0.0,
+        status="raw",
+    )
+    session.merge(new_traj)
     session.commit()
     session.close()
+    console.print(f"[bold green]✓ Registered Trajectory '{args.name}' linked to System '{sys_obj.name}'[/bold green]")

@@ -211,16 +211,10 @@ def main():
         "--force", action="store_true", help="Overwrite if name exists"
     )
 
-    # 0.3 add traj (For migrating old MDs)
-    p_add_traj = add_subs.add_parser("traj", help="Register an existing MD trajectory")
-    p_add_traj.add_argument(
-        "--name", required=True, help="Unique name for this trajectory"
-    )
-    p_add_traj.add_argument(
-        "--receptor",
-        required=True,
-        help="Name of the Receptor in DB this MD belongs to",
-    )
+    # 0.3 add traj
+    p_add_traj = add_subs.add_parser("traj", help="Register an existing MD trajectory linked to a System")
+    p_add_traj.add_argument("--name", required=True, help="Unique name for this trajectory (e.g. 7UA1_rep1)")
+    p_add_traj.add_argument("--system", required=True, help="Name of the System in DB (e.g. 7UA1_holo or 7UA1_apo)")
     p_add_traj.add_argument("--xtc", required=True, help="Path to .xtc file")
     p_add_traj.add_argument("--tpr", required=True, help="Path to .tpr file")
     p_add_traj.add_argument("--force", action="store_true", help="Overwrite if exists")
@@ -364,19 +358,29 @@ def main():
         help="Cluster clean MD trajectory ensembles and automatically register frames in DB for docking",
     )
     p_cluster.add_argument(
+        "--systems",
+        help="Comma-separated list of System names to cluster",
+    )
+    p_cluster.add_argument(
         "--receptors",
-        help="Comma-separated list of Receptor names (clusters all their clean replicas)",
+        help="Comma-separated list of Receptor names (clusters trajectories across all their systems)",
     )
     p_cluster.add_argument(
         "--all",
         action="store_true",
-        help="Cluster trajectories for ALL receptors in DB",
+        help="Cluster trajectories for ALL systems in DB",
     )
     p_cluster.add_argument(
         "--traj", help="Explicit comma-separated list of Trajectory names"
     )
     p_cluster.add_argument(
-        "--cutoff", type=float, default=0.15, help="RMSD cutoff in nm (default 0.15)"
+        "--cutoff", type=float, default=0.15, help="RMSD cutoff in nm (default: 0.15)"
+    )
+    p_cluster.add_argument(
+        "--dt", type=int, default=100, help="Frame stride in ps to accelerate clustering (default: 100 ps)"
+    )
+    p_cluster.add_argument(
+        "--group", default="COMPLEX", help="Group for RMSD distance matrix (default: COMPLEX)"
     )
     p_cluster.add_argument(
         "--method", default="gromos", help="Clustering method (default: gromos)"

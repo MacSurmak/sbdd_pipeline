@@ -51,7 +51,7 @@ class Receptor(Base):
 
 class Ligand(Base):
     """
-    Stores ligand libraries or native reference ligands.
+    Stores individual chemical molecules (2D/3D structure without receptor positioning).
     """
 
     __tablename__ = "ligands"
@@ -59,21 +59,60 @@ class Ligand(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String, unique=True, index=True, nullable=False)
     path = Column(String, nullable=False)
-    status = Column(String, default="unprepared", nullable=False)
-    is_native = Column(Boolean, default=False, nullable=False)
+    smiles = Column(Text, nullable=True)
+    status = Column(String, default="unprepared", nullable=False)  # unprepared, ready
+    meta_data = Column(Text, default="{}")
+
+
+class Pose(Base):
+    """
+    A specific 3D spatial conformation of a Ligand positioned in a Receptor coordinate frame.
+    """
+
+    __tablename__ = "poses"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String, unique=True, index=True, nullable=False)
+    ligand_name = Column(String, ForeignKey("ligands.name"), nullable=False)
+    receptor_name = Column(String, ForeignKey("receptors.name"), nullable=False)
+    origin = Column(String, default="docking", nullable=False)  # crystal, docking, manual
+    path = Column(String, nullable=False)
+    status = Column(String, default="unprepared", nullable=False)  # unprepared, ready
+    scores = Column(Text, default="{}")
+
+    ligand = relationship("Ligand")
+    receptor = relationship("Receptor")
+
+
+class System(Base):
+    """
+    The physical thermodynamic unit ready for MD or Scoring: Receptor + optional Pose (None = Apo).
+    """
+
+    __tablename__ = "systems"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String, unique=True, index=True, nullable=False)
+    receptor_name = Column(String, ForeignKey("receptors.name"), nullable=False)
+    pose_name = Column(String, ForeignKey("poses.name"), nullable=True)
+    status = Column(String, default="unprepared", nullable=False)  # unprepared, ready
+    meta_data = Column(Text, default="{}")
+
+    receptor = relationship("Receptor")
+    pose = relationship("Pose")
 
 
 class Trajectory(Base):
     """
-    Stores results of Molecular Dynamics simulations.
-    Tracks both raw and cleaned (PBC whole, centered, fitted, solvent-stripped) trajectories.
+    Stores Molecular Dynamics simulations linked to a physical System.
     """
 
     __tablename__ = "trajectories"
 
     id = Column(Integer, primary_key=True)
     name = Column(String, unique=True, index=True, nullable=False)
-    receptor_name = Column(String, ForeignKey("receptors.name"), nullable=False)
+    system_name = Column(String, ForeignKey("systems.name"), nullable=False)
+    replicate = Column(Integer, default=1, nullable=False)
     path_xtc = Column(String, nullable=False)
     path_tpr = Column(String, nullable=False)
     path_clean_xtc = Column(String, nullable=True)
@@ -81,12 +120,12 @@ class Trajectory(Base):
     length_ns = Column(Float, nullable=True)
     status = Column(String, default="raw", nullable=False)  # raw, cleaned, error
 
-    receptor = relationship("Receptor")
+    system = relationship("System")
 
 
 class PoseSet(Base):
     """
-    Stores massive screening/docking results (Library of poses).
+    Grouping table for virtual screening results.
     """
 
     __tablename__ = "pose_sets"
@@ -96,23 +135,6 @@ class PoseSet(Base):
     path_sdf = Column(String, nullable=False)
     path_csv = Column(String, nullable=False)
     status = Column(String, default="ready", nullable=False)
-
-
-class Complex(Base):
-    """
-    A specific Protein-Ligand hit chosen for downstream MD.
-    """
-
-    __tablename__ = "complexes"
-
-    id = Column(Integer, primary_key=True)
-    name = Column(String, unique=True, index=True, nullable=False)
-    receptor_name = Column(String, ForeignKey("receptors.name"), nullable=False)
-    ligand_title = Column(String, nullable=False)
-    path_pose = Column(String, nullable=False)
-    status = Column(String, default="ready", nullable=False)
-
-    receptor = relationship("Receptor")
 
 
 def init_db(db_path: Path = None):

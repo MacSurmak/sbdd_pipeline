@@ -15,26 +15,27 @@ console = Console()
 
 
 def _query_trajectories(session, args):
-    """Helper to query trajectories based on CLI flags."""
+    """Helper to query trajectories linked to Systems or Receptors."""
     if getattr(args, "all", False):
         trajs = session.query(Trajectory).all()
         if not trajs:
-            console.print(
-                "[bold red]FATAL: No trajectories registered in database.[/bold red]"
-            )
+            console.print("[bold red]FATAL: No trajectories registered in database.[/bold red]")
+            sys.exit(1)
+        return trajs
+    elif getattr(args, "systems", None):
+        target_sys = [s.strip() for s in args.systems.split(",") if s.strip()]
+        trajs = session.query(Trajectory).filter(Trajectory.system_name.in_(target_sys)).all()
+        if not trajs:
+            console.print(f"[bold red]FATAL: No trajectories found for system(s): {target_sys}[/bold red]")
             sys.exit(1)
         return trajs
     elif getattr(args, "receptors", None):
         target_recs = [r.strip() for r in args.receptors.split(",") if r.strip()]
-        trajs = (
-            session.query(Trajectory)
-            .filter(Trajectory.receptor_name.in_(target_recs))
-            .all()
-        )
+        systems = session.query(System).filter(System.receptor_name.in_(target_recs)).all()
+        sys_names = [s.name for s in systems]
+        trajs = session.query(Trajectory).filter(Trajectory.system_name.in_(sys_names)).all()
         if not trajs:
-            console.print(
-                f"[bold red]FATAL: No trajectories found for receptor(s): {target_recs}[/bold red]"
-            )
+            console.print(f"[bold red]FATAL: No trajectories found for receptor(s): {target_recs}[/bold red]")
             sys.exit(1)
         return trajs
     elif getattr(args, "traj", None):
@@ -43,15 +44,11 @@ def _query_trajectories(session, args):
         if len(trajs) != len(traj_names):
             found = {t.name for t in trajs}
             missing = set(traj_names) - found
-            console.print(
-                f"[bold red]FATAL: Trajectories not found in DB: {missing}[/bold red]"
-            )
+            console.print(f"[bold red]FATAL: Trajectories not found in DB: {missing}[/bold red]")
             sys.exit(1)
         return trajs
     else:
-        console.print(
-            "[bold red]FATAL: Please specify --receptors, --all, or --traj[/bold red]"
-        )
+        console.print("[bold red]FATAL: Please specify --systems, --receptors, --all, or --traj[/bold red]")
         sys.exit(1)
 
 
@@ -259,7 +256,7 @@ def cmd_metrics(args):
 
 
 def cmd_cluster(args):
-    """CLI handler for 'sbdd traj-cluster': clusters clean trajectory ensembles (full timeline)."""
+    """CLI handler for 'sbdd traj-cluster': clusters clean trajectory ensembles across Systems."""
     cwd = Path.cwd()
     session = init_db()
     trajs = _query_trajectories(session, args)
@@ -267,29 +264,25 @@ def cmd_cluster(args):
     # 1. Verify all trajectories are cleaned
     for t in trajs:
         if t.status != "cleaned" or not t.path_clean_xtc or not t.path_ref_pdb:
-            console.print(
-                f"[bold red]FATAL: Trajectory '{t.name}' must be cleaned first. Run 'sbdd traj-clean'![/bold red]"
-            )
+            console.print(f"[bold red]FATAL: Trajectory '{t.name}' must be cleaned first. Run 'sbdd traj-clean'![/bold red]")
             sys.exit(1)
 
-    # 2. Group requested trajectories automatically by parent Receptor
+    # 2. Group requested trajectories by System
     groups = {}
     for t in trajs:
-        groups.setdefault(t.receptor_name, []).append(t)
+        groups.setdefault(t.system_name, []).append(t)
 
     plan_list = []
     parent_map = {}
 
-    for rec_name, t_list in groups.items():
-        parent_rec = session.query(Receptor).filter_by(name=rec_name).first()
-        if not parent_rec:
-            console.print(
-                f"[bold red]FATAL: Parent receptor '{rec_name}' not found.[/bold red]"
-            )
+    for sys_name, t_list in groups.items():
+        sys_obj = session.query(System).filter_by(name=sys_name).first()
+        if not sys_obj:
+            console.print(f"[bold red]FATAL: System '{sys_name}' not found.[/bold red]")
             sys.exit(1)
 
-        task_id = f"{rec_name}_ens"
-        parent_map[task_id] = parent_rec
+        task_id = f"{sys_name}_ens"
+        parent_map[task_id] = sys_obj
 
         clean_xtcs = [t.path_clean_xtc for t in t_list]
         ref_pdb = t_list[0].path_ref_pdb
@@ -297,11 +290,13 @@ def cmd_cluster(args):
         plan_list.append(
             {
                 "task_id": task_id,
-                "receptor": rec_name,
+                "system": sys_name,
                 "clean_xtcs": clean_xtcs,
                 "ref_pdb": ref_pdb,
                 "cutoff": args.cutoff,
                 "method": args.method,
+                "dt": args.dt,
+                "group": args.group,
             }
         )
 
@@ -310,7 +305,7 @@ def cmd_cluster(args):
         json.dump(plan_list, f, indent=2)
 
     console.print(
-        f"[bold cyan]Clustering clean ensembles across {len(groups)} Receptor(s) (Cutoff: {args.cutoff} nm, full trajectory)...[/bold cyan]"
+        f"[bold cyan]Clustering clean ensembles across {len(groups)} System(s) (Cutoff: {args.cutoff} nm, Group: {args.group}, dt: {args.dt} ps)...[/bold cyan]"
     )
 
     configs = load_project_configs(cwd)
@@ -349,23 +344,32 @@ def cmd_cluster(args):
             pub_path = Path(pdb_path)
 
         traj_prefix = "_".join(cluster_id.split("_")[:-1])
-        parent_rec = parent_map.get(traj_prefix)
-        parent_name = parent_rec.name if parent_rec else None
-        native_lig = parent_rec.meta_dict.get("native_ligand", "") if parent_rec else ""
+        parent_sys = parent_map.get(traj_prefix)
+        rec_name = parent_sys.receptor_name if parent_sys else None
 
         ex = session.query(Receptor).filter_by(name=cluster_id).first()
         if ex:
             ex.path = str(pub_path)
         else:
+            # Register centroid as a Receptor in light mode
             new_rec = Receptor(
                 name=cluster_id,
                 path=str(pub_path),
                 status="unprepared",
                 prep_mode="light",
-                parent_name=parent_name,
+                parent_name=rec_name,
             )
-            new_rec.meta_dict = {"native_ligand": native_lig}
             session.add(new_rec)
+
+            # Auto-register corresponding cluster System
+            cluster_sys_name = f"{cluster_id}_sys"
+            new_sys = System(
+                name=cluster_sys_name,
+                receptor_name=cluster_id,
+                pose_name=parent_sys.pose_name if parent_sys else None,
+                status="unprepared",
+            )
+            session.add(new_sys)
         count += 1
 
     session.commit()

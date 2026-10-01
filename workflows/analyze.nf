@@ -50,7 +50,7 @@ workflow ANALYZE_WF {
             def meta = [id: item.task_id, project: params.project_name]
             def xtcs = item.clean_xtcs.collect { file(it) }
             def ref_pdb = file(item.ref_pdb)
-            [ meta, xtcs, ref_pdb, item.cutoff, item.method ]
+            [ meta, xtcs, ref_pdb, item.cutoff, item.method, item.dt, item.group ]
         }
 
         GMX_CLUSTER(ch_cluster_in)
@@ -58,8 +58,8 @@ workflow ANALYZE_WF {
         // Flatten output list of pdbs and emit receipt
         GMX_CLUSTER.out.cluster_pdbs.flatMap { m, pdbs ->
             def plist = pdbs instanceof List ? pdbs : [pdbs]
-            plist.withIndex().collect { p, i ->
-                def frame_id = "${m.id}_c${i+1}"
+            plist.collect { p ->
+                def frame_id = p.baseName
                 "${frame_id}\t${p.toAbsolutePath()}"
             }
         }.collectFile(name: 'cluster_receipt.tsv', storeDir: params.outdir, newLine: true)
