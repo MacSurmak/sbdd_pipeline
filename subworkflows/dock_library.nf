@@ -129,6 +129,7 @@ workflow DOCK_LIBRARY {
     top_k_frames        // val: 3
     percentile_cutoff   // val: 0.50
     membrane_enabled    // val: true/false
+    is_self             // val: boolean
 
     main:
     ch_summary_files = Channel.empty()
@@ -148,6 +149,10 @@ workflow DOCK_LIBRARY {
         GLIDE_GRIDGEN(ch_grid_in, inner_box, outer_box, ff_dock)
 
         ch_glide_in = GLIDE_GRIDGEN.out.grid_zip.combine(ch_prepared_mae)
+            .filter { meta_g, grid_zip, meta_l, lib_chunk_mae ->
+                if (!is_self) return true
+                return meta_l.id.startsWith(meta_g.id.split('_')[0])
+            }
             .map { meta_g, grid_zip, meta_l, lib_chunk_mae ->
                 def comb_meta = [
                     id: "${meta_g.id}_c${meta_l.chunk_idx}",
@@ -199,72 +204,88 @@ workflow DOCK_LIBRARY {
 
         MERGE_RESC_CHUNKS(ch_to_merge_resc)
 
-        // Collect all consolidated Glide CSVs and GNINA Rescored SDFs across all frames
-        ch_all_glide_csvs = MERGE_GLIDE_CHUNKS.out.scores_csv.map { meta, csv -> csv }.collect()
-        ch_all_resc_sdfs  = MERGE_RESC_CHUNKS.out.rescored_sdf.map { meta, sdf -> sdf }.collect()
-
-        def bench_ligands = params.benchmark_ligands ? (params.benchmark_ligands instanceof List ? params.benchmark_ligands.join(" ") : params.benchmark_ligands) : ""
-
-        // Build consensus triage whitelist (Top 50% ligands, Top 3 frames per ligand)
-        BUILD_FUNNEL_WHITELIST(
-            params.project_name,
-            ch_all_glide_csvs,
-            ch_all_resc_sdfs,
-            top_k_frames,
-            percentile_cutoff,
-            bench_ligands,
-            params.native_ligand
-        )
-
-        // Filter consolidated PV files per frame and split into parallel chunks
-        ch_filter_in = MERGE_GLIDE_CHUNKS.out.pv_maegz
-            .combine(BUILD_FUNNEL_WHITELIST.out.whitelist_csv)
-            .map { meta, pv, wl -> [ meta, pv ] }
-
-        def batch_pv = params.mmgbsa_batch_size
-        FILTER_PV(
-            ch_filter_in,
-            BUILD_FUNNEL_WHITELIST.out.whitelist_csv,
-            batch_pv
-        )
-
-        // 2D PARALLELISM: N frames * K PV chunks = N * K parallel Prime MM-GBSA Slurm jobs!
-        ch_mmgbsa_in = FILTER_PV.out.filtered_pv_chunks.flatMap { meta, files ->
-            def fileList = files instanceof List ? files : [files]
-            fileList.sort { it.name }.withIndex().collect { f, idx ->
+        if (is_self) {
+            // Direct MM-GBSA on 100% of redocked structures without screening triage
+            ch_mmgbsa_in = MERGE_GLIDE_CHUNKS.out.pv_maegz.map { meta, pv ->
                 def chunk_meta = [
-                    id: "${meta.id}_mmc${idx}",
+                    id: "${meta.id}_mmc0",
                     frame_id: meta.id,
                     frame: meta.frame,
-                    chunk_idx: idx,
+                    chunk_idx: 0,
                     project: meta.project
                 ]
-                [ chunk_meta, f ]
+                [ chunk_meta, pv ]
             }
+
+            PRIME_MMGBSA(ch_mmgbsa_in, prime_job, membrane_enabled)
+
+            ch_summary_files = ch_summary_files
+                .mix(MERGE_GLIDE_CHUNKS.out.scores_csv.map { meta, csv -> csv })
+                .mix(MERGE_GLIDE_CHUNKS.out.poses_sdf.map { meta, sdf -> sdf })
+                .mix(MERGE_RESC_CHUNKS.out.rescored_sdf.map { meta, sdf -> sdf })
+                .mix(PRIME_MMGBSA.out.scores_csv.map { meta, csv -> csv })
+        } else {
+            // Screening Triage Funnel (Top 50%)
+            ch_all_glide_csvs = MERGE_GLIDE_CHUNKS.out.scores_csv.map { meta, csv -> csv }.collect()
+            ch_all_resc_sdfs  = MERGE_RESC_CHUNKS.out.rescored_sdf.map { meta, sdf -> sdf }.collect()
+            def bench_ligands = params.benchmark_ligands ? (params.benchmark_ligands instanceof List ? params.benchmark_ligands.join(" ") : params.benchmark_ligands) : ""
+
+            BUILD_FUNNEL_WHITELIST(
+                params.project_name,
+                ch_all_glide_csvs,
+                ch_all_resc_sdfs,
+                top_k_frames,
+                percentile_cutoff,
+                bench_ligands,
+                params.native_ligand
+            )
+
+            ch_filter_in = MERGE_GLIDE_CHUNKS.out.pv_maegz
+                .combine(BUILD_FUNNEL_WHITELIST.out.whitelist_csv)
+                .map { meta, pv, wl -> [ meta, pv ] }
+
+            FILTER_PV(
+                ch_filter_in,
+                BUILD_FUNNEL_WHITELIST.out.whitelist_csv,
+                params.mmgbsa_batch_size
+            )
+
+            ch_mmgbsa_in = FILTER_PV.out.filtered_pv_chunks.flatMap { meta, files ->
+                def fileList = files instanceof List ? files : [files]
+                fileList.sort { it.name }.withIndex().collect { f, idx ->
+                    def chunk_meta = [
+                        id: "${meta.id}_mmc${idx}",
+                        frame_id: meta.id,
+                        frame: meta.frame,
+                        chunk_idx: idx,
+                        project: meta.project
+                    ]
+                    [ chunk_meta, f ]
+                }
+            }
+
+            PRIME_MMGBSA(ch_mmgbsa_in, prime_job, membrane_enabled)
+
+            ch_mmgbsa_to_merge = PRIME_MMGBSA.out.scores_csv
+                .map { chunk_meta, csv ->
+                    def frame_meta = [
+                        id: chunk_meta.frame_id,
+                        frame: chunk_meta.frame,
+                        project: chunk_meta.project
+                    ]
+                    [ frame_meta, csv ]
+                }
+                .groupTuple(by: 0, sort: true)
+
+            MERGE_MMGBSA_CHUNKS(ch_mmgbsa_to_merge)
+
+            ch_summary_files = ch_summary_files
+                .mix(MERGE_GLIDE_CHUNKS.out.scores_csv.map { meta, csv -> csv })
+                .mix(MERGE_GLIDE_CHUNKS.out.poses_sdf.map { meta, sdf -> sdf })
+                .mix(MERGE_RESC_CHUNKS.out.rescored_sdf.map { meta, sdf -> sdf })
+                .mix(BUILD_FUNNEL_WHITELIST.out.whitelist_csv)
+                .mix(MERGE_MMGBSA_CHUNKS.out.scores_csv.map { meta, csv -> csv })
         }
-
-        PRIME_MMGBSA(ch_mmgbsa_in, prime_job, membrane_enabled)
-
-        // Consolidate MM-GBSA chunk CSVs per frame
-        ch_mmgbsa_to_merge = PRIME_MMGBSA.out.scores_csv
-            .map { chunk_meta, csv ->
-                def frame_meta = [
-                    id: chunk_meta.frame_id,
-                    frame: chunk_meta.frame,
-                    project: chunk_meta.project
-                ]
-                [ frame_meta, csv ]
-            }
-            .groupTuple(by: 0, sort: true)
-
-        MERGE_MMGBSA_CHUNKS(ch_mmgbsa_to_merge)
-
-        ch_summary_files = ch_summary_files
-            .mix(MERGE_GLIDE_CHUNKS.out.scores_csv.map { meta, csv -> csv })
-            .mix(MERGE_GLIDE_CHUNKS.out.poses_sdf.map { meta, sdf -> sdf })
-            .mix(MERGE_RESC_CHUNKS.out.rescored_sdf.map { meta, sdf -> sdf })
-            .mix(BUILD_FUNNEL_WHITELIST.out.whitelist_csv)
-            .mix(MERGE_MMGBSA_CHUNKS.out.scores_csv.map { meta, csv -> csv })
 
         ch_primary_poses = MERGE_GLIDE_CHUNKS.out.poses_sdf
     }
@@ -273,6 +294,10 @@ workflow DOCK_LIBRARY {
     if (dock_engine in ["gnina", "both"]) {
         ch_rec_comb = ch_receptor_pdb.join(ch_ref_lig_sdf, by: 0)
         ch_dock_in = ch_chunks.combine(ch_rec_comb)
+            .filter { meta_chunk, chunk_sdf, chunk_idx, meta_rec, rec_pdb, ref_sdf ->
+                if (!is_self) return true
+                return meta_chunk.id.startsWith(meta_rec.id.split('_')[0])
+            }
             .map { meta_chunk, chunk_sdf, chunk_idx, meta_rec, rec_pdb, ref_sdf ->
                 def comb_meta = [
                     id: "${meta_rec.id}_c${chunk_idx}",

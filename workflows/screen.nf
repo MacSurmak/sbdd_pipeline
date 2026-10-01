@@ -83,7 +83,8 @@ workflow SCREEN_WF {
         params.autobox_add,
         params.top_k_frames,
         params.percentile_cutoff,
-        params.membrane
+        params.membrane,
+        (planData.mode == "self")
     )
 
     // 4. Summarize results
