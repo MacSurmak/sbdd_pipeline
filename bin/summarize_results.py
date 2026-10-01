@@ -219,11 +219,16 @@ def main():
             rec_id = str(row.get("Receptor", row.get("Frame", "")))
             title = row["Title"]
             
-            # Find reference pose for this receptor
-            ref_sdf = next(Path("prepared").glob(f"{rec_id}_pose*.pdb"), None) or \
-                      next(Path("prepared").glob(f"{rec_id}*ref_native*.sdf"), None) or \
-                      next(Path("prepared").glob(f"*{rec_id}*pose*.sdf"), None) or \
-                      next(Path("prepared").glob(f"*{rec_id}*pose*.pdb"), None)
+            # Explicit, deterministic path reconstruction without globbing
+            ref_sdf = None
+            if "centroid" in rec_id:
+                # md_cluster origin: 8UQ3_ready_holo_ens_centroid_3 -> 8UQ3_ready_holo_ens_pose_3.pdb
+                parts = rec_id.split("_centroid_")
+                if len(parts) == 2:
+                    ref_sdf = Path("prepared") / f"{parts[0]}_pose_{parts[1]}.pdb"
+            else:
+                # Crystal origin
+                ref_sdf = Path("prepared") / f"{rec_id}_ref_native_prepared.sdf"
 
             rmsd_val = np.nan
             if ref_sdf and ref_sdf.exists():

@@ -56,14 +56,6 @@ def cmd_dock(args):
         if sys_obj and sys_obj.pose_name:
             pose_obj = session.query(Pose).filter_by(name=sys_obj.pose_name).first()
             if pose_obj and Path(pose_obj.path).exists():
-                if pose_obj.path.endswith(".mae") or pose_obj.path.endswith(".maegz"):
-                    fid = r.name.replace("_ready", "")
-                    clean_sdf = cwd / "prepared" / f"{fid}_ref_native_prepared.sdf"
-                    if not clean_sdf.exists():
-                        clean_sdf = cwd / "prepared" / f"{r.name}_ref_native_prepared.sdf"
-                    if clean_sdf.exists():
-                        pose_obj.path = str(clean_sdf)
-                        session.commit()
                 ref_pose_path = pose_obj.path
 
         plan["receptors"].append(
@@ -76,32 +68,10 @@ def cmd_dock(args):
         )
 
     for l in ligands:
-        # Auto-extract pure ligand SDF if path still points to an aggregated macromolecular complex
         lig_path = Path(l.path).resolve()
-        if lig_path.suffix.lower() in [".mae", ".maegz", ".pdb"] and not lig_path.name.endswith(".sdf"):
-            clean_sdf = cwd / "prepared" / f"{l.name}_isolated.sdf"
-            if not clean_sdf.exists():
-                console.print(f"[cyan]Extracting isolated 3D ligand SDF for '{l.name}' from {lig_path.name}...[/cyan]")
-                resname = l.meta_dict.get("resname", l.name.split("_")[-1])[:4].upper()
-                import subprocess
-                extract_cmd = [
-                    "schrodinger", "run", "python3", "-c",
-                    f"""
-from schrodinger import structure
-st = structure.StructureReader.read(r'{lig_path}')
-atoms = [a.index for a in st.atom if a.pdbres.strip().upper() == '{resname}']
-if atoms:
-    lig = st.extract(atoms)
-    lig.title = '{l.name}'
-    lig.write(r'{clean_sdf}')
-"""
-                ]
-                subprocess.run(extract_cmd, check=True)
-            if clean_sdf.exists():
-                l.path = str(clean_sdf)
-                l.status = "ready"
-                session.commit()
-                lig_path = clean_sdf
+        if not lig_path.name.endswith(".sdf"):
+            console.print(f"[bold red]FATAL: Ligand '{l.name}' path ({lig_path.name}) is not an SDF file! The database must contain pure isolated ligand SDFs. Please fix the DB or re-extract.[/bold red]")
+            sys.exit(1)
 
         has_crystal_pose = (
             session.query(Pose).filter_by(ligand_name=l.name, origin="crystal").first()

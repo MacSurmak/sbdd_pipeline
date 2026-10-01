@@ -10,9 +10,9 @@ process LIGHT_PREPWIZARD {
 
     input:
     tuple val(meta), path(input_pdb)
-
     output:
     tuple val(meta), path("${meta.id}_lightprep.mae"), emit: prepared_mae
+    tuple val(meta), path("${meta.id}_lightprep.pdb"), emit: prepared_pdb
 
     script:
     """
@@ -29,10 +29,14 @@ if lig_atoms:
     st.deleteAtoms(lig_atoms)
     st.write('${meta.id}_lightprep.mae')
 "
-    fi    """
+    fi
+
+    # Explicitly emit matching PDB for docking frameworks
+    schrodinger structconvert ${meta.id}_lightprep.mae ${meta.id}_lightprep.pdb
+    """
 
     stub:
     """
     touch ${meta.id}_lightprep.mae
-    """
-}
+    touch ${meta.id}_lightprep.pdb
+    """}
