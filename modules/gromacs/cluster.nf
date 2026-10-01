@@ -35,6 +35,8 @@ process GMX_CLUSTER {
     if [ "${cluster_group}" = "Pocket" ] || [ "${cluster_group}" = "pocket" ]; then
         python3 ${projectDir}/bin/gromacs_ndx_fixer.py --ndx index.ndx --pdb ${ref_pdb} --ligand "${meta.ligand}" --action add_pocket
         TARGET_GROUP="Pocket"
+    elif [ "${cluster_group}" = "Ligand" ] || [ "${cluster_group}" = "ligand" ]; then
+        TARGET_GROUP="${meta.ligand}"
     fi
 
     # Fit on Protein scaffold, calculate RMSD matrix strictly on target group
