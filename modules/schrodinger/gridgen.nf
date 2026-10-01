@@ -58,7 +58,7 @@ OUTERBOX ${outer_box}
 FORCEFIELD ${forcefield}
 EOF
 
-    schrodinger glide gridgen.in -OVERWRITE -WAIT -LOCAL -NOJOBID    """
+    schrodinger glide gridgen.in -OVERWRITE -WAIT -HOST localhost    """
 
     stub:
     """

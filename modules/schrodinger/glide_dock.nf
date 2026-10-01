@@ -35,7 +35,7 @@ WRITE_CSV       yes
 FORCEFIELD      ${forcefield}
 EOF
 
-    schrodinger glide dock.in -OVERWRITE -WAIT -LOCAL -NOJOBID
+    schrodinger glide dock.in -OVERWRITE -WAIT -HOST localhost
     mv dock_pv.maegz ${meta.id}_dock_pv.maegz
     mv dock.csv ${meta.id}_dock.csv
 

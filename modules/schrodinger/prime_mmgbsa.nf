@@ -35,8 +35,8 @@ process PRIME_MMGBSA {
         -csv_output yes \
         -out_type PV \
         -jobname ${meta.id}_mmgbsa \
-        -LOCAL \
-        -NOJOBID \
+        -HOST localhost \
+        -NJOBS 1 \
         -OVERWRITE \
         -WAIT \
         ${mem_flag} \
