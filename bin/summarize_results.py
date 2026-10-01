@@ -237,8 +237,22 @@ def main():
                             if not b.strip():
                                 continue
                             try:
-                                m_dock = Chem.RemoveHs(Chem.MolFromMolBlock(b.strip() + "\n$$$$\n"))
-                                m_ref = Chem.RemoveHs(Chem.MolFromMolFile(str(ref_sdf)) if ref_sdf.suffix == '.sdf' else Chem.MolFromPDBFile(str(ref_sdf)))
+                                block_str = b.strip() + "\n$$$$\n"
+                                m_dock_raw = Chem.MolFromMolBlock(block_str, removeHs=False)
+                                m_dock = Chem.RemoveHs(m_dock_raw)
+
+                                if ref_sdf.suffix == '.sdf':
+                                    m_ref = Chem.RemoveHs(Chem.MolFromMolFile(str(ref_sdf)))
+                                else:
+                                    # PDB from MD cluster lacks CONECT records; assign bond orders from docked ligand template
+                                    from rdkit.Chem import AllChem
+                                    m_ref_raw = Chem.MolFromPDBFile(str(ref_sdf), sanitize=False, removeHs=False)
+                                    if m_ref_raw and m_dock_raw:
+                                        m_ref_assigned = AllChem.AssignBondOrdersFromTemplate(m_dock_raw, m_ref_raw)
+                                        m_ref = Chem.RemoveHs(m_ref_assigned)
+                                    else:
+                                        m_ref = None
+
                                 if m_dock and m_ref and m_dock.GetNumAtoms() == m_ref.GetNumAtoms():
                                     rmsd_val = round(rdMolAlign.GetBestRMS(m_dock, m_ref), 2)
                                     break

@@ -220,7 +220,16 @@ def cmd_dock(args):
 
                     ex = session.query(Pose).filter_by(name=pose_name).first()
                     if not ex:
-                        lig = session.query(Ligand).filter((Ligand.name == title) | (Ligand.name.like(f"%{title}%"))).first()
+                        # Match ligand based on receptor target lineage (7UA1 vs 8UQ3)
+                        r_obj = session.query(Receptor).filter_by(name=rec_name).first()
+                        root_r = r_obj
+                        while root_r and root_r.parent_name:
+                            root_r = session.query(Receptor).filter_by(name=root_r.parent_name).first()
+                        root_target_name = root_r.name if root_r else rec_name
+
+                        lig = session.query(Ligand).filter(Ligand.name.like(f"%{root_target_name}%")).first()
+                        if not lig:
+                            lig = session.query(Ligand).filter((Ligand.name == title) | (Ligand.name.like(f"%{title}%"))).first()
                         lig_db_name = lig.name if lig else title
 
                         poses_to_insert.append(Pose(
