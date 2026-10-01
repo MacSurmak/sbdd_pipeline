@@ -196,38 +196,91 @@ def cmd_dock(args):
             session.add(new_pose)
             
         # Bulk insert top poses if single receptor (Cross-dock bulk mapping is deferred)
-        if len(receptors) == 1:
-            rec_name = receptors[0].name
-            poses_to_insert = []
-            import csv
-            try:
-                with open(res_csv, 'r', encoding='utf-8', errors='ignore') as f:
-                    reader = csv.DictReader(f)
-                    for row in reader:
-                        title = row.get("Title", "").strip()
-                        score = row.get("Ultimate_Score", 0.0)
-                        if title:
-                            lig = session.query(Ligand).filter_by(name=title).first()
-                            if lig:
-                                pose_name = f"{title}_{poses_name}"
-                                if not session.query(Pose).filter_by(name=pose_name).first():
-                                    poses_to_insert.append(Pose(
-                                        name=pose_name,
-                                        ligand_name=title,
-                                        receptor_name=rec_name,
-                                        origin="docking",
-                                        path=str(res_sdf),
-                                        status="ready",
-                                        scores=json.dumps({"Ultimate_Score": float(score)})
-                                    ))
-                if poses_to_insert:
-                    session.bulk_save_objects(poses_to_insert)
-            except Exception as e:
-                console.print(f"[yellow]Warning: Could not bulk insert poses: {e}[/yellow]")
+        # Bulk insert all docking poses into DB across all receptors
+        poses_to_insert = []
+        import csv
+        try:
+            with open(res_csv, 'r', encoding='utf-8', errors='ignore') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    title = row.get("Title", "").strip()
+                    rec_name = row.get("Receptor", row.get("Frame", "")).strip()
+                    if not title or not rec_name:
+                        continue
+
+                    pose_name = f"{title}_{rec_name}_dock"
+                    sdf_path = cwd / "docking" / rec_name / f"{rec_name}_dock.sdf"
+                    if not sdf_path.exists():
+                        sdf_path = cwd / "docking" / f"{rec_name}_dock.sdf"
+
+                    scores_dict = {
+                        k: float(v) for k, v in row.items()
+                        if k not in ["Rank", "Title", "Receptor", "Frame"] and v and v != "nan" and v != ""
+                    }
+
+                    ex = session.query(Pose).filter_by(name=pose_name).first()
+                    if not ex:
+                        lig = session.query(Ligand).filter((Ligand.name == title) | (Ligand.name.like(f"%{title}%"))).first()
+                        lig_db_name = lig.name if lig else title
+
+                        poses_to_insert.append(Pose(
+                            name=pose_name,
+                            ligand_name=lig_db_name,
+                            receptor_name=rec_name,
+                            origin="docking",
+                            path=str(sdf_path),
+                            status="ready",
+                            scores=json.dumps(scores_dict)
+                        ))
+            if poses_to_insert:
+                session.bulk_save_objects(poses_to_insert)
+        except Exception as e:
+            console.print(f"[yellow]Warning: Could not bulk insert poses: {e}[/yellow]")
 
         session.commit()
         console.print(
-            f"[bold green]✓ Docking complete! Results registered as PoseSet '{poses_name}'.[/bold green]"
+            f"\n[bold green]✓ Docking complete! Results registered as PoseSet '{poses_name}'.[/bold green]\n"
         )
+
+        # Render Rich Summary Table
+        try:
+            from rich.table import Table
+            table = Table(title="🎯 Redocking & Scoring Summary", show_header=True)
+            table.add_column("Receptor", style="cyan")
+            table.add_column("Ligand", style="bold")
+            table.add_column("GlideScore", justify="right")
+            table.add_column("CNN Affinity", justify="right")
+            table.add_column("MM-GBSA (kcal/mol)", justify="right")
+            table.add_column("InSitu RMSD (Å)", justify="center")
+            table.add_column("Verdict", justify="center")
+
+            with open(res_csv, 'r', encoding='utf-8', errors='ignore') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    rec = row.get("Receptor", row.get("Frame", "-"))
+                    lig = row.get("Title", "-")
+                    gscore = row.get("GlideScore", "-")
+                    cnn = row.get("Resc_CNNaffinity") or row.get("Dock_CNNaffinity") or "-"
+                    mmgbsa = row.get("MMGBSA", "-")
+                    rmsd_str = row.get("InSitu_RMSD_A", "-")
+
+                    verdict = "[dim]-[/dim]"
+                    rmsd_display = "-"
+                    if rmsd_str and rmsd_str != "nan" and rmsd_str != "-":
+                        try:
+                            val = float(rmsd_str)
+                            if val <= 2.0:
+                                rmsd_display = f"[bold green]{val:.2f}[/bold green]"
+                                verdict = "[bold green]✓ SUCCESS[/bold green]"
+                            else:
+                                rmsd_display = f"[bold red]{val:.2f}[/bold red]"
+                                verdict = "[bold yellow]⚠ DRIFT[/bold yellow]"
+                        except ValueError:
+                            rmsd_display = rmsd_str
+
+                    table.add_row(rec, lig, str(gscore), str(cnn), str(mmgbsa), rmsd_display, verdict)
+            console.print(table)
+        except Exception as e:
+            console.print(f"[yellow]Warning: Could not render console table: {e}[/yellow]")
 
     session.close()
