@@ -39,14 +39,20 @@ process GMX_CLUSTER {
         TARGET_GROUP="${meta.ligand}"
     fi
 
-    # Calculate RMSD matrix on TARGET_GROUP and output the full COMPLEX structure to PDB
-    printf "\${TARGET_GROUP}\nCOMPLEX\n" | gmx cluster \
+    wcl_flag=""
+    if [ -n "${meta.max_clusters}" ] && [ "${meta.max_clusters}" -gt 0 ]; then
+        wcl_flag="-wcl ${meta.max_clusters}"
+    fi
+
+    # Fit on Protein scaffold, calculate RMSD matrix on selected group, limit to top N clusters
+    printf "Protein\n\${TARGET_GROUP}\n" | gmx cluster \
         -f \${TARGET_XTC} \
         -s ${ref_pdb} \
         -n index.ndx \
         -method ${method} \
         -cutoff ${cutoff} \
         ${dt_flag} \
+        \${wcl_flag} \
         -cl clusters_multi.pdb
     # 3. Split multi-model PDB into distinct centroid complexes and separate in-situ ligand poses
     python3 -c "
