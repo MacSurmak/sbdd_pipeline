@@ -35,11 +35,15 @@ def add_pocket_group(ndx_path: Path, pdb_path: Path, ligand_name: str):
 
     u = mda.Universe(str(pdb_path))
     lig_res = (ligand_name or "KVR").strip().upper()
-    pocket = u.select_atoms(
-        f"(same residue as (protein and around 5.0 of resname {lig_res})) or resname {lig_res}"
-    )
-    if len(pocket) == 0:
+    lig_atoms = u.select_atoms(f"resname {lig_res}")
+    if len(lig_atoms) == 0:
         pocket = u.select_atoms("protein")
+    else:
+        pocket = u.select_atoms(
+            f"(same residue as (protein and around 5.0 resname {lig_res})) or resname {lig_res}"
+        )
+        if len(pocket) == 0:
+            pocket = u.select_atoms("protein")
 
     atom_ids = list(map(int, pocket.atoms.ids))
     with open(ndx_path, "a") as f:
