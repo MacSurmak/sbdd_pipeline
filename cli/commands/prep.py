@@ -98,25 +98,32 @@ def cmd_prep(args):
         if not published_path.exists():
             published_path = Path(raw_out_path)  # Fallback
 
-        ready_name = f"{name}_ready"
-        existing = session.query(Receptor).filter_by(name=ready_name).first()
-
-        if existing:
-            existing.path = str(published_path)
-            existing.status = "ready"
-        else:
-            new_rec = Receptor(
-                name=ready_name,
-                path=str(published_path),
-                status="ready",
-                prep_mode="ready",
-                parent_name=name,
-            )
-            session.add(new_rec)
-
         orig = session.query(Receptor).filter_by(name=name).first()
-        if orig:
-            orig.status = "processed"
+        
+        if orig and orig.prep_mode == "light":
+            orig.path = str(published_path)
+            orig.status = "ready"
+            target_rec_name = name
+        else:
+            ready_name = f"{name}_ready" if not name.endswith("_ready") else name
+            existing = session.query(Receptor).filter_by(name=ready_name).first()
+
+            if existing:
+                existing.path = str(published_path)
+                existing.status = "ready"
+            else:
+                new_rec = Receptor(
+                    name=ready_name,
+                    path=str(published_path),
+                    status="ready",
+                    prep_mode="ready",
+                    parent_name=name,
+                )
+                session.add(new_rec)
+
+            if orig and orig.name != ready_name:
+                orig.status = "processed"
+            target_rec_name = ready_name
 
         # Check if an extracted native ligand SDF exists
         native_sdf = cwd / "prepared" / f"{name}_ref_native_prepared.sdf"
@@ -127,13 +134,13 @@ def cmd_prep(args):
         linked_systems = (
             session.query(System)
             .filter(
-                (System.receptor_name == name) | (System.receptor_name == ready_name)
+                (System.receptor_name == name) | (System.receptor_name == target_rec_name)
             )
             .all()
         )
         for sys_obj in linked_systems:
             sys_obj.status = "ready"
-            sys_obj.receptor_name = ready_name
+            sys_obj.receptor_name = target_rec_name
             if sys_obj.pose_name:
                 pose_obj = session.query(Pose).filter_by(name=sys_obj.pose_name).first()
                 if pose_obj:

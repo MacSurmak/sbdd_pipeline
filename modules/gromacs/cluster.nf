@@ -77,9 +77,11 @@ for line in lines:
         out_p = open(f'${meta.id}_pose_{idx}.pdb', 'w') if lig_name else None
         idx += 1
     if line.startswith(('ATOM', 'HETATM')):
-        if out_c: out_c.write(line)
-        if out_p and (f' {lig_name} ' in line or line[17:21].strip().upper() == lig_name):
-            out_p.write(line)
+        is_lig = lig_name and (f' {lig_name} ' in line or line[17:21].strip().upper() == lig_name)
+        if is_lig:
+            if out_p: out_p.write(line)
+        else:
+            if out_c: out_c.write(line)
     elif line.startswith(('TER', 'ENDMDL')):
         if out_c: out_c.write(line)
         if out_p: out_p.write(line)
