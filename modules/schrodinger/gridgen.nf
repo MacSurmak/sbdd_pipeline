@@ -8,7 +8,7 @@ process GLIDE_GRIDGEN {
     label 'process_single'
 
     input:
-    tuple val(meta), path(receptor_mae), path(ref_lig_mae)
+    tuple val(meta), path(receptor_mae, stageAs: 'rec_dir/*'), path(ref_lig_mae, stageAs: 'ref_dir/*')
     val(inner_box)
     val(outer_box)
     val(forcefield)
@@ -18,10 +18,11 @@ process GLIDE_GRIDGEN {
 
     script:
     """
+    REF_BASE=\$(basename "${ref_lig_mae}")
     REF_MAE="ref_ligand.mae"
-    if [[ "${ref_lig_mae}" == *.mae || "${ref_lig_mae}" == *.maegz ]]; then
+    if [[ "\$REF_BASE" == *.mae || "\$REF_BASE" == *.maegz ]]; then
         REF_MAE="${ref_lig_mae}"
-    elif [[ "${ref_lig_mae}" != "NO_FILE" && -f "${ref_lig_mae}" ]]; then
+    elif [[ "\$REF_BASE" != "NO_FILE" && -f "${ref_lig_mae}" ]]; then
         schrodinger structconvert "${ref_lig_mae}" ref_ligand.mae
         REF_MAE="ref_ligand.mae"
     else

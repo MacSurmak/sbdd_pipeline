@@ -56,6 +56,14 @@ def cmd_dock(args):
         if sys_obj and sys_obj.pose_name:
             pose_obj = session.query(Pose).filter_by(name=sys_obj.pose_name).first()
             if pose_obj and Path(pose_obj.path).exists():
+                if pose_obj.path.endswith(".mae") or pose_obj.path.endswith(".maegz"):
+                    fid = r.name.replace("_ready", "")
+                    clean_sdf = cwd / "prepared" / f"{fid}_ref_native_prepared.sdf"
+                    if not clean_sdf.exists():
+                        clean_sdf = cwd / "prepared" / f"{r.name}_ref_native_prepared.sdf"
+                    if clean_sdf.exists():
+                        pose_obj.path = str(clean_sdf)
+                        session.commit()
                 ref_pose_path = pose_obj.path
 
         plan["receptors"].append(

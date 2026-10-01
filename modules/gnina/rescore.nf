@@ -8,7 +8,7 @@ process GNINA_RESCORE {
     label 'process_gpu'
 
     input:
-    tuple val(meta), path(receptor_pdb), path(ref_lig_sdf), path(poses_sdf)
+    tuple val(meta), path(receptor_pdb, stageAs: 'rec_dir/*'), path(ref_lig_sdf, stageAs: 'ref_dir/*'), path(poses_sdf, stageAs: 'poses_dir/*')
     val(cnn_model)
 
     output:
@@ -17,12 +17,18 @@ process GNINA_RESCORE {
 
     script:
     def cnn_flag = cnn_model ? "--cnn ${cnn_model}" : ""
-    def autobox_flag = (ref_lig_sdf && ref_lig_sdf.name != 'NO_FILE') ? "--autobox_ligand ${ref_lig_sdf}" : ""
     """
+    REF_BASE=\$(basename "${ref_lig_sdf}")
+    if [[ "\$REF_BASE" != "NO_FILE" && -f "${ref_lig_sdf}" ]]; then
+        AUTOBOX_FLAG="--autobox_ligand ${ref_lig_sdf}"
+    else
+        AUTOBOX_FLAG=""
+    fi
+
     gnina \\
         -r ${receptor_pdb} \\
         -l ${poses_sdf} \\
-        ${autobox_flag} \\
+        \$AUTOBOX_FLAG \\
         --score_only \\
         ${cnn_flag} \\
         -o ${meta.id}_rescored.sdf > ${meta.id}_gnina_rescore.log
