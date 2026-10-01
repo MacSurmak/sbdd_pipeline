@@ -40,6 +40,7 @@ def main():
     args = parser.parse_args()
 
     import re
+
     allowed_titles = set()
     with open(args.whitelist, "r") as f:
         reader = csv.DictReader(f)

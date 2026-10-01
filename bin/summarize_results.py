@@ -232,7 +232,9 @@ def main():
             title = row["Title"]
             ref_sdf = Path(f"prepared/{fid}_ref_native_prepared.sdf")
             if not ref_sdf.exists():
-                ref_sdf = next(Path("prepared").glob(f"*{fid}*pose*.sdf"), None) or next(Path("prepared").glob(f"*{fid}*pose*.pdb"), None)
+                ref_sdf = next(
+                    Path("prepared").glob(f"*{fid}*pose*.sdf"), None
+                ) or next(Path("prepared").glob(f"*{fid}*pose*.pdb"), None)
 
             rmsd_val = np.nan
             if ref_sdf and ref_sdf.exists():
@@ -242,11 +244,21 @@ def main():
                     with open(dock_candidates[0], "r", errors="ignore") as f:
                         for b in f.read().split("$$$$"):
                             lines = b.strip().splitlines()
-                            if lines and (lines[0].strip() == title or title in lines[0]):
-                                m_dock = Chem.RemoveHs(Chem.MolFromMolBlock(b.strip() + "\n$$$$\n"))
+                            if lines and (
+                                lines[0].strip() == title or title in lines[0]
+                            ):
+                                m_dock = Chem.RemoveHs(
+                                    Chem.MolFromMolBlock(b.strip() + "\n$$$$\n")
+                                )
                                 m_ref = Chem.RemoveHs(Chem.MolFromMolFile(str(ref_sdf)))
-                                if m_dock and m_ref and m_dock.GetNumAtoms() == m_ref.GetNumAtoms():
-                                    rmsd_val = round(rdMolAlign.GetBestRMS(m_dock, m_ref), 2)
+                                if (
+                                    m_dock
+                                    and m_ref
+                                    and m_dock.GetNumAtoms() == m_ref.GetNumAtoms()
+                                ):
+                                    rmsd_val = round(
+                                        rdMolAlign.GetBestRMS(m_dock, m_ref), 2
+                                    )
                                 break
             insitu_rmsds.append(rmsd_val)
         df_resolved["InSitu_RMSD_A"] = insitu_rmsds

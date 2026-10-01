@@ -340,10 +340,14 @@ def main():
         "--system", help="Name of the physical System to simulate (from 'sbdd tree')"
     )
     p_dyn.add_argument(
-        "--replicates", type=int, help="Number of independent replicates (default: from config)"
+        "--replicates",
+        type=int,
+        help="Number of independent replicates (default: from config)",
     )
     p_dyn.add_argument(
-        "--total_ns", type=float, help="Total simulation duration in ns (default: from config)"
+        "--total_ns",
+        type=float,
+        help="Total simulation duration in ns (default: from config)",
     )
     add_common_wf_args(p_dyn)
 
