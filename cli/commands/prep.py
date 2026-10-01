@@ -90,11 +90,9 @@ def cmd_prep(args):
             continue
         name, raw_out_path = line.split("\t")
 
-        # Resolve the published path (in prepared/ folder) instead of work/ cache
-        published_path = cwd / "prepared" / Path(raw_out_path).name
-        if not published_path.exists():
-            published_path = Path(raw_out_path)  # Fallback
-
+        # Resolve explicit published path, discarding any nextflow cache prefix
+        published_path = cwd / "prepared" / f"{name}_prepared.mae"
+        
         orig = session.query(Receptor).filter_by(name=name).first()
         
         if orig and orig.prep_mode == "light":
