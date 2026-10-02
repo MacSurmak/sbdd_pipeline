@@ -56,7 +56,7 @@ def cmd_dock(args):
         for r in frames:
             target_sys = (
                 session.query(System)
-                .filter(System.target_id == r.target_id, System.pose_id.isnot(None))
+                .filter(System.receptor_frame_id == r.id, System.pose_id.isnot(None))
                 .first()
             )
             if not target_sys or not target_sys.pose:
@@ -172,45 +172,53 @@ def cmd_dock(args):
             )
             sys.exit(1)
 
-        for r in receptors:
-            ref_pose_path = "NO_FILE"
-            sys_obj = session.query(System).filter_by(receptor_name=r.name).first()
-            if sys_obj and sys_obj.pose_name:
-                pose_obj = session.query(Pose).filter_by(name=sys_obj.pose_name).first()
-                if pose_obj and Path(pose_obj.path).exists():
-                    pose_p = Path(pose_obj.path)
-                    if pose_p.suffix == ".sdf" and pose_p.with_suffix(".mae").exists():
-                        ref_pose_path = str(pose_p.with_suffix(".mae"))
-                    else:
-                        ref_pose_path = str(pose_p)
+        for r in frames:
+            ref_sdf = "NO_FILE"
+            ref_mae = "NO_FILE"
+            native_lig = ""
+            sys_obj = session.query(System).filter_by(receptor_frame_id=r.id).first()
+            if sys_obj and sys_obj.pose:
+                pose_obj = sys_obj.pose
+                native_lig = pose_obj.ligand.name
+                pose_p = Path(pose_obj.path).resolve()
+                if pose_p.exists():
+                    ref_sdf = str(pose_p.with_suffix(".sdf"))
+                    ref_mae = str(pose_p.with_suffix(".mae"))
+
+            frame_p = Path(r.path).resolve()
+            path_mae = str(frame_p.with_suffix(".mae"))
+            path_pdb = str(frame_p.with_suffix(".pdb"))
 
             plan["receptors"].append(
                 {
                     "name": r.name,
-                    "path": r.path,
-                    "ref_pose_path": ref_pose_path,
-                    "native_ligand": r.meta_dict.get("native_ligand", ""),
+                    "path_mae": path_mae,
+                    "path_pdb": path_pdb,
+                    "ref_sdf": ref_sdf,
+                    "ref_mae": ref_mae,
+                    "native_ligand": native_lig,
                 }
             )
 
         for l in ligands:
             has_crystal_pose = (
                 session.query(Pose)
-                .filter_by(ligand_name=l.name, origin="crystal")
+                .filter_by(ligand_id=l.id, origin="crystal")
                 .first()
                 is not None
             )
+            # Use 'ready' status for standalone chemical ligands that don't need prep
             plan["ligands"].append(
                 {
                     "name": l.name,
                     "path": str(Path(l.path).resolve()),
-                    "status": l.status,
+                    "status": "ready" if l.batch_id == "crystal" else "unprepared",
                     "is_native": has_crystal_pose,
                 }
             )
 
         console.print(
-            f"[bold cyan]Cross-Docking Matrix Plan generated: {len(receptors)} Receptors × {len(ligands)} Ligand Sets[/bold cyan]"
+            f"[bold cyan]Cross-Docking Matrix Plan generated: {len(frames)} Receptors × {len(ligands)} Ligand Sets[/bold cyan]"
         )
 
     plan_file = cwd / "dock_plan.json"
@@ -247,7 +255,7 @@ def cmd_dock(args):
     # 6. Register results in Database
     num_ligs = len(plan.get("ligands", []))
     default_name = (
-        f"redock_{len(receptors)}" if is_self else f"screen_{len(receptors)}x{num_ligs}"
+        f"redock_{len(frames)}" if is_self else f"screen_{len(frames)}x{num_ligs}"
     )
     poses_name = args.name if getattr(args, "name", None) else default_name
     res_csv = cwd / "reports" / "ranking.csv"
@@ -285,9 +293,20 @@ def cmd_dock(args):
                         continue
 
                     pose_name = f"{frame_name}_{title}_dock"
-                    sdf_path = cwd / "docking" / frame_name / f"{frame_name}_dock.sdf"
-                    if not sdf_path.exists():
-                        sdf_path = cwd / "docking" / f"{frame_name}_dock.sdf"
+                    
+                    sdf_path = None
+                    for cand in [
+                        cwd / "docking" / frame_name / f"{frame_name}_dock.sdf",
+                        cwd / "docking" / frame_name / f"{frame_name}_gnina_docked_all.sdf",
+                        cwd / "docking" / f"{frame_name}_dock.sdf",
+                        cwd / "docking" / f"{frame_name}_gnina_docked_all.sdf",
+                    ]:
+                        if cand.exists():
+                            sdf_path = cand
+                            break
+
+                    if not sdf_path:
+                        continue
 
                     scores_dict = {
                         k: float(v)
