@@ -38,6 +38,7 @@ class Target(Base):
     Biological macromolecular target / project folder (e.g. 'RyR1', 'TSPO', 'EGFR').
     Contains no coordinate files; acts strictly as an abstract metadata container.
     """
+
     __tablename__ = "targets"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -45,8 +46,12 @@ class Target(Base):
     description = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
-    frames = relationship("ReceptorFrame", back_populates="target", cascade="all, delete-orphan")
-    systems = relationship("System", back_populates="target", cascade="all, delete-orphan")
+    frames = relationship(
+        "ReceptorFrame", back_populates="target", cascade="all, delete-orphan"
+    )
+    systems = relationship(
+        "System", back_populates="target", cascade="all, delete-orphan"
+    )
 
 
 class ReceptorFrame(Base):
@@ -54,22 +59,35 @@ class ReceptorFrame(Base):
     Specific 3D structure of a Target (crystal model, NMR model, MD centroid, AlphaFold).
     All frames are peer entities under their parent Target.
     """
+
     __tablename__ = "receptor_frames"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    target_id = Column(Integer, ForeignKey("targets.id", ondelete="CASCADE"), nullable=False)
+    target_id = Column(
+        Integer, ForeignKey("targets.id", ondelete="CASCADE"), nullable=False
+    )
     name = Column(String, unique=True, index=True, nullable=False)
-    source_type = Column(String, default="crystal", nullable=False)  # crystal, nmr, md_centroid, af3, docking_receptor
+    source_type = Column(
+        String, default="crystal", nullable=False
+    )  # crystal, nmr, md_centroid, af3, docking_receptor
     state = Column(String, default="raw", nullable=False)  # raw, ready
-    parent_frame_id = Column(Integer, ForeignKey("receptor_frames.id", ondelete="SET NULL"), nullable=True)
+    parent_frame_id = Column(
+        Integer, ForeignKey("receptor_frames.id", ondelete="SET NULL"), nullable=True
+    )
     path = Column(String, nullable=False)
     cofactors = Column(Text, default="[]", nullable=False)  # JSON list of cofactors
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     target = relationship("Target", back_populates="frames")
-    parent_frame = relationship("ReceptorFrame", remote_side=[id], backref="derived_frames")
-    poses = relationship("Pose", back_populates="receptor_frame", cascade="all, delete-orphan")
-    systems = relationship("System", back_populates="receptor_frame", cascade="all, delete-orphan")
+    parent_frame = relationship(
+        "ReceptorFrame", remote_side=[id], backref="derived_frames"
+    )
+    poses = relationship(
+        "Pose", back_populates="receptor_frame", cascade="all, delete-orphan"
+    )
+    systems = relationship(
+        "System", back_populates="receptor_frame", cascade="all, delete-orphan"
+    )
 
     @property
     def cofactors_list(self) -> list:
@@ -88,6 +106,7 @@ class Ligand(Base):
     Chemical substance (2D topology).
     Deduplicated across the entire database by Standard InChIKey.
     """
+
     __tablename__ = "ligands"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -105,15 +124,24 @@ class Pose(Base):
     Atomic 3D conformation of a Ligand positioned in a ReceptorFrame pocket.
     1 Pose = 1 File on disk (.sdf or .mae).
     """
+
     __tablename__ = "poses"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    ligand_id = Column(Integer, ForeignKey("ligands.id", ondelete="CASCADE"), nullable=False)
-    receptor_frame_id = Column(Integer, ForeignKey("receptor_frames.id", ondelete="CASCADE"), nullable=False)
+    ligand_id = Column(
+        Integer, ForeignKey("ligands.id", ondelete="CASCADE"), nullable=False
+    )
+    receptor_frame_id = Column(
+        Integer, ForeignKey("receptor_frames.id", ondelete="CASCADE"), nullable=False
+    )
     name = Column(String, unique=True, index=True, nullable=False)
-    origin = Column(String, default="crystal", nullable=False)  # crystal, docking, md_cluster, manual
+    origin = Column(
+        String, default="crystal", nullable=False
+    )  # crystal, docking, md_cluster, manual
     state = Column(String, default="raw", nullable=False)  # raw, ready
-    parent_pose_id = Column(Integer, ForeignKey("poses.id", ondelete="SET NULL"), nullable=True)
+    parent_pose_id = Column(
+        Integer, ForeignKey("poses.id", ondelete="SET NULL"), nullable=True
+    )
     path = Column(String, nullable=False)
     scores = Column(Text, default="{}", nullable=False)  # JSON dict of scoring metrics
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
@@ -140,22 +168,35 @@ class System(Base):
     Thermodynamic physical unit for simulation or evaluation:
     ReceptorFrame + optional Pose (NULL = Apo, Not NULL = Holo).
     """
+
     __tablename__ = "systems"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    target_id = Column(Integer, ForeignKey("targets.id", ondelete="CASCADE"), nullable=False)
-    receptor_frame_id = Column(Integer, ForeignKey("receptor_frames.id", ondelete="CASCADE"), nullable=False)
-    pose_id = Column(Integer, ForeignKey("poses.id", ondelete="SET NULL"), nullable=True)
+    target_id = Column(
+        Integer, ForeignKey("targets.id", ondelete="CASCADE"), nullable=False
+    )
+    receptor_frame_id = Column(
+        Integer, ForeignKey("receptor_frames.id", ondelete="CASCADE"), nullable=False
+    )
+    pose_id = Column(
+        Integer, ForeignKey("poses.id", ondelete="SET NULL"), nullable=True
+    )
     name = Column(String, unique=True, index=True, nullable=False)
     state = Column(String, default="raw", nullable=False)  # raw, ready
-    origin = Column(String, default="crystal", nullable=False)  # crystal, docking, md_cluster
-    environment = Column(Text, default="{}", nullable=False)  # JSON membrane/solvent specs
+    origin = Column(
+        String, default="crystal", nullable=False
+    )  # crystal, docking, md_cluster
+    environment = Column(
+        Text, default="{}", nullable=False
+    )  # JSON membrane/solvent specs
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     target = relationship("Target", back_populates="systems")
     receptor_frame = relationship("ReceptorFrame", back_populates="systems")
     pose = relationship("Pose", back_populates="systems")
-    trajectories = relationship("Trajectory", back_populates="system", cascade="all, delete-orphan")
+    trajectories = relationship(
+        "Trajectory", back_populates="system", cascade="all, delete-orphan"
+    )
 
     @property
     def environment_dict(self) -> dict:
@@ -174,10 +215,13 @@ class Trajectory(Base):
     Molecular Dynamics simulation replicate linked to a physical System.
     Raw chunks live in raw_dir; cleaned trajectory without solvent lives in path_clean_xtc.
     """
+
     __tablename__ = "trajectories"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    system_id = Column(Integer, ForeignKey("systems.id", ondelete="CASCADE"), nullable=False)
+    system_id = Column(
+        Integer, ForeignKey("systems.id", ondelete="CASCADE"), nullable=False
+    )
     name = Column(String, unique=True, index=True, nullable=False)
     replicate = Column(Integer, default=1, nullable=False)
     length_ns = Column(Float, default=0.0, nullable=False)

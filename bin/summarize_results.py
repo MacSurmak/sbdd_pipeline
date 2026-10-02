@@ -131,23 +131,34 @@ def main():
 
     # Identify unique Receptors by stripping known task suffixes
     all_receptors = set()
-    all_files = list(dock_dir.glob("**/*_dock.csv")) + \
-                list(dock_dir.glob("**/*_rescored.sdf")) + \
-                list(dock_dir.glob("**/*_gnina_docked_all.sdf")) + \
-                list(analysis_dir.glob("**/*_mmgbsa-out.csv"))
+    all_files = (
+        list(dock_dir.glob("**/*_dock.csv"))
+        + list(dock_dir.glob("**/*_rescored.sdf"))
+        + list(dock_dir.glob("**/*_gnina_docked_all.sdf"))
+        + list(analysis_dir.glob("**/*_mmgbsa-out.csv"))
+    )
 
     for p in all_files:
         name = p.name
-        for sfx in ["_dock.csv", "_dock_pv.maegz", "_dock.sdf", "_rescored.sdf", "_gnina_docked_all.sdf", "_mmgbsa-out.csv"]:
+        for sfx in [
+            "_dock.csv",
+            "_dock_pv.maegz",
+            "_dock.sdf",
+            "_rescored.sdf",
+            "_gnina_docked_all.sdf",
+            "_mmgbsa-out.csv",
+        ]:
             if name.endswith(sfx):
-                rec_name = name[:-len(sfx)]
+                rec_name = name[: -len(sfx)]
                 # Clean sub-chunk prefixes and mmc task suffixes
                 rec_name = re.sub(r"(_mmc\d+|_c\d+|_cnative)$", "", rec_name)
                 all_receptors.add(rec_name)
                 break
 
     if not all_receptors:
-        raise ValueError(f"FATAL: No docking results found in {dock_dir} or {analysis_dir}")
+        raise ValueError(
+            f"FATAL: No docking results found in {dock_dir} or {analysis_dir}"
+        )
 
     rows = []
     for rec_id in sorted(all_receptors):
@@ -172,7 +183,12 @@ def main():
         for f in d_files:
             dock_data.update(parse_gnina_sdf(f, prefix="Dock_"))
 
-        titles = set(list(glide_data.keys()) + list(prime_data.keys()) + list(resc_data.keys()) + list(dock_data.keys()))
+        titles = set(
+            list(glide_data.keys())
+            + list(prime_data.keys())
+            + list(resc_data.keys())
+            + list(dock_data.keys())
+        )
         for t in titles:
             r = {"Title": t, "Receptor": rec_id, "Frame": rec_id}
             r.update(glide_data.get(t, {}))
@@ -218,15 +234,23 @@ def main():
         for _, row in df_resolved.iterrows():
             rec_id = str(row.get("Receptor", row.get("Frame", "")))
             title = row["Title"]
-            
+
             # Search for reference pose in workdir (staged) and in prepared/
             ref_sdf = None
             if "centroid" in rec_id:
                 parts = rec_id.split("_centroid_")
-                cand_name = f"*{parts[0]}*pose_{parts[1]}.pdb" if len(parts) == 2 else f"*{rec_id}*pose*.pdb"
-                ref_sdf = next(dock_dir.glob(cand_name), None) or next(Path("prepared").glob(cand_name), None)
+                cand_name = (
+                    f"*{parts[0]}*pose_{parts[1]}.pdb"
+                    if len(parts) == 2
+                    else f"*{rec_id}*pose*.pdb"
+                )
+                ref_sdf = next(dock_dir.glob(cand_name), None) or next(
+                    Path("prepared").glob(cand_name), None
+                )
             else:
-                ref_sdf = next(dock_dir.glob(f"*{rec_id}*ref_native*"), None) or next(Path("prepared").glob(f"*{rec_id}*ref_native*"), None)
+                ref_sdf = next(dock_dir.glob(f"*{rec_id}*ref_native*"), None) or next(
+                    Path("prepared").glob(f"*{rec_id}*ref_native*"), None
+                )
 
             rmsd_val = np.nan
             if ref_sdf and ref_sdf.exists():
@@ -238,23 +262,40 @@ def main():
                                 continue
                             try:
                                 block_str = b.strip() + "\n$$$$\n"
-                                m_dock_raw = Chem.MolFromMolBlock(block_str, removeHs=False)
+                                m_dock_raw = Chem.MolFromMolBlock(
+                                    block_str, removeHs=False
+                                )
                                 m_dock = Chem.RemoveHs(m_dock_raw)
 
-                                if ref_sdf.suffix == '.sdf':
-                                    m_ref = Chem.RemoveHs(Chem.MolFromMolFile(str(ref_sdf)))
+                                if ref_sdf.suffix == ".sdf":
+                                    m_ref = Chem.RemoveHs(
+                                        Chem.MolFromMolFile(str(ref_sdf))
+                                    )
                                 else:
                                     # PDB from MD cluster lacks CONECT records; assign bond orders from docked ligand template
                                     from rdkit.Chem import AllChem
-                                    m_ref_raw = Chem.MolFromPDBFile(str(ref_sdf), sanitize=False, removeHs=False)
+
+                                    m_ref_raw = Chem.MolFromPDBFile(
+                                        str(ref_sdf), sanitize=False, removeHs=False
+                                    )
                                     if m_ref_raw and m_dock_raw:
-                                        m_ref_assigned = AllChem.AssignBondOrdersFromTemplate(m_dock_raw, m_ref_raw)
+                                        m_ref_assigned = (
+                                            AllChem.AssignBondOrdersFromTemplate(
+                                                m_dock_raw, m_ref_raw
+                                            )
+                                        )
                                         m_ref = Chem.RemoveHs(m_ref_assigned)
                                     else:
                                         m_ref = None
 
-                                if m_dock and m_ref and m_dock.GetNumAtoms() == m_ref.GetNumAtoms():
-                                    rmsd_val = round(rdMolAlign.GetBestRMS(m_dock, m_ref), 2)
+                                if (
+                                    m_dock
+                                    and m_ref
+                                    and m_dock.GetNumAtoms() == m_ref.GetNumAtoms()
+                                ):
+                                    rmsd_val = round(
+                                        rdMolAlign.GetBestRMS(m_dock, m_ref), 2
+                                    )
                                     break
                             except Exception:
                                 pass

@@ -24,7 +24,9 @@ def cmd_dock(args):
     if getattr(args, "target", None):
         target_obj = session.query(Target).filter_by(name=args.target).first()
         if not target_obj:
-            console.print(f"[bold red]FATAL: Target '{args.target}' not found.[/bold red]")
+            console.print(
+                f"[bold red]FATAL: Target '{args.target}' not found.[/bold red]"
+            )
             sys.exit(1)
         query = query.filter(ReceptorFrame.target_id == target_obj.id)
     elif getattr(args, "frames", None) or getattr(args, "receptors", None):
@@ -34,7 +36,9 @@ def cmd_dock(args):
 
     frames = query.all()
     if not frames:
-        console.print("[bold red]FATAL: No ready ReceptorFrames found to dock. Run 'sbdd prep' first![/bold red]")
+        console.print(
+            "[bold red]FATAL: No ready ReceptorFrames found to dock. Run 'sbdd prep' first![/bold red]"
+        )
         sys.exit(1)
 
     # 2. Build Plan (Self 1-to-1 vs Matrix Screening)
@@ -42,7 +46,7 @@ def cmd_dock(args):
         "mode": "self" if is_self else "matrix",
         "receptors": [],
         "ligands": [],
-        "pairs": []
+        "pairs": [],
     }
 
     if is_self:
@@ -50,7 +54,11 @@ def cmd_dock(args):
         active_frames = []
 
         for r in frames:
-            target_sys = session.query(System).filter(System.target_id == r.target_id, System.pose_id.isnot(None)).first()
+            target_sys = (
+                session.query(System)
+                .filter(System.target_id == r.target_id, System.pose_id.isnot(None))
+                .first()
+            )
             if not target_sys or not target_sys.pose:
                 continue
 
@@ -59,7 +67,11 @@ def cmd_dock(args):
 
             # Check if self-docking pose already exists in DB
             dock_pose_name = f"{r.name}_{native_lig.name}_dock"
-            ex = session.query(Pose).filter_by(name=dock_pose_name, origin="docking", state="ready").first()
+            ex = (
+                session.query(Pose)
+                .filter_by(name=dock_pose_name, origin="docking", state="ready")
+                .first()
+            )
             if ex:
                 continue
 
@@ -67,7 +79,9 @@ def cmd_dock(args):
             active_frames.append((r, native_pose, native_lig))
 
         if not active_frames:
-            console.print(f"[bold green]✓ All {len(frames)} ready frame(s) already have redocking poses completed. Nothing to do![/bold green]")
+            console.print(
+                f"[bold green]✓ All {len(frames)} ready frame(s) already have redocking poses completed. Nothing to do![/bold green]"
+            )
             session.close()
             return
 
@@ -78,10 +92,14 @@ def cmd_dock(args):
             path_pdb = frame_p.with_suffix(".pdb")
 
             if not path_mae.exists():
-                console.print(f"[bold red]FATAL: Receptor MAE not found for frame '{r.name}': {path_mae}[/bold red]")
+                console.print(
+                    f"[bold red]FATAL: Receptor MAE not found for frame '{r.name}': {path_mae}[/bold red]"
+                )
                 sys.exit(1)
             if not path_pdb.exists():
-                console.print(f"[bold red]FATAL: Receptor PDB not found for frame '{r.name}': {path_pdb}[/bold red]")
+                console.print(
+                    f"[bold red]FATAL: Receptor PDB not found for frame '{r.name}': {path_pdb}[/bold red]"
+                )
                 sys.exit(1)
 
             # Strictly resolve existing SDF and MAE files for reference pose
@@ -90,45 +108,58 @@ def cmd_dock(args):
             pose_mae = pose_p.with_suffix(".mae")
 
             if not pose_sdf.exists():
-                console.print(f"[bold red]FATAL: Reference pose SDF not found for frame '{r.name}': {pose_sdf}[/bold red]")
+                console.print(
+                    f"[bold red]FATAL: Reference pose SDF not found for frame '{r.name}': {pose_sdf}[/bold red]"
+                )
                 sys.exit(1)
             if not pose_mae.exists():
-                console.print(f"[bold red]FATAL: Reference pose MAE not found for frame '{r.name}': {pose_mae}[/bold red]")
+                console.print(
+                    f"[bold red]FATAL: Reference pose MAE not found for frame '{r.name}': {pose_mae}[/bold red]"
+                )
                 sys.exit(1)
 
-            plan["receptors"].append({
-                "name": r.name,
-                "path_mae": str(path_mae),
-                "path_pdb": str(path_pdb),
-                "ref_sdf": str(pose_sdf),
-                "ref_mae": str(pose_mae),
-                "native_ligand": native_lig.name,
-            })
+            plan["receptors"].append(
+                {
+                    "name": r.name,
+                    "path_mae": str(path_mae),
+                    "path_pdb": str(path_pdb),
+                    "ref_sdf": str(pose_sdf),
+                    "ref_mae": str(pose_mae),
+                    "native_ligand": native_lig.name,
+                }
+            )
 
-            plan["pairs"].append({
-                "receptor": r.name,
-                "ligand": native_lig.name
-            })
+            plan["pairs"].append({"receptor": r.name, "ligand": native_lig.name})
 
         # Index ligands uniquely to prevent name collisions in multi-target self-docking
-        for idx, (l_obj, l_path) in enumerate(sorted(list(ligand_set), key=lambda x: str(x[1])), start=1):
-            unique_lig_name = f"{l_obj.name}_{idx}" if len(ligand_set) > 1 else l_obj.name
-            plan["ligands"].append({
-                "name": unique_lig_name,
-                "path": str(Path(l_path).resolve()),
-                "status": "ready",
-                "is_native": True
-            })
+        for idx, (l_obj, l_path) in enumerate(
+            sorted(list(ligand_set), key=lambda x: str(x[1])), start=1
+        ):
+            unique_lig_name = (
+                f"{l_obj.name}_{idx}" if len(ligand_set) > 1 else l_obj.name
+            )
+            plan["ligands"].append(
+                {
+                    "name": unique_lig_name,
+                    "path": str(Path(l_path).resolve()),
+                    "status": "ready",
+                    "is_native": True,
+                }
+            )
             # Update pair references to match unique ligand task id
             for p in plan["pairs"]:
                 if p.get("ref_path") == str(Path(l_path).resolve()):
                     p["ligand"] = unique_lig_name
 
-        console.print(f"[bold green]✓ 1-to-1 Redocking Mode: Matched {len(plan['pairs'])} receptors directly to their native ligands (0 cross-docking jobs).[/bold green]")
+        console.print(
+            f"[bold green]✓ 1-to-1 Redocking Mode: Matched {len(plan['pairs'])} receptors directly to their native ligands (0 cross-docking jobs).[/bold green]"
+        )
 
     else:
         if not getattr(args, "ligands", None):
-            console.print("[bold red]FATAL: Parameter --ligands is required for cross-docking matrix mode.[/bold red]")
+            console.print(
+                "[bold red]FATAL: Parameter --ligands is required for cross-docking matrix mode.[/bold red]"
+            )
             sys.exit(1)
 
         lig_names = [n.strip() for n in args.ligands.split(",")]
@@ -136,7 +167,9 @@ def cmd_dock(args):
         if len(ligands) != len(lig_names):
             found = {l.name for l in ligands}
             missing = set(lig_names) - found
-            console.print(f"[bold red]FATAL: Ligands not found in DB: {missing}[/bold red]")
+            console.print(
+                f"[bold red]FATAL: Ligands not found in DB: {missing}[/bold red]"
+            )
             sys.exit(1)
 
         for r in receptors:
@@ -151,25 +184,34 @@ def cmd_dock(args):
                     else:
                         ref_pose_path = str(pose_p)
 
-            plan["receptors"].append({
-                "name": r.name,
-                "path": r.path,
-                "ref_pose_path": ref_pose_path,
-                "native_ligand": r.meta_dict.get("native_ligand", ""),
-            })
+            plan["receptors"].append(
+                {
+                    "name": r.name,
+                    "path": r.path,
+                    "ref_pose_path": ref_pose_path,
+                    "native_ligand": r.meta_dict.get("native_ligand", ""),
+                }
+            )
 
         for l in ligands:
             has_crystal_pose = (
-                session.query(Pose).filter_by(ligand_name=l.name, origin="crystal").first() is not None
+                session.query(Pose)
+                .filter_by(ligand_name=l.name, origin="crystal")
+                .first()
+                is not None
             )
-            plan["ligands"].append({
-                "name": l.name,
-                "path": str(Path(l.path).resolve()),
-                "status": l.status,
-                "is_native": has_crystal_pose,
-            })
+            plan["ligands"].append(
+                {
+                    "name": l.name,
+                    "path": str(Path(l.path).resolve()),
+                    "status": l.status,
+                    "is_native": has_crystal_pose,
+                }
+            )
 
-        console.print(f"[bold cyan]Cross-Docking Matrix Plan generated: {len(receptors)} Receptors × {len(ligands)} Ligand Sets[/bold cyan]")
+        console.print(
+            f"[bold cyan]Cross-Docking Matrix Plan generated: {len(receptors)} Receptors × {len(ligands)} Ligand Sets[/bold cyan]"
+        )
 
     plan_file = cwd / "dock_plan.json"
     with open(plan_file, "w") as f:
@@ -204,7 +246,9 @@ def cmd_dock(args):
 
     # 6. Register results in Database
     num_ligs = len(plan.get("ligands", []))
-    default_name = f"redock_{len(receptors)}" if is_self else f"screen_{len(receptors)}x{num_ligs}"
+    default_name = (
+        f"redock_{len(receptors)}" if is_self else f"screen_{len(receptors)}x{num_ligs}"
+    )
     poses_name = args.name if getattr(args, "name", None) else default_name
     res_csv = cwd / "reports" / "ranking.csv"
     res_sdf = (
@@ -213,6 +257,7 @@ def cmd_dock(args):
 
     if res_csv.exists():
         import csv
+
         poses_count = 0
         try:
             with open(res_csv, "r", encoding="utf-8", errors="ignore") as f:
@@ -223,13 +268,19 @@ def cmd_dock(args):
                     if not title or not frame_name:
                         continue
 
-                    r_frame = session.query(ReceptorFrame).filter_by(name=frame_name).first()
+                    r_frame = (
+                        session.query(ReceptorFrame).filter_by(name=frame_name).first()
+                    )
                     if not r_frame:
                         continue
 
                     lig = session.query(Ligand).filter_by(name=title).first()
                     if not lig:
-                        lig = session.query(Ligand).filter(Ligand.name.like(f"%{title}%")).first()
+                        lig = (
+                            session.query(Ligand)
+                            .filter(Ligand.name.like(f"%{title}%"))
+                            .first()
+                        )
                     if not lig:
                         continue
 
@@ -239,8 +290,12 @@ def cmd_dock(args):
                         sdf_path = cwd / "docking" / f"{frame_name}_dock.sdf"
 
                     scores_dict = {
-                        k: float(v) for k, v in row.items()
-                        if k not in ["Rank", "Title", "Receptor", "Frame"] and v and v != "nan" and v != ""
+                        k: float(v)
+                        for k, v in row.items()
+                        if k not in ["Rank", "Title", "Receptor", "Frame"]
+                        and v
+                        and v != "nan"
+                        and v != ""
                     }
 
                     ex = session.query(Pose).filter_by(name=pose_name).first()
@@ -262,7 +317,9 @@ def cmd_dock(args):
                     poses_count += 1
             session.commit()
         except Exception as e:
-            console.print(f"[yellow]Warning: Could not record docking poses in DB: {e}[/yellow]")
+            console.print(
+                f"[yellow]Warning: Could not record docking poses in DB: {e}[/yellow]"
+            )
         console.print(
             f"\n[bold green]✓ Docking complete! Results registered as PoseSet '{poses_name}'.[/bold green]\n"
         )
@@ -270,6 +327,7 @@ def cmd_dock(args):
         # Render Rich Summary Table
         try:
             from rich.table import Table
+
             table = Table(title="🎯 Redocking & Scoring Summary", show_header=True)
             table.add_column("Receptor", style="cyan")
             table.add_column("Ligand", style="bold")
@@ -279,13 +337,17 @@ def cmd_dock(args):
             table.add_column("InSitu RMSD (Å)", justify="center")
             table.add_column("Verdict", justify="center")
 
-            with open(res_csv, 'r', encoding='utf-8', errors='ignore') as f:
+            with open(res_csv, "r", encoding="utf-8", errors="ignore") as f:
                 reader = csv.DictReader(f)
                 for row in reader:
                     rec = row.get("Receptor", row.get("Frame", "-"))
                     lig = row.get("Title", "-")
                     gscore = row.get("GlideScore", "-")
-                    cnn = row.get("Resc_CNNaffinity") or row.get("Dock_CNNaffinity") or "-"
+                    cnn = (
+                        row.get("Resc_CNNaffinity")
+                        or row.get("Dock_CNNaffinity")
+                        or "-"
+                    )
                     mmgbsa = row.get("MMGBSA", "-")
                     rmsd_str = row.get("InSitu_RMSD_A", "-")
 
@@ -309,9 +371,19 @@ def cmd_dock(args):
                         except (ValueError, TypeError):
                             return str(val) if val else "-"
 
-                    table.add_row(rec, lig, _fmt(gscore), _fmt(cnn), _fmt(mmgbsa), rmsd_display, verdict)
+                    table.add_row(
+                        rec,
+                        lig,
+                        _fmt(gscore),
+                        _fmt(cnn),
+                        _fmt(mmgbsa),
+                        rmsd_display,
+                        verdict,
+                    )
             console.print(table)
         except Exception as e:
-            console.print(f"[yellow]Warning: Could not render console table: {e}[/yellow]")
+            console.print(
+                f"[yellow]Warning: Could not render console table: {e}[/yellow]"
+            )
 
     session.close()

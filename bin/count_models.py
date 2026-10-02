@@ -54,6 +54,7 @@ def main():
 
     try:
         from schrodinger.structure import count_structures
+
         count = count_structures(str(p.resolve()))
     except Exception:
         if p.suffix.lower() in [".cif", ".mmcif"]:

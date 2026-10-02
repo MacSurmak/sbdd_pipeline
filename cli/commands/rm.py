@@ -18,21 +18,27 @@ def cmd_rm(args):
     target = session.query(Target).filter_by(name=name).first()
     if target:
         session.delete(target)
-        console.print(f"[bold green]✓ Deleted Target '{name}' and all associated frames/systems (CASCADE).[/bold green]")
+        console.print(
+            f"[bold green]✓ Deleted Target '{name}' and all associated frames/systems (CASCADE).[/bold green]"
+        )
         deleted = True
 
     if not deleted:
         sys_obj = session.query(System).filter_by(name=name).first()
         if sys_obj:
             session.delete(sys_obj)
-            console.print(f"[bold green]✓ Deleted System '{name}' and all associated trajectories.[/bold green]")
+            console.print(
+                f"[bold green]✓ Deleted System '{name}' and all associated trajectories.[/bold green]"
+            )
             deleted = True
 
     if not deleted:
         frame = session.query(ReceptorFrame).filter_by(name=name).first()
         if frame:
             session.delete(frame)
-            console.print(f"[bold green]✓ Deleted ReceptorFrame '{name}' and associated poses/systems.[/bold green]")
+            console.print(
+                f"[bold green]✓ Deleted ReceptorFrame '{name}' and associated poses/systems.[/bold green]"
+            )
             deleted = True
 
     if not deleted:
@@ -50,10 +56,16 @@ def cmd_rm(args):
             deleted = True
 
     if not deleted:
-        lig = session.query(Ligand).filter((Ligand.name == name) | (Ligand.inchikey == name)).first()
+        lig = (
+            session.query(Ligand)
+            .filter((Ligand.name == name) | (Ligand.inchikey == name))
+            .first()
+        )
         if lig:
             session.delete(lig)
-            console.print(f"[bold green]✓ Deleted Chemical Ligand '{name}'.[/bold green]")
+            console.print(
+                f"[bold green]✓ Deleted Chemical Ligand '{name}'.[/bold green]"
+            )
             deleted = True
 
     if deleted:

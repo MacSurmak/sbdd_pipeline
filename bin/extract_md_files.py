@@ -50,15 +50,28 @@ def extract_via_schrodinger(args):
                     res.pdbres = clean_cof
                 cof_out = org_dir / f"{clean_cof}.mol2"
                 cof_st.write(str(cof_out))
-                (org_dir / f"{clean_cof}_charge.txt").write_text(str(cof_st.formal_charge))
+                (org_dir / f"{clean_cof}_charge.txt").write_text(
+                    str(cof_st.formal_charge)
+                )
                 organics.append(
-                    {"name": clean_cof, "mol2": f"{clean_cof}.mol2", "charge": f"{clean_cof}_charge.txt"}
+                    {
+                        "name": clean_cof,
+                        "mol2": f"{clean_cof}.mol2",
+                        "charge": f"{clean_cof}_charge.txt",
+                    }
                 )
                 rec_st.deleteAtoms(atoms)
-                print(f"Successfully extracted cofactor '{clean_cof}' ({len(atoms)} atoms).", flush=True)
+                print(
+                    f"Successfully extracted cofactor '{clean_cof}' ({len(atoms)} atoms).",
+                    flush=True,
+                )
             else:
                 avail = set(r.pdbres.strip().upper() for r in rec_st.residue)
-                print(f"FATAL: Specified cofactor '{clean_cof}' was not found in structure! Available residues: {avail}", file=sys.stderr, flush=True)
+                print(
+                    f"FATAL: Specified cofactor '{clean_cof}' was not found in structure! Available residues: {avail}",
+                    file=sys.stderr,
+                    flush=True,
+                )
                 sys.exit(1)
 
     # Save dry receptor (Protein + Ions)

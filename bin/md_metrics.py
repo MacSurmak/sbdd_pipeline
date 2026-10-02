@@ -100,7 +100,12 @@ def compute_rmsd_rmsf(
 
 
 def compute_contacts(
-    struct_path: str, xtc_path: str, ligand_resname: str, c_heavy=3.5, c_hyd=4.0, c_pol=3.4
+    struct_path: str,
+    xtc_path: str,
+    ligand_resname: str,
+    c_heavy=3.5,
+    c_hyd=4.0,
+    c_pol=3.4,
 ):
     u = mda.Universe(struct_path, xtc_path)
     prot = u.select_atoms("protein")
@@ -232,7 +237,14 @@ def generate_rmsd_plot(df_rmsd: pd.DataFrame, out_png: Path):
                 )
 
         # Reference threshold line for stability
-        plt.axhline(y=2.0, color="#7f7f7f", linestyle=":", linewidth=1.0, alpha=0.7, label="2.0 Å Threshold")
+        plt.axhline(
+            y=2.0,
+            color="#7f7f7f",
+            linestyle=":",
+            linewidth=1.0,
+            alpha=0.7,
+            label="2.0 Å Threshold",
+        )
 
         plt.title("Molecular Dynamics RMSD Trajectory", fontsize=12, fontweight="bold")
         plt.xlabel("Simulation Time (ns)", fontsize=10)
@@ -250,7 +262,9 @@ def main():
     parser = argparse.ArgumentParser(
         description="Calculate MD metrics (RMSD, RMSF, Contacts)"
     )
-    parser.add_argument("--gro", required=True, help="Clean reference structure in GROMACS GRO format")
+    parser.add_argument(
+        "--gro", required=True, help="Clean reference structure in GROMACS GRO format"
+    )
     parser.add_argument("--xtc", required=True, help="Clean Centered Trajectory XTC")
     parser.add_argument("--outdir", required=True, help="Output directory")
     parser.add_argument(

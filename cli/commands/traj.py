@@ -32,7 +32,9 @@ def _query_trajectories(session, args, target_status: str = "raw") -> list[Traje
     elif getattr(args, "target", None):
         target_obj = session.query(Target).filter_by(name=args.target).first()
         if not target_obj:
-            console.print(f"[bold red]FATAL: Target '{args.target}' not found.[/bold red]")
+            console.print(
+                f"[bold red]FATAL: Target '{args.target}' not found.[/bold red]"
+            )
             sys.exit(1)
         systems = session.query(System).filter_by(target_id=target_obj.id).all()
         sys_ids = [s.id for s in systems]
@@ -60,7 +62,9 @@ def cmd_clean_traj(args):
     trajs = _query_trajectories(session, args, target_status="raw")
 
     if not trajs:
-        console.print("[bold green]✓ All trajectories are already cleaned! Nothing to do.[/bold green]")
+        console.print(
+            "[bold green]✓ All trajectories are already cleaned! Nothing to do.[/bold green]"
+        )
         session.close()
         return
 
@@ -69,14 +73,16 @@ def cmd_clean_traj(args):
         raw_dir = Path(t.raw_dir).resolve()
         chunks = sorted(
             raw_dir.glob("md_*.xtc"),
-            key=lambda p: int("".join(filter(str.isdigit, p.stem)) or 0)
+            key=lambda p: int("".join(filter(str.isdigit, p.stem)) or 0),
         )
         if not chunks:
             # Fallback if raw directory contains single xtc
             chunks = list(raw_dir.glob("*.xtc"))
 
         if not chunks:
-            console.print(f"[bold red]FATAL: No raw trajectory chunks found in {raw_dir}[/bold red]")
+            console.print(
+                f"[bold red]FATAL: No raw trajectory chunks found in {raw_dir}[/bold red]"
+            )
             sys.exit(1)
 
         clean_dir = raw_dir.parent / "clean"
@@ -95,7 +101,9 @@ def cmd_clean_traj(args):
     with open(plan_file, "w") as f:
         json.dump(plan_list, f, indent=2)
 
-    console.print(f"[bold cyan]Cleaning {len(trajs)} trajectory(ies) (Stream merge in worker scratch -> Fit -> Strip)...[/bold cyan]")
+    console.print(
+        f"[bold cyan]Cleaning {len(trajs)} trajectory(ies) (Stream merge in worker scratch -> Fit -> Strip)...[/bold cyan]"
+    )
 
     configs = load_project_configs(cwd)
     nf_args = build_nextflow_args(configs, cwd, entrypoint="md-analyze")
@@ -120,7 +128,9 @@ def cmd_clean_traj(args):
         clean_xtc = clean_dir / "trajectory_clean.xtc"
         ref_gro = clean_dir / "complex_ref.gro"
         ref_pdb = clean_dir / "complex_ref.pdb"
-        t_record.path_ref_pdb = str(ref_gro.resolve()) if ref_gro.exists() else str(ref_pdb.resolve())
+        t_record.path_ref_pdb = (
+            str(ref_gro.resolve()) if ref_gro.exists() else str(ref_pdb.resolve())
+        )
 
         ref_struct = clean_dir / "complex_ref.gro"
         if not ref_struct.exists():
@@ -136,8 +146,12 @@ def cmd_clean_traj(args):
     session.commit()
     session.close()
 
-    console.print(f"\n[bold green]✓ Successfully cleaned {len(trajs)} trajectory(ies) without raw file duplication![/bold green]")
-    console.print("[dim]Clean trajectories saved to clean/ (130 MB). Chunks in raw/ preserved for restarts.[/dim]")
+    console.print(
+        f"\n[bold green]✓ Successfully cleaned {len(trajs)} trajectory(ies) without raw file duplication![/bold green]"
+    )
+    console.print(
+        "[dim]Clean trajectories saved to clean/ (130 MB). Chunks in raw/ preserved for restarts.[/dim]"
+    )
 
 
 def cmd_metrics(args):
@@ -147,7 +161,9 @@ def cmd_metrics(args):
     trajs = _query_trajectories(session, args, target_status="cleaned")
 
     if not trajs:
-        console.print("[yellow]No cleaned trajectories found to analyze. Run 'sbdd traj-clean' first![/yellow]")
+        console.print(
+            "[yellow]No cleaned trajectories found to analyze. Run 'sbdd traj-clean' first![/yellow]"
+        )
         session.close()
         return
 
@@ -161,7 +177,9 @@ def cmd_metrics(args):
         ref_gro = clean_dir / "complex_ref.gro"
 
         if not ref_gro.exists():
-            console.print(f"[bold red]FATAL: Required topology {ref_gro} does not exist! Run 'sbdd traj-clean'.[/bold red]")
+            console.print(
+                f"[bold red]FATAL: Required topology {ref_gro} does not exist! Run 'sbdd traj-clean'.[/bold red]"
+            )
             sys.exit(1)
 
         sys_obj = t.system
@@ -186,7 +204,9 @@ def cmd_metrics(args):
     with open(plan_file, "w") as f:
         json.dump(plan_list, f, indent=2)
 
-    console.print(f"[bold cyan]Computing metrics for {len(trajs)} clean trajectory(ies)...[/bold cyan]")
+    console.print(
+        f"[bold cyan]Computing metrics for {len(trajs)} clean trajectory(ies)...[/bold cyan]"
+    )
 
     configs = load_project_configs(cwd)
     nf_args = build_nextflow_args(configs, cwd, entrypoint="md-analyze")
@@ -253,13 +273,17 @@ def cmd_cluster(args):
     trajs = _query_trajectories(session, args, target_status="cleaned")
 
     if not trajs:
-        console.print("[yellow]No cleaned trajectories found to cluster. Run 'sbdd traj-clean' first![/yellow]")
+        console.print(
+            "[yellow]No cleaned trajectories found to cluster. Run 'sbdd traj-clean' first![/yellow]"
+        )
         session.close()
         return
 
     for t in trajs:
         if t.status != "cleaned" or not t.path_clean_xtc or not t.path_ref_pdb:
-            console.print(f"[bold red]FATAL: Trajectory '{t.name}' must be cleaned first. Run 'sbdd traj-clean'![/bold red]")
+            console.print(
+                f"[bold red]FATAL: Trajectory '{t.name}' must be cleaned first. Run 'sbdd traj-clean'![/bold red]"
+            )
             sys.exit(1)
 
     # Group trajectories strictly by System and filter out systems whose clusters are already up to date
@@ -274,11 +298,15 @@ def cmd_cluster(args):
         sys_obj = session.query(System).get(sys_id)
 
         # Check existing centroids for this system
-        existing_centroids = session.query(ReceptorFrame).filter(
-            ReceptorFrame.target_id == sys_obj.target_id,
-            ReceptorFrame.source_type == "md_centroid",
-            ReceptorFrame.name.like(f"{sys_obj.name}_%")
-        ).all()
+        existing_centroids = (
+            session.query(ReceptorFrame)
+            .filter(
+                ReceptorFrame.target_id == sys_obj.target_id,
+                ReceptorFrame.source_type == "md_centroid",
+                ReceptorFrame.name.like(f"{sys_obj.name}_%"),
+            )
+            .all()
+        )
 
         active_traj_names = sorted([t.name for t in t_list])
 
@@ -286,11 +314,15 @@ def cmd_cluster(args):
         if existing_centroids:
             meta_sig = sys_obj.environment_dict.get("cluster_active_trajs", [])
             if meta_sig == active_traj_names and not getattr(args, "force", False):
-                console.print(f"[dim]System '{sys_obj.name}' already has up-to-date centroids for active trajectories {active_traj_names}. Skipping.[/dim]")
+                console.print(
+                    f"[dim]System '{sys_obj.name}' already has up-to-date centroids for active trajectories {active_traj_names}. Skipping.[/dim]"
+                )
                 continue
             else:
                 # Active trajectory set changed (e.g. replica flagged as drifted) -> wipe outdated centroids cascade
-                console.print(f"[yellow]Trajectory ensemble for '{sys_obj.name}' modified. Purging outdated centroids to re-cluster clean subset...[/yellow]")
+                console.print(
+                    f"[yellow]Trajectory ensemble for '{sys_obj.name}' modified. Purging outdated centroids to re-cluster clean subset...[/yellow]"
+                )
                 for old_f in existing_centroids:
                     session.delete(old_f)
                 session.flush()
@@ -318,7 +350,9 @@ def cmd_cluster(args):
         )
 
     if not plan_list:
-        console.print("[bold green]✓ All systems already have up-to-date centroids matching their active trajectories. Nothing to do![/bold green]")
+        console.print(
+            "[bold green]✓ All systems already have up-to-date centroids matching their active trajectories. Nothing to do![/bold green]"
+        )
         session.close()
         return
 
@@ -326,7 +360,9 @@ def cmd_cluster(args):
     with open(plan_file, "w") as f:
         json.dump(plan_list, f, indent=2)
 
-    console.print(f"[bold cyan]Clustering trajectories across {len(by_sys)} System(s)...[/bold cyan]")
+    console.print(
+        f"[bold cyan]Clustering trajectories across {len(by_sys)} System(s)...[/bold cyan]"
+    )
 
     configs = load_project_configs(cwd)
     nf_args = build_nextflow_args(configs, cwd, entrypoint="md-analyze")
@@ -371,9 +407,13 @@ def cmd_cluster(args):
         parent_sys.environment_dict = env
 
         # A. Register Centroid as a peer ReceptorFrame in Target (MAE is primary)
-        centroid_frame_name = f"{parent_sys.name}_{cluster_id.split('_')[-2]}_{cluster_id.split('_')[-1]}"
+        centroid_frame_name = (
+            f"{parent_sys.name}_{cluster_id.split('_')[-2]}_{cluster_id.split('_')[-1]}"
+        )
         mae_path = Path(pdb_path).with_suffix(".mae")
-        ex_frame = session.query(ReceptorFrame).filter_by(name=centroid_frame_name).first()
+        ex_frame = (
+            session.query(ReceptorFrame).filter_by(name=centroid_frame_name).first()
+        )
         if not ex_frame:
             new_frame = ReceptorFrame(
                 target_id=parent_sys.target_id,
@@ -414,7 +454,9 @@ def cmd_cluster(args):
                 pose_obj = ex_pose
 
         # C. Register Ready System for this Centroid
-        cluster_sys_name = f"{centroid_frame_name}_holo" if pose_obj else f"{centroid_frame_name}_apo"
+        cluster_sys_name = (
+            f"{centroid_frame_name}_holo" if pose_obj else f"{centroid_frame_name}_apo"
+        )
         ex_sys = session.query(System).filter_by(name=cluster_sys_name).first()
         if not ex_sys:
             new_sys = System(
@@ -431,8 +473,12 @@ def cmd_cluster(args):
     session.commit()
     session.close()
 
-    console.print(f"\n[bold green]✓ Clustering complete! Registered {registered_frames} centroid frame(s) as ready ReceptorFrames.[/bold green]")
-    console.print("[dim]These frames can now be used directly for docking. View with 'sbdd tree'.[/dim]")
+    console.print(
+        f"\n[bold green]✓ Clustering complete! Registered {registered_frames} centroid frame(s) as ready ReceptorFrames.[/bold green]"
+    )
+    console.print(
+        "[dim]These frames can now be used directly for docking. View with 'sbdd tree'.[/dim]"
+    )
 
 
 def cmd_flag_traj(args):
@@ -442,7 +488,9 @@ def cmd_flag_traj(args):
     t_obj = session.query(Trajectory).filter_by(name=traj_name).first()
 
     if not t_obj:
-        console.print(f"[bold red]FATAL: Trajectory '{traj_name}' not found in database.[/bold red]")
+        console.print(
+            f"[bold red]FATAL: Trajectory '{traj_name}' not found in database.[/bold red]"
+        )
         session.close()
         sys.exit(1)
 
@@ -457,9 +505,13 @@ def cmd_flag_traj(args):
     session.commit()
     session.close()
 
-    console.print(f"[bold green]✓ Updated trajectory '{traj_name}': status '{old_status}' -> '{new_status}'[/bold green]")
+    console.print(
+        f"[bold green]✓ Updated trajectory '{traj_name}': status '{old_status}' -> '{new_status}'[/bold green]"
+    )
     if new_status in ["drifted", "disabled"]:
-        console.print(f"[yellow]Trajectory is now excluded from clustering. 'sbdd md' will detect missing replicates.[/yellow]")
+        console.print(
+            f"[yellow]Trajectory is now excluded from clustering. 'sbdd md' will detect missing replicates.[/yellow]"
+        )
 
 
 def cmd_mmpbsa(args):
@@ -472,7 +524,9 @@ def cmd_mmpbsa(args):
     trajs = _query_trajectories(session, args, target_status="cleaned")
 
     if not trajs:
-        console.print("[yellow]No cleaned trajectories found for MM-PBSA. Run 'sbdd traj-clean' first![/yellow]")
+        console.print(
+            "[yellow]No cleaned trajectories found for MM-PBSA. Run 'sbdd traj-clean' first![/yellow]"
+        )
         session.close()
         return
 
@@ -491,7 +545,9 @@ def cmd_mmpbsa(args):
             ndx_path = raw_dir.parent / "index.ndx"
 
         if not topol_path.exists() or not ndx_path.exists():
-            console.print(f"[yellow]Warning: topol.top or index.ndx missing for {t.name}, skipping MM-PBSA.[/yellow]")
+            console.print(
+                f"[yellow]Warning: topol.top or index.ndx missing for {t.name}, skipping MM-PBSA.[/yellow]"
+            )
             continue
 
         plan_list.append(
@@ -507,7 +563,9 @@ def cmd_mmpbsa(args):
         )
 
     if not plan_list:
-        console.print("[yellow]No valid trajectories with topologies found for MM-PBSA.[/yellow]")
+        console.print(
+            "[yellow]No valid trajectories with topologies found for MM-PBSA.[/yellow]"
+        )
         session.close()
         return
 
@@ -515,7 +573,9 @@ def cmd_mmpbsa(args):
     with open(plan_file, "w") as f:
         json.dump(plan_list, f, indent=2)
 
-    console.print(f"[bold cyan]Running standalone MM-PBSA on {len(plan_list)} clean trajectory(ies)...[/bold cyan]")
+    console.print(
+        f"[bold cyan]Running standalone MM-PBSA on {len(plan_list)} clean trajectory(ies)...[/bold cyan]"
+    )
 
     configs = load_project_configs(cwd)
     nf_args = build_nextflow_args(configs, cwd, entrypoint="md-analyze")
@@ -531,5 +591,7 @@ def cmd_mmpbsa(args):
         console.print("[bold red]Nextflow MM-PBSA failed.[/bold red]")
         sys.exit(ret_code)
 
-    console.print("\n[bold green]✓ MM-PBSA calculations completed successfully![/bold green]")
+    console.print(
+        "\n[bold green]✓ MM-PBSA calculations completed successfully![/bold green]"
+    )
     session.close()

@@ -91,10 +91,14 @@ def cmd_md_init(args):
     ]
     res = subprocess.run(cmd, capture_output=True, text=True)
     if res.returncode != 0:
-        console.print(f"[bold red]Failed to generate MD protocol: {res.stderr}[/bold red]")
+        console.print(
+            f"[bold red]Failed to generate MD protocol: {res.stderr}[/bold red]"
+        )
         sys.exit(1)
 
-    console.print(f"[bold green]✓ MD Protocol initialized from assets/mdp into {md_dir}[/bold green]")
+    console.print(
+        f"[bold green]✓ MD Protocol initialized from assets/mdp into {md_dir}[/bold green]"
+    )
     console.print(
         "[dim]You can now edit the generated .mdp files or reorder protocol.txt before running MD.[/dim]"
     )
@@ -164,19 +168,24 @@ def main():
 
     # 0.1 add structure / receptor
     p_add_rec = add_subs.add_parser(
-        "structure", aliases=["receptor", "complex"], help="Import macromolecular structure(s) into a Target"
+        "structure",
+        aliases=["receptor", "complex"],
+        help="Import macromolecular structure(s) into a Target",
     )
     p_add_rec.add_argument(
-        "path", nargs="+", help="Path(s) or glob to structure file(s) (.pdb, .cif, .mae)"
+        "path",
+        nargs="+",
+        help="Path(s) or glob to structure file(s) (.pdb, .cif, .mae)",
     )
     p_add_rec.add_argument(
         "--target", help="Parent target name (e.g. RyR1, TSPO). Defaults to file stem."
     )
+    p_add_rec.add_argument("--name", help="Unique identifier for this structural frame")
     p_add_rec.add_argument(
-        "--name", help="Unique identifier for this structural frame"
-    )
-    p_add_rec.add_argument(
-        "--cofactors", nargs="*", default=[], help="Cofactor residue names to retain (e.g. ATP MG)"
+        "--cofactors",
+        nargs="*",
+        default=[],
+        help="Cofactor residue names to retain (e.g. ATP MG)",
     )
     p_add_rec.add_argument(
         "--ligand", help="Native ligand residue name inside structure (e.g. KVR, BTN)"
@@ -305,7 +314,9 @@ def main():
         "--target", help="Parent target name to dock into its ready frames"
     )
     p_dock.add_argument(
-        "--frames", "--receptors", dest="frames",
+        "--frames",
+        "--receptors",
+        dest="frames",
         help="Comma-separated list of specific ready ReceptorFrame names",
     )
     p_dock.add_argument(
@@ -313,7 +324,8 @@ def main():
         help="Comma-separated list of ligand names from DB (optional in --self / --redock mode)",
     )
     p_dock.add_argument(
-        "--self", "--redock",
+        "--self",
+        "--redock",
         dest="self_dock",
         action="store_true",
         help="Run 1-to-1 self-docking (redocking) of each receptor with its own native ligand without cross-docking matrix",
@@ -376,14 +388,11 @@ def main():
 
     # 7. traj-mmpbsa
     p_mmpbsa = subparsers.add_parser(
-        "traj-mmpbsa", help="Run standalone MM-PBSA free energy calculation on clean trajectories"
+        "traj-mmpbsa",
+        help="Run standalone MM-PBSA free energy calculation on clean trajectories",
     )
-    p_mmpbsa.add_argument(
-        "--systems", help="Limit to specific System names"
-    )
-    p_mmpbsa.add_argument(
-        "--target", help="Limit to specific Target"
-    )
+    p_mmpbsa.add_argument("--systems", help="Limit to specific System names")
+    p_mmpbsa.add_argument("--target", help="Limit to specific Target")
     p_mmpbsa.add_argument(
         "--traj", help="Explicit comma-separated list of Trajectory names"
     )
@@ -411,8 +420,12 @@ def main():
         default="drifted",
         help="Target QC status (default: drifted)",
     )
-    p_flag.add_argument("--disable", action="store_true", help="Shortcut to set status='disabled'")
-    p_flag.add_argument("--enable", action="store_true", help="Shortcut to restore status='cleaned'")
+    p_flag.add_argument(
+        "--disable", action="store_true", help="Shortcut to set status='disabled'"
+    )
+    p_flag.add_argument(
+        "--enable", action="store_true", help="Shortcut to restore status='cleaned'"
+    )
 
     # 7.1 traj-clean
     p_clean_tr = subparsers.add_parser(
@@ -437,12 +450,8 @@ def main():
         "traj-metrics",
         help="Calculate RMSD (protein, ligand, and cofactors), RMSF, and contacts for cleaned trajectories",
     )
-    p_metrics.add_argument(
-        "--systems", help="Limit to specific System names"
-    )
-    p_metrics.add_argument(
-        "--target", help="Limit to specific Target"
-    )
+    p_metrics.add_argument("--systems", help="Limit to specific System names")
+    p_metrics.add_argument("--target", help="Limit to specific Target")
     p_metrics.add_argument(
         "--traj", help="Explicit comma-separated list of Trajectory names"
     )

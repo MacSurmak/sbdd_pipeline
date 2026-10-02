@@ -8,7 +8,7 @@ process GLIDE_GRIDGEN {
     label 'process_single'
 
     input:
-    tuple val(meta), path(receptor_mae, stageAs: 'rec_dir/*'), path(ref_lig_mae, stageAs: 'ref_dir/*')
+    tuple val(meta), path(receptor_mae), path(ref_lig_mae)
     val(inner_box)
     val(outer_box)
     val(forcefield)
@@ -18,55 +18,50 @@ process GLIDE_GRIDGEN {
 
     script:
     """
-    REF_BASE=\$(basename "${ref_lig_mae}")
-    REF_MAE="ref_ligand.mae"
-    if [[ "\$REF_BASE" == *.mae || "\$REF_BASE" == *.maegz ]]; then
-        REF_MAE="${ref_lig_mae}"
-    elif [[ "\$REF_BASE" != "NO_FILE" && -f "${ref_lig_mae}" ]]; then
-        schrodinger structconvert "${ref_lig_mae}" ref_ligand.mae
-        REF_MAE="ref_ligand.mae"
+    # 1. Ensure reference ligand is in native MAE format
+    if [[ "${ref_lig_mae}" == *.mae || "${ref_lig_mae}" == *.maegz ]]; then
+        REF_FILE="${ref_lig_mae}"
     else
-        REF_MAE="${ref_lig_mae}"
+        schrodinger structconvert "${ref_lig_mae}" ref_ligand.mae
+        REF_FILE="ref_ligand.mae"
     fi
 
-    # Compute exact centroid coordinates of reference pose for Glide GRID_CENTER (Fail-Fast)
+    # 2. Compute exact centroid coordinates directly from staged file
     GRID_CENTER=\$(schrodinger run python3 -c "
 import sys
 from schrodinger import structure
 
 ref_path = sys.argv[1]
-try:
-    st = structure.StructureReader.read(ref_path)
-    if st.atom_total > 0:
-        cx = sum(a.x for a in st.atom) / st.atom_total
-        cy = sum(a.y for a in st.atom) / st.atom_total
-        cz = sum(a.z for a in st.atom) / st.atom_total
-        print(f'{cx:.4f}, {cy:.4f}, {cz:.4f}')
-    else:
-        print('FATAL: Reference ligand structure is empty.', file=sys.stderr)
-        sys.exit(1)
-except Exception as e:
-    print(f'FATAL: Failed to calculate grid center from {ref_path}: {e}', file=sys.stderr)
+st = structure.StructureReader.read(ref_path)
+if st.atom_total == 0:
     sys.exit(1)
-" "\${REF_MAE}")
-    export SCHRODINGER_JOBDB="/tmp/schrodinger_jobdb_\${SLURM_JOB_ID:-\$\$}"
-    mkdir -p "\$SCHRODINGER_JOBDB"
+cx = sum(a.x for a in st.atom) / st.atom_total
+cy = sum(a.y for a in st.atom) / st.atom_total
+cz = sum(a.z for a in st.atom) / st.atom_total
+print(f'{cx:.4f}, {cy:.4f}, {cz:.4f}')
+" "\$REF_FILE")
 
+    if [ -z "\$GRID_CENTER" ]; then
+        echo "FATAL: Could not determine GRID_CENTER from \$REF_FILE"
+        exit 1
+    fi
+
+    # 3. Build input and generate grid
     cat << EOF > gridgen.in
 GRIDFILE ${meta.id}_grid.zip
 RECEP_FILE ${receptor_mae}
 GRID_CENTER \${GRID_CENTER}
-REF_LIGAND_FILE \${REF_MAE}
+REF_LIGAND_FILE \${REF_FILE}
 INNERBOX ${inner_box}
 OUTERBOX ${outer_box}
 FORCEFIELD ${forcefield}
 EOF
 
-    schrodinger glide gridgen.in -OVERWRITE -WAIT -HOST localhost    """
+    schrodinger glide gridgen.in -OVERWRITE -WAIT -HOST localhost
+    """
 
     stub:
     """
     touch ${meta.id}_grid.zip
     """
 }
-

@@ -14,7 +14,9 @@ from cli.core.chem import get_mol_identity
 console = Console()
 
 
-def _count_and_split_models(struct_path: Path, dest_dir: Path, base_name: str) -> list[tuple[str, Path]]:
+def _count_and_split_models(
+    struct_path: Path, dest_dir: Path, base_name: str
+) -> list[tuple[str, Path]]:
     """
     Checks for NMR/multi-model structures in PDB/CIF.
     Splits transparently into individual files if multiple models exist.
@@ -47,7 +49,9 @@ def _count_and_split_models(struct_path: Path, dest_dir: Path, base_name: str) -
                 current_model.append(line)
 
     if len(models_content) > 1:
-        console.print(f"[cyan]Detected {len(models_content)} models in NMR ensemble. Splitting transparently...[/cyan]")
+        console.print(
+            f"[cyan]Detected {len(models_content)} models in NMR ensemble. Splitting transparently...[/cyan]"
+        )
         results = []
         for idx, m_text in enumerate(models_content, start=1):
             f_name = f"{base_name}_m{idx}"
@@ -85,7 +89,11 @@ def _extract_ligand_atoms(rec_path: Path, lig_resname: str, out_sdf: Path) -> No
             "FATAL: Schrödinger runner ('schrodinger run') is required for robust bond order perception."
         )
 
-    schrod_cmd = [schrod_bin, "run", "python3", "-c"] if not schrod_bin.endswith("/run") else [schrod_bin, "python3", "-c"]
+    schrod_cmd = (
+        [schrod_bin, "run", "python3", "-c"]
+        if not schrod_bin.endswith("/run")
+        else [schrod_bin, "python3", "-c"]
+    )
 
     py_code = """
 import sys
@@ -115,16 +123,27 @@ except Exception as e:
 
 lig_st.write(out_file)
 """
-    cmd = schrod_cmd + [py_code, str(rec_path.resolve()), lig_clean, str(out_sdf.resolve())]
+    cmd = schrod_cmd + [
+        py_code,
+        str(rec_path.resolve()),
+        lig_clean,
+        str(out_sdf.resolve()),
+    ]
     res = subprocess.run(cmd, capture_output=True, text=True)
 
     if res.returncode == 2:
-        raise ValueError(f"FATAL: Ligand residue '{lig_clean}' not found in {rec_path.name}! {res.stderr.strip()}")
+        raise ValueError(
+            f"FATAL: Ligand residue '{lig_clean}' not found in {rec_path.name}! {res.stderr.strip()}"
+        )
     elif res.returncode != 0:
-        raise RuntimeError(f"FATAL: Extraction failed with exit code {res.returncode}:\n{res.stderr}\n{res.stdout}")
+        raise RuntimeError(
+            f"FATAL: Extraction failed with exit code {res.returncode}:\n{res.stderr}\n{res.stdout}"
+        )
 
     if not out_sdf.exists() or out_sdf.stat().st_size == 0:
-        raise ValueError(f"FATAL: Ligand extraction failed to produce valid SDF at {out_sdf}")
+        raise ValueError(
+            f"FATAL: Ligand extraction failed to produce valid SDF at {out_sdf}"
+        )
 
 
 def add_receptor(args):
@@ -140,7 +159,9 @@ def add_receptor(args):
 
     for struct_path in struct_paths:
         if not struct_path.exists():
-            console.print(f"[bold red]FATAL: Structure file not found: {struct_path}[/bold red]")
+            console.print(
+                f"[bold red]FATAL: Structure file not found: {struct_path}[/bold red]"
+            )
             sys.exit(1)
 
         target_name = args.target if getattr(args, "target", None) else struct_path.stem
@@ -151,9 +172,15 @@ def add_receptor(args):
             session.flush()
             console.print(f"[bold green]✓ Created Target '{target_name}'[/bold green]")
 
-        base_name = args.name if (len(struct_paths) == 1 and getattr(args, "name", None)) else struct_path.stem
+        base_name = (
+            args.name
+            if (len(struct_paths) == 1 and getattr(args, "name", None))
+            else struct_path.stem
+        )
         cofactors = args.cofactors if getattr(args, "cofactors", None) else []
-        lig_code = args.ligand.strip().upper() if getattr(args, "ligand", None) else None
+        lig_code = (
+            args.ligand.strip().upper() if getattr(args, "ligand", None) else None
+        )
         source_type = "crystal"
 
         frames_dir = cwd / "structures" / target_name
@@ -165,7 +192,9 @@ def add_receptor(args):
                 ex_frame.path = str(frame_file.resolve())
                 ex_frame.cofactors_list = cofactors
                 frame_obj = ex_frame
-                console.print(f"[yellow]Updated Frame '{frame_name}' in Target '{target_name}'[/yellow]")
+                console.print(
+                    f"[yellow]Updated Frame '{frame_name}' in Target '{target_name}'[/yellow]"
+                )
             else:
                 frame_obj = ReceptorFrame(
                     target_id=target.id,
@@ -177,7 +206,9 @@ def add_receptor(args):
                 frame_obj.cofactors_list = cofactors
                 session.add(frame_obj)
                 session.flush()
-                console.print(f"[bold green]✓ Added Frame '{frame_name}'[/bold green] [dim](raw, {source_type})[/dim]")
+                console.print(
+                    f"[bold green]✓ Added Frame '{frame_name}'[/bold green] [dim](raw, {source_type})[/dim]"
+                )
 
             # Ligand & Pose Handling
             pose_obj = None
@@ -189,10 +220,14 @@ def add_receptor(args):
                 _extract_ligand_atoms(frame_file, lig_code, pose_sdf)
 
                 # Parent compound InChIKey for deduplication + exact formal charge for physics
-                parent_inchikey, parent_smiles, mol_name, formal_charge = get_mol_identity(pose_sdf)
+                parent_inchikey, parent_smiles, mol_name, formal_charge = (
+                    get_mol_identity(pose_sdf)
+                )
 
                 # Pure chemical deduplication by Parent Standard InChIKey
-                lig_entity = session.query(Ligand).filter_by(inchikey=parent_inchikey).first()
+                lig_entity = (
+                    session.query(Ligand).filter_by(inchikey=parent_inchikey).first()
+                )
                 if not lig_entity:
                     lig_entity = Ligand(
                         inchikey=parent_inchikey,
@@ -202,9 +237,13 @@ def add_receptor(args):
                     )
                     session.add(lig_entity)
                     session.flush()
-                    console.print(f"[bold green]✓ Registered Chemical Ligand '{lig_entity.name}'[/bold green] [dim]({parent_inchikey})[/dim]")
+                    console.print(
+                        f"[bold green]✓ Registered Chemical Ligand '{lig_entity.name}'[/bold green] [dim]({parent_inchikey})[/dim]"
+                    )
                 else:
-                    console.print(f"[bold green]✓ Matched existing Chemical Ligand '{lig_entity.name}' via Parent InChIKey[/bold green] [dim]({parent_inchikey})[/dim]")
+                    console.print(
+                        f"[bold green]✓ Matched existing Chemical Ligand '{lig_entity.name}' via Parent InChIKey[/bold green] [dim]({parent_inchikey})[/dim]"
+                    )
 
                 # Create Pose preserving exact physical charge state
                 pose_name = f"{frame_name}_{lig_code}_pose"
@@ -225,8 +264,12 @@ def add_receptor(args):
                     pose_obj.scores_dict = {"formal_charge": formal_charge}
                     session.add(pose_obj)
                     session.flush()
-                    ch_label = f"q={formal_charge:+d}" if formal_charge != 0 else "neutral"
-                    console.print(f"[bold green]✓ Registered Pose '{pose_name}'[/bold green] [dim]({ch_label}) -> {pose_sdf.name}[/dim]")
+                    ch_label = (
+                        f"q={formal_charge:+d}" if formal_charge != 0 else "neutral"
+                    )
+                    console.print(
+                        f"[bold green]✓ Registered Pose '{pose_name}'[/bold green] [dim]({ch_label}) -> {pose_sdf.name}[/dim]"
+                    )
 
             # System creation
             sys_name = f"{frame_name}_holo" if pose_obj else f"{frame_name}_apo"
@@ -245,7 +288,9 @@ def add_receptor(args):
                 )
                 session.add(new_sys)
                 sys_type = "Holo" if pose_obj else "Apo"
-                console.print(f"[bold green]✓ Created {sys_type} System '{sys_name}'[/bold green]")
+                console.print(
+                    f"[bold green]✓ Created {sys_type} System '{sys_name}'[/bold green]"
+                )
 
     session.commit()
     session.close()
@@ -265,7 +310,9 @@ def add_ligand(args):
     try:
         from rdkit import Chem
     except ImportError:
-        console.print("[bold red]FATAL: RDKit is required for ligand import.[/bold red]")
+        console.print(
+            "[bold red]FATAL: RDKit is required for ligand import.[/bold red]"
+        )
         sys.exit(1)
 
     suppl = Chem.ForwardSDMolSupplier(str(target_path), removeHs=False)
@@ -278,7 +325,11 @@ def add_ligand(args):
         try:
             inchikey = Chem.MolToInchiKey(mol)
             smiles = Chem.MolToSmiles(Chem.RemoveHs(mol), canonical=True)
-            name = mol.GetProp("_Name").strip() if mol.HasProp("_Name") and mol.GetProp("_Name").strip() else f"MOL_{idx:05d}"
+            name = (
+                mol.GetProp("_Name").strip()
+                if mol.HasProp("_Name") and mol.GetProp("_Name").strip()
+                else f"MOL_{idx:05d}"
+            )
 
             ex = session.query(Ligand).filter_by(inchikey=inchikey).first()
             if ex:
@@ -300,7 +351,9 @@ def add_ligand(args):
 
     session.commit()
     session.close()
-    console.print(f"[bold green]✓ Imported {imported} unique chemical ligand(s)[/bold green] [dim]({skipped} duplicates skipped)[/dim]")
+    console.print(
+        f"[bold green]✓ Imported {imported} unique chemical ligand(s)[/bold green] [dim]({skipped} duplicates skipped)[/dim]"
+    )
 
 
 def add_traj(args):
@@ -312,10 +365,14 @@ def add_traj(args):
     target_sys = args.system
     sys_obj = session.query(System).filter_by(name=target_sys).first()
     if not sys_obj:
-        console.print(f"[bold red]FATAL: Target System '{target_sys}' not found in DB![/bold red]")
+        console.print(
+            f"[bold red]FATAL: Target System '{target_sys}' not found in DB![/bold red]"
+        )
         sys.exit(1)
 
-    raw_dir_path = Path(args.raw_dir if getattr(args, "raw_dir", None) else Path(args.xtc).parent).resolve()
+    raw_dir_path = Path(
+        args.raw_dir if getattr(args, "raw_dir", None) else Path(args.xtc).parent
+    ).resolve()
     tpr_path = Path(args.tpr).resolve()
 
     if not tpr_path.exists():
@@ -325,8 +382,14 @@ def add_traj(args):
     rep_idx = getattr(args, "replicate", 1) or 1
     name = args.name or f"{sys_obj.name}_rep{rep_idx}"
 
-    clean_xtc_path = str(Path(args.clean_xtc).resolve()) if getattr(args, "clean_xtc", None) else None
-    ref_pdb_path = str(Path(args.ref_pdb).resolve()) if getattr(args, "ref_pdb", None) else None
+    clean_xtc_path = (
+        str(Path(args.clean_xtc).resolve())
+        if getattr(args, "clean_xtc", None)
+        else None
+    )
+    ref_pdb_path = (
+        str(Path(args.ref_pdb).resolve()) if getattr(args, "ref_pdb", None) else None
+    )
     status = "cleaned" if clean_xtc_path and ref_pdb_path else "raw"
 
     ex = session.query(Trajectory).filter_by(name=name).first()
@@ -352,7 +415,9 @@ def add_traj(args):
             status=status,
         )
         session.add(new_traj)
-        console.print(f"[bold green]✓ Registered Trajectory '{name}' ({status}) linked to System '{sys_obj.name}'[/bold green]")
+        console.print(
+            f"[bold green]✓ Registered Trajectory '{name}' ({status}) linked to System '{sys_obj.name}'[/bold green]"
+        )
 
     session.commit()
     session.close()

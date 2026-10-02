@@ -18,7 +18,9 @@ def get_mol_identity(source: str | Path) -> Tuple[str, str, str]:
     try:
         from rdkit import Chem
     except ImportError:
-        raise ImportError("RDKit is required for molecular identity and InChIKey calculation.")
+        raise ImportError(
+            "RDKit is required for molecular identity and InChIKey calculation."
+        )
 
     mol = None
     mol_name = ""
@@ -45,7 +47,9 @@ def get_mol_identity(source: str | Path) -> Tuple[str, str, str]:
             mol_name = source_clean
 
     if mol is None:
-        raise ValueError("Could not parse valid chemical structure from provided input.")
+        raise ValueError(
+            "Could not parse valid chemical structure from provided input."
+        )
 
     from rdkit.Chem.MolStandardize import rdMolStandardize
 

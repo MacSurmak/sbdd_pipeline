@@ -24,7 +24,9 @@ def cmd_prep(args):
     if getattr(args, "target", None):
         target_obj = session.query(Target).filter_by(name=args.target).first()
         if not target_obj:
-            console.print(f"[bold red]FATAL: Target '{args.target}' not found in database.[/bold red]")
+            console.print(
+                f"[bold red]FATAL: Target '{args.target}' not found in database.[/bold red]"
+            )
             sys.exit(1)
         query = query.filter(ReceptorFrame.target_id == target_obj.id)
     elif getattr(args, "frames", None):
@@ -33,7 +35,9 @@ def cmd_prep(args):
 
     raw_frames = query.all()
     if not raw_frames:
-        console.print("[green]No raw frames needing preparation found. Everything is up to date![/green]")
+        console.print(
+            "[green]No raw frames needing preparation found. Everything is up to date![/green]"
+        )
         session.close()
         return
 
@@ -66,7 +70,9 @@ def cmd_prep(args):
     with open(plan_file, "w") as f:
         json.dump(plan_data, f, indent=2)
 
-    console.print(f"[bold cyan]Generated prep_plan.json for {len(raw_frames)} frame(s)...[/bold cyan]")
+    console.print(
+        f"[bold cyan]Generated prep_plan.json for {len(raw_frames)} frame(s)...[/bold cyan]"
+    )
 
     # 3. Build Nextflow args and execute
     configs = load_project_configs(cwd)
@@ -84,13 +90,17 @@ def cmd_prep(args):
     )
 
     if ret_code != 0:
-        console.print("[bold red]Nextflow preparation failed. Database not updated.[/bold red]")
+        console.print(
+            "[bold red]Nextflow preparation failed. Database not updated.[/bold red]"
+        )
         sys.exit(ret_code)
 
     # 4. Read Receipt and instantiate ready records with data lineage
     receipt_file = cwd / "prep_receipt.tsv"
     if not receipt_file.exists():
-        console.print("[bold red]FATAL: prep_receipt.tsv not found! Nextflow execution might have failed.[/bold red]")
+        console.print(
+            "[bold red]FATAL: prep_receipt.tsv not found! Nextflow execution might have failed.[/bold red]"
+        )
         sys.exit(1)
 
     prepared_count = 0
@@ -117,7 +127,9 @@ def cmd_prep(args):
         # 2. Update existing Pose in-place if native ligand was prepared
         system = session.query(System).filter_by(receptor_frame_id=frame.id).first()
         if system and system.pose:
-            prep_sdf_cand = cwd / "prepared" / f"{orig_frame_name}_ref_native_prepared.sdf"
+            prep_sdf_cand = (
+                cwd / "prepared" / f"{orig_frame_name}_ref_native_prepared.sdf"
+            )
             if not prep_sdf_cand.exists():
                 prep_sdf_cand = cwd / "prepared" / f"{orig_frame_name}_ref_native.sdf"
 
@@ -134,5 +146,9 @@ def cmd_prep(args):
     session.commit()
     session.close()
 
-    console.print(f"\n[bold green]✓ Successfully prepared {prepared_count} frame(s) into ready systems![/bold green]")
-    console.print("[dim]Original raw frames and crystal poses preserved. Use 'sbdd tree' to view lineage.[/dim]")
+    console.print(
+        f"\n[bold green]✓ Successfully prepared {prepared_count} frame(s) into ready systems![/bold green]"
+    )
+    console.print(
+        "[dim]Original raw frames and crystal poses preserved. Use 'sbdd tree' to view lineage.[/dim]"
+    )

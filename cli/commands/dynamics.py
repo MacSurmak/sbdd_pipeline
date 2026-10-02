@@ -20,7 +20,9 @@ def cmd_dynamics(args):
     session = init_db()
 
     # 1. Resolve Systems needing simulation and calculate required top-up replicates
-    reps_target = int(configs.get("md_simulation", {}).get("production", {}).get("replicates", 1))
+    reps_target = int(
+        configs.get("md_simulation", {}).get("production", {}).get("replicates", 1)
+    )
     if getattr(args, "replicates", None):
         reps_target = int(args.replicates)
 
@@ -30,7 +32,9 @@ def cmd_dynamics(args):
     elif getattr(args, "target", None):
         target_obj = session.query(Target).filter_by(name=args.target).first()
         if not target_obj:
-            console.print(f"[bold red]FATAL: Target '{args.target}' not found.[/bold red]")
+            console.print(
+                f"[bold red]FATAL: Target '{args.target}' not found.[/bold red]"
+            )
             sys.exit(1)
         query = query.filter_by(target_id=target_obj.id)
 
@@ -41,10 +45,13 @@ def cmd_dynamics(args):
     systems_to_run = []
 
     for s in candidate_systems:
-        active_reps = session.query(Trajectory).filter(
-            Trajectory.system_id == s.id,
-            Trajectory.status.in_(["raw", "cleaned"])
-        ).count()
+        active_reps = (
+            session.query(Trajectory)
+            .filter(
+                Trajectory.system_id == s.id, Trajectory.status.in_(["raw", "cleaned"])
+            )
+            .count()
+        )
 
         needed_reps = max(0, reps_target - active_reps)
         if needed_reps <= 0:
@@ -73,28 +80,39 @@ def cmd_dynamics(args):
 
     if not plan_list:
         if candidate_systems:
-            console.print(f"[bold green]✓ All {len(candidate_systems)} ready System(s) already have {reps_target} active replicates. Nothing to do![/bold green]")
+            console.print(
+                f"[bold green]✓ All {len(candidate_systems)} ready System(s) already have {reps_target} active replicates. Nothing to do![/bold green]"
+            )
         else:
-            console.print("[yellow]No ready Systems found to simulate. Run 'sbdd prep' first.[/yellow]")
+            console.print(
+                "[yellow]No ready Systems found to simulate. Run 'sbdd prep' first.[/yellow]"
+            )
         session.close()
         return
 
     # Maximum reps needed across queued systems
     max_reps_dispatch = max(item["reps_to_run"] for item in plan_list)
-    console.print(f"[bold cyan]Dispatching simulation to replenish replicates (Target: {reps_target}, Max to run: {max_reps_dispatch})...[/bold cyan]")
+    console.print(
+        f"[bold cyan]Dispatching simulation to replenish replicates (Target: {reps_target}, Max to run: {max_reps_dispatch})...[/bold cyan]"
+    )
 
     # 2. Check MD protocol
     protocol_dir = cwd / "configs" / "md_protocol"
     if not protocol_dir.exists() or not (protocol_dir / "protocol.txt").exists():
-        console.print("[bold cyan]MD protocol playlist not found. Auto-initializing 'sbdd md-init'...[/bold cyan]")
+        console.print(
+            "[bold cyan]MD protocol playlist not found. Auto-initializing 'sbdd md-init'...[/bold cyan]"
+        )
         from cli.main import cmd_md_init
+
         cmd_md_init(args)
 
     plan_file = cwd / "md_plan.json"
     with open(plan_file, "w") as f:
         json.dump(plan_list, f, indent=2)
 
-    console.print(f"[bold cyan]Dispatched MD for {len(plan_list)} System(s): {[s['id'] for s in plan_list]}[/bold cyan]")
+    console.print(
+        f"[bold cyan]Dispatched MD for {len(plan_list)} System(s): {[s['id'] for s in plan_list]}[/bold cyan]"
+    )
 
     # 3. Nextflow execution
     configs = load_project_configs(cwd)
@@ -129,7 +147,9 @@ def cmd_dynamics(args):
         sys.exit(ret_code)
 
     # 4. Atomic Registration of Trajectories with Incremental Replicate Indexing
-    total_duration_ns = float(configs.get("md_simulation", {}).get("production", {}).get("total_time_ns", 0.0))
+    total_duration_ns = float(
+        configs.get("md_simulation", {}).get("production", {}).get("total_time_ns", 0.0)
+    )
     if getattr(args, "total_ns", None):
         total_duration_ns = float(args.total_ns)
 
@@ -164,5 +184,9 @@ def cmd_dynamics(args):
     session.commit()
     session.close()
 
-    console.print(f"\n[bold green]✓ MD simulation completed! Registered {registered_trajs} Trajectory record(s) in DB.[/bold green]")
-    console.print("[dim]Run 'sbdd traj-clean' to strip solvent and fix PBC for downstream analysis.[/dim]")
+    console.print(
+        f"\n[bold green]✓ MD simulation completed! Registered {registered_trajs} Trajectory record(s) in DB.[/bold green]"
+    )
+    console.print(
+        "[dim]Run 'sbdd traj-clean' to strip solvent and fix PBC for downstream analysis.[/dim]"
+    )
