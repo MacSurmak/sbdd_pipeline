@@ -250,7 +250,7 @@ def main():
     parser = argparse.ArgumentParser(
         description="Calculate MD metrics (RMSD, RMSF, Contacts)"
     )
-    parser.add_argument("--pdb", required=True, help="Topology or Reference PDB/GRO")
+    parser.add_argument("--gro", required=True, help="Clean reference structure in GROMACS GRO format")
     parser.add_argument("--xtc", required=True, help="Clean Centered Trajectory XTC")
     parser.add_argument("--outdir", required=True, help="Output directory")
     parser.add_argument(
@@ -272,14 +272,14 @@ def main():
 
     try:
         df_rmsd, df_rmsf = compute_rmsd_rmsf(
-            args.pdb, args.xtc, args.ligand, args.cofactors
+            args.gro, args.xtc, args.ligand, args.cofactors
         )
         df_rmsd.to_csv(out_dir / "rmsd.csv", index=False)
         df_rmsf.to_csv(out_dir / "rmsf.csv", index=False)
         generate_rmsd_plot(df_rmsd, out_dir / "rmsd_plot.png")
 
         df_contacts = compute_contacts(
-            args.pdb,
+            args.gro,
             args.xtc,
             args.ligand,
             c_heavy=args.heavy_cutoff,

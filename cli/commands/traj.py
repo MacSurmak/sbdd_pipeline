@@ -153,15 +153,21 @@ def cmd_metrics(args):
 
     plan_list = []
     for t in trajs:
-        if not t.path_clean_xtc or not t.path_ref_pdb:
+        if not t.path_clean_xtc:
             continue
+
+        clean_path = Path(t.path_clean_xtc)
+        clean_dir = clean_path.parent
+        ref_gro = clean_dir / "complex_ref.gro"
+
+        if not ref_gro.exists():
+            console.print(f"[bold red]FATAL: Required topology {ref_gro} does not exist! Run 'sbdd traj-clean'.[/bold red]")
+            sys.exit(1)
 
         sys_obj = t.system
         lig_code = sys_obj.pose.ligand.name if sys_obj.pose else ""
         cofactors = sys_obj.receptor_frame.cofactors_list
-
-        clean_path = Path(t.path_clean_xtc)
-        metrics_dir = clean_path.parent.parent / "metrics"
+        metrics_dir = clean_dir.parent / "metrics"
 
         plan_list.append(
             {
@@ -169,7 +175,7 @@ def cmd_metrics(args):
                 "rec_id": sys_obj.name,
                 "rep": t.replicate,
                 "clean_xtc": str(clean_path.resolve()),
-                "ref_pdb": str(Path(t.path_ref_pdb).resolve()),
+                "ref_gro": str(ref_gro.resolve()),
                 "ligand": lig_code,
                 "cofactors": cofactors,
                 "metrics_dir": str(metrics_dir.resolve()),
