@@ -97,14 +97,6 @@ def cmd_dock(args):
                 "is_native": True
             })
 
-        for l in sorted(list(ligand_set), key=lambda x: x.name):
-            plan["ligands"].append({
-                "name": l.name,
-                "path": str(Path(l.path).resolve()),
-                "status": l.status,
-                "is_native": True
-            })
-
         console.print(f"[bold green]✓ 1-to-1 Redocking Mode: Matched {len(plan['pairs'])} receptors directly to their native ligands (0 cross-docking jobs).[/bold green]")
 
     else:
