@@ -55,55 +55,34 @@ process GMX_CLUSTER {
         \${wcl_flag} \
         -cl clusters_multi.pdb
 
-    # 3. Split multi-model PDB into distinct centroid complexes and separate in-situ ligand poses
-    python3 -c "
+    # 3. Split multi-model PDB and generate proper MAE/SDF formats with Schrodinger API
+    schrodinger run python3 -c "
 import sys
-
-with open('clusters_multi.pdb', 'r') as f:
-    lines = f.readlines()
+from schrodinger import structure
 
 lig_name = '${meta.ligand}'.strip().upper()
 max_c = int('${meta.max_clusters}' or 0)
 
-out_c = None
-out_p = None
-idx = 1
-for line in lines:
-    if line.startswith('MODEL'):
-        if max_c > 0 and idx > max_c:
+with structure.StructureReader('clusters_multi.pdb') as reader:
+    for i, st in enumerate(reader, 1):
+        if max_c > 0 and i > max_c:
             break
-        if out_c: out_c.close()
-        if out_p: out_p.close()
-        out_c = open(f'${meta.id}_centroid_{idx}.pdb', 'w')
-        out_p = open(f'${meta.id}_pose_{idx}.pdb', 'w') if lig_name else None
-        idx += 1
-    if line.startswith(('ATOM', 'HETATM')):
-        is_lig = lig_name and (f' {lig_name} ' in line or line[17:21].strip().upper() == lig_name)
-        if is_lig:
-            if out_p: out_p.write(line)
-        else:
-            if out_c: out_c.write(line)
-    elif line.startswith(('TER', 'ENDMDL')):
-        if out_c: out_c.write(line)
-        if out_p: out_p.write(line)
-
-if out_c: out_c.close()
-if out_p: out_p.close()
+            
+        if lig_name:
+            lig_atoms = [a.index for a in st.atom if a.pdbres.strip().upper() == lig_name]
+            if lig_atoms:
+                lig_st = st.extract(lig_atoms)
+                lig_st.title = lig_name
+                lig_st.property['s_m_title'] = lig_name
+                lig_st.write(f'${meta.id}_pose_{i}.sdf')
+                lig_st.write(f'${meta.id}_pose_{i}.mae')
+                st.deleteAtoms(lig_atoms)
+                
+        st.title = f'${meta.id}_centroid_{i}'
+        st.property['s_m_title'] = f'${meta.id}_centroid_{i}'
+        st.write(f'${meta.id}_centroid_{i}.pdb')
+        st.write(f'${meta.id}_centroid_{i}.mae')
 "
-
-    # 4. Strict physical format generation: produce explicit MAE and SDF for each centroid
-    for p in ${meta.id}_centroid_*.pdb; do
-        [ -f "\$p" ] || continue
-        base=\$(basename "\$p" .pdb)
-        schrodinger structconvert "\$p" "\${base}.mae"
-    done
-
-    for p in ${meta.id}_pose_*.pdb; do
-        [ -f "\$p" ] || continue
-        base=\$(basename "\$p" .pdb)
-        schrodinger structconvert "\$p" "\${base}.sdf"
-        schrodinger structconvert "\$p" "\${base}.mae"
-    done
     """
 
     stub:
