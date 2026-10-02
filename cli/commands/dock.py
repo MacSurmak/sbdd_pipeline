@@ -50,7 +50,6 @@ def cmd_dock(args):
     }
 
     if is_self:
-        ligand_set = set()
         active_frames = []
 
         for r in frames:
@@ -75,7 +74,6 @@ def cmd_dock(args):
             if ex:
                 continue
 
-            ligand_set.add((native_lig, native_pose.path))
             active_frames.append((r, native_pose, native_lig))
 
         if not active_frames:
@@ -129,30 +127,19 @@ def cmd_dock(args):
                 }
             )
 
-            plan["pairs"].append({"receptor": r.name, "ligand": native_lig.name})
-
-        # Index ligands uniquely to prevent name collisions in multi-target self-docking
-        for idx, (l_obj, l_path) in enumerate(
-            sorted(list(ligand_set), key=lambda x: str(x[1])), start=1
-        ):
-            unique_lig_name = (
-                f"{l_obj.name}_{idx}" if len(ligand_set) > 1 else l_obj.name
-            )
+            unique_lig_name = f"{r.name}_{native_lig.name}"
             plan["ligands"].append(
                 {
                     "name": unique_lig_name,
-                    "path": str(Path(l_path).resolve()),
-                    "status": "ready",
+                    "path": str(Path(native_pose.path).resolve()),
+                    "status": "ready" if native_lig.batch_id == "crystal" else "unprepared",
                     "is_native": True,
+                    "receptor": r.name
                 }
             )
-            # Update pair references to match unique ligand task id
-            for p in plan["pairs"]:
-                if p.get("ref_path") == str(Path(l_path).resolve()):
-                    p["ligand"] = unique_lig_name
 
         console.print(
-            f"[bold green]✓ 1-to-1 Redocking Mode: Matched {len(plan['pairs'])} receptors directly to their native ligands (0 cross-docking jobs).[/bold green]"
+            f"[bold green]✓ 1-to-1 Redocking Mode: Matched {len(active_frames)} receptors directly to their native ligands.[/bold green]"
         )
 
     else:
