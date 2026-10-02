@@ -379,7 +379,13 @@ def main():
         "traj-mmpbsa", help="Run standalone MM-PBSA free energy calculation on clean trajectories"
     )
     p_mmpbsa.add_argument(
-        "--traj", required=True, help="Explicit comma-separated list of Trajectory names to analyze"
+        "--systems", help="Limit to specific System names"
+    )
+    p_mmpbsa.add_argument(
+        "--target", help="Limit to specific Target"
+    )
+    p_mmpbsa.add_argument(
+        "--traj", help="Explicit comma-separated list of Trajectory names"
     )
     add_common_wf_args(p_mmpbsa)
 
@@ -434,16 +440,11 @@ def main():
     )
     p_cluster.add_argument(
         "--systems",
-        help="Comma-separated list of System names to cluster",
+        help="Limit clustering to specific System names",
     )
     p_cluster.add_argument(
-        "--receptors",
-        help="Comma-separated list of Receptor names (clusters trajectories across all their systems)",
-    )
-    p_cluster.add_argument(
-        "--all",
-        action="store_true",
-        help="Cluster trajectories for ALL systems in DB",
+        "--target",
+        help="Limit clustering to a specific Target",
     )
     p_cluster.add_argument(
         "--traj", help="Explicit comma-separated list of Trajectory names"

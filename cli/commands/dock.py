@@ -47,17 +47,31 @@ def cmd_dock(args):
 
     if is_self:
         ligand_set = set()
+        active_frames = []
+
         for r in frames:
-            # Resolve native ligand directly from target's systems
             target_sys = session.query(System).filter(System.target_id == r.target_id, System.pose_id.isnot(None)).first()
             if not target_sys or not target_sys.pose:
-                console.print(f"[bold red]FATAL: No reference pose found for frame '{r.name}' in target '{r.target.name}'.[/bold red]")
-                sys.exit(1)
+                continue
 
             native_pose = target_sys.pose
             native_lig = native_pose.ligand
-            ligand_set.add((native_lig, native_pose.path))
 
+            # Check if self-docking pose already exists in DB
+            dock_pose_name = f"{r.name}_{native_lig.name}_dock"
+            ex = session.query(Pose).filter_by(name=dock_pose_name, origin="docking", state="ready").first()
+            if ex:
+                continue
+
+            ligand_set.add((native_lig, native_pose.path))
+            active_frames.append((r, native_pose, native_lig))
+
+        if not active_frames:
+            console.print(f"[bold green]✓ All {len(frames)} ready frame(s) already have redocking poses completed. Nothing to do![/bold green]")
+            session.close()
+            return
+
+        for r, native_pose, native_lig in active_frames:
             ref_pose_path = native_pose.path
             pose_p = Path(ref_pose_path)
             if pose_p.suffix == ".sdf" and pose_p.with_suffix(".mae").exists():

@@ -19,17 +19,38 @@ def cmd_dynamics(args):
     cwd = Path.cwd()
     session = init_db()
 
-    # 1. Resolve requested System
-    target_sys_name = getattr(args, "system", None)
-    if target_sys_name:
-        systems = session.query(System).filter_by(name=target_sys_name).all()
-    else:
-        # Default: all ready systems
-        systems = session.query(System).filter_by(state="ready").all()
+    # 1. Resolve Systems needing simulation based on DB state
+    reps_target = int(configs.get("md_simulation", {}).get("production", {}).get("replicates", 1))
+    if getattr(args, "replicates", None):
+        reps_target = int(args.replicates)
+
+    query = session.query(System).filter_by(state="ready")
+    if getattr(args, "system", None):
+        query = query.filter_by(name=args.system)
+    elif getattr(args, "target", None):
+        target_obj = session.query(Target).filter_by(name=args.target).first()
+        if not target_obj:
+            console.print(f"[bold red]FATAL: Target '{args.target}' not found.[/bold red]")
+            sys.exit(1)
+        query = query.filter_by(target_id=target_obj.id)
+
+    candidate_systems = query.all()
+
+    # Skip systems that already have the required replicates completed
+    systems = []
+    for s in candidate_systems:
+        existing_reps = session.query(Trajectory).filter_by(system_id=s.id).count()
+        if existing_reps >= reps_target:
+            continue
+        systems.append(s)
 
     if not systems:
-        console.print("[bold red]FATAL: No ready System found to simulate! Check 'sbdd tree' or specify --system.[/bold red]")
-        sys.exit(1)
+        if candidate_systems:
+            console.print(f"[bold green]✓ All {len(candidate_systems)} ready System(s) already have {reps_target} replicates completed. Nothing to do![/bold green]")
+        else:
+            console.print("[yellow]No ready Systems found to simulate. Run 'sbdd prep' first.[/yellow]")
+        session.close()
+        return
 
     plan_list = []
     for sys_obj in systems:

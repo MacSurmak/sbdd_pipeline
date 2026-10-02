@@ -228,10 +228,16 @@ def cmd_cluster(args):
     """
     Clusters clean trajectory ensembles and registers each centroid as a
     peer ReceptorFrame (state='ready') in the parent Target.
+    Automatically skips systems whose centroids are already generated.
     """
     cwd = Path.cwd()
     session = init_db()
-    trajs = _query_trajectories(session, args)
+    trajs = _query_trajectories(session, args, target_status="cleaned")
+
+    if not trajs:
+        console.print("[yellow]No cleaned trajectories found to cluster. Run 'sbdd traj-clean' first![/yellow]")
+        session.close()
+        return
 
     for t in trajs:
         if t.status != "cleaned" or not t.path_clean_xtc or not t.path_ref_pdb:
