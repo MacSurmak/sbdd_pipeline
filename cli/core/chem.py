@@ -47,11 +47,19 @@ def get_mol_identity(source: str | Path) -> Tuple[str, str, str]:
     if mol is None:
         raise ValueError("Could not parse valid chemical structure from provided input.")
 
-    # Generate Standard InChIKey (27 characters fixed hash) and Canonical SMILES
-    inchikey = Chem.MolToInchiKey(mol)
-    canonical_smiles = Chem.MolToSmiles(Chem.RemoveHs(mol), canonical=True)
+    from rdkit.Chem.MolStandardize import rdMolStandardize
+
+    # Neutralize uncharged parent to establish invariant chemical substance identity
+    # across protonation microstates, while preserving individual pose physics
+    uncharger = rdMolStandardize.Uncharger()
+    heavy_mol = Chem.RemoveHs(mol)
+    parent_mol = uncharger.uncharge(heavy_mol)
+
+    parent_inchikey = Chem.MolToInchiKey(parent_mol)
+    parent_smiles = Chem.MolToSmiles(parent_mol, canonical=True)
+    formal_charge = Chem.GetFormalCharge(mol)
 
     if not mol_name:
-        mol_name = inchikey[:14]
+        mol_name = parent_inchikey[:14]
 
-    return inchikey, canonical_smiles, mol_name
+    return parent_inchikey, parent_smiles, mol_name, formal_charge

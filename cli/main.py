@@ -164,10 +164,10 @@ def main():
 
     # 0.1 add structure / receptor
     p_add_rec = add_subs.add_parser(
-        "structure", aliases=["receptor", "complex"], help="Import a macromolecular structure into a Target"
+        "structure", aliases=["receptor", "complex"], help="Import macromolecular structure(s) into a Target"
     )
     p_add_rec.add_argument(
-        "path", help="Path to the structure (.pdb, .cif, .mae)"
+        "path", nargs="+", help="Path(s) or glob to structure file(s) (.pdb, .cif, .mae)"
     )
     p_add_rec.add_argument(
         "--target", help="Parent target name (e.g. RyR1, TSPO). Defaults to file stem."

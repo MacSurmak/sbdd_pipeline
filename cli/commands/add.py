@@ -129,121 +129,123 @@ lig_st.write(out_file)
 
 def add_receptor(args):
     """
-    Imports a macromolecular structure (PDB/CIF/MAE) into a Target.
-    Creates peer ReceptorFrame records (state='raw').
-    If native ligand specified, extracts Pose and creates Holo System.
-    If no ligand, creates Apo System.
+    Imports macromolecular structure(s) (PDB/CIF/MAE) into a Target.
+    Supports single files, multiple paths, or shell globs.
     """
     session = init_db()
     cwd = Path.cwd()
 
-    struct_path = Path(args.path).resolve()
-    if not struct_path.exists():
-        console.print(f"[bold red]FATAL: Structure file not found: {struct_path}[/bold red]")
-        sys.exit(1)
+    raw_inputs = args.path if isinstance(args.path, list) else [args.path]
+    struct_paths = [Path(p).resolve() for p in raw_inputs]
 
-    target_name = args.target if getattr(args, "target", None) else args.name
-    target = session.query(Target).filter_by(name=target_name).first()
-    if not target:
-        target = Target(name=target_name, description=f"Target {target_name}")
-        session.add(target)
-        session.flush()
-        console.print(f"[bold green]✓ Created Target '{target_name}'[/bold green]")
+    for struct_path in struct_paths:
+        if not struct_path.exists():
+            console.print(f"[bold red]FATAL: Structure file not found: {struct_path}[/bold red]")
+            sys.exit(1)
 
-    base_name = args.name or struct_path.stem
-    cofactors = args.cofactors if getattr(args, "cofactors", None) else []
-    lig_code = args.ligand.strip().upper() if getattr(args, "ligand", None) else None
-    source_type = "crystal"
-
-    frames_dir = cwd / "structures" / target_name
-    frames = _count_and_split_models(struct_path, frames_dir, base_name)
-
-    created_frames = 0
-    for frame_name, frame_file in frames:
-        ex_frame = session.query(ReceptorFrame).filter_by(name=frame_name).first()
-        if ex_frame:
-            ex_frame.path = str(frame_file.resolve())
-            ex_frame.cofactors_list = cofactors
-            frame_obj = ex_frame
-            console.print(f"[yellow]Updated Frame '{frame_name}' in Target '{target_name}'[/yellow]")
-        else:
-            frame_obj = ReceptorFrame(
-                target_id=target.id,
-                name=frame_name,
-                source_type=source_type,
-                state="raw",
-                path=str(frame_file.resolve()),
-            )
-            frame_obj.cofactors_list = cofactors
-            session.add(frame_obj)
+        target_name = args.target if getattr(args, "target", None) else struct_path.stem
+        target = session.query(Target).filter_by(name=target_name).first()
+        if not target:
+            target = Target(name=target_name, description=f"Target {target_name}")
+            session.add(target)
             session.flush()
-            console.print(f"[bold green]✓ Added Frame '{frame_name}'[/bold green] [dim](raw, {source_type})[/dim]")
-        created_frames += 1
+            console.print(f"[bold green]✓ Created Target '{target_name}'[/bold green]")
 
-        # Ligand & Pose Handling (Strict Fail-Fast)
-        pose_obj = None
-        if lig_code:
-            poses_dir = cwd / "poses" / target_name
-            pose_sdf = poses_dir / f"{frame_name}_{lig_code}_crystal.sdf"
-            
-            # Will raise ValueError on missing residue or extraction failure
-            _extract_ligand_atoms(frame_file, lig_code, pose_sdf)
+        base_name = args.name if (len(struct_paths) == 1 and getattr(args, "name", None)) else struct_path.stem
+        cofactors = args.cofactors if getattr(args, "cofactors", None) else []
+        lig_code = args.ligand.strip().upper() if getattr(args, "ligand", None) else None
+        source_type = "crystal"
 
-            inchikey, smiles, mol_name = get_mol_identity(pose_sdf)
+        frames_dir = cwd / "structures" / target_name
+        frames = _count_and_split_models(struct_path, frames_dir, base_name)
 
-            # Pure chemical deduplication by Standard InChIKey (topology-invariant)
-            lig_entity = session.query(Ligand).filter_by(inchikey=inchikey).first()
-
-            if not lig_entity:
-                lig_entity = Ligand(
-                    inchikey=inchikey,
-                    smiles=smiles,
-                    name=mol_name or lig_code,
-                    batch_id="crystal",
-                )
-                session.add(lig_entity)
-                session.flush()
-                console.print(f"[bold green]✓ Registered Chemical Ligand '{lig_entity.name}'[/bold green] [dim]({inchikey})[/dim]")
+        for frame_name, frame_file in frames:
+            ex_frame = session.query(ReceptorFrame).filter_by(name=frame_name).first()
+            if ex_frame:
+                ex_frame.path = str(frame_file.resolve())
+                ex_frame.cofactors_list = cofactors
+                frame_obj = ex_frame
+                console.print(f"[yellow]Updated Frame '{frame_name}' in Target '{target_name}'[/yellow]")
             else:
-                console.print(f"[bold green]✓ Matched existing Chemical Ligand '{lig_entity.name}' via InChIKey[/bold green] [dim]({inchikey})[/dim]")
-
-            # Create Pose (1 Pose = 1 File)
-            pose_name = f"{frame_name}_{lig_code}_pose"
-            ex_pose = session.query(Pose).filter_by(name=pose_name).first()
-            if ex_pose:
-                ex_pose.path = str(pose_sdf.resolve())
-                pose_obj = ex_pose
-            else:
-                pose_obj = Pose(
-                    ligand_id=lig_entity.id,
-                    receptor_frame_id=frame_obj.id,
-                    name=pose_name,
-                    origin="crystal",
+                frame_obj = ReceptorFrame(
+                    target_id=target.id,
+                    name=frame_name,
+                    source_type=source_type,
                     state="raw",
-                    path=str(pose_sdf.resolve()),
+                    path=str(frame_file.resolve()),
                 )
-                session.add(pose_obj)
+                frame_obj.cofactors_list = cofactors
+                session.add(frame_obj)
                 session.flush()
-                console.print(f"[bold green]✓ Registered Pose '{pose_name}'[/bold green] [dim](1 file: {pose_sdf.name})[/dim]")
+                console.print(f"[bold green]✓ Added Frame '{frame_name}'[/bold green] [dim](raw, {source_type})[/dim]")
 
-        # System creation
-        sys_name = f"{frame_name}_holo" if pose_obj else f"{frame_name}_apo"
-        ex_sys = session.query(System).filter_by(name=sys_name).first()
-        if ex_sys:
-            ex_sys.pose_id = pose_obj.id if pose_obj else None
-            ex_sys.state = "raw"
-        else:
-            new_sys = System(
-                target_id=target.id,
-                receptor_frame_id=frame_obj.id,
-                pose_id=pose_obj.id if pose_obj else None,
-                name=sys_name,
-                state="raw",
-                origin="crystal",
-            )
-            session.add(new_sys)
-            sys_type = "Holo" if pose_obj else "Apo"
-            console.print(f"[bold green]✓ Created {sys_type} System '{sys_name}'[/bold green]")
+            # Ligand & Pose Handling
+            pose_obj = None
+            if lig_code:
+                poses_dir = cwd / "poses" / target_name
+                pose_sdf = poses_dir / f"{frame_name}_{lig_code}_crystal.sdf"
+
+                # Extract exact coordinates and protonation state
+                _extract_ligand_atoms(frame_file, lig_code, pose_sdf)
+
+                # Parent compound InChIKey for deduplication + exact formal charge for physics
+                parent_inchikey, parent_smiles, mol_name, formal_charge = get_mol_identity(pose_sdf)
+
+                # Pure chemical deduplication by Parent Standard InChIKey
+                lig_entity = session.query(Ligand).filter_by(inchikey=parent_inchikey).first()
+                if not lig_entity:
+                    lig_entity = Ligand(
+                        inchikey=parent_inchikey,
+                        smiles=parent_smiles,
+                        name=mol_name or lig_code,
+                        batch_id="crystal",
+                    )
+                    session.add(lig_entity)
+                    session.flush()
+                    console.print(f"[bold green]✓ Registered Chemical Ligand '{lig_entity.name}'[/bold green] [dim]({parent_inchikey})[/dim]")
+                else:
+                    console.print(f"[bold green]✓ Matched existing Chemical Ligand '{lig_entity.name}' via Parent InChIKey[/bold green] [dim]({parent_inchikey})[/dim]")
+
+                # Create Pose preserving exact physical charge state
+                pose_name = f"{frame_name}_{lig_code}_pose"
+                ex_pose = session.query(Pose).filter_by(name=pose_name).first()
+                if ex_pose:
+                    ex_pose.path = str(pose_sdf.resolve())
+                    ex_pose.scores_dict = {"formal_charge": formal_charge}
+                    pose_obj = ex_pose
+                else:
+                    pose_obj = Pose(
+                        ligand_id=lig_entity.id,
+                        receptor_frame_id=frame_obj.id,
+                        name=pose_name,
+                        origin="crystal",
+                        state="raw",
+                        path=str(pose_sdf.resolve()),
+                    )
+                    pose_obj.scores_dict = {"formal_charge": formal_charge}
+                    session.add(pose_obj)
+                    session.flush()
+                    ch_label = f"q={formal_charge:+d}" if formal_charge != 0 else "neutral"
+                    console.print(f"[bold green]✓ Registered Pose '{pose_name}'[/bold green] [dim]({ch_label}) -> {pose_sdf.name}[/dim]")
+
+            # System creation
+            sys_name = f"{frame_name}_holo" if pose_obj else f"{frame_name}_apo"
+            ex_sys = session.query(System).filter_by(name=sys_name).first()
+            if ex_sys:
+                ex_sys.pose_id = pose_obj.id if pose_obj else None
+                ex_sys.state = "raw"
+            else:
+                new_sys = System(
+                    target_id=target.id,
+                    receptor_frame_id=frame_obj.id,
+                    pose_id=pose_obj.id if pose_obj else None,
+                    name=sys_name,
+                    state="raw",
+                    origin="crystal",
+                )
+                session.add(new_sys)
+                sys_type = "Holo" if pose_obj else "Apo"
+                console.print(f"[bold green]✓ Created {sys_type} System '{sys_name}'[/bold green]")
 
     session.commit()
     session.close()

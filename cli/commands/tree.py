@@ -60,9 +60,10 @@ def cmd_tree(args):
             poses = session.query(Pose).filter_by(ligand_id=lig.id).order_by(Pose.name).all()
             for p in poses:
                 p_color = "green" if p.state == "ready" else "yellow"
-                scores_info = f" [dim]{p.scores}[/dim]" if p.scores != "{}" else ""
+                ch = p.scores_dict.get("formal_charge", None)
+                ch_tag = f" [cyan](q={ch:+d})[/cyan]" if ch is not None and ch != 0 else (" [dim](neutral)[/dim]" if ch == 0 else "")
                 lig_node.add(
-                    f"Pose: [{p_color}]{p.name}[/{p_color}] [dim]({p.origin}, state={p.state})[/dim] in [cyan]{p.receptor_frame.name}[/cyan] -> {Path(p.path).name}{scores_info}"
+                    f"Pose: [{p_color}]{p.name}[/{p_color}] [dim]({p.origin}, state={p.state})[/dim]{ch_tag} in [cyan]{p.receptor_frame.name}[/cyan] -> {Path(p.path).name}"
                 )
 
     session.close()
