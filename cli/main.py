@@ -196,18 +196,42 @@ def main():
 
     # 0.3 add traj
     p_add_traj = add_subs.add_parser(
-        "traj", help="Register an existing MD trajectory linked to a System"
-    )
-    p_add_traj.add_argument(
-        "--name", required=True, help="Unique name for this trajectory (e.g. 7UA1_rep1)"
+        "traj", help="Register an existing MD trajectory replicate linked to a System"
     )
     p_add_traj.add_argument(
         "--system",
         required=True,
-        help="Name of the System in DB (e.g. 7UA1_ready_holo)",
+        help="Name of the System in DB (e.g. 9ZKE_crystal_holo)",
     )
-    p_add_traj.add_argument("--xtc", required=True, help="Path to raw .xtc file")
-    p_add_traj.add_argument("--tpr", required=True, help="Path to .tpr file")
+    p_add_traj.add_argument(
+        "--replicate",
+        type=int,
+        default=1,
+        help="Replicate index (1, 2, 3...)",
+    )
+    p_add_traj.add_argument(
+        "--raw-dir",
+        help="Path to directory containing raw chunk files md_*.xtc and sys_ref.tpr",
+    )
+    p_add_traj.add_argument(
+        "--xtc",
+        help="Path to raw .xtc file or primary chunk (optional if --raw-dir is provided)",
+    )
+    p_add_traj.add_argument(
+        "--tpr",
+        required=True,
+        help="Path to .tpr file (e.g. sys_ref.tpr)",
+    )
+    p_add_traj.add_argument(
+        "--length_ns",
+        type=float,
+        default=0.0,
+        help="Total simulation length in nanoseconds (e.g. 100.0)",
+    )
+    p_add_traj.add_argument(
+        "--name",
+        help="Unique name for this trajectory (default: <system>_rep<replicate>)",
+    )
     p_add_traj.add_argument(
         "--clean-xtc",
         help="Explicit path to pre-cleaned .xtc (optional, if already cleaned)",
