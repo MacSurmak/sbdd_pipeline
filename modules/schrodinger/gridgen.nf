@@ -30,11 +30,13 @@ process GLIDE_GRIDGEN {
     fi
 
     # Compute exact centroid coordinates of reference pose for Glide GRID_CENTER (Fail-Fast)
-    GRID_CENTER=$(schrodinger run python3 -c "
+    GRID_CENTER=\$(schrodinger run python3 -c "
 import sys
 from schrodinger import structure
+
+ref_path = sys.argv[1]
 try:
-    st = structure.StructureReader.read('${REF_MAE}')
+    st = structure.StructureReader.read(ref_path)
     if st.atom_total > 0:
         cx = sum(a.x for a in st.atom) / st.atom_total
         cy = sum(a.y for a in st.atom) / st.atom_total
@@ -44,9 +46,9 @@ try:
         print('FATAL: Reference ligand structure is empty.', file=sys.stderr)
         sys.exit(1)
 except Exception as e:
-    print(f'FATAL: Failed to calculate grid center from ${REF_MAE}: {e}', file=sys.stderr)
+    print(f'FATAL: Failed to calculate grid center from {ref_path}: {e}', file=sys.stderr)
     sys.exit(1)
-")
+" "\${REF_MAE}")
     export SCHRODINGER_JOBDB="/tmp/schrodinger_jobdb_\${SLURM_JOB_ID:-\$\$}"
     mkdir -p "\$SCHRODINGER_JOBDB"
 
