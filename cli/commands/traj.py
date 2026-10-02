@@ -118,7 +118,9 @@ def cmd_clean_traj(args):
     for item in plan_list:
         clean_dir = Path(item["clean_dir"])
         clean_xtc = clean_dir / "trajectory_clean.xtc"
+        ref_gro = clean_dir / "complex_ref.gro"
         ref_pdb = clean_dir / "complex_ref.pdb"
+        t_record.path_ref_pdb = str(ref_gro.resolve()) if ref_gro.exists() else str(ref_pdb.resolve())
 
         if clean_xtc.exists() and ref_pdb.exists():
             t_obj = session.query(Trajectory).filter_by(name=item["name"]).first()
