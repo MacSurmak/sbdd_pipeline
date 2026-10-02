@@ -138,10 +138,29 @@ def cmd_dynamics(args):
 
             tpr_path = raw_dir / "sys_ref.tpr"
 
-            # Find any production xtc or concatenated trajectory
-            xtc_candidates = list(raw_dir.glob("md_*.xtc")) + list(raw_dir.glob("concatenated.xtc"))
-            if xtc_candidates and tpr_path.exists():
-                chosen_xtc = sorted(xtc_candidates)[-1]
+            # Check for existing concatenated trajectory or assemble from sequential chunks
+            concat_path = raw_dir / "concatenated.xtc"
+            chosen_xtc = None
+
+            if concat_path.exists() and concat_path.stat().st_size > 0:
+                chosen_xtc = concat_path
+            else:
+                chunks = sorted(
+                    raw_dir.glob("md_*.xtc"),
+                    key=lambda p: int("".join(filter(str.isdigit, p.stem)) or 0)
+                )
+                if len(chunks) > 1:
+                    console.print(f"[cyan]Concatenating {len(chunks)} chunks into {concat_path.name}...[/cyan]")
+                    import subprocess
+                    subprocess.run(
+                        ["gmx", "trjcat", "-f", *[str(c) for c in chunks], "-o", str(concat_path), "-cat"],
+                        check=True
+                    )
+                    chosen_xtc = concat_path
+                elif len(chunks) == 1:
+                    chosen_xtc = chunks[0]
+
+            if chosen_xtc and tpr_path.exists():
                 ex_traj = session.query(Trajectory).filter_by(name=traj_name).first()
                 if ex_traj:
                     ex_traj.system_name = sys_name

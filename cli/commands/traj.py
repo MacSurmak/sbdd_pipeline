@@ -101,10 +101,30 @@ def cmd_clean_traj(args):
         rec_name = sys_obj.receptor_name if sys_obj else t.system_name
         rec_id = rec_name.replace("_ready", "")
         xtc_path = Path(t.path_xtc).resolve()
+        raw_dir = xtc_path.parent
+
+        # Auto-heal: Ensure we clean the full concatenated trajectory, not a solitary 10ns chunk
+        concat_file = raw_dir / "concatenated.xtc"
+        if concat_file.exists() and concat_file.stat().st_size > 0:
+            xtc_path = concat_file
+        else:
+            chunks = sorted(
+                raw_dir.glob("md_*.xtc"),
+                key=lambda p: int("".join(filter(str.isdigit, p.stem)) or 0)
+            )
+            if len(chunks) > 1:
+                console.print(f"[bold cyan]Auto-healing: Merging {len(chunks)} chunks for {t.name} into concatenated.xtc...[/bold cyan]")
+                import subprocess
+                subprocess.run(
+                    ["gmx", "trjcat", "-f", *[str(c) for c in chunks], "-o", str(concat_file), "-cat"],
+                    check=True
+                )
+                xtc_path = concat_file
+                t.path_xtc = str(concat_file)
 
         # Destination inside project directory next to replicate
-        if xtc_path.parent.name == "raw":
-            clean_dir = xtc_path.parent.parent / "clean"
+        if raw_dir.name == "raw":
+            clean_dir = raw_dir.parent / "clean"
         else:
             clean_dir = cwd / "md" / rec_id / f"rep_{rep_idx}" / "clean"
 
