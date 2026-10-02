@@ -92,7 +92,7 @@ workflow SCREEN_WF {
     SUMMARIZE_DOCKING(
         params.project_name,
         DOCK_LIBRARY.out.summary_files,
-        "", // Default native ligand extraction handled gracefully
+        params.native_ligand ?: "",
         bench_ligands_str
     )
 }

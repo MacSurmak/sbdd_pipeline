@@ -116,8 +116,51 @@ def cmd_dynamics(args):
         console.print("[bold red]Nextflow MD simulation failed.[/bold red]")
         sys.exit(ret_code)
 
+    # 4. Automatically register completed trajectories into the database
+    reps = int(configs.get("md_simulation", {}).get("production", {}).get("replicates", 1))
+    if getattr(args, "replicates", None):
+        reps = int(args.replicates)
+
+    registered_trajs = 0
+    for plan_item in plan_list:
+        sys_name = plan_item["id"]
+        rec_id = sys_name.replace("_ready_holo", "").replace("_holo", "").replace("_ready_apo", "").replace("_apo", "")
+        
+        for rep_idx in range(1, reps + 1):
+            traj_name = f"{rec_id}_rep{rep_idx}"
+            raw_dir = cwd / "md" / sys_name / f"rep_{rep_idx}" / "raw"
+            if not raw_dir.exists():
+                raw_dir = cwd / "md" / rec_id / f"rep_{rep_idx}" / "raw"
+
+            tpr_path = raw_dir / "sys_ref.tpr"
+            xtc_path = raw_dir / "out.gro" # Check if chunk outputs exist
+            
+            # Find any production xtc or concatenated trajectory
+            xtc_candidates = list(raw_dir.glob("md_*.xtc")) + list(raw_dir.glob("concatenated.xtc"))
+            if xtc_candidates and tpr_path.exists():
+                chosen_xtc = sorted(xtc_candidates)[-1]
+                ex_traj = session.query(Trajectory).filter_by(name=traj_name).first()
+                if ex_traj:
+                    ex_traj.system_name = sys_name
+                    ex_traj.replicate = rep_idx
+                    ex_traj.path_xtc = str(chosen_xtc.resolve())
+                    ex_traj.path_tpr = str(tpr_path.resolve())
+                    ex_traj.status = "raw"
+                else:
+                    new_traj = Trajectory(
+                        name=traj_name,
+                        system_name=sys_name,
+                        replicate=rep_idx,
+                        path_xtc=str(chosen_xtc.resolve()),
+                        path_tpr=str(tpr_path.resolve()),
+                        status="raw"
+                    )
+                    session.add(new_traj)
+                registered_trajs += 1
+
+    session.commit()
     console.print(
-        f"\n[bold green]✓ MD simulation finished successfully for {len(plan_list)} System(s)![/bold green]"
+        f"\n[bold green]✓ MD simulation finished successfully! Registered {registered_trajs} Trajectory record(s) in DB.[/bold green]"
     )
     console.print("[dim]Use 'sbdd traj-clean' to strip solvent and fix PBC for downstream analysis.[/dim]")
     session.close()

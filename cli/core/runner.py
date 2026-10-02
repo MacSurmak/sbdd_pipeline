@@ -160,9 +160,8 @@ def execute_nextflow(
             shutil.copy2(src, pipeline_code_dir / f)
 
     unrolled_code = build_unrolled_md_dag(total_c)
-    unrolled_nf = FRAMEWORK_DIR / "subworkflows" / "run_chunked_md.nf"
-    if not unrolled_nf.exists() or unrolled_nf.read_text() != unrolled_code:
-        unrolled_nf.write_text(unrolled_code)
+    unrolled_nf = pipeline_code_dir / "subworkflows" / "run_chunked_md.nf"
+    unrolled_nf.write_text(unrolled_code)
 
     for script_file in (pipeline_code_dir / "bin").glob("*.py"):
         try:

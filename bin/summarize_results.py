@@ -147,7 +147,7 @@ def main():
                 break
 
     if not all_receptors:
-        all_receptors = {"1"}
+        raise ValueError(f"FATAL: No docking results found in {dock_dir} or {analysis_dir}")
 
     rows = []
     for rec_id in sorted(all_receptors):

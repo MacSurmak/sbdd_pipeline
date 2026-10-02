@@ -78,8 +78,11 @@ def main():
                 f"Available residues: {avail}"
             )
     else:
-        Path(args.out_ligand_mae).touch()
-        Path(args.out_ligand_sdf).touch()
+        # If no ligand was specified, write pure receptor and exit without creating dummy 0-byte ligand files
+        st.write(args.out_receptor_mae)
+        st.write(args.out_receptor_pdb)
+        print(f"Wrote prepared apo receptor to {args.out_receptor_mae} ({st.atom_total} atoms).")
+        return
 
     # The remaining structure is Protein + Cofactors
     st.write(args.out_receptor_mae)

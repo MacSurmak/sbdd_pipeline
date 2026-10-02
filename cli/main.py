@@ -69,42 +69,34 @@ def cmd_status(args):
 
 
 def cmd_md_init(args):
-    """Initializes the editable MD protocol playlist and MDP files."""
+    """Initializes editable MD protocol playlist and MDP files from assets/mdp templates."""
     cwd = Path.cwd()
     configs = load_project_configs(cwd)
     md_dir = cwd / "configs" / "md_protocol"
     md_dir.mkdir(parents=True, exist_ok=True)
 
-    is_mem = configs.get("membrane", {}).get("enabled", False)
+    is_mem = "true" if configs.get("membrane", {}).get("enabled", False) else "false"
+    tpl_dir = FRAMEWORK_DIR / "assets" / "mdp"
+    script = FRAMEWORK_DIR / "bin" / "generate_mdp.py"
 
-    # Generate clean MDP templates with decoupled protein and ligand preprocessor controls
-    content_minim = "define = -DPOSRES -DPOSRES_LIG\nintegrator = steep\nemtol = 500.0\nemstep = 0.01\nnsteps = 50000\ncutoff-scheme = Verlet\ncoulombtype = PME\nrcoulomb = 1.0\nvdwtype = cutoff\nrvdw = 1.0\npbc = xyz\nconstraints = h-bonds\nconstraint-algorithm = lincs\n"
-    content_nvt = "define = -DPOSRES -DPOSRES_LIG\nintegrator = md\ndt = 0.001\nnsteps = 50000\nnstxout-compressed = 5000\ncutoff-scheme = Verlet\ncoulombtype = PME\nrcoulomb = 1.0\nvdwtype = cutoff\nrvdw = 1.0\npbc = xyz\ntcoupl = V-rescale\ntc-grps = PROT_LIG SOL_ION\ntau-t = 0.1 0.1\nref-t = 310.15 310.15\npcoupl = no\nconstraints = h-bonds\nconstraint-algorithm = lincs\ncontinuation = no\ngen_vel = yes\ngen_temp = 310.15\n"
-    content_npt = "define = -DPOSRES_250 -DPOSRES_LIG_250\nintegrator = md\ndt = 0.002\nnsteps = 100000\nnstxout-compressed = 5000\ncutoff-scheme = Verlet\ncoulombtype = PME\nrcoulomb = 1.0\nvdwtype = cutoff\nrvdw = 1.0\npbc = xyz\ntcoupl = V-rescale\ntc-grps = PROT_LIG SOL_ION\ntau-t = 1.0 1.0\nref-t = 310.15 310.15\npcoupl = Parrinello-Rahman\npcoupltype = isotropic\ntau-p = 5.0\nref-p = 1.0\ncompressibility = 4.5e-5\nrefcoord-scaling = com\nconstraints = h-bonds\ncontinuation = yes\n"
-    content_md = "integrator = md\ndt = 0.002\nnsteps = 500000\nnstxout-compressed = 5000\ncutoff-scheme = Verlet\ncoulombtype = PME\nrcoulomb = 1.0\nvdwtype = cutoff\nrvdw = 1.0\npbc = xyz\ntcoupl = V-rescale\ntc-grps = PROT_LIG SOL_ION\ntau-t = 1.0 1.0\nref-t = 310.15 310.15\npcoupl = Parrinello-Rahman\npcoupltype = isotropic\ntau-p = 5.0\nref-p = 1.0\ncompressibility = 4.5e-5\nconstraints = h-bonds\ncontinuation = yes\n"
+    cmd = [
+        sys.executable,
+        str(script),
+        "--templates_dir",
+        str(tpl_dir),
+        "--outdir",
+        str(md_dir),
+        "--is_membrane",
+        is_mem,
+    ]
+    res = subprocess.run(cmd, capture_output=True, text=True)
+    if res.returncode != 0:
+        console.print(f"[bold red]Failed to generate MD protocol: {res.stderr}[/bold red]")
+        sys.exit(1)
 
-    if is_mem:
-        content_npt = (
-            content_npt.replace("isotropic", "semiisotropic")
-            .replace("ref-p = 1.0", "ref-p = 1.0 1.0")
-            .replace("compressibility = 4.5e-5", "compressibility = 4.5e-5 4.5e-5")
-        )
-        content_md = (
-            content_md.replace("isotropic", "semiisotropic")
-            .replace("ref-p = 1.0", "ref-p = 1.0 1.0")
-            .replace("compressibility = 4.5e-5", "compressibility = 4.5e-5 4.5e-5")
-        )
-
-    (md_dir / "minim.mdp").write_text(content_minim)
-    (md_dir / "nvt.mdp").write_text(content_nvt)
-    (md_dir / "npt.mdp").write_text(content_npt)
-    (md_dir / "md.mdp").write_text(content_md)
-
-    (md_dir / "protocol.txt").write_text("minim.mdp\nnvt.mdp\nnpt.mdp\n")
-
-    console.print(f"[bold green]✓ MD Protocol initialized in {md_dir}[/bold green]")
+    console.print(f"[bold green]✓ MD Protocol initialized from assets/mdp into {md_dir}[/bold green]")
     console.print(
-        "[dim]You can now manually edit the .mdp files and reorder protocol.txt before running MD.[/dim]"
+        "[dim]You can now edit the generated .mdp files or reorder protocol.txt before running MD.[/dim]"
     )
 
 
@@ -380,6 +372,10 @@ def main():
     p_clean_tr = subparsers.add_parser(
         "traj-clean",
         help="Remove solvent, fix PBC, center on protein, and fit trajectory",
+    )
+    p_clean_tr.add_argument(
+        "--systems",
+        help="Comma-separated list of System names to clean all their replicas",
     )
     p_clean_tr.add_argument(
         "--receptors",

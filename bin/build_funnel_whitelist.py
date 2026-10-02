@@ -46,28 +46,33 @@ def main():
     parser.add_argument("--output", required=True, help="Output whitelist CSV path")
     args = parser.parse_args()
 
-    # Map frame id to files
+    # Map frame id to collections of chunk files to prevent silent overwriting
     import re
+    from collections import defaultdict
 
-    glide_by_frame = {}
+    glide_by_frame = defaultdict(list)
     for f in args.glide_csvs:
         p = Path(f)
         m = re.search(r"_f(\d+)", p.stem)
         frame_id = m.group(1) if m else "1"
-        glide_by_frame[frame_id] = p
+        glide_by_frame[frame_id].append(p)
 
-    gnina_by_frame = {}
+    gnina_by_frame = defaultdict(list)
     for f in args.gnina_sdfs:
         p = Path(f)
         m = re.search(r"_f(\d+)", p.stem)
         frame_id = m.group(1) if m else "1"
-        gnina_by_frame[frame_id] = p
+        gnina_by_frame[frame_id].append(p)
 
     all_data = []
-    for frame_id, g_csv in glide_by_frame.items():
-        glide_data = parse_glide_csv(g_csv)
-        resc_sdf = gnina_by_frame.get(frame_id)
-        resc_data = parse_gnina_sdf(resc_sdf, prefix="Resc_") if resc_sdf else {}
+    for frame_id, g_csv_list in glide_by_frame.items():
+        glide_data = {}
+        for g_csv in g_csv_list:
+            glide_data.update(parse_glide_csv(g_csv))
+
+        resc_data = {}
+        for resc_sdf in gnina_by_frame.get(frame_id, []):
+            resc_data.update(parse_gnina_sdf(resc_sdf, prefix="Resc_"))
 
         for title, scores in glide_data.items():
             entry = {
