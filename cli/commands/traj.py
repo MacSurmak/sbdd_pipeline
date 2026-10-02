@@ -16,15 +16,19 @@ from cli.core.config_loader import load_project_configs, build_nextflow_args
 console = Console()
 
 
-def _query_trajectories(session, args) -> list[Trajectory]:
-    """Helper to query Trajectory records strictly using 3NF relationships."""
-    if getattr(args, "all", False):
-        trajs = session.query(Trajectory).all()
-    elif getattr(args, "systems", None):
+def _query_trajectories(session, args, target_status: str = "raw") -> list[Trajectory]:
+    """
+    Queries trajectories needing action based on DB status.
+    By default queries all trajectories with status == target_status across all systems.
+    Allows optional scope restriction via --systems, --target, or --traj.
+    """
+    query = session.query(Trajectory)
+
+    if getattr(args, "systems", None):
         sys_names = [s.strip() for s in args.systems.split(",") if s.strip()]
         systems = session.query(System).filter(System.name.in_(sys_names)).all()
         sys_ids = [s.id for s in systems]
-        trajs = session.query(Trajectory).filter(Trajectory.system_id.in_(sys_ids)).all()
+        query = query.filter(Trajectory.system_id.in_(sys_ids))
     elif getattr(args, "target", None):
         target_obj = session.query(Target).filter_by(name=args.target).first()
         if not target_obj:
@@ -32,18 +36,16 @@ def _query_trajectories(session, args) -> list[Trajectory]:
             sys.exit(1)
         systems = session.query(System).filter_by(target_id=target_obj.id).all()
         sys_ids = [s.id for s in systems]
-        trajs = session.query(Trajectory).filter(Trajectory.system_id.in_(sys_ids)).all()
+        query = query.filter(Trajectory.system_id.in_(sys_ids))
     elif getattr(args, "traj", None):
         traj_names = [t.strip() for t in args.traj.split(",") if t.strip()]
-        trajs = session.query(Trajectory).filter(Trajectory.name.in_(traj_names)).all()
-    else:
-        console.print("[bold red]FATAL: Specify --systems, --target, --all, or --traj[/bold red]")
-        sys.exit(1)
+        query = query.filter(Trajectory.name.in_(traj_names))
 
-    if not trajs:
-        console.print("[bold red]FATAL: No trajectories found in database matching criteria.[/bold red]")
-        sys.exit(1)
+    # Strict state filter: process only trajectories that actually need it
+    if target_status:
+        query = query.filter(Trajectory.status == target_status)
 
+    trajs = query.all()
     return trajs
 
 
@@ -51,10 +53,16 @@ def cmd_clean_traj(args):
     """
     Cleans raw trajectories (PBC correction, fit, solvent strip).
     Streams chunks into worker scratch without duplicating raw files on storage.
+    Automatically skips already cleaned trajectories.
     """
     cwd = Path.cwd()
     session = init_db()
-    trajs = _query_trajectories(session, args)
+    trajs = _query_trajectories(session, args, target_status="raw")
+
+    if not trajs:
+        console.print("[bold green]✓ All trajectories are already cleaned! Nothing to do.[/bold green]")
+        session.close()
+        return
 
     plan_list = []
     for t in trajs:
@@ -127,16 +135,20 @@ def cmd_clean_traj(args):
 
 
 def cmd_metrics(args):
-    """Calculates RMSD (Protein, Ligand, and Cofactors), RMSF, and Contacts."""
+    """Calculates RMSD (Protein, Ligand, and Cofactors), RMSF, and Contacts on cleaned trajectories."""
     cwd = Path.cwd()
     session = init_db()
-    trajs = _query_trajectories(session, args)
+    trajs = _query_trajectories(session, args, target_status="cleaned")
+
+    if not trajs:
+        console.print("[yellow]No cleaned trajectories found to analyze. Run 'sbdd traj-clean' first![/yellow]")
+        session.close()
+        return
 
     plan_list = []
     for t in trajs:
-        if t.status != "cleaned" or not t.path_clean_xtc or not t.path_ref_pdb:
-            console.print(f"[bold red]FATAL: Trajectory '{t.name}' must be cleaned first. Run 'sbdd traj-clean'![/bold red]")
-            sys.exit(1)
+        if not t.path_clean_xtc or not t.path_ref_pdb:
+            continue
 
         sys_obj = t.system
         lig_code = sys_obj.pose.ligand.name if sys_obj.pose else ""

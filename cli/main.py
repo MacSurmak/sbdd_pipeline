@@ -396,18 +396,15 @@ def main():
     # 7.1 traj-clean
     p_clean_tr = subparsers.add_parser(
         "traj-clean",
-        help="Remove solvent, fix PBC, center on protein, and fit trajectory",
+        help="Remove solvent, fix PBC, center on protein, and fit trajectory for all uncleaned runs",
     )
     p_clean_tr.add_argument(
         "--systems",
-        help="Comma-separated list of System names to clean all their replicas",
+        help="Limit to specific System names",
     )
     p_clean_tr.add_argument(
-        "--receptors",
-        help="Comma-separated list of Receptor names to clean all their replicas",
-    )
-    p_clean_tr.add_argument(
-        "--all", action="store_true", help="Clean trajectories for ALL receptors in DB"
+        "--target",
+        help="Limit to specific Target",
     )
     p_clean_tr.add_argument(
         "--traj", help="Explicit comma-separated list of Trajectory names"
@@ -417,13 +414,13 @@ def main():
     # 7.2 traj-metrics
     p_metrics = subparsers.add_parser(
         "traj-metrics",
-        help="Calculate RMSD (protein, ligand, and cofactors), RMSF, and contacts",
+        help="Calculate RMSD (protein, ligand, and cofactors), RMSF, and contacts for cleaned trajectories",
     )
     p_metrics.add_argument(
-        "--receptors", help="Comma-separated list of Receptor names to analyze"
+        "--systems", help="Limit to specific System names"
     )
     p_metrics.add_argument(
-        "--all", action="store_true", help="Analyze metrics for ALL receptors in DB"
+        "--target", help="Limit to specific Target"
     )
     p_metrics.add_argument(
         "--traj", help="Explicit comma-separated list of Trajectory names"
