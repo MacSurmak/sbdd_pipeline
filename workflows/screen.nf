@@ -54,7 +54,7 @@ workflow SCREEN_WF {
 
     // 2. Parse Ligands (Support for multiple libraries simultaneously)
     ch_lib = Channel.fromList(planData.ligands).map { lig -> 
-        [ [id: lig.name, project: params.project_name, status: lig.status, is_native: lig.is_native], file(lig.path).toAbsolutePath() ] 
+        [ [id: lig.name, project: params.project_name, status: lig.status, is_native: lig.is_native, receptor: lig.receptor ?: ""], file(lig.path).toAbsolutePath() ] 
     }
 
     PREPARE_LIGANDS(

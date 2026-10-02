@@ -151,7 +151,7 @@ workflow DOCK_LIBRARY {
         ch_glide_in = GLIDE_GRIDGEN.out.grid_zip.combine(ch_prepared_mae)
             .filter { meta_g, grid_zip, meta_l, lib_chunk_mae ->
                 if (!is_self) return true
-                return meta_l.id.startsWith(meta_g.id.split('_')[0])
+                return meta_l.receptor == meta_g.id
             }
             .map { meta_g, grid_zip, meta_l, lib_chunk_mae ->
                 def comb_meta = [
@@ -297,7 +297,7 @@ workflow DOCK_LIBRARY {
         ch_dock_in = ch_chunks.combine(ch_rec_comb)
             .filter { meta_chunk, chunk_sdf, chunk_idx, meta_rec, rec_pdb, ref_sdf ->
                 if (!is_self) return true
-                return meta_chunk.id.startsWith(meta_rec.id.split('_')[0])
+                return meta_chunk.receptor == meta_rec.id
             }
             .map { meta_chunk, chunk_sdf, chunk_idx, meta_rec, rec_pdb, ref_sdf ->
                 def comb_meta = [

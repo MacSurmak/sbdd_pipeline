@@ -114,7 +114,8 @@ workflow PREPARE_LIGANDS {
                 chunk_idx: idx,
                 project: meta.project ?: meta.id,
                 status: meta.status ?: 'unprepared',
-                is_native: meta.is_native ?: false
+                is_native: meta.is_native ?: false,
+                receptor: meta.receptor ?: ""
             ]
             [ chunk_meta, f ]
         }
@@ -134,7 +135,8 @@ workflow PREPARE_LIGANDS {
                     chunk_idx: "native_${idx}",
                     project: meta.project ?: meta.id,
                     status: "ready",
-                    is_native: meta.is_native ?: false
+                    is_native: meta.is_native ?: false,
+                    receptor: meta.receptor ?: ""
                 ]
                 [ chunk_meta, f, "native_${idx}" ]
             }
