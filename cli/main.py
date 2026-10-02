@@ -162,30 +162,24 @@ def main():
     )
     add_subs = p_add.add_subparsers(dest="add_type", required=True)
 
-    # 0.1 add receptor
+    # 0.1 add structure / receptor
     p_add_rec = add_subs.add_parser(
-        "receptor", help="Register a macromolecular structure"
+        "structure", aliases=["receptor", "complex"], help="Import a macromolecular structure into a Target"
     )
     p_add_rec.add_argument(
-        "path", help="Absolute or relative path to the structure (.pdb, .cif, .mae)"
+        "path", help="Path to the structure (.pdb, .cif, .mae)"
     )
     p_add_rec.add_argument(
-        "--name", required=True, help="Unique identifier for this receptor"
+        "--target", help="Parent target name (e.g. RyR1, TSPO). Defaults to file stem."
     )
     p_add_rec.add_argument(
-        "--prep",
-        choices=["full", "light", "ready"],
-        required=True,
-        help="Preparation mode",
+        "--name", help="Unique identifier for this structural frame"
     )
     p_add_rec.add_argument(
-        "--cofactors", nargs="*", help="List of cofactors to keep (e.g., MG ZN)"
+        "--cofactors", nargs="*", default=[], help="Cofactor residue names to retain (e.g. ATP MG)"
     )
     p_add_rec.add_argument(
-        "--ligand", help="Native ligand residue name inside structure (e.g., BTN, PKA)"
-    )
-    p_add_rec.add_argument(
-        "--force", action="store_true", help="Overwrite if name exists"
+        "--ligand", help="Native ligand residue name inside structure (e.g. KVR, BTN)"
     )
 
     # 0.2 add ligand

@@ -1,321 +1,328 @@
 """
 File: cli/commands/add.py
-Description: CLI handlers for registering external files into the project database.
-Enforces absolute paths and Fail-Fast validation.
+Description: Clean 3NF CLI handlers for importing targets, structural frames, ligands, and trajectories.
+Enforces InChIKey deduplication, atomic poses, and multi-model frame transparent splitting.
 """
 
 from pathlib import Path
 import sys
+import shutil
 from rich.console import Console
-from cli.core.db import init_db, Receptor, Ligand, Trajectory
+from cli.core.db import init_db, Target, ReceptorFrame, Ligand, Pose, System, Trajectory
+from cli.core.chem import get_mol_identity
 
 console = Console()
 
 
-from cli.core.db import init_db, Receptor, Ligand, Pose, System, Trajectory
+def _count_and_split_models(struct_path: Path, dest_dir: Path, base_name: str) -> list[tuple[str, Path]]:
+    """
+    Checks for NMR/multi-model structures in PDB/CIF.
+    Splits transparently into individual files if multiple models exist.
+    Returns a list of (frame_name, file_path).
+    """
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    suffix = struct_path.suffix.lower()
+
+    if suffix not in [".pdb", ".cif", ".mmcif"]:
+        out_f = dest_dir / f"{base_name}{suffix}"
+        shutil.copy2(struct_path, out_f)
+        return [(base_name, out_f)]
+
+    # Detect models via simple fast scan
+    models_content = []
+    current_model = []
+    in_model = False
+
+    with open(struct_path, "r", encoding="utf-8", errors="ignore") as f:
+        for line in f:
+            if line.startswith("MODEL"):
+                in_model = True
+                current_model = [line]
+            elif line.startswith("ENDMDL"):
+                current_model.append(line)
+                models_content.append("".join(current_model))
+                current_model = []
+                in_model = False
+            elif in_model:
+                current_model.append(line)
+
+    if len(models_content) > 1:
+        console.print(f"[cyan]Detected {len(models_content)} models in NMR ensemble. Splitting transparently...[/cyan]")
+        results = []
+        for idx, m_text in enumerate(models_content, start=1):
+            f_name = f"{base_name}_m{idx}"
+            out_file = dest_dir / f"{f_name}.pdb"
+            out_file.write_text(m_text)
+            results.append((f_name, out_file))
+        return results
+    else:
+        out_f = dest_dir / f"{base_name}{suffix}"
+        shutil.copy2(struct_path, out_f)
+        return [(base_name, out_f)]
+
+
+def _extract_ligand_atoms(rec_path: Path, lig_resname: str, out_sdf: Path) -> bool:
+    """Extracts ligand residue from PDB into a standalone SDF file."""
+    try:
+        from rdkit import Chem
+        mol = Chem.MolFromPDBFile(str(rec_path), removeHs=False, sanitize=False)
+        if mol is None:
+            return False
+
+        lig_clean = lig_resname.strip().upper()
+        atoms_to_keep = []
+        for atom in mol.GetAtoms():
+            info = atom.GetPDBResidueInfo()
+            if info and info.GetResidueName().strip().upper() == lig_clean:
+                atoms_to_keep.append(atom.GetIdx())
+
+        if not atoms_to_keep:
+            return False
+
+        # Extract submol
+        emol = Chem.RWMol(mol)
+        all_atoms = set(range(mol.GetNumAtoms()))
+        del_atoms = sorted(list(all_atoms - set(atoms_to_keep)), reverse=True)
+        for idx in del_atoms:
+            emol.RemoveAtom(idx)
+
+        extracted_mol = emol.GetMol()
+        Chem.SanitizeMol(extracted_mol, Chem.SANITIZE_ALL ^ Chem.SANITIZE_PROPERTIES)
+
+        out_sdf.parent.mkdir(parents=True, exist_ok=True)
+        w = Chem.SDWriter(str(out_sdf))
+        w.write(extracted_mol)
+        w.close()
+        return True
+    except Exception as e:
+        console.print(f"[dim]Note: RDKit direct ligand extraction from PDB: {e}[/dim]")
+        return False
 
 
 def add_receptor(args):
     """
-    Registers a receptor and automatically sets up its canonical System and crystal Pose if ligand is present.
+    Imports a macromolecular structure (PDB/CIF/MAE) into a Target.
+    Creates peer ReceptorFrame records (state='raw').
+    If native ligand specified, extracts Pose and creates Holo System.
+    If no ligand, creates Apo System.
     """
     session = init_db()
+    cwd = Path.cwd()
 
-    target_path = Path(args.path).resolve()
-    if not target_path.exists():
-        console.print(f"[bold red]FATAL: File does not exist: {target_path}[/bold red]")
+    struct_path = Path(args.path).resolve()
+    if not struct_path.exists():
+        console.print(f"[bold red]FATAL: Structure file not found: {struct_path}[/bold red]")
         sys.exit(1)
 
-    name = args.name
-    prep_mode = args.prep
-    cofactors = args.cofactors if args.cofactors else []
-    ligand_name = args.ligand.strip() if args.ligand else None
-    status = "ready" if prep_mode == "ready" else "unprepared"
+    target_name = args.target if getattr(args, "target", None) else args.name
+    target = session.query(Target).filter_by(name=target_name).first()
+    if not target:
+        target = Target(name=target_name, description=f"Target {target_name}")
+        session.add(target)
+        session.flush()
+        console.print(f"[bold green]✓ Created Target '{target_name}'[/bold green]")
 
-    # 1. Register Receptor
-    rec = session.query(Receptor).filter_by(name=name).first()
-    if not rec:
-        rec = Receptor(
-            name=name, path=str(target_path), status=status, prep_mode=prep_mode
-        )
-        rec.meta_dict = {"cofactors": cofactors, "native_ligand": ligand_name or ""}
-        session.add(rec)
-        console.print(
-            f"[bold green]✓ Registered Receptor '{name}'[/bold green] [dim]({prep_mode})[/dim]"
-        )
-    else:
-        rec.path = str(target_path)
-        rec.status = status
-        rec.prep_mode = prep_mode
-        rec.meta_dict = {"cofactors": cofactors, "native_ligand": ligand_name or ""}
-        console.print(f"[yellow]Updated Receptor '{name}'[/yellow] [dim]({prep_mode})[/dim]")
+    base_name = args.name or struct_path.stem
+    cofactors = args.cofactors if getattr(args, "cofactors", None) else []
+    lig_code = args.ligand.strip().upper() if getattr(args, "ligand", None) else None
+    source_type = "crystal"
 
-    # 2. Build initial System and Pose with receptor-isolated chemistry
-    if ligand_name:
-        lig_code = ligand_name[:4].upper()
-        lig_entity_name = f"{name}_{lig_code}"
+    frames_dir = cwd / "structures" / target_name
+    frames = _count_and_split_models(struct_path, frames_dir, base_name)
 
-        # Register Ligand uniquely bound to its structural source
-        lig = session.query(Ligand).filter_by(name=lig_entity_name).first()
-        if not lig:
-            lig = Ligand(name=lig_entity_name, path=str(target_path), status=status)
-            lig.meta_dict = {"resname": lig_code}
-            session.add(lig)
+    created_frames = 0
+    for frame_name, frame_file in frames:
+        ex_frame = session.query(ReceptorFrame).filter_by(name=frame_name).first()
+        if ex_frame:
+            ex_frame.path = str(frame_file.resolve())
+            ex_frame.cofactors_list = cofactors
+            frame_obj = ex_frame
+            console.print(f"[yellow]Updated Frame '{frame_name}' in Target '{target_name}'[/yellow]")
         else:
-            lig.path = str(target_path)
-            lig.status = status
-            console.print(f"[yellow]Updated Ligand '{lig_entity_name}'[/yellow]")
+            frame_obj = ReceptorFrame(
+                target_id=target.id,
+                name=frame_name,
+                source_type=source_type,
+                state="raw",
+                path=str(frame_file.resolve()),
+            )
+            frame_obj.cofactors_list = cofactors
+            session.add(frame_obj)
+            session.flush()
+            console.print(f"[bold green]✓ Added Frame '{frame_name}'[/bold green] [dim](raw, {source_type})[/dim]")
+        created_frames += 1
 
-        # Register Crystal Pose
-        pose_name = f"{name}_{lig_code}_pose"
-        pose = session.query(Pose).filter_by(name=pose_name).first()
-        if not pose:
-            pose = Pose(
-                name=pose_name,
-                ligand_name=lig_entity_name,
-                receptor_name=name,
+        # Ligand & Pose Handling
+        pose_obj = None
+        if lig_code:
+            poses_dir = cwd / "poses" / target_name
+            pose_sdf = poses_dir / f"{frame_name}_{lig_code}_crystal.sdf"
+            extracted_ok = _extract_ligand_atoms(frame_file, lig_code, pose_sdf)
+
+            if extracted_ok and pose_sdf.exists():
+                try:
+                    inchikey, smiles, mol_name = get_mol_identity(pose_sdf)
+                    # Deduplicate Ligand across database
+                    lig_entity = session.query(Ligand).filter_by(inchikey=inchikey).first()
+                    if not lig_entity:
+                        lig_entity = Ligand(
+                            inchikey=inchikey,
+                            smiles=smiles,
+                            name=mol_name or lig_code,
+                            batch_id="crystal",
+                        )
+                        session.add(lig_entity)
+                        session.flush()
+                        console.print(f"[bold green]✓ Registered Chemical Ligand '{lig_entity.name}'[/bold green] [dim]({inchikey})[/dim]")
+                    else:
+                        console.print(f"[dim]Matched existing chemical ligand '{lig_entity.name}' via InChIKey {inchikey}[/dim]")
+
+                    # Create Pose
+                    pose_name = f"{frame_name}_{lig_code}_pose"
+                    ex_pose = session.query(Pose).filter_by(name=pose_name).first()
+                    if ex_pose:
+                        ex_pose.path = str(pose_sdf.resolve())
+                        pose_obj = ex_pose
+                    else:
+                        pose_obj = Pose(
+                            ligand_id=lig_entity.id,
+                            receptor_frame_id=frame_obj.id,
+                            name=pose_name,
+                            origin="crystal",
+                            state="raw",
+                            path=str(pose_sdf.resolve()),
+                        )
+                        session.add(pose_obj)
+                        session.flush()
+                        console.print(f"[bold green]✓ Registered Pose '{pose_name}'[/bold green] [dim](1 file: {pose_sdf.name})[/dim]")
+                except Exception as e:
+                    console.print(f"[yellow]Warning: Could not standardize ligand {lig_code}: {e}[/yellow]")
+
+        # System creation
+        sys_name = f"{frame_name}_holo" if pose_obj else f"{frame_name}_apo"
+        ex_sys = session.query(System).filter_by(name=sys_name).first()
+        if ex_sys:
+            ex_sys.pose_id = pose_obj.id if pose_obj else None
+            ex_sys.state = "raw"
+        else:
+            new_sys = System(
+                target_id=target.id,
+                receptor_frame_id=frame_obj.id,
+                pose_id=pose_obj.id if pose_obj else None,
+                name=sys_name,
+                state="raw",
                 origin="crystal",
-                path=str(target_path),
-                status=status,
             )
-            session.add(pose)
-        else:
-            pose.path = str(target_path)
-            pose.status = status
-            console.print(f"[yellow]Updated Pose '{pose_name}'[/yellow]")
-
-        # Register Holo System
-        sys_name = f"{name}_holo"
-        sys_obj = session.query(System).filter_by(name=sys_name).first()
-        if not sys_obj:
-            sys_obj = System(
-                name=sys_name, receptor_name=name, pose_name=pose_name, status=status
-            )
-            sys_obj.meta_dict = {"cofactors": cofactors}
-            session.add(sys_obj)
-            console.print(
-                f"[bold green]✓ Created Holo System '{sys_name}'[/bold green] [dim](Receptor: {name} + Pose: {pose_name})[/dim]"
-            )
-        else:
-            sys_obj.status = status
-            sys_obj.pose_name = pose_name
-            sys_obj.meta_dict = {"cofactors": cofactors}
-            console.print(f"[yellow]Updated Holo System '{sys_name}'[/yellow]")
-    else:
-        # Register Apo System
-        sys_name = f"{name}_apo"
-        sys_obj = session.query(System).filter_by(name=sys_name).first()
-        if not sys_obj:
-            sys_obj = System(
-                name=sys_name, receptor_name=name, pose_name=None, status=status
-            )
-            sys_obj.meta_dict = {"cofactors": cofactors}
-            session.add(sys_obj)
-            console.print(
-                f"[bold green]✓ Created Apo System '{sys_name}'[/bold green] [dim](Receptor: {name}, No Ligand)[/dim]"
-            )
-        else:
-            sys_obj.status = status
-            sys_obj.meta_dict = {"cofactors": cofactors}
-            console.print(f"[yellow]Updated Apo System '{sys_name}'[/yellow]")
+            session.add(new_sys)
+            sys_type = "Holo" if pose_obj else "Apo"
+            console.print(f"[bold green]✓ Created {sys_type} System '{sys_name}'[/bold green]")
 
     session.commit()
     session.close()
 
 
 def add_ligand(args):
-    """Registers unpositioned chemical molecules (single or streaming multi-molecule SDF)."""
+    """
+    Imports chemical substances (SDF/SMILES) into the Ligand table.
+    Performs topological deduplication via Standard InChIKey.
+    """
     session = init_db()
     target_path = Path(args.path).resolve()
     if not target_path.exists():
         console.print(f"[bold red]FATAL: File does not exist: {target_path}[/bold red]")
         sys.exit(1)
 
-    # Check molecule count by counting delimiters
-    mol_count = 0
-    with open(target_path, "r", encoding="utf-8", errors="ignore") as f:
-        for line in f:
-            if line.startswith("$$$$"):
-                mol_count += 1
+    try:
+        from rdkit import Chem
+    except ImportError:
+        console.print("[bold red]FATAL: RDKit is required for ligand import.[/bold red]")
+        sys.exit(1)
 
-    if mol_count <= 1:
-        name = args.name or target_path.stem
-        smiles = None
+    suppl = Chem.ForwardSDMolSupplier(str(target_path), removeHs=False)
+    imported = 0
+    skipped = 0
+
+    for idx, mol in enumerate(suppl, start=1):
+        if mol is None:
+            continue
         try:
-            from rdkit import Chem
+            inchikey = Chem.MolToInchiKey(mol)
+            smiles = Chem.MolToSmiles(Chem.RemoveHs(mol), canonical=True)
+            name = mol.GetProp("_Name").strip() if mol.HasProp("_Name") and mol.GetProp("_Name").strip() else f"MOL_{idx:05d}"
 
-            suppl = Chem.SDMolSupplier(str(target_path), removeHs=False)
-            mol = next((m for m in suppl if m is not None), None)
-            if mol:
-                smiles = Chem.MolToSmiles(mol)
-                if (
-                    not args.name
-                    and mol.HasProp("_Name")
-                    and mol.GetProp("_Name").strip()
-                ):
-                    name = mol.GetProp("_Name").strip()
-        except Exception:
-            pass
+            ex = session.query(Ligand).filter_by(inchikey=inchikey).first()
+            if ex:
+                skipped += 1
+                continue
 
-        existing = session.query(Ligand).filter_by(name=name).first()
-        if existing:
-            existing.path = str(target_path)
-            existing.smiles = smiles
-            existing.status = "unprepared"
-            console.print(f"[yellow]Updated Ligand '{name}' in database.[/yellow]")
-        else:
             new_lig = Ligand(
-                name=name, path=str(target_path), smiles=smiles, status="unprepared"
+                inchikey=inchikey,
+                smiles=smiles,
+                name=name,
+                batch_id=target_path.stem,
             )
             session.add(new_lig)
-            console.print(f"[bold green]✓ Registered Ligand '{name}'[/bold green]")
-    else:
-        console.print(
-            f"[bold cyan]Scanning and importing library with {mol_count} molecules from {target_path.name}...[/bold cyan]"
-        )
-        try:
-            from rdkit import Chem
-
-            suppl = Chem.ForwardSDMolSupplier(str(target_path), removeHs=False)
-            batch = []
-            seen_names = set()
-            idx = 1
-            for mol in suppl:
-                if mol is None:
-                    continue
-                title = (
-                    mol.GetProp("_Name").strip()
-                    if mol.HasProp("_Name") and mol.GetProp("_Name").strip()
-                    else f"MOL_{idx:06d}"
-                )
-                unique_name = title
-                suffix = 1
-                while (
-                    unique_name in seen_names
-                    or session.query(Ligand).filter_by(name=unique_name).first()
-                ):
-                    unique_name = f"{title}_{suffix}"
-                    suffix += 1
-                seen_names.add(unique_name)
-
-                smi = Chem.MolToSmiles(mol)
-                batch.append(
-                    Ligand(
-                        name=unique_name,
-                        path=str(target_path),
-                        smiles=smi,
-                        status="unprepared",
-                    )
-                )
-                idx += 1
-                if len(batch) >= 1000:
-                    session.bulk_save_objects(batch)
-                    session.commit()
-                    batch = []
-
-            if batch:
-                session.bulk_save_objects(batch)
+            imported += 1
+            if imported % 500 == 0:
                 session.commit()
-
-            console.print(
-                f"[bold green]✓ Successfully imported {idx - 1} individual ligands into database.[/bold green]"
-            )
-        except ImportError:
-            name = args.name or target_path.stem
-            new_lig = Ligand(name=name, path=str(target_path), status="unprepared")
-            session.add(new_lig)
-            console.print(
-                f"[bold green]✓ Registered Ligand Library '{name}' ({mol_count} molecules)[/bold green]"
-            )
+        except Exception:
+            continue
 
     session.commit()
     session.close()
+    console.print(f"[bold green]✓ Imported {imported} unique chemical ligand(s)[/bold green] [dim]({skipped} duplicates skipped)[/dim]")
 
 
 def add_traj(args):
-    """Registers an MD trajectory directly linked to a physical System."""
+    """
+    Registers an MD simulation replicate linked to a physical System.
+    """
     session = init_db()
-
-    xtc_path = Path(args.xtc).resolve()
-    tpr_path = Path(args.tpr).resolve()
-    if not xtc_path.exists() or not tpr_path.exists():
-        console.print("[bold red]FATAL: XTC or TPR file not found![/bold red]")
-        sys.exit(1)
 
     target_sys = args.system
     sys_obj = session.query(System).filter_by(name=target_sys).first()
     if not sys_obj:
-        sys_obj = session.query(System).filter_by(receptor_name=target_sys).first()
-
-    if not sys_obj:
-        console.print(
-            f"[bold red]FATAL: Target System '{target_sys}' not found in DB![/bold red]"
-        )
+        console.print(f"[bold red]FATAL: Target System '{target_sys}' not found in DB![/bold red]")
         sys.exit(1)
 
-    sys_name = sys_obj.name
+    raw_dir_path = Path(args.raw_dir if getattr(args, "raw_dir", None) else Path(args.xtc).parent).resolve()
+    tpr_path = Path(args.tpr).resolve()
 
-    rep_idx = 1
-    for part in args.name.split("_"):
-        if part.startswith("rep") or part.startswith("R"):
-            try:
-                rep_idx = int("".join(filter(str.isdigit, part)))
-            except ValueError:
-                pass
+    if not tpr_path.exists():
+        console.print(f"[bold red]FATAL: TPR file not found: {tpr_path}[/bold red]")
+        sys.exit(1)
 
-    # Strict explicit paths: only cleaned if both files are explicitly provided
-    clean_xtc_path = None
-    ref_pdb_path = None
-    status = "raw"
+    rep_idx = getattr(args, "replicate", 1) or 1
+    name = args.name or f"{sys_obj.name}_rep{rep_idx}"
 
-    if getattr(args, "clean_xtc", None) and getattr(args, "ref_pdb", None):
-        c_xtc = Path(args.clean_xtc).resolve()
-        r_pdb = Path(args.ref_pdb).resolve()
-        if not c_xtc.exists() or not r_pdb.exists():
-            console.print(
-                f"[bold red]FATAL: Explicitly passed --clean-xtc ({c_xtc}) or --ref-pdb ({r_pdb}) does not exist![/bold red]"
-            )
-            sys.exit(1)
-        clean_xtc_path = str(c_xtc)
-        ref_pdb_path = str(r_pdb)
-        status = "cleaned"
+    clean_xtc_path = str(Path(args.clean_xtc).resolve()) if getattr(args, "clean_xtc", None) else None
+    ref_pdb_path = str(Path(args.ref_pdb).resolve()) if getattr(args, "ref_pdb", None) else None
+    status = "cleaned" if clean_xtc_path and ref_pdb_path else "raw"
 
-    existing = session.query(Trajectory).filter_by(name=args.name).first()
-    if existing:
-        existing.system_name = sys_name
-        existing.replicate = rep_idx
-        existing.path_xtc = str(xtc_path)
-        existing.path_tpr = str(tpr_path)
-        existing.path_clean_xtc = clean_xtc_path
-        existing.path_ref_pdb = ref_pdb_path
-        existing.status = status
-        console.print(
-            f"[yellow]Updated Trajectory '{args.name}' linked to System '{sys_name}' ({status})[/yellow]"
-        )
+    ex = session.query(Trajectory).filter_by(name=name).first()
+    if ex:
+        ex.system_id = sys_obj.id
+        ex.replicate = rep_idx
+        ex.raw_dir = str(raw_dir_path)
+        ex.path_tpr = str(tpr_path)
+        ex.path_clean_xtc = clean_xtc_path
+        ex.path_ref_pdb = ref_pdb_path
+        ex.status = status
+        console.print(f"[yellow]Updated Trajectory '{name}' ({status})[/yellow]")
     else:
-        traj_len = 0.0
-        try:
-            import MDAnalysis as mda
-            u_check = mda.Universe(ref_pdb_path or str(tpr_path), clean_xtc_path or str(xtc_path))
-            traj_len = round(float(u_check.trajectory.totaltime / 1000.0), 2)
-        except Exception:
-            pass
-
         new_traj = Trajectory(
-            name=args.name,
-            system_name=sys_name,
+            system_id=sys_obj.id,
+            name=name,
             replicate=rep_idx,
-            path_xtc=str(xtc_path),
+            length_ns=float(getattr(args, "length_ns", 0.0) or 0.0),
+            raw_dir=str(raw_dir_path),
             path_tpr=str(tpr_path),
             path_clean_xtc=clean_xtc_path,
             path_ref_pdb=ref_pdb_path,
-            length_ns=traj_len,
             status=status,
         )
         session.add(new_traj)
-        console.print(
-            f"[bold green]✓ Registered Trajectory '{args.name}' linked to System '{sys_name}' ({status})[/bold green]"
-        )
+        console.print(f"[bold green]✓ Registered Trajectory '{name}' ({status}) linked to System '{sys_obj.name}'[/bold green]")
 
     session.commit()
     session.close()

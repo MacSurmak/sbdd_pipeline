@@ -1,104 +1,67 @@
 """
 File: cli/commands/tree.py
-Description: CLI handler to visualize the database lineage as a tree structure.
+Description: CLI handler to visualize the 3NF database lineage cleanly without string naming hacks.
 """
 
 from rich.console import Console
 from rich.tree import Tree
-from cli.core.db import init_db, Receptor, Ligand, Trajectory
+from cli.core.db import init_db, Target, ReceptorFrame, Ligand, Pose, System, Trajectory
 
 console = Console()
 
 
-from cli.core.db import init_db, Receptor, Ligand, Pose, System, Trajectory
-
-
 def cmd_tree(args):
     session = init_db()
-    root_tree = Tree("[bold blue]SBDD Project Relational Database[/bold blue]")
+    root_tree = Tree("[bold blue]SBDD Project Relational Database (3NF)[/bold blue]")
 
-    def get_root_target(rec_name):
-        rec = session.query(Receptor).filter_by(name=rec_name).first()
-        while rec and rec.parent_name:
-            rec = session.query(Receptor).filter_by(name=rec.parent_name).first()
-        return rec.name if rec else rec_name
+    # 1. Biological Targets, Frames & Systems
+    targets = session.query(Target).order_by(Target.name).all()
+    if targets:
+        t_branch = root_tree.add("[bold green]Biological Targets & Systems[/bold green]")
+        for target in targets:
+            target_node = t_branch.add(f"[bold magenta]Target:[/bold magenta] {target.name}")
 
-    # 1. Biological Grouping: Target -> Ligand -> Systems (Conformations)
-    systems = session.query(System).all()
-    if systems:
-        tree_data = {}
-        for s in systems:
-            target = get_root_target(s.receptor_name)
-            lig = "Apo"
-            if s.pose_name:
-                pose = session.query(Pose).filter_by(name=s.pose_name).first()
-                if pose:
-                    if pose.ligand and pose.ligand.meta_dict.get("resname"):
-                        lig = pose.ligand.meta_dict["resname"]
-                    else:
-                        lig = pose.ligand_name
-            tree_data.setdefault(target, {}).setdefault(lig, []).append(s)
+            # Frames
+            frames = session.query(ReceptorFrame).filter_by(target_id=target.id).order_by(ReceptorFrame.name).all()
+            if frames:
+                f_branch = target_node.add("[bold cyan]Receptor Frames (3D)[/bold cyan]")
+                for f in frames:
+                    f_color = "green" if f.state == "ready" else "yellow"
+                    lineage = f" [dim](derived from #{f.parent_frame_id})[/dim]" if f.parent_frame_id else ""
+                    cofs = f" [yellow]+{','.join(f.cofactors_list)}[/yellow]" if f.cofactors_list else ""
+                    f_branch.add(f"[{f_color}]{f.name}[/{f_color}] [dim]({f.source_type}, state={f.state})[/dim]{cofs}{lineage}")
 
-        sys_branch = root_tree.add("[bold green]Biological Targets & Conformations[/bold green]")
-        
-        for target, ligs in tree_data.items():
-            target_node = sys_branch.add(f"[bold magenta]Target:[/bold magenta] {target}")
-            
-            for lig, sys_list in ligs.items():
-                lig_color = "cyan" if lig != "Apo" else "dim"
-                lig_node = target_node.add(f"[{lig_color}]Ligand: {lig}[/{lig_color}]")
-                
-                for sys_obj in sys_list:
-                    s_color = "green" if sys_obj.status == "ready" else "yellow"
-                    pose_info = f"[dim](Pose: {sys_obj.pose_name})[/dim]" if sys_obj.pose_name else ""
-                    sys_node = lig_node.add(
-                        f"[{s_color}]{sys_obj.name}[/{s_color}] [dim]({sys_obj.origin})[/dim] {pose_info}"
-                    )
-                    
-                    trajs = session.query(Trajectory).filter_by(system_name=sys_obj.name).all()
+            # Systems
+            systems = session.query(System).filter_by(target_id=target.id).order_by(System.name).all()
+            if systems:
+                s_branch = target_node.add("[bold blue]Physical Systems[/bold blue]")
+                for s in systems:
+                    s_color = "green" if s.state == "ready" else "yellow"
+                    pose_label = f" + Pose [cyan]{s.pose.name}[/cyan]" if s.pose else " [dim](Apo)[/dim]"
+                    sys_node = s_branch.add(f"[{s_color}]{s.name}[/{s_color}] [dim](state={s.state})[/dim] on [cyan]{s.receptor_frame.name}[/cyan]{pose_label}")
+
+                    # Trajectories under system
+                    trajs = session.query(Trajectory).filter_by(system_id=s.id).order_by(Trajectory.replicate).all()
                     if trajs:
-                        traj_branch = sys_node.add("[dim]Trajectories[/dim]")
+                        tr_branch = sys_node.add("[dim]Trajectories[/dim]")
                         for t in trajs:
                             t_color = "green" if t.status == "cleaned" else "yellow"
-                            len_info = f" ({t.length_ns} ns)" if t.length_ns else ""
-                            traj_branch.add(f"[magenta]{t.name}[/magenta] [{t_color}]({t.status})[/{t_color}]{len_info}")
+                            tr_branch.add(f"[magenta]{t.name}[/magenta] [{t_color}]({t.status})[/{t_color}] - {t.length_ns} ns")
 
-    # 2. Receptors & Structural Conformations (True Hierarchical Tree)
-    receptors = session.query(Receptor).all()
-    if receptors:
-        rec_branch = root_tree.add("[bold cyan]Receptors & Conformational Ensembles[/bold cyan]")
-        
-        # Build children lookup
-        children_map = {}
-        for r in receptors:
-            children_map.setdefault(r.parent_name, []).append(r)
-
-        def render_rec_node(parent_node, rec_obj):
-            r_color = "green" if rec_obj.status == "ready" else "yellow"
-            node = parent_node.add(f"[{r_color}]{rec_obj.name}[/{r_color}] [dim]({rec_obj.prep_mode}, {rec_obj.status})[/dim]")
-            for child in sorted(children_map.get(rec_obj.name, []), key=lambda x: x.name):
-                render_rec_node(node, child)
-
-        # Roots are receptors with no parent
-        root_receptors = [r for r in receptors if r.parent_name is None]
-        for root_rec in sorted(root_receptors, key=lambda x: x.name):
-            render_rec_node(rec_branch, root_rec)
-
-    # 3. Chemical Ligands & Their 3D Poses (Grouped by Chemical Entity)
-    ligands = session.query(Ligand).all()
+    # 2. Chemical Substances & Their 3D Poses
+    ligands = session.query(Ligand).order_by(Ligand.name).all()
     if ligands:
         lig_branch = root_tree.add("[bold yellow]Chemical Ligands & 3D Poses[/bold yellow]")
         for lig in ligands:
-            chem_name = lig.meta_dict.get("resname", lig.name)
-            l_color = "green" if lig.status == "ready" else "yellow"
             lig_node = lig_branch.add(
-                f"[{l_color}]{chem_name}[/{l_color}] [dim]({lig.name}) -> {lig.path}[/dim]"
+                f"[bold yellow]{lig.name}[/bold yellow] [dim]({lig.inchikey}) SMILES: {lig.smiles}[/dim]"
             )
-            poses = session.query(Pose).filter_by(ligand_name=lig.name).all()
+            poses = session.query(Pose).filter_by(ligand_id=lig.id).order_by(Pose.name).all()
             for p in poses:
-                p_color = "green" if p.status == "ready" else "yellow"
+                p_color = "green" if p.state == "ready" else "yellow"
+                scores_info = f" [dim]{p.scores}[/dim]" if p.scores != "{}" else ""
                 lig_node.add(
-                    f"Pose: [{p_color}]{p.name}[/{p_color}] [dim]({p.origin} in {p.receptor_name}) -> {p.path}[/dim]"
+                    f"Pose: [{p_color}]{p.name}[/{p_color}] [dim]({p.origin}, state={p.state})[/dim] in [cyan]{p.receptor_frame.name}[/cyan] -> {Path(p.path).name}{scores_info}"
                 )
 
     session.close()

@@ -1,90 +1,64 @@
 """
 File: cli/commands/rm.py
-Description: CLI handler to remove items from the SBDD database.
+Description: CLI handler to remove items from the clean 3NF database with cascade deletion.
 """
 
 from rich.console import Console
-from cli.core.db import init_db, Receptor, Ligand, Trajectory, PoseSet, System, Pose
+from cli.core.db import init_db, Target, ReceptorFrame, Ligand, Pose, System, Trajectory
 
 console = Console()
 
 
 def cmd_rm(args):
     session = init_db()
-    target = args.target
-
-    # Search and delete across all tables
+    name = args.target
     deleted = False
 
-    sys_obj = session.query(System).filter_by(name=target).first()
-    if sys_obj:
-        session.delete(sys_obj)
-        console.print(
-            f"[bold green]✓ Deleted System '{target}' from database.[/bold green]"
-        )
+    # Check across models in hierarchical order
+    target = session.query(Target).filter_by(name=name).first()
+    if target:
+        session.delete(target)
+        console.print(f"[bold green]✓ Deleted Target '{name}' and all associated frames/systems (CASCADE).[/bold green]")
         deleted = True
 
-    rec = session.query(Receptor).filter_by(name=target).first()
-    if rec:
-        session.delete(rec)
-        console.print(
-            f"[bold green]✓ Deleted Receptor '{target}' from database.[/bold green]"
-        )
-        deleted = True
+    if not deleted:
+        sys_obj = session.query(System).filter_by(name=name).first()
+        if sys_obj:
+            session.delete(sys_obj)
+            console.print(f"[bold green]✓ Deleted System '{name}' and all associated trajectories.[/bold green]")
+            deleted = True
 
-    pose = session.query(Pose).filter_by(name=target).first()
-    if pose:
-        session.delete(pose)
-        console.print(
-            f"[bold green]✓ Deleted Pose '{target}' from database.[/bold green]"
-        )
-        deleted = True
+    if not deleted:
+        frame = session.query(ReceptorFrame).filter_by(name=name).first()
+        if frame:
+            session.delete(frame)
+            console.print(f"[bold green]✓ Deleted ReceptorFrame '{name}' and associated poses/systems.[/bold green]")
+            deleted = True
 
-    lig = session.query(Ligand).filter_by(name=target).first()
-    if lig:
-        session.delete(lig)
-        console.print(
-            f"[bold green]✓ Deleted Ligand '{target}' from database.[/bold green]"
-        )
-        deleted = True
+    if not deleted:
+        pose = session.query(Pose).filter_by(name=name).first()
+        if pose:
+            session.delete(pose)
+            console.print(f"[bold green]✓ Deleted Pose '{name}'.[/bold green]")
+            deleted = True
 
-    traj = session.query(Trajectory).filter_by(name=target).first()
-    if traj:
-        session.delete(traj)
-        console.print(
-            f"[bold green]✓ Deleted Trajectory '{target}' from database.[/bold green]"
-        )
-        deleted = True
+    if not deleted:
+        traj = session.query(Trajectory).filter_by(name=name).first()
+        if traj:
+            session.delete(traj)
+            console.print(f"[bold green]✓ Deleted Trajectory '{name}'.[/bold green]")
+            deleted = True
 
-    pset = session.query(PoseSet).filter_by(name=target).first()
-    if pset:
-        session.delete(pset)
-        console.print(
-            f"[bold green]✓ Deleted PoseSet '{target}' from database.[/bold green]"
-        )
-        deleted = True
-
-    sys_obj = session.query(System).filter_by(name=target).first()
-    if sys_obj:
-        session.delete(sys_obj)
-        console.print(
-            f"[bold green]✓ Deleted System '{target}' from database.[/bold green]"
-        )
-        deleted = True
-
-    pose = session.query(Pose).filter_by(name=target).first()
-    if pose:
-        session.delete(pose)
-        console.print(
-            f"[bold green]✓ Deleted Pose '{target}' from database.[/bold green]"
-        )
-        deleted = True
+    if not deleted:
+        lig = session.query(Ligand).filter((Ligand.name == name) | (Ligand.inchikey == name)).first()
+        if lig:
+            session.delete(lig)
+            console.print(f"[bold green]✓ Deleted Chemical Ligand '{name}'.[/bold green]")
+            deleted = True
 
     if deleted:
         session.commit()
     else:
-        console.print(
-            f"[bold red]✗ Item '{target}' not found in any database table.[/bold red]"
-        )
+        console.print(f"[bold red]✗ Item '{name}' not found in database.[/bold red]")
 
     session.close()
