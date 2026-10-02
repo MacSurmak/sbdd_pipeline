@@ -7,7 +7,7 @@ import json
 import sys
 from pathlib import Path
 from rich.console import Console
-from cli.core.db import init_db, System, Receptor, Pose, Ligand
+from cli.core.db import init_db, System, Receptor, Pose, Ligand, Trajectory
 from cli.core.runner import execute_nextflow
 from cli.core.config_loader import load_project_configs, build_nextflow_args
 
@@ -121,11 +121,15 @@ def cmd_dynamics(args):
     if getattr(args, "replicates", None):
         reps = int(args.replicates)
 
+    total_duration_ns = float(configs.get("md_simulation", {}).get("production", {}).get("total_time_ns", 0.0))
+    if getattr(args, "total_ns", None):
+        total_duration_ns = float(args.total_ns)
+
     registered_trajs = 0
     for plan_item in plan_list:
         sys_name = plan_item["id"]
         rec_id = sys_name.replace("_ready_holo", "").replace("_holo", "").replace("_ready_apo", "").replace("_apo", "")
-        
+
         for rep_idx in range(1, reps + 1):
             traj_name = f"{rec_id}_rep{rep_idx}"
             raw_dir = cwd / "md" / sys_name / f"rep_{rep_idx}" / "raw"
@@ -133,8 +137,7 @@ def cmd_dynamics(args):
                 raw_dir = cwd / "md" / rec_id / f"rep_{rep_idx}" / "raw"
 
             tpr_path = raw_dir / "sys_ref.tpr"
-            xtc_path = raw_dir / "out.gro" # Check if chunk outputs exist
-            
+
             # Find any production xtc or concatenated trajectory
             xtc_candidates = list(raw_dir.glob("md_*.xtc")) + list(raw_dir.glob("concatenated.xtc"))
             if xtc_candidates and tpr_path.exists():
@@ -145,6 +148,7 @@ def cmd_dynamics(args):
                     ex_traj.replicate = rep_idx
                     ex_traj.path_xtc = str(chosen_xtc.resolve())
                     ex_traj.path_tpr = str(tpr_path.resolve())
+                    ex_traj.length_ns = total_duration_ns
                     ex_traj.status = "raw"
                 else:
                     new_traj = Trajectory(
@@ -153,6 +157,7 @@ def cmd_dynamics(args):
                         replicate=rep_idx,
                         path_xtc=str(chosen_xtc.resolve()),
                         path_tpr=str(tpr_path.resolve()),
+                        length_ns=total_duration_ns,
                         status="raw"
                     )
                     session.add(new_traj)
