@@ -38,26 +38,28 @@ process CONVERT_READY_LIGAND {
     label 'process_single'
 
     input:
-    tuple val(meta), path(sdf, stageAs: 'inputs/*'), val(idx)
+    tuple val(meta), path(sdf, stageAs: 'in_ligand/*'), val(idx)
 
     output:
     tuple val(meta), path("${meta.id}.maegz"), emit: prepared_maegz
-    tuple val(meta), path("inputs/*"), emit: prepared_sdf
+    tuple val(meta), path("${meta.id}.sdf"), emit: prepared_sdf
 
     script:
     """
-    IN_SDF=\$(ls inputs/* | head -n 1)
+    IN_SDF=\$(ls in_ligand/* | head -n 1)
     if [ ! -s "\$IN_SDF" ]; then
         echo "FATAL: Ligand file \$IN_SDF is empty!"
         exit 1
     fi
 
     schrodinger structconvert "\$IN_SDF" "${meta.id}.maegz"
+    cp "\$IN_SDF" "${meta.id}.sdf"
     """
 
     stub:
     """
     touch ${meta.id}.maegz
+    touch ${meta.id}.sdf
     """
 }
 
