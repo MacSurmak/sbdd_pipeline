@@ -275,11 +275,14 @@ def main():
 
     # 3. dock / screen
     p_dock = subparsers.add_parser(
-        "dock", aliases=["screen"], help="Run database-driven distributed docking"
+        "dock", aliases=["screen"], help="Run distributed docking into ReceptorFrames"
     )
     p_dock.add_argument(
-        "--receptors",
-        help="Comma-separated list of receptor names from DB (default: all ready receptors)",
+        "--target", help="Parent target name to dock into its ready frames"
+    )
+    p_dock.add_argument(
+        "--frames", "--receptors", dest="frames",
+        help="Comma-separated list of specific ready ReceptorFrame names",
     )
     p_dock.add_argument(
         "--ligands",

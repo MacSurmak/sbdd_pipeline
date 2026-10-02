@@ -7,7 +7,7 @@ import json
 import sys
 from pathlib import Path
 from rich.console import Console
-from cli.core.db import init_db, Receptor, Ligand, PoseSet, System, Pose
+from cli.core.db import init_db, Target, ReceptorFrame, Ligand, Pose, System
 from cli.core.runner import execute_nextflow
 from cli.core.config_loader import load_project_configs, build_nextflow_args
 
@@ -19,26 +19,23 @@ def cmd_dock(args):
     session = init_db()
     is_self = getattr(args, "self_dock", False)
 
-    # 1. Fetch requested Receptors
-    if getattr(args, "receptors", None):
-        rec_names = [n.strip() for n in args.receptors.split(",")]
-        receptors = session.query(Receptor).filter(Receptor.name.in_(rec_names)).all()
-        if len(receptors) != len(rec_names):
-            found = {r.name for r in receptors}
-            missing = set(rec_names) - found
-            console.print(f"[bold red]FATAL: Receptors not found in DB: {missing}[/bold red]")
+    # 1. Fetch requested Ready Frames
+    query = session.query(ReceptorFrame).filter_by(state="ready")
+    if getattr(args, "target", None):
+        target_obj = session.query(Target).filter_by(name=args.target).first()
+        if not target_obj:
+            console.print(f"[bold red]FATAL: Target '{args.target}' not found.[/bold red]")
             sys.exit(1)
-    else:
-        if is_self:
-            receptors = session.query(Receptor).filter_by(status="ready").all()
-        else:
-            console.print("[bold red]FATAL: Please specify --receptors or use --self / --redock mode.[/bold red]")
-            sys.exit(1)
+        query = query.filter(ReceptorFrame.target_id == target_obj.id)
+    elif getattr(args, "frames", None) or getattr(args, "receptors", None):
+        req = getattr(args, "frames", None) or getattr(args, "receptors", None)
+        f_names = [f.strip() for f in req.split(",") if f.strip()]
+        query = query.filter(ReceptorFrame.name.in_(f_names))
 
-    for r in receptors:
-        if r.status != "ready":
-            console.print(f"[bold red]FATAL: Receptor '{r.name}' is not ready! Run 'sbdd prep' first.[/bold red]")
-            sys.exit(1)
+    frames = query.all()
+    if not frames:
+        console.print("[bold red]FATAL: No ready ReceptorFrames found to dock. Run 'sbdd prep' first![/bold red]")
+        sys.exit(1)
 
     # 2. Build Plan (Self 1-to-1 vs Matrix Screening)
     plan = {
@@ -50,41 +47,40 @@ def cmd_dock(args):
 
     if is_self:
         ligand_set = set()
-        for r in receptors:
-            # Walk up to root target to resolve the canonical native ligand
-            curr = r
-            while curr.parent_name:
-                curr = session.query(Receptor).filter_by(name=curr.parent_name).first()
-            root_target = curr
-
-            root_sys = session.query(System).filter_by(receptor_name=root_target.name).first()
-            if not root_sys or not root_sys.pose or not root_sys.pose.ligand:
-                console.print(f"[bold red]FATAL: No native ligand found in database for receptor '{r.name}' (Root Target: {root_target.name}).[/bold red]")
+        for r in frames:
+            # Resolve native ligand directly from target's systems
+            target_sys = session.query(System).filter(System.target_id == r.target_id, System.pose_id.isnot(None)).first()
+            if not target_sys or not target_sys.pose:
+                console.print(f"[bold red]FATAL: No reference pose found for frame '{r.name}' in target '{r.target.name}'.[/bold red]")
                 sys.exit(1)
 
-            native_lig = root_sys.pose.ligand
-            ligand_set.add(native_lig)
+            native_pose = target_sys.pose
+            native_lig = native_pose.ligand
+            ligand_set.add((native_lig, native_pose.path))
 
-            # Reference pose for grid positioning & RMSD
-            ref_pose_path = "NO_FILE"
-            r_sys = session.query(System).filter_by(receptor_name=r.name).first()
-            if r_sys and r_sys.pose and Path(r_sys.pose.path).exists():
-                pose_p = Path(r_sys.pose.path)
-                if pose_p.suffix == ".sdf" and pose_p.with_suffix(".mae").exists():
-                    ref_pose_path = str(pose_p.with_suffix(".mae"))
-                else:
-                    ref_pose_path = str(pose_p)
+            ref_pose_path = native_pose.path
+            pose_p = Path(ref_pose_path)
+            if pose_p.suffix == ".sdf" and pose_p.with_suffix(".mae").exists():
+                ref_pose_path = str(pose_p.with_suffix(".mae"))
 
             plan["receptors"].append({
                 "name": r.name,
                 "path": r.path,
                 "ref_pose_path": ref_pose_path,
-                "native_ligand": root_target.meta_dict.get("native_ligand", ""),
+                "native_ligand": native_lig.name,
             })
 
             plan["pairs"].append({
                 "receptor": r.name,
                 "ligand": native_lig.name
+            })
+
+        for l_obj, l_path in sorted(list(ligand_set), key=lambda x: x[0].name):
+            plan["ligands"].append({
+                "name": l_obj.name,
+                "path": str(Path(l_path).resolve()),
+                "status": "ready",
+                "is_native": True
             })
 
         for l in sorted(list(ligand_set), key=lambda x: x.name):
@@ -183,35 +179,31 @@ def cmd_dock(args):
     )  # We will implement SDF merging later if needed, tracking CSV for now
 
     if res_csv.exists():
-        ex_pose = session.query(PoseSet).filter_by(name=poses_name).first()
-        if ex_pose:
-            ex_pose.path_csv = str(res_csv)
-        else:
-            new_pose = PoseSet(
-                name=poses_name,
-                path_sdf="multiple_files",
-                path_csv=str(res_csv),
-                status="ready",
-            )
-            session.add(new_pose)
-            
-        # Bulk insert top poses if single receptor (Cross-dock bulk mapping is deferred)
-        # Bulk insert all docking poses into DB across all receptors
-        poses_to_insert = []
         import csv
+        poses_count = 0
         try:
-            with open(res_csv, 'r', encoding='utf-8', errors='ignore') as f:
+            with open(res_csv, "r", encoding="utf-8", errors="ignore") as f:
                 reader = csv.DictReader(f)
                 for row in reader:
                     title = row.get("Title", "").strip()
-                    rec_name = row.get("Receptor", row.get("Frame", "")).strip()
-                    if not title or not rec_name:
+                    frame_name = row.get("Receptor", row.get("Frame", "")).strip()
+                    if not title or not frame_name:
                         continue
 
-                    pose_name = f"{title}_{rec_name}_dock"
-                    sdf_path = cwd / "docking" / rec_name / f"{rec_name}_dock.sdf"
+                    r_frame = session.query(ReceptorFrame).filter_by(name=frame_name).first()
+                    if not r_frame:
+                        continue
+
+                    lig = session.query(Ligand).filter_by(name=title).first()
+                    if not lig:
+                        lig = session.query(Ligand).filter(Ligand.name.like(f"%{title}%")).first()
+                    if not lig:
+                        continue
+
+                    pose_name = f"{frame_name}_{title}_dock"
+                    sdf_path = cwd / "docking" / frame_name / f"{frame_name}_dock.sdf"
                     if not sdf_path.exists():
-                        sdf_path = cwd / "docking" / f"{rec_name}_dock.sdf"
+                        sdf_path = cwd / "docking" / f"{frame_name}_dock.sdf"
 
                     scores_dict = {
                         k: float(v) for k, v in row.items()
@@ -219,34 +211,25 @@ def cmd_dock(args):
                     }
 
                     ex = session.query(Pose).filter_by(name=pose_name).first()
-                    if not ex:
-                        # Match ligand based on receptor target lineage (7UA1 vs 8UQ3)
-                        r_obj = session.query(Receptor).filter_by(name=rec_name).first()
-                        root_r = r_obj
-                        while root_r and root_r.parent_name:
-                            root_r = session.query(Receptor).filter_by(name=root_r.parent_name).first()
-                        root_target_name = root_r.name if root_r else rec_name
-
-                        lig = session.query(Ligand).filter(Ligand.name.like(f"%{root_target_name}%")).first()
-                        if not lig:
-                            lig = session.query(Ligand).filter((Ligand.name == title) | (Ligand.name.like(f"%{title}%"))).first()
-                        lig_db_name = lig.name if lig else title
-
-                        poses_to_insert.append(Pose(
+                    if ex:
+                        ex.path = str(sdf_path.resolve())
+                        ex.scores_dict = scores_dict
+                        ex.state = "ready"
+                    else:
+                        new_p = Pose(
+                            ligand_id=lig.id,
+                            receptor_frame_id=r_frame.id,
                             name=pose_name,
-                            ligand_name=lig_db_name,
-                            receptor_name=rec_name,
                             origin="docking",
-                            path=str(sdf_path),
-                            status="ready",
-                            scores=json.dumps(scores_dict)
-                        ))
-            if poses_to_insert:
-                session.bulk_save_objects(poses_to_insert)
+                            state="ready",
+                            path=str(sdf_path.resolve()),
+                        )
+                        new_p.scores_dict = scores_dict
+                        session.add(new_p)
+                    poses_count += 1
+            session.commit()
         except Exception as e:
-            console.print(f"[yellow]Warning: Could not bulk insert poses: {e}[/yellow]")
-
-        session.commit()
+            console.print(f"[yellow]Warning: Could not record docking poses in DB: {e}[/yellow]")
         console.print(
             f"\n[bold green]✓ Docking complete! Results registered as PoseSet '{poses_name}'.[/bold green]\n"
         )
