@@ -122,11 +122,15 @@ def cmd_clean_traj(args):
         ref_pdb = clean_dir / "complex_ref.pdb"
         t_record.path_ref_pdb = str(ref_gro.resolve()) if ref_gro.exists() else str(ref_pdb.resolve())
 
-        if clean_xtc.exists() and ref_pdb.exists():
+        ref_struct = clean_dir / "complex_ref.gro"
+        if not ref_struct.exists():
+            ref_struct = clean_dir / "complex_ref.pdb"
+
+        if clean_xtc.exists() and ref_struct.exists():
             t_obj = session.query(Trajectory).filter_by(name=item["name"]).first()
             if t_obj:
                 t_obj.path_clean_xtc = str(clean_xtc.resolve())
-                t_obj.path_ref_pdb = str(ref_pdb.resolve())
+                t_obj.path_ref_pdb = str(ref_struct.resolve())
                 t_obj.status = "cleaned"
 
     session.commit()

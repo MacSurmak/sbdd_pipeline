@@ -254,7 +254,7 @@ def main():
     parser.add_argument("--xtc", required=True, help="Clean Centered Trajectory XTC")
     parser.add_argument("--outdir", required=True, help="Output directory")
     parser.add_argument(
-        "--ligand", default="", help="Ligand residue name (e.g. KVR, UNK)"
+        "--ligand", default="", help="Canonical ligand residue name (e.g. KVR)"
     )
     parser.add_argument(
         "--cofactors",

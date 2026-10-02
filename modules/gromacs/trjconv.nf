@@ -13,7 +13,7 @@ process TRJCONV {
     val(pbc_extract)
 
     output:
-    tuple val(meta), path("trajectory_clean.xtc"), path("complex_ref.pdb"), emit: clean_traj
+    tuple val(meta), path("trajectory_clean.xtc"), path("complex_ref.gro"), emit: clean_traj
 
     script:
     """
@@ -42,13 +42,8 @@ process TRJCONV {
     # 6. PBC Step 3: Rotational and translational fitting on Protein backbone to eliminate drift
     echo -e "Protein\\n${pbc_extract}" | gmx trjconv -s ${tpr} -f pbc_centered.xtc -n index.ndx -o trajectory_clean.xtc -fit rot+trans
 
-    # 7. Extract reference 3D structure of the dry COMPLEX at t=0
-    echo "${pbc_extract}" | gmx trjconv -s ${tpr} -f trajectory_clean.xtc -n index.ndx -o complex_ref.pdb -dump 0
-
-    # Ensure canonical ligand residue name consistency
-    if [ -n "${meta.ligand}" ]; then
-        sed -i "s/UNK/${meta.ligand}/g" complex_ref.pdb
-    fi
+    # 7. Extract reference 3D structure of the dry COMPLEX at t=0 as standard GROMACS GRO
+    echo "${pbc_extract}" | gmx trjconv -s ${tpr} -f trajectory_clean.xtc -n index.ndx -o complex_ref.gro -dump 0
 
     # Immediately delete intermediate heavy solvent trajectories from scratch
     rm -f pbc_whole.xtc pbc_centered.xtc scratch_concat.xtc sorted_chunks.list
@@ -57,7 +52,7 @@ process TRJCONV {
     stub:
     """
     touch trajectory_clean.xtc
-    touch complex_ref.pdb
+    touch complex_ref.gro
     """
 }
 
