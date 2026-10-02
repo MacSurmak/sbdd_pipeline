@@ -138,34 +138,18 @@ def cmd_dynamics(args):
 
             tpr_path = raw_dir / "sys_ref.tpr"
 
-            # Check for existing concatenated trajectory or assemble from sequential chunks
-            concat_path = raw_dir / "concatenated.xtc"
-            chosen_xtc = None
+            chunks = sorted(
+                raw_dir.glob("md_*.xtc"),
+                key=lambda p: int("".join(filter(str.isdigit, p.stem)) or 0)
+            )
 
-            if concat_path.exists() and concat_path.stat().st_size > 0:
-                chosen_xtc = concat_path
-            else:
-                chunks = sorted(
-                    raw_dir.glob("md_*.xtc"),
-                    key=lambda p: int("".join(filter(str.isdigit, p.stem)) or 0)
-                )
-                if len(chunks) > 1:
-                    console.print(f"[cyan]Concatenating {len(chunks)} chunks into {concat_path.name}...[/cyan]")
-                    import subprocess
-                    subprocess.run(
-                        ["gmx", "trjcat", "-f", *[str(c) for c in chunks], "-o", str(concat_path), "-cat"],
-                        check=True
-                    )
-                    chosen_xtc = concat_path
-                elif len(chunks) == 1:
-                    chosen_xtc = chunks[0]
-
-            if chosen_xtc and tpr_path.exists():
+            if chunks and tpr_path.exists():
+                primary_xtc = chunks[0]
                 ex_traj = session.query(Trajectory).filter_by(name=traj_name).first()
                 if ex_traj:
                     ex_traj.system_name = sys_name
                     ex_traj.replicate = rep_idx
-                    ex_traj.path_xtc = str(chosen_xtc.resolve())
+                    ex_traj.path_xtc = str(primary_xtc.resolve())
                     ex_traj.path_tpr = str(tpr_path.resolve())
                     ex_traj.length_ns = total_duration_ns
                     ex_traj.status = "raw"
@@ -174,7 +158,7 @@ def cmd_dynamics(args):
                         name=traj_name,
                         system_name=sys_name,
                         replicate=rep_idx,
-                        path_xtc=str(chosen_xtc.resolve()),
+                        path_xtc=str(primary_xtc.resolve()),
                         path_tpr=str(tpr_path.resolve()),
                         length_ns=total_duration_ns,
                         status="raw"

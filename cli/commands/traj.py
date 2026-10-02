@@ -103,24 +103,20 @@ def cmd_clean_traj(args):
         xtc_path = Path(t.path_xtc).resolve()
         raw_dir = xtc_path.parent
 
-        # Auto-heal: Ensure we clean the full concatenated trajectory, not a solitary 10ns chunk
-        concat_file = raw_dir / "concatenated.xtc"
-        if concat_file.exists() and concat_file.stat().st_size > 0:
-            xtc_path = concat_file
-        else:
-            chunks = sorted(
-                raw_dir.glob("md_*.xtc"),
-                key=lambda p: int("".join(filter(str.isdigit, p.stem)) or 0)
-            )
-            if len(chunks) > 1:
-                console.print(f"[bold cyan]Auto-healing: Merging {len(chunks)} chunks for {t.name} into concatenated.xtc...[/bold cyan]")
-                import subprocess
-                subprocess.run(
-                    ["gmx", "trjcat", "-f", *[str(c) for c in chunks], "-o", str(concat_file), "-cat"],
-                    check=True
-                )
-                xtc_path = concat_file
-                t.path_xtc = str(concat_file)
+        # Clean up any redundant solvent concatenated files from prior runs
+        redundant_concat = raw_dir / "concatenated.xtc"
+        chunks = sorted(
+            raw_dir.glob("md_*.xtc"),
+            key=lambda p: int("".join(filter(str.isdigit, p.stem)) or 0)
+        )
+        if redundant_concat.exists() and len(chunks) > 1:
+            try:
+                redundant_concat.unlink()
+            except OSError:
+                pass
+
+        if not chunks:
+            chunks = [xtc_path]
 
         # Destination inside project directory next to replicate
         if raw_dir.name == "raw":
@@ -133,7 +129,7 @@ def cmd_clean_traj(args):
                 "name": t.name,
                 "rec_id": rec_id,
                 "rep": rep_idx,
-                "xtc": str(xtc_path),
+                "xtcs": [str(c.resolve()) for c in chunks],
                 "tpr": str(Path(t.path_tpr).resolve()),
                 "clean_dir": str(clean_dir.resolve()),
             }

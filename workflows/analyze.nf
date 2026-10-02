@@ -25,7 +25,8 @@ workflow ANALYZE_WF {
                 clean_dir: item.clean_dir,
                 project: params.project_name
             ]
-            [ meta, file(item.xtc), file(item.tpr) ]
+            def xtc_files = item.xtcs ? item.xtcs.collect { file(it) } : [ file(item.xtc) ]
+            [ meta, xtc_files, file(item.tpr) ]
         }
 
         TRJCONV(
