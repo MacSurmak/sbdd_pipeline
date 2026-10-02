@@ -229,7 +229,13 @@ def cmd_metrics(args):
                     cof_strs.append(f"{c_name}: {m_val.get('Mean_A', '-')}")
 
             cof_display = ", ".join(cof_strs) if cof_strs else "None"
-            rel_plot = str(plot_f.relative_to(cwd)) if plot_f.exists() else "-"
+            if plot_f.exists():
+                try:
+                    rel_plot = str(plot_f.relative_to(cwd))
+                except ValueError:
+                    rel_plot = str(plot_f)
+            else:
+                rel_plot = "-"
             table.add_row(item["name"], prot_str, lig_str, cof_display, rel_plot)
 
     console.print(table)
