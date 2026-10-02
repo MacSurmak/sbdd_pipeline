@@ -61,11 +61,15 @@ def _count_and_split_models(struct_path: Path, dest_dir: Path, base_name: str) -
         return [(base_name, out_f)]
 
 
-def _extract_ligand_atoms(rec_path: Path, lig_resname: str, out_sdf: Path) -> bool:
-    """Extracts ligand residue from PDB or CIF into a standalone SDF file."""
+def _extract_ligand_atoms(rec_path: Path, lig_resname: str, out_sdf: Path) -> None:
+    """
+    Extracts ligand residue from PDB, CIF, MMCIF or MAE into a standalone SDF.
+    Strict Fail-Fast: raises ValueError if ligand is not found or cannot be extracted.
+    """
     lig_clean = lig_resname.strip().upper()
+    extracted = False
 
-    # 1. Try Schrodinger API if available (reads CIF, MMCIF, PDB, MAE seamlessly)
+    # 1. Primary: Schrodinger API (handles CIF, MMCIF, PDB, MAE with native bond topologies)
     try:
         from schrodinger import structure
         st = structure.StructureReader.read(str(rec_path))
@@ -74,41 +78,58 @@ def _extract_ligand_atoms(rec_path: Path, lig_resname: str, out_sdf: Path) -> bo
             lig_st = st.extract(lig_atoms)
             out_sdf.parent.mkdir(parents=True, exist_ok=True)
             lig_st.write(str(out_sdf))
-            return True
-    except Exception:
-        pass
-
-    # 2. Try RDKit PDB parser for PDB files
-    if rec_path.suffix.lower() == ".pdb":
-        try:
+            extracted = True
+        else:
+            avail = sorted(list(set(a.pdbres.strip().upper() for a in st.atom)))
+            raise ValueError(
+                f"FATAL: Ligand residue '{lig_clean}' not found in {rec_path.name}! "
+                f"Available residues: {avail}"
+            )
+    except ImportError:
+        # 2. Fallback to RDKit for PDB files
+        if rec_path.suffix.lower() == ".pdb":
             from rdkit import Chem
             mol = Chem.MolFromPDBFile(str(rec_path), removeHs=False, sanitize=False)
-            if mol is not None:
-                atoms_to_keep = []
-                for atom in mol.GetAtoms():
-                    info = atom.GetPDBResidueInfo()
-                    if info and info.GetResidueName().strip().upper() == lig_clean:
+            if mol is None:
+                raise ValueError(f"FATAL: RDKit could not read PDB file: {rec_path}")
+
+            atoms_to_keep = []
+            avail = set()
+            for atom in mol.GetAtoms():
+                info = atom.GetPDBResidueInfo()
+                if info:
+                    r_name = info.GetResidueName().strip().upper()
+                    avail.add(r_name)
+                    if r_name == lig_clean:
                         atoms_to_keep.append(atom.GetIdx())
 
-                if atoms_to_keep:
-                    emol = Chem.RWMol(mol)
-                    all_atoms = set(range(mol.GetNumAtoms()))
-                    del_atoms = sorted(list(all_atoms - set(atoms_to_keep)), reverse=True)
-                    for idx in del_atoms:
-                        emol.RemoveAtom(idx)
+            if not atoms_to_keep:
+                raise ValueError(
+                    f"FATAL: Ligand residue '{lig_clean}' not found in {rec_path.name}! "
+                    f"Available residues: {sorted(list(avail))}"
+                )
 
-                    extracted_mol = emol.GetMol()
-                    Chem.SanitizeMol(extracted_mol, Chem.SANITIZE_ALL ^ Chem.SANITIZE_PROPERTIES)
+            emol = Chem.RWMol(mol)
+            all_atoms = set(range(mol.GetNumAtoms()))
+            del_atoms = sorted(list(all_atoms - set(atoms_to_keep)), reverse=True)
+            for idx in del_atoms:
+                emol.RemoveAtom(idx)
 
-                    out_sdf.parent.mkdir(parents=True, exist_ok=True)
-                    w = Chem.SDWriter(str(out_sdf))
-                    w.write(extracted_mol)
-                    w.close()
-                    return True
-        except Exception:
-            pass
+            extracted_mol = emol.GetMol()
+            Chem.SanitizeMol(extracted_mol, Chem.SANITIZE_ALL ^ Chem.SANITIZE_PROPERTIES)
 
-    return False
+            out_sdf.parent.mkdir(parents=True, exist_ok=True)
+            w = Chem.SDWriter(str(out_sdf))
+            w.write(extracted_mol)
+            w.close()
+            extracted = True
+        else:
+            raise RuntimeError(
+                f"FATAL: File {rec_path.name} is in CIF/MMCIF format, which requires Schrodinger suite to parse, but it is not available in environment."
+            )
+
+    if not extracted or not out_sdf.exists() or out_sdf.stat().st_size == 0:
+        raise ValueError(f"FATAL: Extraction of ligand '{lig_clean}' failed to produce valid SDF file.")
 
 
 def add_receptor(args):
@@ -164,84 +185,50 @@ def add_receptor(args):
             console.print(f"[bold green]✓ Added Frame '{frame_name}'[/bold green] [dim](raw, {source_type})[/dim]")
         created_frames += 1
 
-        # Ligand & Pose Handling
+        # Ligand & Pose Handling (Strict Fail-Fast)
         pose_obj = None
         if lig_code:
             poses_dir = cwd / "poses" / target_name
             pose_sdf = poses_dir / f"{frame_name}_{lig_code}_crystal.sdf"
-            extracted_ok = _extract_ligand_atoms(frame_file, lig_code, pose_sdf)
+            
+            # Will raise ValueError on missing residue or extraction failure
+            _extract_ligand_atoms(frame_file, lig_code, pose_sdf)
 
-            if extracted_ok and pose_sdf.exists():
-                try:
-                    inchikey, smiles, mol_name = get_mol_identity(pose_sdf)
-                    # Deduplicate Ligand across database
-                    lig_entity = session.query(Ligand).filter_by(inchikey=inchikey).first()
-                    if not lig_entity:
-                        lig_entity = Ligand(
-                            inchikey=inchikey,
-                            smiles=smiles,
-                            name=mol_name or lig_code,
-                            batch_id="crystal",
-                        )
-                        session.add(lig_entity)
-                        session.flush()
-                        console.print(f"[bold green]✓ Registered Chemical Ligand '{lig_entity.name}'[/bold green] [dim]({inchikey})[/dim]")
-                    else:
-                        console.print(f"[dim]Matched existing chemical ligand '{lig_entity.name}' via InChIKey {inchikey}[/dim]")
+            inchikey, smiles, mol_name = get_mol_identity(pose_sdf)
 
-                    # Create Pose
-                    pose_name = f"{frame_name}_{lig_code}_pose"
-                    ex_pose = session.query(Pose).filter_by(name=pose_name).first()
-                    if ex_pose:
-                        ex_pose.path = str(pose_sdf.resolve())
-                        pose_obj = ex_pose
-                    else:
-                        pose_obj = Pose(
-                            ligand_id=lig_entity.id,
-                            receptor_frame_id=frame_obj.id,
-                            name=pose_name,
-                            origin="crystal",
-                            state="raw",
-                            path=str(pose_sdf.resolve()),
-                        )
-                        session.add(pose_obj)
-                        session.flush()
-                        console.print(f"[bold green]✓ Registered Pose '{pose_name}'[/bold green] [dim](1 file: {pose_sdf.name})[/dim]")
-                except Exception as e:
-                    console.print(f"[yellow]Warning: Could not standardize ligand {lig_code}: {e}[/yellow]")
+            # Deduplicate Ligand across database strictly by InChIKey
+            lig_entity = session.query(Ligand).filter_by(inchikey=inchikey).first()
+            if not lig_entity:
+                lig_entity = Ligand(
+                    inchikey=inchikey,
+                    smiles=smiles,
+                    name=mol_name or lig_code,
+                    batch_id="crystal",
+                )
+                session.add(lig_entity)
+                session.flush()
+                console.print(f"[bold green]✓ Registered Chemical Ligand '{lig_entity.name}'[/bold green] [dim]({inchikey})[/dim]")
             else:
-                # If direct 3D SDF extraction couldn't be done yet (e.g. raw CIF before prep),
-                # register placeholder entity to be enriched and separated upon 'sbdd prep'
-                import hashlib
-                dummy_key = hashlib.md5(f"{target_name}_{lig_code}".encode()).hexdigest()[:27]
-                lig_entity = session.query(Ligand).filter((Ligand.name == lig_code) | (Ligand.inchikey == dummy_key)).first()
-                if not lig_entity:
-                    lig_entity = Ligand(
-                        inchikey=dummy_key,
-                        smiles="UNASSIGNED",
-                        name=lig_code,
-                        batch_id="crystal_raw",
-                    )
-                    session.add(lig_entity)
-                    session.flush()
-                    console.print(f"[bold green]✓ Registered Chemical Ligand '{lig_entity.name}'[/bold green] [dim](raw)[/dim]")
+                console.print(f"[dim]Matched existing chemical ligand '{lig_entity.name}' via InChIKey {inchikey}[/dim]")
 
-                pose_name = f"{frame_name}_{lig_code}_pose"
-                ex_pose = session.query(Pose).filter_by(name=pose_name).first()
-                if not ex_pose:
-                    pose_obj = Pose(
-                        ligand_id=lig_entity.id,
-                        receptor_frame_id=frame_obj.id,
-                        name=pose_name,
-                        origin="crystal",
-                        state="raw",
-                        path=str(frame_file.resolve()),
-                    )
-                    session.add(pose_obj)
-                    session.flush()
-                    console.print(f"[bold green]✓ Registered Pose '{pose_name}'[/bold green] [dim](in {frame_file.name})[/dim]")
-                else:
-                    pose_obj = ex_pose
+            # Create Pose (1 Pose = 1 File)
+            pose_name = f"{frame_name}_{lig_code}_pose"
+            ex_pose = session.query(Pose).filter_by(name=pose_name).first()
+            if ex_pose:
+                ex_pose.path = str(pose_sdf.resolve())
+                pose_obj = ex_pose
+            else:
+                pose_obj = Pose(
+                    ligand_id=lig_entity.id,
+                    receptor_frame_id=frame_obj.id,
+                    name=pose_name,
+                    origin="crystal",
+                    state="raw",
+                    path=str(pose_sdf.resolve()),
+                )
+                session.add(pose_obj)
+                session.flush()
+                console.print(f"[bold green]✓ Registered Pose '{pose_name}'[/bold green] [dim](1 file: {pose_sdf.name})[/dim]")
 
         # System creation
         sys_name = f"{frame_name}_holo" if pose_obj else f"{frame_name}_apo"
