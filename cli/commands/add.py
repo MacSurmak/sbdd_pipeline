@@ -215,20 +215,24 @@ def add_receptor(args):
 
             inchikey, smiles, mol_name = get_mol_identity(pose_sdf)
 
-            # Deduplicate Ligand across database strictly by InChIKey
-            lig_entity = session.query(Ligand).filter_by(inchikey=inchikey).first()
+            # Match existing chemical entity either by exact InChIKey or canonical PDB CCD residue name
+            lig_entity = session.query(Ligand).filter(
+                (Ligand.inchikey == inchikey) | (Ligand.name == lig_code)
+            ).first()
+
             if not lig_entity:
                 lig_entity = Ligand(
                     inchikey=inchikey,
                     smiles=smiles,
-                    name=mol_name or lig_code,
+                    name=lig_code,
                     batch_id="crystal",
                 )
                 session.add(lig_entity)
                 session.flush()
                 console.print(f"[bold green]✓ Registered Chemical Ligand '{lig_entity.name}'[/bold green] [dim]({inchikey})[/dim]")
             else:
-                console.print(f"[dim]Matched existing chemical ligand '{lig_entity.name}' via InChIKey {inchikey}[/dim]")
+                # If existing ligand has canonical aromatic SMILES, retain it over raw coordinates
+                console.print(f"[bold green]✓ Matched existing Chemical Ligand '{lig_entity.name}'[/bold green] [dim]({lig_entity.inchikey})[/dim]")
 
             # Create Pose (1 Pose = 1 File)
             pose_name = f"{frame_name}_{lig_code}_pose"
