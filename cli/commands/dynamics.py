@@ -19,7 +19,7 @@ def cmd_dynamics(args):
     cwd = Path.cwd()
     session = init_db()
 
-    # 1. Resolve Systems needing simulation based on DB state
+    # 1. Resolve Systems needing simulation and calculate required top-up replicates
     reps_target = int(configs.get("md_simulation", {}).get("production", {}).get("replicates", 1))
     if getattr(args, "replicates", None):
         reps_target = int(args.replicates)
@@ -36,46 +36,52 @@ def cmd_dynamics(args):
 
     candidate_systems = query.all()
 
-    # Skip systems that already have the required replicates completed
-    systems = []
-    for s in candidate_systems:
-        existing_reps = session.query(Trajectory).filter_by(system_id=s.id).count()
-        if existing_reps >= reps_target:
-            continue
-        systems.append(s)
+    # Determine systems with missing active replicates (active = raw or cleaned)
+    plan_list = []
+    systems_to_run = []
 
-    if not systems:
+    for s in candidate_systems:
+        active_reps = session.query(Trajectory).filter(
+            Trajectory.system_id == s.id,
+            Trajectory.status.in_(["raw", "cleaned"])
+        ).count()
+
+        needed_reps = max(0, reps_target - active_reps)
+        if needed_reps <= 0:
+            continue
+
+        frame = s.receptor_frame
+        rec_path = Path(frame.path).resolve()
+
+        lig_path = "NO_LIGAND"
+        lig_name = ""
+        if s.pose and Path(s.pose.path).exists():
+            lig_path = str(Path(s.pose.path).resolve())
+            lig_name = s.pose.ligand.name[:4].upper()
+
+        systems_to_run.append((s, needed_reps))
+        plan_list.append(
+            {
+                "id": s.name,
+                "rec_path": str(rec_path),
+                "lig_path": lig_path,
+                "lig_name": lig_name,
+                "cofactors": frame.cofactors_list,
+                "reps_to_run": needed_reps,
+            }
+        )
+
+    if not plan_list:
         if candidate_systems:
-            console.print(f"[bold green]✓ All {len(candidate_systems)} ready System(s) already have {reps_target} replicates completed. Nothing to do![/bold green]")
+            console.print(f"[bold green]✓ All {len(candidate_systems)} ready System(s) already have {reps_target} active replicates. Nothing to do![/bold green]")
         else:
             console.print("[yellow]No ready Systems found to simulate. Run 'sbdd prep' first.[/yellow]")
         session.close()
         return
 
-    plan_list = []
-    for sys_obj in systems:
-        if sys_obj.state != "ready":
-            console.print(f"[bold red]FATAL: System '{sys_obj.name}' is in state '{sys_obj.state}'. Must be 'ready'. Run 'sbdd prep'![/bold red]")
-            sys.exit(1)
-
-        frame = sys_obj.receptor_frame
-        rec_path = Path(frame.path).resolve()
-
-        lig_path = "NO_LIGAND"
-        lig_name = ""
-        if sys_obj.pose and Path(sys_obj.pose.path).exists():
-            lig_path = str(Path(sys_obj.pose.path).resolve())
-            lig_name = sys_obj.pose.ligand.name[:4].upper()
-
-        plan_list.append(
-            {
-                "id": sys_obj.name,
-                "rec_path": str(rec_path),
-                "lig_path": lig_path,
-                "lig_name": lig_name,
-                "cofactors": frame.cofactors_list,
-            }
-        )
+    # Maximum reps needed across queued systems
+    max_reps_dispatch = max(item["reps_to_run"] for item in plan_list)
+    console.print(f"[bold cyan]Dispatching simulation to replenish replicates (Target: {reps_target}, Max to run: {max_reps_dispatch})...[/bold cyan]")
 
     # 2. Check MD protocol
     protocol_dir = cwd / "configs" / "md_protocol"
@@ -95,12 +101,11 @@ def cmd_dynamics(args):
     nf_args = build_nextflow_args(configs, cwd, entrypoint="dynamics")
     nf_args.extend(["--md_plan", str(plan_file.resolve())])
 
-    if getattr(args, "replicates", None):
-        if "--md_replicates" in nf_args:
-            idx = nf_args.index("--md_replicates")
-            nf_args[idx + 1] = str(args.replicates)
-        else:
-            nf_args.extend(["--md_replicates", str(args.replicates)])
+    if "--md_replicates" in nf_args:
+        idx = nf_args.index("--md_replicates")
+        nf_args[idx + 1] = str(max_reps_dispatch)
+    else:
+        nf_args.extend(["--md_replicates", str(max_reps_dispatch)])
 
     if getattr(args, "total_ns", None):
         if "--md_total_ns" in nf_args:
@@ -123,44 +128,37 @@ def cmd_dynamics(args):
         console.print("[bold red]Nextflow MD simulation failed.[/bold red]")
         sys.exit(ret_code)
 
-    # 4. Atomic Registration of Trajectories into Database
-    reps = int(configs.get("md_simulation", {}).get("production", {}).get("replicates", 1))
-    if getattr(args, "replicates", None):
-        reps = int(args.replicates)
-
+    # 4. Atomic Registration of Trajectories with Incremental Replicate Indexing
     total_duration_ns = float(configs.get("md_simulation", {}).get("production", {}).get("total_time_ns", 0.0))
     if getattr(args, "total_ns", None):
         total_duration_ns = float(args.total_ns)
 
     registered_trajs = 0
-    for sys_obj in systems:
-        for rep_idx in range(1, reps + 1):
-            traj_name = f"{sys_obj.name}_rep{rep_idx}"
-            raw_dir = cwd / "md" / sys_obj.name / f"rep_{rep_idx}" / "raw"
-            tpr_path = raw_dir / "sys_ref.tpr"
+    for sys_obj, needed_reps in systems_to_run:
+        # Find highest existing replicate index
+        existing_trajs = session.query(Trajectory).filter_by(system_id=sys_obj.id).all()
+        max_idx = max([t.replicate for t in existing_trajs], default=0)
 
-            # Check if simulation produced outputs
+        for offset in range(1, needed_reps + 1):
+            run_rep_idx = offset  # Index in current Nextflow run output
+            new_global_rep_idx = max_idx + offset  # Non-colliding global index
+
+            raw_dir = cwd / "md" / sys_obj.name / f"rep_{run_rep_idx}" / "raw"
+            tpr_path = raw_dir / "sys_ref.tpr"
             chunks = list(raw_dir.glob("md_*.xtc"))
+
             if chunks and tpr_path.exists():
-                ex_traj = session.query(Trajectory).filter_by(name=traj_name).first()
-                if ex_traj:
-                    ex_traj.system_id = sys_obj.id
-                    ex_traj.replicate = rep_idx
-                    ex_traj.length_ns = total_duration_ns
-                    ex_traj.raw_dir = str(raw_dir.resolve())
-                    ex_traj.path_tpr = str(tpr_path.resolve())
-                    ex_traj.status = "raw"
-                else:
-                    new_traj = Trajectory(
-                        system_id=sys_obj.id,
-                        name=traj_name,
-                        replicate=rep_idx,
-                        length_ns=total_duration_ns,
-                        raw_dir=str(raw_dir.resolve()),
-                        path_tpr=str(tpr_path.resolve()),
-                        status="raw",
-                    )
-                    session.add(new_traj)
+                traj_name = f"{sys_obj.name}_rep{new_global_rep_idx}"
+                new_traj = Trajectory(
+                    system_id=sys_obj.id,
+                    name=traj_name,
+                    replicate=new_global_rep_idx,
+                    length_ns=total_duration_ns,
+                    raw_dir=str(raw_dir.resolve()),
+                    path_tpr=str(tpr_path.resolve()),
+                    status="raw",
+                )
+                session.add(new_traj)
                 registered_trajs += 1
 
     session.commit()

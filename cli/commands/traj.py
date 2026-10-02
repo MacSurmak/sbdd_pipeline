@@ -401,6 +401,33 @@ def cmd_cluster(args):
     console.print("[dim]These frames can now be used directly for docking. View with 'sbdd tree'.[/dim]")
 
 
+def cmd_flag_traj(args):
+    """Marks a trajectory as drifted, disabled, or cleaned to control inclusion in downstream analysis."""
+    session = init_db()
+    traj_name = args.trajectory
+    t_obj = session.query(Trajectory).filter_by(name=traj_name).first()
+
+    if not t_obj:
+        console.print(f"[bold red]FATAL: Trajectory '{traj_name}' not found in database.[/bold red]")
+        session.close()
+        sys.exit(1)
+
+    new_status = args.status
+    if getattr(args, "disable", False):
+        new_status = "disabled"
+    elif getattr(args, "enable", False):
+        new_status = "cleaned" if t_obj.path_clean_xtc else "raw"
+
+    old_status = t_obj.status
+    t_obj.status = new_status
+    session.commit()
+    session.close()
+
+    console.print(f"[bold green]✓ Updated trajectory '{traj_name}': status '{old_status}' -> '{new_status}'[/bold green]")
+    if new_status in ["drifted", "disabled"]:
+        console.print(f"[yellow]Trajectory is now excluded from clustering. 'sbdd md' will detect missing replicates.[/yellow]")
+
+
 def cmd_mmpbsa(args):
     """
     CLI handler for 'sbdd traj-mmpbsa': standalone free energy calculations.

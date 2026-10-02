@@ -399,6 +399,21 @@ def main():
     p_mda.add_argument("--ndx", help="Direct path to custom index.ndx file")
     add_common_wf_args(p_mda)
 
+    # 7.0 traj-flag
+    p_flag = subparsers.add_parser(
+        "traj-flag",
+        help="Flag or disable a trajectory (e.g. ligand drifted/unbound) to exclude from clustering",
+    )
+    p_flag.add_argument("trajectory", help="Name of the Trajectory record in DB")
+    p_flag.add_argument(
+        "--status",
+        choices=["cleaned", "drifted", "failed", "disabled", "raw"],
+        default="drifted",
+        help="Target QC status (default: drifted)",
+    )
+    p_flag.add_argument("--disable", action="store_true", help="Shortcut to set status='disabled'")
+    p_flag.add_argument("--enable", action="store_true", help="Shortcut to restore status='cleaned'")
+
     # 7.1 traj-clean
     p_clean_tr = subparsers.add_parser(
         "traj-clean",
@@ -551,6 +566,10 @@ def main():
         cmd_dynamics(args)
     elif subcmd == "md-analyze":
         sys.exit(run_workflow("dynamics", args))
+    elif subcmd == "traj-flag":
+        from cli.commands.traj import cmd_flag_traj
+
+        cmd_flag_traj(args)
     elif subcmd == "traj-clean":
         from cli.commands.traj import cmd_clean_traj
 

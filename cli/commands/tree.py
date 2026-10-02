@@ -46,7 +46,12 @@ def cmd_tree(args):
                     if trajs:
                         tr_branch = sys_node.add("[dim]Trajectories[/dim]")
                         for t in trajs:
-                            t_color = "green" if t.status == "cleaned" else "yellow"
+                            if t.status == "cleaned":
+                                t_color = "green"
+                            elif t.status in ["drifted", "failed", "disabled"]:
+                                t_color = "bold red"
+                            else:
+                                t_color = "yellow"
                             tr_branch.add(f"[magenta]{t.name}[/magenta] [{t_color}]({t.status})[/{t_color}] - {t.length_ns} ns")
 
     # 2. Chemical Substances & Their 3D Poses
