@@ -18,14 +18,20 @@ process PRIME_MMGBSA {
     script:
     def mem_flag = (membrane_enabled.toString() == 'true') ? "-membrane" : ""
     """
-    # CRITICAL RULE FOR NEXTFLOW DSL2:
-    # All shell variables ($lib, $LIB_PATH, ${VAR:+...}) MUST be escaped with a backslash (\$, \${})
-    # inside triple double-quoted (""") blocks, otherwise Groovy intercepts them as Groovy code!
     for lib in libtirpc.so.3 libkeyutils.so.1 libgssapi_krb5.so.2 libkrb5.so.3 libk5crypto.so.3 libcom_err.so.2 libkrb5support.so.0; do
         LIB_PATH=\$(ls /lib64/\$lib /usr/lib64/\$lib /lib/x86_64-linux-gnu/\$lib /usr/lib/x86_64-linux-gnu/\$lib /usr/lib/\$lib 2>/dev/null | head -n 1)
         if [ -n "\$LIB_PATH" ]; then
-            export APPTAINER_BINDPATH="\${LIB_PATH}:/usr/lib/x86_64-linux-gnu/\$lib,\${LIB_PATH}:/lib/x86_64-linux-gnu/\$lib,\${LIB_PATH}:/usr/lib64/\$lib\${APPTAINER_BINDPATH:+,\$APPTAINER_BINDPATH}"
-            export SINGULARITY_BINDPATH="\${LIB_PATH}:/usr/lib/x86_64-linux-gnu/\$lib,\${LIB_PATH}:/lib/x86_64-linux-gnu/\$lib,\${LIB_PATH}:/usr/lib64/\$lib\${SINGULARITY_BINDPATH:+,\$SINGULARITY_BINDPATH}"
+            NEW_BIND="\${LIB_PATH}:/usr/lib/x86_64-linux-gnu/\$lib,\${LIB_PATH}:/lib/x86_64-linux-gnu/\$lib,\${LIB_PATH}:/usr/lib64/\$lib"
+            if [ -z "\$APPTAINER_BINDPATH" ]; then
+                export APPTAINER_BINDPATH="\$NEW_BIND"
+            else
+                export APPTAINER_BINDPATH="\$NEW_BIND,\$APPTAINER_BINDPATH"
+            fi
+            if [ -z "\$SINGULARITY_BINDPATH" ]; then
+                export SINGULARITY_BINDPATH="\$NEW_BIND"
+            else
+                export SINGULARITY_BINDPATH="\$NEW_BIND,\$SINGULARITY_BINDPATH"
+            fi
         fi
     done
     export SCHRODINGER_JOBDB="/tmp/schrodinger_jobdb_\${SLURM_JOB_ID:-\$\$}"
