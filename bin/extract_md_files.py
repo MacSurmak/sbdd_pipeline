@@ -65,8 +65,10 @@ def extract_via_schrodinger(args):
     rec_out = out_dir / "receptor_dry.pdb"
     rec_st.write(str(rec_out))
 
-    # 2. Extract Ligand preserving canonical residue name
-    lig_code = (args.lig_name or "LIG").strip()[:4].upper()
+    # 2. Extract Ligand preserving canonical residue name strictly
+    if not args.lig_name:
+        raise ValueError("FATAL: --lig_name must be explicitly provided.")
+    lig_code = args.lig_name.strip()[:4].upper()
     if (
         args.lig_file
         and args.lig_file.lower() != "none"

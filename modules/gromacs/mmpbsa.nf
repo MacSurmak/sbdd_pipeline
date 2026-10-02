@@ -73,7 +73,7 @@ EOF
         -i mmpbsa_pb.in \\
         -cs ${ref_pdb} \\
         -ci ${index_ndx} \\
-        -cg Protein UNK \\
+        -cg Protein ${meta.ligand} \\
         -ct ${clean_xtc} \\
         -cp ${topol_top} \\
         -nogui \\
@@ -105,7 +105,7 @@ EOF
             -i mmpbsa_gb.in \\
             -cs ${ref_pdb} \\
             -ci ${index_ndx} \\
-            -cg Protein UNK \\
+            -cg Protein ${meta.ligand} \\
             -ct ${clean_xtc} \\
             -cp ${topol_top} \\
             -nogui \\

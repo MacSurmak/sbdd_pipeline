@@ -21,7 +21,7 @@ process DECLASH {
         -p ${topol_top} \\
         -o ${meta.id}_declashed.gro \\
         --fix-moltype system1 \\
-        --fix-moltype UNK \\
+        ${meta.native_ligand ? "--fix-moltype ${meta.native_ligand} \\\\" : ""}
         --no-heavy-only \\
         --cutoff 0.10 \\
         --niter 300 \\

@@ -16,10 +16,11 @@ from MDAnalysis.lib.distances import capped_distance
 
 
 def compute_rmsd_rmsf(
-    pdb_path: str, xtc_path: str, ligand_resname: str, cofactor_resnames: list
+    struct_path: str, xtc_path: str, ligand_resname: str, cofactor_resnames: list
 ):
-    u = mda.Universe(pdb_path, xtc_path)
-    ref = mda.Universe(pdb_path)
+    # Load trajectory using GROMACS GRO or topology file natively without PDB column corruption
+    u = mda.Universe(struct_path, xtc_path)
+    ref = mda.Universe(struct_path)
 
     prot_bb = u.select_atoms("protein and backbone")
     ref_bb = ref.select_atoms("protein and backbone")
@@ -99,9 +100,9 @@ def compute_rmsd_rmsf(
 
 
 def compute_contacts(
-    pdb_path: str, xtc_path: str, ligand_resname: str, c_heavy=3.5, c_hyd=4.0, c_pol=3.4
+    struct_path: str, xtc_path: str, ligand_resname: str, c_heavy=3.5, c_hyd=4.0, c_pol=3.4
 ):
-    u = mda.Universe(pdb_path, xtc_path)
+    u = mda.Universe(struct_path, xtc_path)
     prot = u.select_atoms("protein")
 
     if prot.n_atoms == 0 or not ligand_resname:
@@ -215,7 +216,7 @@ def generate_rmsd_plot(df_rmsd: pd.DataFrame, out_png: Path):
                     df_rmsd[col],
                     label=label_name,
                     color="#d62728",
-                    linewidth=1.8,
+                    linewidth=2.0,
                 )
             elif col.startswith("Cofactor_"):
                 label_name = col.replace("Cofactor_", "").replace(
@@ -225,9 +226,13 @@ def generate_rmsd_plot(df_rmsd: pd.DataFrame, out_png: Path):
                     time_col,
                     df_rmsd[col],
                     label=label_name,
+                    color="#ff7f0e",
                     linestyle="--",
-                    linewidth=1.4,
+                    linewidth=1.6,
                 )
+
+        # Reference threshold line for stability
+        plt.axhline(y=2.0, color="#7f7f7f", linestyle=":", linewidth=1.0, alpha=0.7, label="2.0 Å Threshold")
 
         plt.title("Molecular Dynamics RMSD Trajectory", fontsize=12, fontweight="bold")
         plt.xlabel("Simulation Time (ns)", fontsize=10)
