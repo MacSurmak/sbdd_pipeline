@@ -1,13 +1,14 @@
 """
 File: cli/commands/prep.py
-Description: CLI handler for 'sbdd prep'. Reads DB, builds Execution Plan, runs NF, and updates DB.
+Description: CLI handler for 'sbdd prep' using clean 3NF database lineage.
+Prepares raw ReceptorFrames and in-situ Poses into ready states without mutating raw records.
 """
 
 import json
 from pathlib import Path
 import sys
 from rich.console import Console
-from cli.core.db import init_db, Receptor, Ligand, System, Pose
+from cli.core.db import init_db, Target, ReceptorFrame, Ligand, Pose, System
 from cli.core.runner import execute_nextflow
 from cli.core.config_loader import load_project_configs, build_nextflow_args
 
@@ -18,30 +19,46 @@ def cmd_prep(args):
     cwd = Path.cwd()
     session = init_db()
 
-    # 1. Fetch receptors needing preparation
-    query = session.query(Receptor).filter(Receptor.status == "unprepared")
-    if getattr(args, "receptors", None):
-        target_names = [n.strip() for n in args.receptors.split(",")]
-        query = query.filter(Receptor.name.in_(target_names))
+    # 1. Fetch raw frames that need preparation
+    query = session.query(ReceptorFrame).filter(ReceptorFrame.state == "raw")
+    if getattr(args, "target", None):
+        target_obj = session.query(Target).filter_by(name=args.target).first()
+        if not target_obj:
+            console.print(f"[bold red]FATAL: Target '{args.target}' not found in database.[/bold red]")
+            sys.exit(1)
+        query = query.filter(ReceptorFrame.target_id == target_obj.id)
+    elif getattr(args, "frames", None):
+        frame_names = [f.strip() for f in args.frames.split(",") if f.strip()]
+        query = query.filter(ReceptorFrame.name.in_(frame_names))
 
-    receptors = query.all()
-    if not receptors:
-        console.print(
-            "[green]No unprepared receptors found. Everything is up to date![/green]"
-        )
+    raw_frames = query.all()
+    if not raw_frames:
+        console.print("[green]No raw frames needing preparation found. Everything is up to date![/green]")
         session.close()
         return
 
-    # 2. Build Execution Plan
+    # 2. Build Plan for Nextflow
     plan_data = []
-    for r in receptors:
+    frame_map = {}
+
+    for frame in raw_frames:
+        frame_map[frame.name] = frame
+
+        # Find in-situ pose in holo system for this frame if any
+        system = session.query(System).filter_by(receptor_frame_id=frame.id).first()
+        native_lig_code = ""
+        if system and system.pose:
+            native_lig_code = system.pose.ligand.name
+
+        prep_mode = "light" if frame.source_type == "md_centroid" else "full"
+
         plan_data.append(
             {
-                "name": r.name,
-                "path": r.path,
-                "prep_mode": r.prep_mode,
-                "cofactors": r.meta_dict.get("cofactors", []),
-                "native_ligand": r.meta_dict.get("native_ligand", ""),
+                "name": frame.name,
+                "path": str(Path(frame.path).resolve()),
+                "prep_mode": prep_mode,
+                "cofactors": frame.cofactors_list,
+                "native_ligand": native_lig_code,
             }
         )
 
@@ -49,9 +66,7 @@ def cmd_prep(args):
     with open(plan_file, "w") as f:
         json.dump(plan_data, f, indent=2)
 
-    console.print(
-        f"[bold cyan]Generated prep_plan.json for {len(receptors)} receptors.[/bold cyan]"
-    )
+    console.print(f"[bold cyan]Generated prep_plan.json for {len(raw_frames)} frame(s)...[/bold cyan]")
 
     # 3. Build Nextflow args and execute
     configs = load_project_configs(cwd)
@@ -69,89 +84,105 @@ def cmd_prep(args):
     )
 
     if ret_code != 0:
-        console.print(
-            "[bold red]Nextflow execution failed. Database not updated.[/bold red]"
-        )
+        console.print("[bold red]Nextflow preparation failed. Database not updated.[/bold red]")
         sys.exit(ret_code)
 
-    # 4. Read Receipt and update Database
+    # 4. Read Receipt and instantiate ready records with data lineage
     receipt_file = cwd / "prep_receipt.tsv"
     if not receipt_file.exists():
-        console.print(
-            "[bold red]FATAL: prep_receipt.tsv not found! Nextflow might have failed silently.[/bold red]"
-        )
+        console.print("[bold red]FATAL: prep_receipt.tsv not found! Nextflow execution might have failed.[/bold red]")
         sys.exit(1)
 
+    prepared_count = 0
     lines = receipt_file.read_text().strip().splitlines()
-    success_count = 0
 
     for line in lines:
         if not line.strip():
             continue
-        name, raw_out_path = line.split("\t")
+        orig_frame_name, raw_out_path = line.split("\t")
+        raw_frame = frame_map.get(orig_frame_name)
+        if not raw_frame:
+            continue
 
-        # Resolve explicit published path, discarding any nextflow cache prefix
-        published_path = cwd / "prepared" / f"{name}_prepared.mae"
-        
-        orig = session.query(Receptor).filter_by(name=name).first()
-        
-        if orig and orig.prep_mode == "light":
-            orig.path = str(published_path)
-            orig.status = "ready"
-            target_rec_name = name
-        else:
-            ready_name = f"{name}_ready" if not name.endswith("_ready") else name
-            existing = session.query(Receptor).filter_by(name=ready_name).first()
+        prep_frame_path = Path(raw_out_path)
+        if not prep_frame_path.exists():
+            # Check published location
+            cand = cwd / "prepared" / f"{orig_frame_name}_prepared.mae"
+            if cand.exists():
+                prep_frame_path = cand
 
-            if existing:
-                existing.path = str(published_path)
-                existing.status = "ready"
-            else:
-                new_rec = Receptor(
-                    name=ready_name,
-                    path=str(published_path),
-                    status="ready",
-                    prep_mode="ready",
-                    parent_name=name,
-                )
-                if orig:
-                    new_rec.meta_data = orig.meta_data
-                session.add(new_rec)
-
-            if orig and orig.name != ready_name:                orig.status = "processed"
-            target_rec_name = ready_name
-
-        # Check if an extracted native ligand SDF exists
-        native_sdf = cwd / "prepared" / f"{name}_ref_native_prepared.sdf"
-        if not native_sdf.exists():
-            native_sdf = cwd / "prepared" / f"{name}_ref_native.sdf"
-
-        # Update associated Systems and Poses to ready and bind permanent paths
-        linked_systems = (
-            session.query(System)
-            .filter(
-                (System.receptor_name == name) | (System.receptor_name == target_rec_name)
+        # A. Register new ready ReceptorFrame derived from raw_frame
+        prep_frame_name = f"{orig_frame_name}_prep"
+        ready_frame = session.query(ReceptorFrame).filter_by(name=prep_frame_name).first()
+        if not ready_frame:
+            ready_frame = ReceptorFrame(
+                target_id=raw_frame.target_id,
+                name=prep_frame_name,
+                source_type=raw_frame.source_type,
+                state="ready",
+                parent_frame_id=raw_frame.id,
+                path=str(prep_frame_path.resolve()),
             )
-            .all()
-        )
-        for sys_obj in linked_systems:
-            sys_obj.status = "ready"
-            sys_obj.receptor_name = target_rec_name
-            if sys_obj.pose_name:
-                pose_obj = session.query(Pose).filter_by(name=sys_obj.pose_name).first()
-                if pose_obj:
-                    pose_obj.status = "ready"
-                    if native_sdf.exists():
-                        pose_obj.path = str(native_sdf)
-                        if pose_obj.ligand:
-                            pose_obj.ligand.path = str(native_sdf)
-                            pose_obj.ligand.status = "ready"
+            ready_frame.cofactors_list = raw_frame.cofactors_list
+            session.add(ready_frame)
+            session.flush()
+        else:
+            ready_frame.path = str(prep_frame_path.resolve())
+            ready_frame.state = "ready"
+            ready_frame.cofactors_list = raw_frame.cofactors_list
 
-        success_count += 1
+        # B. Check for prepared in-situ native ligand
+        prep_pose_obj = None
+        raw_system = session.query(System).filter_by(receptor_frame_id=raw_frame.id).first()
+
+        if raw_system and raw_system.pose:
+            raw_pose = raw_system.pose
+            prep_sdf_cand = cwd / "prepared" / f"{orig_frame_name}_ref_native_prepared.sdf"
+            if not prep_sdf_cand.exists():
+                prep_sdf_cand = cwd / "prepared" / f"{orig_frame_name}_ref_native.sdf"
+
+            if prep_sdf_cand.exists() and prep_sdf_cand.stat().st_size > 0:
+                prep_pose_name = f"{raw_pose.name}_prep"
+                ready_pose = session.query(Pose).filter_by(name=prep_pose_name).first()
+                if not ready_pose:
+                    ready_pose = Pose(
+                        ligand_id=raw_pose.ligand_id,
+                        receptor_frame_id=ready_frame.id,
+                        name=prep_pose_name,
+                        origin="crystal",
+                        state="ready",
+                        parent_pose_id=raw_pose.id,
+                        path=str(prep_sdf_cand.resolve()),
+                    )
+                    session.add(ready_pose)
+                    session.flush()
+                else:
+                    ready_pose.path = str(prep_sdf_cand.resolve())
+                    ready_pose.state = "ready"
+                prep_pose_obj = ready_pose
+
+        # C. Create Ready System (Apo or Holo)
+        ready_sys_name = f"{orig_frame_name}_holo" if prep_pose_obj else f"{orig_frame_name}_apo"
+        ready_sys = session.query(System).filter_by(name=ready_sys_name).first()
+        if not ready_sys:
+            ready_sys = System(
+                target_id=raw_frame.target_id,
+                receptor_frame_id=ready_frame.id,
+                pose_id=prep_pose_obj.id if prep_pose_obj else None,
+                name=ready_sys_name,
+                state="ready",
+                origin=raw_frame.source_type,
+            )
+            session.add(ready_sys)
+        else:
+            ready_sys.receptor_frame_id = ready_frame.id
+            ready_sys.pose_id = prep_pose_obj.id if prep_pose_obj else None
+            ready_sys.state = "ready"
+
+        prepared_count += 1
+
     session.commit()
     session.close()
 
-    console.print(
-        f"\n[bold green]✓ Successfully prepared {success_count} receptors and updated the database![/bold green]"
-    )
-    console.print("[dim]Use 'sbdd tree' to view the updated lineage.[/dim]")
+    console.print(f"\n[bold green]✓ Successfully prepared {prepared_count} frame(s) into ready systems![/bold green]")
+    console.print("[dim]Original raw frames and crystal poses preserved. Use 'sbdd tree' to view lineage.[/dim]")

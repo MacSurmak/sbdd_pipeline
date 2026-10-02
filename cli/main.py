@@ -261,11 +261,15 @@ def main():
     p_prep = subparsers.add_parser(
         "prep",
         aliases=["prepare"],
-        help="Run smart receptor preparation based on DB state",
+        help="Prepare raw receptor frames and in-situ poses into ready systems",
     )
     p_prep.add_argument(
-        "--receptors",
-        help="Comma-separated list of receptor names to prepare (default: all unprepared)",
+        "--target",
+        help="Prepare all raw frames for a specific Target",
+    )
+    p_prep.add_argument(
+        "--frames",
+        help="Comma-separated list of specific ReceptorFrame names to prepare",
     )
     add_common_wf_args(p_prep)
 
