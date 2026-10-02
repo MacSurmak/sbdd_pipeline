@@ -39,7 +39,8 @@ def main():
         for pv_file in pv_files:
             pv_path = Path(pv_file).resolve()
             if not pv_path.exists() or pv_path.stat().st_size == 0:
-                continue
+                print(f"FATAL: PV chunk file is missing or empty: {pv_path}", file=sys.stderr)
+                sys.exit(1)
 
             reader = None
             try:
@@ -71,8 +72,10 @@ def main():
         with open(args.out_sdf, "w", encoding="utf-8") as out_sdf_f:
             for sdf_file in sorted(args.sdf_files):
                 p = Path(sdf_file)
-                if p.exists() and p.stat().st_size > 0:
-                    out_sdf_f.write(p.read_text(encoding="utf-8", errors="ignore"))
+                if not p.exists() or p.stat().st_size == 0:
+                    print(f"FATAL: SDF chunk file is missing or empty: {sdf_file}", file=sys.stderr)
+                    sys.exit(1)
+                out_sdf_f.write(p.read_text(encoding="utf-8", errors="ignore"))
         print(f"Merged SDF pose files -> {args.out_sdf}")
 
     # 3. Merge CSV score files if requested
@@ -81,15 +84,17 @@ def main():
         rows = []
         for csv_file in sorted(args.csv_files):
             p = Path(csv_file)
-            if p.exists() and p.stat().st_size > 0:
-                with open(p, "r", encoding="utf-8", errors="ignore") as f:
-                    r = csv.reader(f)
-                    for r_idx, row in enumerate(r):
-                        if r_idx == 0:
-                            if header is None:
-                                header = row
-                        else:
-                            rows.append(row)
+            if not p.exists() or p.stat().st_size == 0:
+                print(f"FATAL: CSV chunk file is missing or empty: {csv_file}", file=sys.stderr)
+                sys.exit(1)
+            with open(p, "r", encoding="utf-8", errors="ignore") as f:
+                r = csv.reader(f)
+                for r_idx, row in enumerate(r):
+                    if r_idx == 0:
+                        if header is None:
+                            header = row
+                    else:
+                        rows.append(row)
 
         with open(args.out_csv, "w", encoding="utf-8", newline="") as out_csv_f:
             w = csv.writer(out_csv_f)

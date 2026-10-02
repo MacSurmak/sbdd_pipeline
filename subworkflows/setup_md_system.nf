@@ -26,7 +26,10 @@ process EXTRACT_MD_SYSTEM {
     def cof_arg = cof_list ? "--cofactors ${cof_list}" : ""
     def lig_arg = ""
     def staging_cmd = ""
-    if (lig_file_path.toString() != "NO_LIGAND" && file(lig_file_path).exists()) {
+    if (lig_file_path.toString() != "NO_LIGAND") {
+        if (!file(lig_file_path).exists()) {
+            error "FATAL: Ligand file missing for MD setup: ${lig_file_path}"
+        }
         def lig_name = meta.native_ligand ?: "LIG"
         def ext = file(lig_file_path).extension
         lig_arg = "--lig_file ./staged_ligand.${ext} --lig_name ${lig_name}"

@@ -20,15 +20,18 @@ def main():
 
     for f in sorted(args.inputs):
         p = Path(f)
-        if p.exists() and p.stat().st_size > 0:
-            with open(p, "r", encoding="utf-8", errors="ignore") as fp:
-                r = csv.reader(fp)
-                for i, row in enumerate(r):
-                    if i == 0:
-                        if header is None:
-                            header = row
-                    else:
-                        rows.append(row)
+        if not p.exists() or p.stat().st_size == 0:
+            print(f"FATAL: CSV file is missing or empty: {p}", file=sys.stderr)
+            sys.exit(1)
+            
+        with open(p, "r", encoding="utf-8", errors="ignore") as fp:
+            r = csv.reader(fp)
+            for i, row in enumerate(r):
+                if i == 0:
+                    if header is None:
+                        header = row
+                else:
+                    rows.append(row)
 
     with open(args.output, "w", encoding="utf-8", newline="") as out:
         w = csv.writer(out)

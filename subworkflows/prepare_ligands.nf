@@ -47,8 +47,8 @@ process CONVERT_READY_LIGAND {
     script:
     """
     IN_SDF=\$(ls in_ligand/* | head -n 1)
-    if [ ! -s "\$IN_SDF" ]; then
-        echo "FATAL: Ligand file \$IN_SDF is empty!"
+    if [ -z "\$IN_SDF" ] || [ ! -s "\$IN_SDF" ]; then
+        echo "FATAL: Ligand file is missing or empty in CONVERT_READY_LIGAND!"
         exit 1
     fi
 

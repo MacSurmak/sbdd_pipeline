@@ -20,12 +20,11 @@ process GNINA_DOCK {
     script:
     def autobox_flag = ""
     """
-    REF_BASE=\$(basename "${ref_lig_sdf}")
-    if [[ "\$REF_BASE" != "NO_FILE" && -f "${ref_lig_sdf}" ]]; then
-        AUTOBOX_FLAG="--autobox_ligand ${ref_lig_sdf}"
-    else
-        AUTOBOX_FLAG=""
+    if [ ! -f "${ref_lig_sdf}" ] || [ ! -s "${ref_lig_sdf}" ]; then
+        echo "FATAL: Reference ligand SDF is missing or empty: ${ref_lig_sdf}"
+        exit 1
     fi
+    AUTOBOX_FLAG="--autobox_ligand ${ref_lig_sdf}"
 
     echo "=== Worker: \$(hostname) (GPU Node) ==="
     nvidia-smi --query-gpu=name,memory.total --format=csv,noheader || true

@@ -57,7 +57,8 @@ def main():
     for org_f in args.org_pdbs:
         p = Path(org_f)
         if not p.exists() or p.stat().st_size == 0:
-            continue
+            print(f"FATAL: Organic PDB is missing or empty: {org_f}", file=sys.stderr)
+            sys.exit(1)
 
         max_res_seq += 1
         chain_id = available_chains.pop(0) if available_chains else "Z"

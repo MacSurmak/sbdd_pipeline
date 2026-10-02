@@ -18,12 +18,11 @@ process GNINA_RESCORE {
     script:
     def cnn_flag = cnn_model ? "--cnn ${cnn_model}" : ""
     """
-    REF_BASE=\$(basename "${ref_lig_sdf}")
-    if [[ "\$REF_BASE" != "NO_FILE" && -f "${ref_lig_sdf}" ]]; then
-        AUTOBOX_FLAG="--autobox_ligand ${ref_lig_sdf}"
-    else
-        AUTOBOX_FLAG=""
+    if [ ! -f "${ref_lig_sdf}" ] || [ ! -s "${ref_lig_sdf}" ]; then
+        echo "FATAL: Reference ligand SDF is missing or empty: ${ref_lig_sdf}"
+        exit 1
     fi
+    AUTOBOX_FLAG="--autobox_ligand ${ref_lig_sdf}"
 
     gnina \\
         -r ${receptor_pdb} \\

@@ -25,7 +25,11 @@ process MERGE_DOCK_CHUNKS {
 
     script:
     """
-    find -L . -type f -name "*.sdf" ! -name "${meta.id}_gnina_docked_all.sdf" -exec cat {} + > ${meta.id}_gnina_docked_all.sdf
+    find -L . -maxdepth 1 -type f -name "*.sdf" ! -name "${meta.id}_gnina_docked_all.sdf" -exec cat {} + > ${meta.id}_gnina_docked_all.sdf
+    if [ ! -s "${meta.id}_gnina_docked_all.sdf" ]; then
+        echo "FATAL: MERGE_DOCK_CHUNKS produced an empty file!"
+        exit 1
+    fi
     """
 
     stub:
@@ -82,6 +86,10 @@ process MERGE_RESC_CHUNKS {
     script:
     """
     find -L . -maxdepth 1 -type f -name "*.sdf" ! -name "${meta.id}_rescored.sdf" -exec cat {} + > ${meta.id}_rescored.sdf
+    if [ ! -s "${meta.id}_rescored.sdf" ]; then
+        echo "FATAL: MERGE_RESC_CHUNKS produced an empty file!"
+        exit 1
+    fi
     """
 
     stub:

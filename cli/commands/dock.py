@@ -160,29 +160,37 @@ def cmd_dock(args):
             sys.exit(1)
 
         for r in frames:
-            ref_sdf = "NO_FILE"
-            ref_mae = "NO_FILE"
-            native_lig = ""
             sys_obj = session.query(System).filter_by(receptor_frame_id=r.id).first()
-            if sys_obj and sys_obj.pose:
-                pose_obj = sys_obj.pose
-                native_lig = pose_obj.ligand.name
-                pose_p = Path(pose_obj.path).resolve()
-                if pose_p.exists():
-                    ref_sdf = str(pose_p.with_suffix(".sdf"))
-                    ref_mae = str(pose_p.with_suffix(".mae"))
+            if not sys_obj or not sys_obj.pose:
+                console.print(f"[bold red]FATAL: Receptor '{r.name}' has no reference pose! Screening requires a pocket reference.[/bold red]")
+                sys.exit(1)
+                
+            pose_obj = sys_obj.pose
+            native_lig = pose_obj.ligand.name
+            pose_p = Path(pose_obj.path).resolve()
+            
+            ref_sdf = pose_p.with_suffix(".sdf")
+            ref_mae = pose_p.with_suffix(".mae")
+            
+            if not ref_sdf.exists() or not ref_mae.exists():
+                console.print(f"[bold red]FATAL: Reference pose files missing for '{r.name}'. Need both .sdf and .mae![/bold red]")
+                sys.exit(1)
 
             frame_p = Path(r.path).resolve()
-            path_mae = str(frame_p.with_suffix(".mae"))
-            path_pdb = str(frame_p.with_suffix(".pdb"))
+            path_mae = frame_p.with_suffix(".mae")
+            path_pdb = frame_p.with_suffix(".pdb")
+            
+            if not path_mae.exists() or not path_pdb.exists():
+                console.print(f"[bold red]FATAL: Receptor files missing for '{r.name}'. Need both .pdb and .mae![/bold red]")
+                sys.exit(1)
 
             plan["receptors"].append(
                 {
                     "name": r.name,
-                    "path_mae": path_mae,
-                    "path_pdb": path_pdb,
-                    "ref_sdf": ref_sdf,
-                    "ref_mae": ref_mae,
+                    "path_mae": str(path_mae),
+                    "path_pdb": str(path_pdb),
+                    "ref_sdf": str(ref_sdf),
+                    "ref_mae": str(ref_mae),
                     "native_ligand": native_lig,
                 }
             )
@@ -293,7 +301,8 @@ def cmd_dock(args):
                             break
 
                     if not sdf_path:
-                        continue
+                        console.print(f"[bold red]FATAL: Could not find docked SDF for {pose_name}. Pipeline failed to produce poses![/bold red]")
+                        sys.exit(1)
 
                     scores_dict = {
                         k: float(v)
