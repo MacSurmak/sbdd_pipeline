@@ -3,6 +3,7 @@ File: cli/commands/tree.py
 Description: CLI handler to visualize the 3NF database lineage cleanly without string naming hacks.
 """
 
+from pathlib import Path
 from rich.console import Console
 from rich.tree import Tree
 from cli.core.db import init_db, Target, ReceptorFrame, Ligand, Pose, System, Trajectory
