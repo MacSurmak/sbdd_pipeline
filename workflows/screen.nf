@@ -15,36 +15,35 @@ workflow SCREEN_WF {
     def jsonSlurper = new groovy.json.JsonSlurper()
     def planData = jsonSlurper.parseText(planFile.text)
 
-    // 1. Parse Receptors (They are already strictly verified as 'ready' with absolute paths by CLI)
+    // 1. Parse Receptors with strict existence verification (zero string replacement hacks)
     ch_targets = Channel.fromList(planData.receptors).map { rec ->
         def target_id = rec.name
-        def rec_path = file(rec.path)
-        def rec_mae = rec_path
-        if (!rec_mae.name.endsWith(".mae")) {
-            rec_mae = file(rec.path.replace(".pdb", ".mae"))
+        def rec_mae = file(rec.path_mae)
+        def rec_pdb = file(rec.path_pdb)
+
+        if (!rec_mae.exists()) {
+            error "FATAL: Receptor MAE file not found: ${rec.path_mae}"
         }
-        def rec_pdb = file(rec.path.replace(".mae", ".pdb").replace(".maegz", ".pdb"))
+        if (!rec_pdb.exists()) {
+            error "FATAL: Receptor PDB file not found: ${rec.path_pdb}"
+        }
 
-        def ref_file = (rec.ref_pose_path && rec.ref_pose_path != "NO_FILE") ? file(rec.ref_pose_path) : file("NO_FILE")
-        
-        // Glide requires MAE/PDB; GNINA strictly requires SDF/PDB
-        def ref_mae = ref_file
-        def ref_sdf = ref_file
+        def ref_sdf = file(rec.ref_sdf)
+        def ref_mae = file(rec.ref_mae)
 
-        if (ref_file.name.endsWith('.sdf')) {
-            def mae_cand = file(rec.ref_pose_path.replaceAll(/\.sdf$/, '.mae'))
-            if (mae_cand.exists()) ref_mae = mae_cand
-        } else if (ref_file.name.endsWith('.mae') || ref_file.name.endsWith('.maegz')) {
-            def sdf_cand = file(rec.ref_pose_path.replaceAll(/\.mae(gz)?$/, '.sdf'))
-            if (sdf_cand.exists()) ref_sdf = sdf_cand
+        if (!ref_sdf.exists()) {
+            error "FATAL: Reference ligand SDF file not found for ${target_id}: ${rec.ref_sdf}"
+        }
+        if (!ref_mae.exists()) {
+            error "FATAL: Reference ligand MAE file not found for ${target_id}: ${rec.ref_mae}"
         }
 
         def meta = [
             id: target_id,
-            frame: 1, 
+            frame: 1,
             project: params.project_name
         ]
-        
+
         [ meta, rec_pdb.toAbsolutePath(), rec_mae.toAbsolutePath(), ref_sdf.toAbsolutePath(), ref_mae.toAbsolutePath() ]
     }
 

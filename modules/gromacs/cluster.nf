@@ -11,8 +11,8 @@ process GMX_CLUSTER {
     tuple val(meta), path(clean_xtcs, stageAs: 'trajs_?/*'), path(ref_pdb), val(cutoff), val(method), val(dt), val(cluster_group)
 
     output:
-    tuple val(meta), path("${meta.id}_centroid_*.pdb"), emit: cluster_pdbs
-    tuple val(meta), path("${meta.id}_pose_*.pdb"), emit: pose_pdbs, optional: true
+    tuple val(meta), path("${meta.id}_centroid_*.pdb"), path("${meta.id}_centroid_*.mae"), emit: cluster_frames
+    tuple val(meta), path("${meta.id}_pose_*.sdf"), path("${meta.id}_pose_*.mae"), emit: cluster_poses, optional: true
 
     script:
     def dt_flag = (dt && dt.toString() != '0') ? "-dt ${dt}" : ""
@@ -54,6 +54,7 @@ process GMX_CLUSTER {
         ${dt_flag} \
         \${wcl_flag} \
         -cl clusters_multi.pdb
+
     # 3. Split multi-model PDB into distinct centroid complexes and separate in-situ ligand poses
     python3 -c "
 import sys
@@ -89,10 +90,26 @@ for line in lines:
 if out_c: out_c.close()
 if out_p: out_p.close()
 "
+
+    # 4. Strict physical format generation: produce explicit MAE and SDF for each centroid
+    for p in ${meta.id}_centroid_*.pdb; do
+        [ -f "\$p" ] || continue
+        base=\$(basename "\$p" .pdb)
+        schrodinger structconvert "\$p" "\${base}.mae"
+    done
+
+    for p in ${meta.id}_pose_*.pdb; do
+        [ -f "\$p" ] || continue
+        base=\$(basename "\$p" .pdb)
+        schrodinger structconvert "\$p" "\${base}.sdf"
+        schrodinger structconvert "\$p" "\${base}.mae"
+    done
     """
 
     stub:
     """
     touch ${meta.id}_centroid_1.pdb
-    touch ${meta.id}_pose_1.pdb
+    touch ${meta.id}_centroid_1.mae
+    touch ${meta.id}_pose_1.sdf
+    touch ${meta.id}_pose_1.mae
     """}

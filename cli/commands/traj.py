@@ -336,8 +336,9 @@ def cmd_cluster(args):
         if not parent_sys:
             continue
 
-        # A. Register Centroid as a peer ReceptorFrame in Target
+        # A. Register Centroid as a peer ReceptorFrame in Target (MAE is primary)
         centroid_frame_name = f"{parent_sys.name}_{cluster_id.split('_')[-2]}_{cluster_id.split('_')[-1]}"
+        mae_path = Path(pdb_path).with_suffix(".mae")
         ex_frame = session.query(ReceptorFrame).filter_by(name=centroid_frame_name).first()
         if not ex_frame:
             new_frame = ReceptorFrame(
@@ -346,18 +347,20 @@ def cmd_cluster(args):
                 source_type="md_centroid",
                 state="ready",
                 parent_frame_id=parent_sys.receptor_frame_id,
-                path=str(Path(pdb_path).resolve()),
+                path=str(mae_path.resolve()),
             )
             new_frame.cofactors_list = parent_sys.receptor_frame.cofactors_list
             session.add(new_frame)
             session.flush()
             frame_obj = new_frame
         else:
+            ex_frame.path = str(mae_path.resolve())
             frame_obj = ex_frame
 
-        # B. Register in-situ Pose if extracted from cluster
+        # B. Register in-situ Pose if extracted from cluster (SDF is primary)
         pose_obj = None
-        if pose_path != "NO_POSE" and Path(pose_path).exists() and parent_sys.pose:
+        if pose_path != "NO_POSE" and parent_sys.pose:
+            pose_sdf_path = Path(pose_path).with_suffix(".sdf")
             cluster_pose_name = f"{centroid_frame_name}_pose"
             ex_pose = session.query(Pose).filter_by(name=cluster_pose_name).first()
             if not ex_pose:
@@ -367,12 +370,13 @@ def cmd_cluster(args):
                     name=cluster_pose_name,
                     origin="md_cluster",
                     state="ready",
-                    path=str(Path(pose_path).resolve()),
+                    path=str(pose_sdf_path.resolve()),
                 )
                 session.add(new_pose)
                 session.flush()
                 pose_obj = new_pose
             else:
+                ex_pose.path = str(pose_sdf_path.resolve())
                 pose_obj = ex_pose
 
         # C. Register Ready System for this Centroid

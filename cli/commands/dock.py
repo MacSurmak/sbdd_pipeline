@@ -72,15 +72,36 @@ def cmd_dock(args):
             return
 
         for r, native_pose, native_lig in active_frames:
-            ref_pose_path = native_pose.path
-            pose_p = Path(ref_pose_path)
-            if pose_p.suffix == ".sdf" and pose_p.with_suffix(".mae").exists():
-                ref_pose_path = str(pose_p.with_suffix(".mae"))
+            # Strictly resolve existing MAE and PDB files for the receptor
+            frame_p = Path(r.path).resolve()
+            path_mae = frame_p.with_suffix(".mae")
+            path_pdb = frame_p.with_suffix(".pdb")
+
+            if not path_mae.exists():
+                console.print(f"[bold red]FATAL: Receptor MAE not found for frame '{r.name}': {path_mae}[/bold red]")
+                sys.exit(1)
+            if not path_pdb.exists():
+                console.print(f"[bold red]FATAL: Receptor PDB not found for frame '{r.name}': {path_pdb}[/bold red]")
+                sys.exit(1)
+
+            # Strictly resolve existing SDF and MAE files for reference pose
+            pose_p = Path(native_pose.path).resolve()
+            pose_sdf = pose_p.with_suffix(".sdf")
+            pose_mae = pose_p.with_suffix(".mae")
+
+            if not pose_sdf.exists():
+                console.print(f"[bold red]FATAL: Reference pose SDF not found for frame '{r.name}': {pose_sdf}[/bold red]")
+                sys.exit(1)
+            if not pose_mae.exists():
+                console.print(f"[bold red]FATAL: Reference pose MAE not found for frame '{r.name}': {pose_mae}[/bold red]")
+                sys.exit(1)
 
             plan["receptors"].append({
                 "name": r.name,
-                "path": r.path,
-                "ref_pose_path": ref_pose_path,
+                "path_mae": str(path_mae),
+                "path_pdb": str(path_pdb),
+                "ref_sdf": str(pose_sdf),
+                "ref_mae": str(pose_mae),
                 "native_ligand": native_lig.name,
             })
 
