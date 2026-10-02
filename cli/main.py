@@ -487,6 +487,11 @@ def main():
         default=5,
         help="Maximum number of top-populated clusters to retain (default: 5)",
     )
+    p_cluster.add_argument(
+        "--force",
+        action="store_true",
+        help="Force re-clustering even if active trajectory ensemble has not changed",
+    )
     add_common_wf_args(p_cluster)
 
     # 9. clean

@@ -262,7 +262,7 @@ def cmd_cluster(args):
             console.print(f"[bold red]FATAL: Trajectory '{t.name}' must be cleaned first. Run 'sbdd traj-clean'![/bold red]")
             sys.exit(1)
 
-    # Group trajectories by System
+    # Group trajectories strictly by System and filter out systems whose clusters are already up to date
     by_sys = {}
     for t in trajs:
         by_sys.setdefault(t.system_id, []).append(t)
@@ -272,8 +272,31 @@ def cmd_cluster(args):
 
     for sys_id, t_list in by_sys.items():
         sys_obj = session.query(System).get(sys_id)
+
+        # Check existing centroids for this system
+        existing_centroids = session.query(ReceptorFrame).filter(
+            ReceptorFrame.target_id == sys_obj.target_id,
+            ReceptorFrame.source_type == "md_centroid",
+            ReceptorFrame.name.like(f"{sys_obj.name}_%")
+        ).all()
+
+        active_traj_names = sorted([t.name for t in t_list])
+
+        # If centroids already exist, verify if active trajectory set has changed
+        if existing_centroids:
+            meta_sig = sys_obj.environment_dict.get("cluster_active_trajs", [])
+            if meta_sig == active_traj_names and not getattr(args, "force", False):
+                console.print(f"[dim]System '{sys_obj.name}' already has up-to-date centroids for active trajectories {active_traj_names}. Skipping.[/dim]")
+                continue
+            else:
+                # Active trajectory set changed (e.g. replica flagged as drifted) -> wipe outdated centroids cascade
+                console.print(f"[yellow]Trajectory ensemble for '{sys_obj.name}' modified. Purging outdated centroids to re-cluster clean subset...[/yellow]")
+                for old_f in existing_centroids:
+                    session.delete(old_f)
+                session.flush()
+
         task_id = f"{sys_obj.name}_cluster"
-        sys_map[task_id] = sys_obj
+        sys_map[task_id] = (sys_obj, active_traj_names)
 
         clean_xtcs = [t.path_clean_xtc for t in t_list]
         ref_pdb = t_list[0].path_ref_pdb
@@ -293,6 +316,11 @@ def cmd_cluster(args):
                 "max_clusters": getattr(args, "max_clusters", 5),
             }
         )
+
+    if not plan_list:
+        console.print("[bold green]✓ All systems already have up-to-date centroids matching their active trajectories. Nothing to do![/bold green]")
+        session.close()
+        return
 
     plan_file = cwd / "cluster_plan.json"
     with open(plan_file, "w") as f:
@@ -332,9 +360,15 @@ def cmd_cluster(args):
             continue
 
         parent_sys_key = cluster_id.split("_centroid_")[0]
-        parent_sys = sys_map.get(parent_sys_key)
-        if not parent_sys:
+        mapped_item = sys_map.get(parent_sys_key)
+        if not mapped_item:
             continue
+        parent_sys, active_traj_names = mapped_item
+
+        # Record active trajectory signature on parent system to prevent redundant re-clustering
+        env = parent_sys.environment_dict
+        env["cluster_active_trajs"] = active_traj_names
+        parent_sys.environment_dict = env
 
         # A. Register Centroid as a peer ReceptorFrame in Target (MAE is primary)
         centroid_frame_name = f"{parent_sys.name}_{cluster_id.split('_')[-2]}_{cluster_id.split('_')[-1]}"
