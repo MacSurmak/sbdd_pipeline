@@ -38,30 +38,21 @@ process CONVERT_READY_LIGAND {
     label 'process_single'
 
     input:
-    tuple val(meta), path(sdf, stageAs: 'ligand.sdf'), val(idx)
+    tuple val(meta), path(sdf, stageAs: 'inputs/*'), val(idx)
 
     output:
     tuple val(meta), path("${meta.id}.maegz"), emit: prepared_maegz
-    tuple val(meta), path(sdf), emit: prepared_sdf
+    tuple val(meta), path("inputs/*"), emit: prepared_sdf
 
     script:
     """
-    if [ ! -s "ligand.sdf" ]; then
-        echo "FATAL: Ligand file ${sdf} is empty! The ligand was likely not found in the receptor during extraction."
+    IN_SDF=\$(ls inputs/* | head -n 1)
+    if [ ! -s "\$IN_SDF" ]; then
+        echo "FATAL: Ligand file \$IN_SDF is empty!"
         exit 1
     fi
 
-    schrodinger run python3 -c "
-import sys
-from schrodinger import structure
-try:
-    with structure.StructureReader('ligand.sdf') as reader, structure.StructureWriter('${meta.id}.maegz') as writer:
-        for st in reader:
-            writer.append(st)
-except Exception as e:
-    print(f'Conversion failed: {e}', file=sys.stderr)
-    sys.exit(1)
-"
+    schrodinger structconvert "\$IN_SDF" "${meta.id}.maegz"
     """
 
     stub:
@@ -78,14 +69,14 @@ process MERGE_LIGPREP {
 
     input:
     val(project_name)
-    path(chunk_maes)
+    path(chunk_maes, stageAs: 'chunks_?/*')
 
     output:
     tuple val([id: project_name, project: project_name]), path("${project_name}_prepared.maegz"), emit: prepared_maegz
 
     script:
     """
-    schrodinger structcat ${chunk_maes} -omae ${project_name}_prepared.maegz
+    schrodinger structcat chunks_*/*.mae* -omae ${project_name}_prepared.maegz
     """
 
     stub:
@@ -129,11 +120,13 @@ workflow PREPARE_LIGANDS {
 
     LIGPREP(ch_prep_chunks, target_ph, ph_tol, ff_version, max_states)
 
-    // 3. Ready libraries bypass LigPrep entirely
-    ch_ready_in = branched_libs.ready.map { meta, f ->
+    // 3. Ready libraries bypass LigPrep entirely with unique chunk names
+    ch_ready_in = branched_libs.ready.withIndex().map { item, idx ->
+        def meta = item[0]
+        def f = item[1]
         def chunk_meta = [
-            id: "${meta.id}_ready",
-            chunk_idx: "native",
+            id: "${meta.id}_ready_${idx}",
+            chunk_idx: "native_${idx}",
             project: meta.project ?: meta.id,
             status: "ready",
             is_native: meta.is_native ?: false

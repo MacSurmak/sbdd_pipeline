@@ -110,13 +110,19 @@ def cmd_dock(args):
                 "ligand": native_lig.name
             })
 
-        for l_obj, l_path in sorted(list(ligand_set), key=lambda x: x[0].name):
+        # Index ligands uniquely to prevent name collisions in multi-target self-docking
+        for idx, (l_obj, l_path) in enumerate(sorted(list(ligand_set), key=lambda x: str(x[1])), start=1):
+            unique_lig_name = f"{l_obj.name}_{idx}" if len(ligand_set) > 1 else l_obj.name
             plan["ligands"].append({
-                "name": l_obj.name,
+                "name": unique_lig_name,
                 "path": str(Path(l_path).resolve()),
                 "status": "ready",
                 "is_native": True
             })
+            # Update pair references to match unique ligand task id
+            for p in plan["pairs"]:
+                if p.get("ref_path") == str(Path(l_path).resolve()):
+                    p["ligand"] = unique_lig_name
 
         console.print(f"[bold green]✓ 1-to-1 Redocking Mode: Matched {len(plan['pairs'])} receptors directly to their native ligands (0 cross-docking jobs).[/bold green]")
 
