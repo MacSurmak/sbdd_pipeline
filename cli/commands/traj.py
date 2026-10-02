@@ -377,3 +377,76 @@ def cmd_cluster(args):
 
     console.print(f"\n[bold green]✓ Clustering complete! Registered {registered_frames} centroid frame(s) as ready ReceptorFrames.[/bold green]")
     console.print("[dim]These frames can now be used directly for docking. View with 'sbdd tree'.[/dim]")
+
+
+def cmd_mmpbsa(args):
+    """
+    CLI handler for 'sbdd traj-mmpbsa': standalone free energy calculations.
+    Automatically queries all cleaned trajectories.
+    """
+    cwd = Path.cwd()
+    session = init_db()
+    trajs = _query_trajectories(session, args, target_status="cleaned")
+
+    if not trajs:
+        console.print("[yellow]No cleaned trajectories found for MM-PBSA. Run 'sbdd traj-clean' first![/yellow]")
+        session.close()
+        return
+
+    plan_list = []
+    for t in trajs:
+        if not t.path_clean_xtc or not t.path_ref_pdb:
+            continue
+
+        raw_dir = Path(t.raw_dir)
+        topol_path = raw_dir / "topol.top"
+        if not topol_path.exists():
+            topol_path = raw_dir.parent / "topol.top"
+
+        ndx_path = raw_dir / "index.ndx"
+        if not ndx_path.exists():
+            ndx_path = raw_dir.parent / "index.ndx"
+
+        if not topol_path.exists() or not ndx_path.exists():
+            console.print(f"[yellow]Warning: topol.top or index.ndx missing for {t.name}, skipping MM-PBSA.[/yellow]")
+            continue
+
+        plan_list.append(
+            {
+                "name": t.name,
+                "rec_id": t.system.name,
+                "rep": t.replicate,
+                "clean_xtc": str(Path(t.path_clean_xtc).resolve()),
+                "ref_pdb": str(Path(t.path_ref_pdb).resolve()),
+                "topol": str(topol_path.resolve()),
+                "ndx": str(ndx_path.resolve()),
+            }
+        )
+
+    if not plan_list:
+        console.print("[yellow]No valid trajectories with topologies found for MM-PBSA.[/yellow]")
+        session.close()
+        return
+
+    plan_file = cwd / "mmpbsa_plan.json"
+    with open(plan_file, "w") as f:
+        json.dump(plan_list, f, indent=2)
+
+    console.print(f"[bold cyan]Running standalone MM-PBSA on {len(plan_list)} clean trajectory(ies)...[/bold cyan]")
+
+    configs = load_project_configs(cwd)
+    nf_args = build_nextflow_args(configs, cwd, entrypoint="md-analyze")
+    nf_args.extend(["--mmpbsa_plan", str(plan_file.resolve())])
+
+    profile = "local" if getattr(args, "local", False) else "slurm"
+    resume = not getattr(args, "no_resume", False)
+
+    ret_code = execute_nextflow(
+        "md-analyze", nf_args, cwd, profile=profile, resume=resume, configs=configs
+    )
+    if ret_code != 0:
+        console.print("[bold red]Nextflow MM-PBSA failed.[/bold red]")
+        sys.exit(ret_code)
+
+    console.print("\n[bold green]✓ MM-PBSA calculations completed successfully![/bold green]")
+    session.close()
