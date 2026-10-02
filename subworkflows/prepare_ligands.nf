@@ -121,18 +121,22 @@ workflow PREPARE_LIGANDS {
     LIGPREP(ch_prep_chunks, target_ph, ph_tol, ff_version, max_states)
 
     // 3. Ready libraries bypass LigPrep entirely with unique chunk names
-    ch_ready_in = branched_libs.ready.withIndex().map { item, idx ->
-        def meta = item[0]
-        def f = item[1]
-        def chunk_meta = [
-            id: "${meta.id}_ready_${idx}",
-            chunk_idx: "native_${idx}",
-            project: meta.project ?: meta.id,
-            status: "ready",
-            is_native: meta.is_native ?: false
-        ]
-        [ chunk_meta, f, "native" ]
-    }
+    ch_ready_in = branched_libs.ready
+        .toSortedList { a, b -> a[0].id <=> b[0].id }
+        .flatMap { list ->
+            list.withIndex().collect { item, idx ->
+                def meta = item[0]
+                def f = item[1]
+                def chunk_meta = [
+                    id: "${meta.id}_ready_${idx}",
+                    chunk_idx: "native_${idx}",
+                    project: meta.project ?: meta.id,
+                    status: "ready",
+                    is_native: meta.is_native ?: false
+                ]
+                [ chunk_meta, f, "native_${idx}" ]
+            }
+        }
     CONVERT_READY_LIGAND(ch_ready_in)
 
     // 4. Mix outputs
