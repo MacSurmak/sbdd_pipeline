@@ -82,11 +82,9 @@ def extract_via_schrodinger(args):
     if not args.lig_name:
         raise ValueError("FATAL: --lig_name must be explicitly provided.")
     lig_code = args.lig_name.strip()[:4].upper()
-    if (
-        args.lig_file
-        and args.lig_file.lower() != "none"
-        and Path(args.lig_file).exists()
-    ):
+    if args.lig_file and args.lig_file.lower() != "none":
+        if not Path(args.lig_file).exists():
+            raise FileNotFoundError(f"FATAL: Ligand file {args.lig_file} not found!")
         with structure.StructureReader(args.lig_file) as reader:
             for i, st in enumerate(reader):
                 st.title = lig_code
@@ -129,11 +127,9 @@ def extract_via_rdkit(args):
     organics = []
 
     # 2. Extract Ligand if provided
-    if (
-        args.lig_file
-        and args.lig_file.lower() != "none"
-        and Path(args.lig_file).exists()
-    ):
+    if args.lig_file and args.lig_file.lower() != "none":
+        if not Path(args.lig_file).exists():
+            raise FileNotFoundError(f"FATAL: Ligand file {args.lig_file} not found!")
         suppl = Chem.SDMolSupplier(str(args.lig_file), removeHs=False)
         target_mol = next((m for m in suppl if m is not None), None)
 
