@@ -64,7 +64,8 @@ def _count_and_split_models(struct_path: Path, dest_dir: Path, base_name: str) -
 def _extract_ligand_atoms(rec_path: Path, lig_resname: str, out_sdf: Path) -> None:
     """
     Extracts ligand residue from PDB, CIF, MMCIF or MAE into a standalone SDF.
-    Strict Fail-Fast: invokes 'schrodinger run python3' or native RDKit.
+    Perceives bond orders and aromaticity chemically via Schrodinger assignbondorders
+    so that identical molecules produce the exact same topological InChIKey.
     """
     import os
     import subprocess
@@ -73,19 +74,23 @@ def _extract_ligand_atoms(rec_path: Path, lig_resname: str, out_sdf: Path) -> No
     lig_clean = lig_resname.strip().upper()
     out_sdf.parent.mkdir(parents=True, exist_ok=True)
 
-    # 1. Resolve schrodinger runner binary (schrodinger run / $SCHRODINGER/run)
     schrod_bin = shutil.which("schrodinger")
     if not schrod_bin and "SCHRODINGER" in os.environ:
         cand = Path(os.environ["SCHRODINGER"]) / "run"
         if cand.exists():
             schrod_bin = str(cand)
 
-    if schrod_bin:
-        schrod_cmd = [schrod_bin, "run", "python3", "-c"] if not schrod_bin.endswith("/run") else [schrod_bin, "python3", "-c"]
-        py_code = """
+    if not schrod_bin:
+        raise RuntimeError(
+            "FATAL: Schrödinger runner ('schrodinger run') is required for robust bond order perception."
+        )
+
+    schrod_cmd = [schrod_bin, "run", "python3", "-c"] if not schrod_bin.endswith("/run") else [schrod_bin, "python3", "-c"]
+
+    py_code = """
 import sys
-from pathlib import Path
 from schrodinger import structure
+from schrodinger.structutils import assignbondorders
 
 rec_file = sys.argv[1]
 lig_name = sys.argv[2].strip().upper()
@@ -101,54 +106,25 @@ if not lig_atoms:
 
 lig_st = st.extract(lig_atoms)
 lig_st.title = lig_name
+
+# Assign correct chemical bond orders and formal charges from 3D geometry
+try:
+    assignbondorders.assign_st(lig_st)
+except Exception as e:
+    sys.stderr.write(f"Warning: assignbondorders note: {e}\\n")
+
 lig_st.write(out_file)
 """
-        cmd = schrod_cmd + [py_code, str(rec_path.resolve()), lig_clean, str(out_sdf.resolve())]
-        res = subprocess.run(cmd, capture_output=True, text=True)
+    cmd = schrod_cmd + [py_code, str(rec_path.resolve()), lig_clean, str(out_sdf.resolve())]
+    res = subprocess.run(cmd, capture_output=True, text=True)
 
-        if res.returncode == 2:
-            raise ValueError(f"FATAL: Ligand residue '{lig_clean}' was not found in {rec_path.name}! {res.stderr.strip()}")
-        elif res.returncode != 0:
-            raise RuntimeError(f"FATAL: Schrodinger extractor failed with exit code {res.returncode}:\n{res.stderr}\n{res.stdout}")
-
-    elif rec_path.suffix.lower() == ".pdb":
-        # Direct RDKit fallback only if PDB and schrodinger binary not found
-        from rdkit import Chem
-        mol = Chem.MolFromPDBFile(str(rec_path), removeHs=False, sanitize=False)
-        if mol is None:
-            raise ValueError(f"FATAL: RDKit could not read PDB file: {rec_path}")
-
-        atoms_to_keep = []
-        avail = set()
-        for atom in mol.GetAtoms():
-            info = atom.GetPDBResidueInfo()
-            if info:
-                r_name = info.GetResidueName().strip().upper()
-                avail.add(r_name)
-                if r_name == lig_clean:
-                    atoms_to_keep.append(atom.GetIdx())
-
-        if not atoms_to_keep:
-            raise ValueError(f"FATAL: Ligand residue '{lig_clean}' not found in {rec_path.name}! Available residues: {sorted(list(avail))}")
-
-        emol = Chem.RWMol(mol)
-        all_atoms = set(range(mol.GetNumAtoms()))
-        for idx in sorted(list(all_atoms - set(atoms_to_keep)), reverse=True):
-            emol.RemoveAtom(idx)
-
-        extracted_mol = emol.GetMol()
-        Chem.SanitizeMol(extracted_mol, Chem.SANITIZE_ALL ^ Chem.SANITIZE_PROPERTIES)
-
-        w = Chem.SDWriter(str(out_sdf))
-        w.write(extracted_mol)
-        w.close()
-    else:
-        raise RuntimeError(
-            f"FATAL: Structure {rec_path.name} is in CIF/MMCIF format, but Schrödinger binary ('schrodinger run') was not found in PATH or $SCHRODINGER."
-        )
+    if res.returncode == 2:
+        raise ValueError(f"FATAL: Ligand residue '{lig_clean}' not found in {rec_path.name}! {res.stderr.strip()}")
+    elif res.returncode != 0:
+        raise RuntimeError(f"FATAL: Extraction failed with exit code {res.returncode}:\n{res.stderr}\n{res.stdout}")
 
     if not out_sdf.exists() or out_sdf.stat().st_size == 0:
-        raise ValueError(f"FATAL: Ligand extraction failed to produce a valid SDF file at {out_sdf}")
+        raise ValueError(f"FATAL: Ligand extraction failed to produce valid SDF at {out_sdf}")
 
 
 def add_receptor(args):
@@ -215,24 +191,21 @@ def add_receptor(args):
 
             inchikey, smiles, mol_name = get_mol_identity(pose_sdf)
 
-            # Match existing chemical entity either by exact InChIKey or canonical PDB CCD residue name
-            lig_entity = session.query(Ligand).filter(
-                (Ligand.inchikey == inchikey) | (Ligand.name == lig_code)
-            ).first()
+            # Pure chemical deduplication by Standard InChIKey (topology-invariant)
+            lig_entity = session.query(Ligand).filter_by(inchikey=inchikey).first()
 
             if not lig_entity:
                 lig_entity = Ligand(
                     inchikey=inchikey,
                     smiles=smiles,
-                    name=lig_code,
+                    name=mol_name or lig_code,
                     batch_id="crystal",
                 )
                 session.add(lig_entity)
                 session.flush()
                 console.print(f"[bold green]✓ Registered Chemical Ligand '{lig_entity.name}'[/bold green] [dim]({inchikey})[/dim]")
             else:
-                # If existing ligand has canonical aromatic SMILES, retain it over raw coordinates
-                console.print(f"[bold green]✓ Matched existing Chemical Ligand '{lig_entity.name}'[/bold green] [dim]({lig_entity.inchikey})[/dim]")
+                console.print(f"[bold green]✓ Matched existing Chemical Ligand '{lig_entity.name}' via InChIKey[/bold green] [dim]({inchikey})[/dim]")
 
             # Create Pose (1 Pose = 1 File)
             pose_name = f"{frame_name}_{lig_code}_pose"
