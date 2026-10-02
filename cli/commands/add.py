@@ -62,41 +62,53 @@ def _count_and_split_models(struct_path: Path, dest_dir: Path, base_name: str) -
 
 
 def _extract_ligand_atoms(rec_path: Path, lig_resname: str, out_sdf: Path) -> bool:
-    """Extracts ligand residue from PDB into a standalone SDF file."""
+    """Extracts ligand residue from PDB or CIF into a standalone SDF file."""
+    lig_clean = lig_resname.strip().upper()
+
+    # 1. Try Schrodinger API if available (reads CIF, MMCIF, PDB, MAE seamlessly)
     try:
-        from rdkit import Chem
-        mol = Chem.MolFromPDBFile(str(rec_path), removeHs=False, sanitize=False)
-        if mol is None:
-            return False
+        from schrodinger import structure
+        st = structure.StructureReader.read(str(rec_path))
+        lig_atoms = [a.index for a in st.atom if a.pdbres.strip().upper() == lig_clean]
+        if lig_atoms:
+            lig_st = st.extract(lig_atoms)
+            out_sdf.parent.mkdir(parents=True, exist_ok=True)
+            lig_st.write(str(out_sdf))
+            return True
+    except Exception:
+        pass
 
-        lig_clean = lig_resname.strip().upper()
-        atoms_to_keep = []
-        for atom in mol.GetAtoms():
-            info = atom.GetPDBResidueInfo()
-            if info and info.GetResidueName().strip().upper() == lig_clean:
-                atoms_to_keep.append(atom.GetIdx())
+    # 2. Try RDKit PDB parser for PDB files
+    if rec_path.suffix.lower() == ".pdb":
+        try:
+            from rdkit import Chem
+            mol = Chem.MolFromPDBFile(str(rec_path), removeHs=False, sanitize=False)
+            if mol is not None:
+                atoms_to_keep = []
+                for atom in mol.GetAtoms():
+                    info = atom.GetPDBResidueInfo()
+                    if info and info.GetResidueName().strip().upper() == lig_clean:
+                        atoms_to_keep.append(atom.GetIdx())
 
-        if not atoms_to_keep:
-            return False
+                if atoms_to_keep:
+                    emol = Chem.RWMol(mol)
+                    all_atoms = set(range(mol.GetNumAtoms()))
+                    del_atoms = sorted(list(all_atoms - set(atoms_to_keep)), reverse=True)
+                    for idx in del_atoms:
+                        emol.RemoveAtom(idx)
 
-        # Extract submol
-        emol = Chem.RWMol(mol)
-        all_atoms = set(range(mol.GetNumAtoms()))
-        del_atoms = sorted(list(all_atoms - set(atoms_to_keep)), reverse=True)
-        for idx in del_atoms:
-            emol.RemoveAtom(idx)
+                    extracted_mol = emol.GetMol()
+                    Chem.SanitizeMol(extracted_mol, Chem.SANITIZE_ALL ^ Chem.SANITIZE_PROPERTIES)
 
-        extracted_mol = emol.GetMol()
-        Chem.SanitizeMol(extracted_mol, Chem.SANITIZE_ALL ^ Chem.SANITIZE_PROPERTIES)
+                    out_sdf.parent.mkdir(parents=True, exist_ok=True)
+                    w = Chem.SDWriter(str(out_sdf))
+                    w.write(extracted_mol)
+                    w.close()
+                    return True
+        except Exception:
+            pass
 
-        out_sdf.parent.mkdir(parents=True, exist_ok=True)
-        w = Chem.SDWriter(str(out_sdf))
-        w.write(extracted_mol)
-        w.close()
-        return True
-    except Exception as e:
-        console.print(f"[dim]Note: RDKit direct ligand extraction from PDB: {e}[/dim]")
-        return False
+    return False
 
 
 def add_receptor(args):
@@ -197,6 +209,39 @@ def add_receptor(args):
                         console.print(f"[bold green]✓ Registered Pose '{pose_name}'[/bold green] [dim](1 file: {pose_sdf.name})[/dim]")
                 except Exception as e:
                     console.print(f"[yellow]Warning: Could not standardize ligand {lig_code}: {e}[/yellow]")
+            else:
+                # If direct 3D SDF extraction couldn't be done yet (e.g. raw CIF before prep),
+                # register placeholder entity to be enriched and separated upon 'sbdd prep'
+                import hashlib
+                dummy_key = hashlib.md5(f"{target_name}_{lig_code}".encode()).hexdigest()[:27]
+                lig_entity = session.query(Ligand).filter((Ligand.name == lig_code) | (Ligand.inchikey == dummy_key)).first()
+                if not lig_entity:
+                    lig_entity = Ligand(
+                        inchikey=dummy_key,
+                        smiles="UNASSIGNED",
+                        name=lig_code,
+                        batch_id="crystal_raw",
+                    )
+                    session.add(lig_entity)
+                    session.flush()
+                    console.print(f"[bold green]✓ Registered Chemical Ligand '{lig_entity.name}'[/bold green] [dim](raw)[/dim]")
+
+                pose_name = f"{frame_name}_{lig_code}_pose"
+                ex_pose = session.query(Pose).filter_by(name=pose_name).first()
+                if not ex_pose:
+                    pose_obj = Pose(
+                        ligand_id=lig_entity.id,
+                        receptor_frame_id=frame_obj.id,
+                        name=pose_name,
+                        origin="crystal",
+                        state="raw",
+                        path=str(frame_file.resolve()),
+                    )
+                    session.add(pose_obj)
+                    session.flush()
+                    console.print(f"[bold green]✓ Registered Pose '{pose_name}'[/bold green] [dim](in {frame_file.name})[/dim]")
+                else:
+                    pose_obj = ex_pose
 
         # System creation
         sys_name = f"{frame_name}_holo" if pose_obj else f"{frame_name}_apo"

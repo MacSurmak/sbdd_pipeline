@@ -489,7 +489,7 @@ def main():
     if subcmd == "add":
         from cli.commands.add import add_receptor, add_ligand, add_traj
 
-        if args.add_type == "receptor":
+        if args.add_type in ["structure", "receptor", "complex"]:
             add_receptor(args)
         elif args.add_type == "ligand":
             add_ligand(args)
