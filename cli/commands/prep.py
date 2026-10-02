@@ -100,84 +100,34 @@ def cmd_prep(args):
         if not line.strip():
             continue
         orig_frame_name, raw_out_path = line.split("\t")
-        raw_frame = frame_map.get(orig_frame_name)
-        if not raw_frame:
+        frame = frame_map.get(orig_frame_name)
+        if not frame:
             continue
 
         prep_frame_path = Path(raw_out_path)
         if not prep_frame_path.exists():
-            # Check published location
             cand = cwd / "prepared" / f"{orig_frame_name}_prepared.mae"
             if cand.exists():
                 prep_frame_path = cand
 
-        # A. Register new ready ReceptorFrame derived from raw_frame
-        prep_frame_name = f"{orig_frame_name}_prep"
-        ready_frame = session.query(ReceptorFrame).filter_by(name=prep_frame_name).first()
-        if not ready_frame:
-            ready_frame = ReceptorFrame(
-                target_id=raw_frame.target_id,
-                name=prep_frame_name,
-                source_type=raw_frame.source_type,
-                state="ready",
-                parent_frame_id=raw_frame.id,
-                path=str(prep_frame_path.resolve()),
-            )
-            ready_frame.cofactors_list = raw_frame.cofactors_list
-            session.add(ready_frame)
-            session.flush()
-        else:
-            ready_frame.path = str(prep_frame_path.resolve())
-            ready_frame.state = "ready"
-            ready_frame.cofactors_list = raw_frame.cofactors_list
+        # 1. Update existing ReceptorFrame state to ready and point to prepared structure
+        frame.path = str(prep_frame_path.resolve())
+        frame.state = "ready"
 
-        # B. Check for prepared in-situ native ligand
-        prep_pose_obj = None
-        raw_system = session.query(System).filter_by(receptor_frame_id=raw_frame.id).first()
-
-        if raw_system and raw_system.pose:
-            raw_pose = raw_system.pose
+        # 2. Update existing Pose in-place if native ligand was prepared
+        system = session.query(System).filter_by(receptor_frame_id=frame.id).first()
+        if system and system.pose:
             prep_sdf_cand = cwd / "prepared" / f"{orig_frame_name}_ref_native_prepared.sdf"
             if not prep_sdf_cand.exists():
                 prep_sdf_cand = cwd / "prepared" / f"{orig_frame_name}_ref_native.sdf"
 
             if prep_sdf_cand.exists() and prep_sdf_cand.stat().st_size > 0:
-                prep_pose_name = f"{raw_pose.name}_prep"
-                ready_pose = session.query(Pose).filter_by(name=prep_pose_name).first()
-                if not ready_pose:
-                    ready_pose = Pose(
-                        ligand_id=raw_pose.ligand_id,
-                        receptor_frame_id=ready_frame.id,
-                        name=prep_pose_name,
-                        origin="crystal",
-                        state="ready",
-                        parent_pose_id=raw_pose.id,
-                        path=str(prep_sdf_cand.resolve()),
-                    )
-                    session.add(ready_pose)
-                    session.flush()
-                else:
-                    ready_pose.path = str(prep_sdf_cand.resolve())
-                    ready_pose.state = "ready"
-                prep_pose_obj = ready_pose
+                system.pose.path = str(prep_sdf_cand.resolve())
+                system.pose.state = "ready"
 
-        # C. Create Ready System (Apo or Holo)
-        ready_sys_name = f"{orig_frame_name}_holo" if prep_pose_obj else f"{orig_frame_name}_apo"
-        ready_sys = session.query(System).filter_by(name=ready_sys_name).first()
-        if not ready_sys:
-            ready_sys = System(
-                target_id=raw_frame.target_id,
-                receptor_frame_id=ready_frame.id,
-                pose_id=prep_pose_obj.id if prep_pose_obj else None,
-                name=ready_sys_name,
-                state="ready",
-                origin=raw_frame.source_type,
-            )
-            session.add(ready_sys)
-        else:
-            ready_sys.receptor_frame_id = ready_frame.id
-            ready_sys.pose_id = prep_pose_obj.id if prep_pose_obj else None
-            ready_sys.state = "ready"
+        # 3. Update existing System state to ready
+        if system:
+            system.state = "ready"
 
         prepared_count += 1
 
