@@ -240,9 +240,11 @@ workflow DOCK_LIBRARY {
 
         MERGE_RESC_CHUNKS(ch_to_merge_resc)
 
-        // 1.1 In-situ RMSD calculation between docked pose and reference crystal/centroid pose
+        // 1.1 In-situ RMSD calculation matched strictly by frame ID string
         ch_glide_rmsd_in = MERGE_GLIDE_CHUNKS.out.poses_sdf
-            .join(ch_ref_lig_sdf, by: 0)
+            .map { meta, docked_sdf -> [ meta.id, meta, docked_sdf ] }
+            .join(ch_ref_lig_sdf.map { meta, ref_sdf -> [ meta.id, ref_sdf ] }, by: 0)
+            .map { frame_id, meta, docked_sdf, ref_sdf -> [ meta, docked_sdf, ref_sdf ] }
 
         CALCULATE_IN_SITU_RMSD(ch_glide_rmsd_in)
 

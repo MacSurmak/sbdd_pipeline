@@ -24,8 +24,6 @@ def calc_via_schrodinger(ref_path: Path, poses_path: Path, receptor_name: str, t
             if i == 0 and (st.property.get("b_glide_receptor", 0) == 1 or st.atom_total > 500):
                 continue
             title = (st.property.get("s_m_title") or st.title or "").strip()
-            if target_title and title != target_title:
-                continue
 
             conf_eval = rmsd.ConformerRmsd(
                 ref_st, st, asl_expr="NOT atom.element H", in_place=True
@@ -35,7 +33,7 @@ def calc_via_schrodinger(ref_path: Path, poses_path: Path, receptor_name: str, t
 
             results.append({
                 "Receptor": receptor_name,
-                "Title": title or target_title,
+                "Title": target_title or title,
                 "InSitu_RMSD_A": rmsd_val,
                 "RMSD_Heavy": rmsd_val
             })

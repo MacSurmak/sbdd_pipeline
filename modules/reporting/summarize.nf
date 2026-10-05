@@ -11,7 +11,7 @@ process SUMMARIZE_DOCKING {
 
     input:
     val(project_name)
-    path(summary_files)
+    path(summary_files, stageAs: 'in_files/*')
     val(native_ligand)
     val(benchmark_ligands)
 
@@ -24,6 +24,9 @@ process SUMMARIZE_DOCKING {
     def nat_arg = native_ligand ? "--native_ligand ${native_ligand}" : ""
     def bench_arg = benchmark_ligands ? "--benchmark_ligands ${benchmark_ligands}" : ""
     """
+    # Flattens all inputs staged into in_files into the current execution directory
+    cp -L in_files/* . 2>/dev/null || true
+
     python3 ${projectDir}/bin/summarize_results.py \\
         --docking_dir . \\
         ${nat_arg} \\
