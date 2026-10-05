@@ -138,13 +138,22 @@ def cmd_dock(args):
             )
 
             unique_lig_name = f"{r.name}_{native_lig.name}"
+
+            # Check if LigPrep candidate exists for unbiased conformer redocking
+            prep_dir = cwd / "prepared" / "ligands"
+            lig_mae = prep_dir / f"{native_lig.name}_prepared.maegz"
+            lig_sdf = prep_dir / f"{native_lig.name}_prepared.sdf"
+
+            if not lig_mae.exists() or not lig_sdf.exists():
+                # Fallback to direct pose SDF converted to MAE
+                lig_sdf = pose_sdf
+                lig_mae = pose_mae
+
             plan["ligands"].append(
                 {
                     "name": unique_lig_name,
-                    "path": str(Path(native_pose.path).resolve()),
-                    "status": (
-                        "ready" if native_lig.batch_id == "crystal" else "unprepared"
-                    ),
+                    "path_sdf": str(lig_sdf.resolve()),
+                    "path_mae": str(lig_mae.resolve()),
                     "is_native": True,
                     "receptor": r.name,
                     "ligand_title": native_lig.name,
@@ -214,17 +223,26 @@ def cmd_dock(args):
                 }
             )
 
+        prep_dir = cwd / "prepared" / "ligands"
         for l in ligands:
             has_crystal_pose = (
                 session.query(Pose).filter_by(ligand_id=l.id, origin="crystal").first()
                 is not None
             )
-            # Use 'ready' status for standalone chemical ligands that don't need prep
+            lig_mae = prep_dir / f"{l.name}_prepared.maegz"
+            lig_sdf = prep_dir / f"{l.name}_prepared.sdf"
+
+            if not lig_mae.exists() or not lig_sdf.exists():
+                console.print(
+                    f"[bold red]FATAL: Prepared files not found for ligand '{l.name}' ({lig_sdf}). Run 'sbdd prep' first![/bold red]"
+                )
+                sys.exit(1)
+
             plan["ligands"].append(
                 {
                     "name": l.name,
-                    "path": str(Path(l.path).resolve()),
-                    "status": "ready" if l.batch_id == "crystal" else "unprepared",
+                    "path_sdf": str(lig_sdf.resolve()),
+                    "path_mae": str(lig_mae.resolve()),
                     "is_native": has_crystal_pose,
                 }
             )

@@ -9,6 +9,7 @@ nextflow.enable.dsl = 2
 // Include top-level workflows
 include { PREPARE_WF  } from './workflows/prepare'
 include { SCREEN_WF   } from './workflows/screen'
+include { RESCORE_WF  } from './workflows/rescore'
 include { DYNAMICS_WF } from './workflows/dynamics'
 include { ANALYZE_WF  } from './workflows/analyze'
 
@@ -44,8 +45,10 @@ workflow {
     def entrypoint = params.entry ? params.entry.toLowerCase() : "all"
     if (entrypoint == "prepare") {
         PREPARE_WF()
-    } else if (entrypoint == "screen") {
+    } else if (entrypoint == "screen" || entrypoint == "dock") {
         SCREEN_WF()
+    } else if (entrypoint == "rescore") {
+        RESCORE_WF()
     } else if (entrypoint == "dynamics") {
         DYNAMICS_WF()
     } else if (entrypoint == "md-analyze") {

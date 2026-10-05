@@ -41,22 +41,56 @@ def cmd_prep(args):
         session.close()
         return
 
-    # 2. Build Plan for Nextflow
-    plan_data = []
+    # 2. Fetch ligands needing preparation
+    query_ligands = session.query(Ligand).filter(Ligand.batch_id != "prepared").all()
+
+    prepared_dir = (cwd / "prepared").resolve()
+    prepared_lig_dir = prepared_dir / "ligands"
+    prepared_lig_dir.mkdir(parents=True, exist_ok=True)
+
+    lig_plan = []
+    for lig in query_ligands:
+        lig_sdf = prepared_lig_dir / f"{lig.name}.sdf"
+        # Export clean SDF from smiles if file does not exist
+        if not lig_sdf.exists() or lig_sdf.stat().st_size == 0:
+            try:
+                from rdkit import Chem
+                m = Chem.MolFromSmiles(lig.smiles)
+                if m:
+                    m.SetProp("_Name", lig.name)
+                    w = Chem.SDWriter(str(lig_sdf))
+                    w.write(m)
+                    w.close()
+            except Exception:
+                pass
+        
+        if lig_sdf.exists() and lig_sdf.stat().st_size > 0:
+            lig_plan.append({
+                "name": lig.name,
+                "path": str(lig_sdf.resolve()),
+                "status": "unprepared"
+            })
+
+    if not raw_frames and not lig_plan:
+        console.print(
+            "[green]No raw frames or ligands needing preparation found. Everything is up to date![/green]"
+        )
+        session.close()
+        return
+
+    # 3. Build Plan for Nextflow
+    rec_plan = []
     frame_map = {}
 
     for frame in raw_frames:
         frame_map[frame.name] = frame
-
-        # Find in-situ pose in holo system for this frame if any
         system = session.query(System).filter_by(receptor_frame_id=frame.id).first()
         native_lig_code = ""
         if system and system.pose:
             native_lig_code = system.pose.ligand.name
 
         prep_mode = "light" if frame.source_type == "md_centroid" else "full"
-
-        plan_data.append(
+        rec_plan.append(
             {
                 "name": frame.name,
                 "path": str(Path(frame.path).resolve()),
@@ -66,12 +100,17 @@ def cmd_prep(args):
             }
         )
 
+    plan_data = {
+        "receptors": rec_plan,
+        "ligands": lig_plan
+    }
+
     plan_file = cwd / "prep_plan.json"
     with open(plan_file, "w") as f:
         json.dump(plan_data, f, indent=2)
 
     console.print(
-        f"[bold cyan]Generated prep_plan.json for {len(raw_frames)} frame(s)...[/bold cyan]"
+        f"[bold cyan]Generated prep_plan.json ({len(rec_plan)} receptor frame(s), {len(lig_plan)} ligand(s))...[/bold cyan]"
     )
 
     # 3. Build Nextflow args and execute
@@ -95,61 +134,78 @@ def cmd_prep(args):
         )
         sys.exit(ret_code)
 
-    # 4. Read Receipt and instantiate ready records with data lineage
+    # 4. Read Receipts and update database records
     receipt_file = cwd / "prep_receipt.tsv"
-    if not receipt_file.exists():
-        console.print(
-            "[bold red]FATAL: prep_receipt.tsv not found! Nextflow execution might have failed.[/bold red]"
-        )
-        sys.exit(1)
-
     prepared_count = 0
-    lines = receipt_file.read_text().strip().splitlines()
 
-    for line in lines:
-        if not line.strip():
-            continue
-        orig_frame_name, mae_filename = line.split("\t")
-        frame = frame_map.get(orig_frame_name)
-        if not frame:
-            continue
+    if receipt_file.exists():
+        lines = receipt_file.read_text().strip().splitlines()
+        for line in lines:
+            if not line.strip():
+                continue
+            orig_frame_name, mae_filename = line.split("\t")
+            frame = frame_map.get(orig_frame_name)
+            if not frame:
+                continue
 
-        # Strictly construct and enforce permanent project deliverable location
-        prep_mae_path = (cwd / "prepared" / Path(mae_filename).name).resolve()
-        if not prep_mae_path.exists():
-            raise FileNotFoundError(
-                f"FATAL: Prepared receptor MAE not found at canonical location: {prep_mae_path}"
-            )
+            prep_mae_path = (cwd / "prepared" / Path(mae_filename).name).resolve()
+            if not prep_mae_path.exists():
+                raise FileNotFoundError(
+                    f"FATAL: Prepared receptor MAE not found at canonical location: {prep_mae_path}"
+                )
 
-        frame.path = str(prep_mae_path)
-        frame.state = "ready"
+            frame.path = str(prep_mae_path)
+            frame.state = "ready"
 
-        # Update existing Pose in-place if native ligand was prepared
-        system = session.query(System).filter_by(receptor_frame_id=frame.id).first()
-        if system and system.pose:
-            prep_sdf_path = (
-                cwd / "prepared" / f"{orig_frame_name}_ref_native_prepared.sdf"
-            ).resolve()
-            if not prep_sdf_path.exists():
+            # In-situ reference pose from PrepWizard
+            system = session.query(System).filter_by(receptor_frame_id=frame.id).first()
+            if system and system.pose:
                 prep_sdf_path = (
-                    cwd / "prepared" / f"{orig_frame_name}_ref_native.sdf"
+                    cwd / "prepared" / f"{orig_frame_name}_ref_native_prepared.sdf"
                 ).resolve()
+                if not prep_sdf_path.exists():
+                    prep_sdf_path = (
+                        cwd / "prepared" / f"{orig_frame_name}_ref_native.sdf"
+                    ).resolve()
 
-            if prep_sdf_path.exists() and prep_sdf_path.stat().st_size > 0:
-                system.pose.path = str(prep_sdf_path)
-                system.pose.state = "ready"
+                if prep_sdf_path.exists() and prep_sdf_path.stat().st_size > 0:
+                    system.pose.path = str(prep_sdf_path)
+                    system.pose.state = "ready"
 
-        if system:
-            system.state = "ready"
+                    # Calculate actual formal charge from the prepared in-situ ligand
+                    try:
+                        from rdkit import Chem
+                        suppl = Chem.SDMolSupplier(str(prep_sdf_path), removeHs=False)
+                        mol = next((m for m in suppl if m is not None), None)
+                        if mol:
+                            ch = Chem.GetFormalCharge(mol)
+                            system.pose.scores_dict = {"formal_charge": ch}
+                    except Exception:
+                        pass
 
-        prepared_count += 1
+            if system:
+                system.state = "ready"
+            prepared_count += 1
+
+    # 5. Update prepared Ligands in DB
+    lig_receipt = cwd / "prep_ligand_receipt.tsv"
+    prep_lig_count = 0
+    if lig_receipt.exists():
+        for line in lig_receipt.read_text().strip().splitlines():
+            if not line.strip():
+                continue
+            lig_name, mae_name = line.split("\t")
+            lig_obj = session.query(Ligand).filter_by(name=lig_name).first()
+            if lig_obj:
+                lig_obj.batch_id = "prepared"
+                prep_lig_count += 1
 
     session.commit()
     session.close()
 
     console.print(
-        f"\n[bold green]✓ Successfully prepared {prepared_count} frame(s) into ready systems![/bold green]"
+        f"\n[bold green]✓ Successfully prepared {prepared_count} receptor frame(s) and {prep_lig_count} chemical ligand(s)![/bold green]"
     )
     console.print(
-        "[dim]Original raw frames and crystal poses preserved. Use 'sbdd tree' to view lineage.[/dim]"
+        "[dim]Crystal in-situ poses and LigPrep 3D states are ready. Use 'sbdd tree' to view lineage.[/dim]"
     )

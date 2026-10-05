@@ -1,15 +1,12 @@
 /*
  * subworkflows/dock_library.nf
- * Multi-Engine Docking, Rescoring, Funnel Triage, and Prime MM-GBSA
+ * Multi-Engine Docking and Pose Rescoring without embedded Prime MM-GBSA
  */
 
 include { GNINA_DOCK }              from '../modules/gnina/dock'
 include { GNINA_RESCORE }           from '../modules/gnina/rescore'
 include { GLIDE_GRIDGEN }           from '../modules/schrodinger/gridgen'
 include { GLIDE_DOCK }              from '../modules/schrodinger/glide_dock'
-include { BUILD_FUNNEL_WHITELIST }  from '../modules/reporting/build_funnel'
-include { FILTER_PV }               from '../modules/schrodinger/filter_pv'
-include { PRIME_MMGBSA }            from '../modules/schrodinger/prime_mmgbsa'
 
 process GENERATE_DOCKING_BOX {
     tag "${meta.id}"
@@ -188,45 +185,19 @@ process MERGE_RESC_CHUNKS {
     """
 }
 
-process MERGE_MMGBSA_CHUNKS {
-    tag "${meta.id}"
-    executor 'local'
-    scratch false
-    label 'process_single'
-
-    input:
-    tuple val(meta), path(csv_files, stageAs: 'mmgbsa_?/*')
-
-    output:
-    tuple val(meta), path("${meta.id}_mmgbsa-out.csv"), emit: scores_csv
-
-    script:
-    """
-    python3 ${projectDir}/bin/merge_csv.py --inputs ${csv_files} --output ${meta.id}_mmgbsa-out.csv
-    """
-
-    stub:
-    """
-    touch ${meta.id}_mmgbsa-out.csv
-    """
-}
-
 workflow DOCK_LIBRARY {
     take:
     ch_receptor_pdb     // channel: [ val(meta), path(receptor_pdb) ]
     ch_ref_lig_sdf      // channel: [ val(meta), path(ref_lig_sdf) ]
-    ch_chunks           // channel: [ val(meta), path(chunk_sdf), val(chunk_idx) ]
+    ch_chunks_sdf       // channel: [ val(meta), path(chunk_sdf), val(chunk_idx) ]
     ch_receptor_mae     // channel: [ val(meta), path(receptor_mae) ]
     ch_ref_lig_mae      // channel: [ val(meta), path(ref_lig_mae) ]
-    ch_prepared_mae     // channel: [ val(meta), path(prepared_chunk_mae) ]
+    ch_chunks_mae       // channel: [ val(meta), path(chunk_mae) ]
     dock_engine         // val: "both", "gnina", "glide"
     exhaustiveness      // val: 16
     cnn_scoring         // val: "rescore"
     num_modes           // val: 3
     autobox_add         // val: 4.0
-    top_k_frames        // val: 3
-    percentile_cutoff   // val: 0.50
-    membrane_enabled    // val: true/false
     is_self             // val: boolean
 
     main:
@@ -242,7 +213,7 @@ workflow DOCK_LIBRARY {
     )
     ch_summary_files = ch_summary_files.mix(GENERATE_DOCKING_BOX.out.box_pml.map { meta, pml -> pml })
 
-    // 1. GLIDE DOCKING & GNINA RESCORE & SCREENING FUNNEL -> PRIME MM-GBSA
+    // 1. GLIDE DOCKING & GNINA RESCORE
     if (dock_engine in ["glide", "both"]) {
         def inner_box = params.inner_box
         def outer_box = params.outer_box
@@ -250,12 +221,11 @@ workflow DOCK_LIBRARY {
         def prec      = params.glide_precision
         def poses_n   = params.poses_per_lig
         def cnn_resc  = params.cnn_model
-        def prime_job = params.prime_job_type
 
         ch_grid_in = ch_receptor_mae.join(ch_ref_lig_mae, by: 0)
         GLIDE_GRIDGEN(ch_grid_in, inner_box, outer_box, ff_dock)
 
-        ch_glide_in = GLIDE_GRIDGEN.out.grid_zip.combine(ch_prepared_mae)
+        ch_glide_in = GLIDE_GRIDGEN.out.grid_zip.combine(ch_chunks_mae)
             .filter { meta_g, grid_zip, meta_l, lib_chunk_mae ->
                 if (!is_self) return true
                 return meta_l.receptor == meta_g.id
@@ -311,87 +281,20 @@ workflow DOCK_LIBRARY {
 
         MERGE_RESC_CHUNKS(ch_to_merge_resc)
 
-        // 1.1 In-situ RMSD calculation for Glide poses
+        // In-situ RMSD calculation for Glide poses
         ch_glide_rmsd_in = MERGE_GLIDE_CHUNKS.out.poses_sdf
             .map { meta, docked_sdf -> [ meta.id, meta, docked_sdf ] }
             .join(ch_ref_lig_sdf.map { meta, ref_sdf -> [ meta.id, ref_sdf ] }, by: 0)
             .map { frame_id, meta, docked_sdf, ref_sdf -> [ meta, docked_sdf, ref_sdf ] }
 
         CALCULATE_IN_SITU_RMSD_GLIDE(ch_glide_rmsd_in)
-        ch_summary_files = ch_summary_files.mix(CALCULATE_IN_SITU_RMSD_GLIDE.out.rmsd_csv.map { meta, csv -> csv })
 
-        if (is_self) {
-            ch_mmgbsa_in = MERGE_GLIDE_CHUNKS.out.pv_maegz.map { meta, pv -> [ meta, pv ] }
-            PRIME_MMGBSA(ch_mmgbsa_in, prime_job, membrane_enabled)
-
-            ch_summary_files = ch_summary_files
-                .mix(MERGE_GLIDE_CHUNKS.out.scores_csv.map { meta, csv -> csv })
-                .mix(MERGE_GLIDE_CHUNKS.out.poses_sdf.map { meta, sdf -> sdf })
-                .mix(MERGE_RESC_CHUNKS.out.rescored_sdf.map { meta, sdf -> sdf })
-                .mix(PRIME_MMGBSA.out.scores_csv.map { meta, csv -> csv })
-                .mix(ch_ref_lig_sdf.map { meta, sdf -> sdf })
-        } else {
-            // Screening Triage Funnel (Top 50%)
-            ch_all_glide_csvs = MERGE_GLIDE_CHUNKS.out.scores_csv.map { meta, csv -> csv }.collect()
-            ch_all_resc_sdfs  = MERGE_RESC_CHUNKS.out.rescored_sdf.map { meta, sdf -> sdf }.collect()
-            def bench_ligands = params.benchmark_ligands ? (params.benchmark_ligands instanceof List ? params.benchmark_ligands.join(" ") : params.benchmark_ligands) : ""
-
-            BUILD_FUNNEL_WHITELIST(
-                params.project_name,
-                ch_all_glide_csvs,
-                ch_all_resc_sdfs,
-                top_k_frames,
-                percentile_cutoff,
-                bench_ligands,
-                params.native_ligand
-            )
-
-            ch_filter_in = MERGE_GLIDE_CHUNKS.out.pv_maegz
-                .combine(BUILD_FUNNEL_WHITELIST.out.whitelist_csv)
-                .map { meta, pv, wl -> [ meta, pv ] }
-
-            FILTER_PV(
-                ch_filter_in,
-                BUILD_FUNNEL_WHITELIST.out.whitelist_csv,
-                params.mmgbsa_batch_size
-            )
-
-            ch_mmgbsa_in = FILTER_PV.out.filtered_pv_chunks.flatMap { meta, files ->
-                def fileList = files instanceof List ? files : [files]
-                fileList.sort { it.name }.withIndex().collect { f, idx ->
-                    def chunk_meta = [
-                        id: "${meta.id}_mmc${idx}",
-                        frame_id: meta.id,
-                        frame: meta.frame,
-                        chunk_idx: idx,
-                        project: meta.project
-                    ]
-                    [ chunk_meta, f ]
-                }
-            }
-
-            PRIME_MMGBSA(ch_mmgbsa_in, prime_job, membrane_enabled)
-
-            ch_mmgbsa_to_merge = PRIME_MMGBSA.out.scores_csv
-                .map { chunk_meta, csv ->
-                    def frame_meta = [
-                        id: chunk_meta.frame_id,
-                        frame: chunk_meta.frame,
-                        project: chunk_meta.project
-                    ]
-                    [ frame_meta, csv ]
-                }
-                .groupTuple(by: 0, sort: true)
-
-            MERGE_MMGBSA_CHUNKS(ch_mmgbsa_to_merge)
-
-            ch_summary_files = ch_summary_files
-                .mix(MERGE_GLIDE_CHUNKS.out.scores_csv.map { meta, csv -> csv })
-                .mix(MERGE_GLIDE_CHUNKS.out.poses_sdf.map { meta, sdf -> sdf })
-                .mix(MERGE_RESC_CHUNKS.out.rescored_sdf.map { meta, sdf -> sdf })
-                .mix(BUILD_FUNNEL_WHITELIST.out.whitelist_csv)
-                .mix(MERGE_MMGBSA_CHUNKS.out.scores_csv.map { meta, csv -> csv })
-        }
+        ch_summary_files = ch_summary_files
+            .mix(MERGE_GLIDE_CHUNKS.out.scores_csv.map { meta, csv -> csv })
+            .mix(MERGE_GLIDE_CHUNKS.out.poses_sdf.map { meta, sdf -> sdf })
+            .mix(MERGE_RESC_CHUNKS.out.rescored_sdf.map { meta, sdf -> sdf })
+            .mix(CALCULATE_IN_SITU_RMSD_GLIDE.out.rmsd_csv.map { meta, csv -> csv })
+            .mix(ch_ref_lig_sdf.map { meta, sdf -> sdf })
 
         ch_primary_poses = MERGE_GLIDE_CHUNKS.out.poses_sdf
     }
@@ -399,7 +302,7 @@ workflow DOCK_LIBRARY {
     // 2. GNINA DOCKING
     if (dock_engine in ["gnina", "both"]) {
         ch_rec_comb = ch_receptor_pdb.join(ch_ref_lig_sdf, by: 0)
-        ch_dock_in = ch_chunks.combine(ch_rec_comb)
+        ch_dock_in = ch_chunks_sdf.combine(ch_rec_comb)
             .filter { meta_chunk, chunk_sdf, chunk_idx, meta_rec, rec_pdb, ref_sdf ->
                 if (!is_self) return true
                 return meta_chunk.receptor == meta_rec.id
@@ -431,7 +334,7 @@ workflow DOCK_LIBRARY {
 
         MERGE_DOCK_CHUNKS(ch_to_merge)
 
-        // 2.1 In-situ RMSD calculation for GNINA poses
+        // In-situ RMSD calculation for GNINA poses
         ch_gnina_rmsd_in = MERGE_DOCK_CHUNKS.out.merged_sdf
             .map { meta, docked_sdf -> [ meta.id, meta, docked_sdf ] }
             .join(ch_ref_lig_sdf.map { meta, ref_sdf -> [ meta.id, ref_sdf ] }, by: 0)
@@ -448,7 +351,6 @@ workflow DOCK_LIBRARY {
         }
     }
 
-    // Collect all summary files across all frames into a single flat list
     ch_all_summary_files = ch_summary_files.collect()
 
     emit:

@@ -81,7 +81,9 @@ def calculate_consensus_score(df: pd.DataFrame) -> pd.DataFrame:
             df["Dock_CNNaffinity"].rank(ascending=True, pct=True).fillna(0.0)
         )
 
-    pr_cols = [c for c in ["PR_Glide", "PR_MMGBSA", "PR_CNN_Resc"] if c in df.columns]
+    # Gracefully adapt consensus ranking whether MM-GBSA was executed or deferred
+    candidate_cols = ["PR_Glide", "PR_MMGBSA", "PR_CNN_Resc"]
+    pr_cols = [c for c in candidate_cols if c in df.columns and df[c].notna().any()]
     if not pr_cols:
         pr_cols = [c for c in ["PR_GNINA_Dock"] if c in df.columns]
 

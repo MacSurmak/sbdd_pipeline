@@ -1,12 +1,38 @@
 /*
  * workflows/screen.nf
- * Standalone decoupled distributed docking workflow.
- * Reads directly from manifest targets and prepared/ directory.
+ * Decoupled parallel docking workflow.
+ * Consumes pre-prepared receptors and pre-prepared ligands directly from DB plan.
  */
 
-include { PREPARE_LIGANDS   } from "../subworkflows/prepare_ligands"
 include { DOCK_LIBRARY      } from "../subworkflows/dock_library"
 include { SUMMARIZE_DOCKING } from "../modules/reporting/summarize"
+
+process SPLIT_PREPARED_SDF {
+    tag "${meta.id}"
+    executor 'local'
+    scratch false
+    label 'process_single'
+
+    input:
+    tuple val(meta), path(prepared_sdf)
+    val(batch_size)
+
+    output:
+    tuple val(meta), path("dock_chunk_*.sdf"), emit: chunks
+
+    script:
+    """
+    python3 ${projectDir}/bin/split_sdf.py \\
+        --input ${prepared_sdf} \\
+        --batch_size ${batch_size} \\
+        --outdir .
+    """
+
+    stub:
+    """
+    touch dock_chunk_000.sdf
+    """
+}
 
 workflow SCREEN_WF {
     if (!params.dock_plan) { error "FATAL: Parameter --dock_plan (JSON) is required." }
@@ -15,28 +41,20 @@ workflow SCREEN_WF {
     def jsonSlurper = new groovy.json.JsonSlurper()
     def planData = jsonSlurper.parseText(planFile.text)
 
-    // 1. Parse Receptors with strict existence verification (zero string replacement hacks)
+    // 1. Receptors
     ch_targets = Channel.fromList(planData.receptors).map { rec ->
         def target_id = rec.name
         def rec_mae = file(rec.path_mae)
         def rec_pdb = file(rec.path_pdb)
 
-        if (!rec_mae.exists()) {
-            error "FATAL: Receptor MAE file not found: ${rec.path_mae}"
-        }
-        if (!rec_pdb.exists()) {
-            error "FATAL: Receptor PDB file not found: ${rec.path_pdb}"
-        }
+        if (!rec_mae.exists()) error "FATAL: Receptor MAE file not found: ${rec.path_mae}"
+        if (!rec_pdb.exists()) error "FATAL: Receptor PDB file not found: ${rec.path_pdb}"
 
         def ref_sdf = file(rec.ref_sdf)
         def ref_mae = file(rec.ref_mae)
 
-        if (!ref_sdf.exists()) {
-            error "FATAL: Reference ligand SDF file not found for ${target_id}: ${rec.ref_sdf}"
-        }
-        if (!ref_mae.exists()) {
-            error "FATAL: Reference ligand MAE file not found for ${target_id}: ${rec.ref_mae}"
-        }
+        if (!ref_sdf.exists()) error "FATAL: Reference ligand SDF not found for ${target_id}: ${rec.ref_sdf}"
+        if (!ref_mae.exists()) error "FATAL: Reference ligand MAE not found for ${target_id}: ${rec.ref_mae}"
 
         def meta = [
             id: target_id,
@@ -53,44 +71,52 @@ workflow SCREEN_WF {
     ch_ref_sdf = ch_targets.map { meta, pdb, mae, rsdf, rmae -> [meta, rsdf] }
     ch_ref_mae = ch_targets.map { meta, pdb, mae, rsdf, rmae -> [meta, rmae] }
 
-    // 2. Parse Ligands (Support for multiple libraries simultaneously)
-    ch_lib = Channel.fromList(planData.ligands).map { lig -> 
-        [ [
-            id: lig.name, 
-            project: params.project_name, 
-            status: lig.status, 
-            is_native: lig.is_native, 
+    // 2. Pre-prepared Ligands
+    ch_ready_ligands = Channel.fromList(planData.ligands).map { lig ->
+        def sdf_f = file(lig.path_sdf)
+        def mae_f = file(lig.path_mae)
+        if (!sdf_f.exists()) error "FATAL: Prepared ligand SDF not found: ${lig.path_sdf}"
+        if (!mae_f.exists()) error "FATAL: Prepared ligand MAE not found: ${lig.path_mae}"
+
+        def meta = [
+            id: lig.name,
+            project: params.project_name,
             receptor: lig.receptor ?: "",
             ligand_title: lig.ligand_title ?: lig.name
-        ], file(lig.path).toAbsolutePath() ] 
+        ]
+        [ meta, sdf_f.toAbsolutePath(), mae_f.toAbsolutePath() ]
     }
 
-    PREPARE_LIGANDS(
-        ch_lib,
-        params.dock_engine,
-        params.batch_size,
-        params.ligand_ph,
-        params.ligand_ph_tol,
-        params.ligprep_ff,
-        params.max_states
-    )
+    // Chunk prepared SDF for cluster GPU parallelization
+    ch_sdf_for_chunk = ch_ready_ligands.map { meta, sdf, mae -> [ meta, sdf ] }
+    SPLIT_PREPARED_SDF(ch_sdf_for_chunk, params.batch_size ?: 10)
+
+    ch_chunks_sdf = SPLIT_PREPARED_SDF.out.chunks.flatMap { meta, files ->
+        def fileList = files instanceof List ? files : (files ? [files] : [])
+        fileList.withIndex().collect { f, idx ->
+            def chunk_meta = meta + [chunk_idx: idx]
+            [ chunk_meta, f, idx ]
+        }
+    }
+
+    ch_chunks_mae = ch_ready_ligands.map { meta, sdf, mae ->
+        def chunk_meta = meta + [chunk_idx: 0]
+        [ chunk_meta, mae ]
+    }
 
     // 3. Parallel Docking
     DOCK_LIBRARY(
         ch_rec_pdb,
         ch_ref_sdf,
-        PREPARE_LIGANDS.out.chunks,
+        ch_chunks_sdf,
         ch_rec_mae,
         ch_ref_mae,
-        PREPARE_LIGANDS.out.prepared_ligands,
+        ch_chunks_mae,
         params.dock_engine,
         params.exhaustiveness,
         params.cnn_scoring,
         params.num_modes,
         params.autobox_add,
-        params.top_k_frames,
-        params.percentile_cutoff,
-        params.membrane,
         (planData.mode == "self")
     )
 

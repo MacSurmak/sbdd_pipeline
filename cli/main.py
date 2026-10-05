@@ -357,7 +357,8 @@ def main():
     )
 
     # 4. rescore
-    p_rescore = subparsers.add_parser("rescore", help="Run MM-GBSA and CNN rescoring")
+    p_rescore = subparsers.add_parser("rescore", help="Run standalone Prime MM-GBSA free energy rescoring on docked poses")
+    p_rescore.add_argument("--use-whitelist", action="store_true", help="Filter poses using funnel whitelist prior to MM-GBSA")
     add_common_wf_args(p_rescore)
 
     # 5. md-init
@@ -570,6 +571,10 @@ def main():
         from cli.commands.dock import cmd_dock
 
         cmd_dock(args)
+    elif subcmd == "rescore":
+        from cli.commands.rescore import cmd_rescore
+
+        cmd_rescore(args)
     elif subcmd == "select-hits":
         from cli.commands.select_hits import cmd_select_hits
 
