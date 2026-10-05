@@ -32,6 +32,8 @@ def calc_via_schrodinger(ref_path: Path, poses_path: Path, receptor_name: str, t
                 ref_st, st, asl_expr="NOT atom.element H", in_place=True
             )
             conf_eval.use_symmetry = True
+            conf_eval.renumber_structures = True
+            conf_eval.use_heavy_atom_graph = True
             try:
                 rmsd_val = round(float(conf_eval.calculate()), 3)
                 if rmsd_val < best_rmsd:
@@ -123,11 +125,13 @@ def main():
         raise FileNotFoundError(f"FATAL: Docked poses file {poses_path} does not exist!")
 
     results = []
+    # RDKit GetBestRMS is primary as it performs subgraph isomorphism matching
+    # and is completely invariant to atom ordering or SDF coordinate permutations
     try:
-        results = calc_via_schrodinger(ref_path, poses_path, args.receptor, args.title)
-    except Exception as e_schrod:
-        logging.info(f"Schrodinger RMSD failed or unavailable ({e_schrod}), falling back to RDKit...")
         results = calc_via_rdkit(ref_path, poses_path, args.receptor, args.title)
+    except Exception as e_rdkit:
+        logging.info(f"RDKit RMSD unavailable or failed ({e_rdkit}), falling back to Schrodinger...")
+        results = calc_via_schrodinger(ref_path, poses_path, args.receptor, args.title)
 
     if not results:
         raise ValueError(f"FATAL: RMSD calculation produced no results for {args.receptor} / {args.title}")

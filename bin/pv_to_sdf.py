@@ -11,7 +11,7 @@ def main():
     parser.add_argument("--pv", required=True, help="Input _pv.maegz file")
     parser.add_argument("--sdf", required=True, help="Output .sdf file")
     parser.add_argument(
-        "--max_poses", type=int, default=1, help="Maximum poses per ligand to export"
+        "--max_poses", type=int, default=10, help="Maximum poses per ligand to export"
     )
     args = parser.parse_args()
 

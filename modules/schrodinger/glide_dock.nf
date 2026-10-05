@@ -39,7 +39,7 @@ EOF
     mv dock_pv.maegz ${meta.id}_dock_pv.maegz
     mv dock.csv ${meta.id}_dock.csv
 
-    schrodinger run ${projectDir}/bin/pv_to_sdf.py --pv ${meta.id}_dock_pv.maegz --sdf ${meta.id}_dock.sdf
+    schrodinger run ${projectDir}/bin/pv_to_sdf.py --pv ${meta.id}_dock_pv.maegz --sdf ${meta.id}_dock.sdf --max_poses ${poses_per_lig}
     """
 
     stub:
