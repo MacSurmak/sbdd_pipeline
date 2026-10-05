@@ -66,7 +66,12 @@ def main():
             st.write(pdb_out)
             st.write(mae_out)
 
-            row = f"{c_title}\t{Path(pdb_out).resolve()}\t{Path(mae_out).resolve()}\t{pose_path}\n"
+            # Store clean filenames so master node resolves them from permanent prepared/ directory
+            p_name = Path(pdb_out).name
+            m_name = Path(mae_out).name
+            s_name = Path(pose_path).name if pose_path != "NO_POSE" else "NO_POSE"
+
+            row = f"{c_title}\t{p_name}\t{m_name}\t{s_name}\n"
             receipt_lines.append(row)
 
     with open(args.out_receipt, "w", encoding="utf-8") as rf:
