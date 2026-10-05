@@ -90,10 +90,12 @@ with structure.StructureReader('clusters_multi.pdb') as reader:
         st.write(pdb_out)
         st.write(mae_out)
         
-        receipt_lines.append(f'{c_title}\t{Path(pdb_out).resolve()}\t{Path(mae_out).resolve()}\t{pose_path}\n')
+        row = f"{c_title}\\t{Path(pdb_out).resolve()}\\t{Path(mae_out).resolve()}\\t{pose_path}"
+        receipt_lines.append(row)
 
 with open('cluster_receipt_chunk.tsv', 'w') as rf:
-    rf.writelines(receipt_lines)
+    for line in receipt_lines:
+        rf.write(line + chr(10))
 "
     """
 
