@@ -23,7 +23,7 @@ process TLEAP {
     def water_leaprc = is_tip3p ? "source leaprc.water.tip3p" : "source leaprc.water.opc"
     def ions_params = is_tip3p ? "loadAmberParams frcmod.ionslm_126_tip3p" : "loadAmberParams frcmod.ionslm_126_opc"
     def box_name = is_tip3p ? "TIP3PBOX" : "OPCBOX"
-    def solvate_cmd = !is_mem ? "solvateBox complex ${box_name} ${box_padding}" : ""
+    def solvate_cmd = !is_mem ? "solvateOct complex ${box_name} ${box_padding}" : ""
     """
     python3 ${projectDir}/bin/amber_cap_fixer.py ${complex_pdb} complex_clean.pdb --bonds_out apply_bonds.in
 

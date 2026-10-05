@@ -18,6 +18,7 @@ console = Console()
 def cmd_dynamics(args):
     cwd = Path.cwd()
     session = init_db()
+    configs = load_project_configs(cwd)
 
     # 1. Resolve Systems needing simulation and calculate required top-up replicates
     reps_target = int(
