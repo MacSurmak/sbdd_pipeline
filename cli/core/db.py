@@ -105,6 +105,8 @@ class Ligand(Base):
     """
     Chemical substance (2D topology).
     Deduplicated across the entire database by Standard InChIKey.
+    state: 'raw' (imported 2D/3D) -> 'ready' (processed via LigPrep at target pH).
+    path_mae/path_sdf: LigPrep-generated canonical 3D states used for screening and docking.
     """
 
     __tablename__ = "ligands"
@@ -113,7 +115,10 @@ class Ligand(Base):
     inchikey = Column(String(27), unique=True, index=True, nullable=False)
     smiles = Column(Text, nullable=False)
     name = Column(String, nullable=False)
+    state = Column(String, default="raw", nullable=False)  # 'raw', 'ready'
     batch_id = Column(String, nullable=True)
+    path_mae = Column(String, nullable=True)  # Prepared .maegz for Glide
+    path_sdf = Column(String, nullable=True)  # Prepared .sdf for GNINA
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     poses = relationship("Pose", back_populates="ligand", cascade="all, delete-orphan")

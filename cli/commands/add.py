@@ -233,12 +233,13 @@ def add_receptor(args):
                         inchikey=parent_inchikey,
                         smiles=parent_smiles,
                         name=mol_name or lig_code,
-                        batch_id="crystal",
+                        state="raw",
+                        batch_id="crystal_extract",
                     )
                     session.add(lig_entity)
                     session.flush()
                     console.print(
-                        f"[bold green]✓ Registered Chemical Ligand '{lig_entity.name}'[/bold green] [dim]({parent_inchikey})[/dim]"
+                        f"[bold green]✓ Registered Chemical Ligand '{lig_entity.name}'[/bold green] [dim](raw, {parent_inchikey})[/dim]"
                     )
                 else:
                     console.print(
@@ -340,6 +341,7 @@ def add_ligand(args):
                 inchikey=inchikey,
                 smiles=smiles,
                 name=name,
+                state="raw",
                 batch_id=target_path.stem,
             )
             session.add(new_lig)

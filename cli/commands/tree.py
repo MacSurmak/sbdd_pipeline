@@ -97,12 +97,19 @@ def cmd_tree(args):
     ligands = session.query(Ligand).order_by(Ligand.name).all()
     if ligands:
         lig_branch = root_tree.add(
-            "[bold yellow]Chemical Ligands & 3D Poses[/bold yellow]"
+            "[bold yellow]Chemical Ligands (Substances) & 3D Poses[/bold yellow]"
         )
         for lig in ligands:
-            lig_node = lig_branch.add(
-                f"[bold yellow]{lig.name}[/bold yellow] [dim]({lig.inchikey}) SMILES: {lig.smiles}[/dim]"
+            l_color = "green" if lig.state == "ready" else "yellow"
+            prep_info = (
+                f" [dim](LigPrep: {Path(lig.path_mae).name})[/dim]"
+                if lig.state == "ready" and lig.path_mae
+                else " [dim](unprepared, raw)[/dim]"
             )
+            lig_node = lig_branch.add(
+                f"[{l_color}]{lig.name}[/{l_color}] [{l_color}][{lig.state}][/{l_color}]{prep_info} [dim]({lig.inchikey}) SMILES: {lig.smiles}[/dim]"
+            )
+
             poses = (
                 session.query(Pose)
                 .filter_by(ligand_id=lig.id)

@@ -139,21 +139,30 @@ def cmd_dock(args):
 
             unique_lig_name = f"{r.name}_{native_lig.name}"
 
-            # Check if LigPrep candidate exists for unbiased conformer redocking
-            prep_dir = cwd / "prepared" / "ligands"
-            lig_mae = prep_dir / f"{native_lig.name}_prepared.maegz"
-            lig_sdf = prep_dir / f"{native_lig.name}_prepared.sdf"
+            # Strict validation: Candidate ligand MUST be in state 'ready' (processed via LigPrep)
+            if native_lig.state != "ready" or not native_lig.path_mae or not native_lig.path_sdf:
+                console.print(
+                    f"[bold red]FATAL: Chemical Ligand '{native_lig.name}' is in state '{native_lig.state}'! "
+                    f"Run 'sbdd prep' first so LigPrep generates canonical 3D states.[/bold red]"
+                )
+                session.close()
+                sys.exit(1)
+
+            lig_mae = Path(native_lig.path_mae).resolve()
+            lig_sdf = Path(native_lig.path_sdf).resolve()
 
             if not lig_mae.exists() or not lig_sdf.exists():
-                # Fallback to direct pose SDF converted to MAE
-                lig_sdf = pose_sdf
-                lig_mae = pose_mae
+                console.print(
+                    f"[bold red]FATAL: LigPrep deliverables missing for '{native_lig.name}': {lig_mae}. Run 'sbdd prep'.[/bold red]"
+                )
+                session.close()
+                sys.exit(1)
 
             plan["ligands"].append(
                 {
                     "name": unique_lig_name,
-                    "path_sdf": str(lig_sdf.resolve()),
-                    "path_mae": str(lig_mae.resolve()),
+                    "path_sdf": str(lig_sdf),
+                    "path_mae": str(lig_mae),
                     "is_native": True,
                     "receptor": r.name,
                     "ligand_title": native_lig.name,
@@ -223,26 +232,34 @@ def cmd_dock(args):
                 }
             )
 
-        prep_dir = cwd / "prepared" / "ligands"
         for l in ligands:
+            if l.state != "ready" or not l.path_mae or not l.path_sdf:
+                console.print(
+                    f"[bold red]FATAL: Chemical Ligand '{l.name}' is in state '{l.state}'! Run 'sbdd prep' first.[/bold red]"
+                )
+                session.close()
+                sys.exit(1)
+
+            lig_mae = Path(l.path_mae).resolve()
+            lig_sdf = Path(l.path_sdf).resolve()
+
+            if not lig_mae.exists() or not lig_sdf.exists():
+                console.print(
+                    f"[bold red]FATAL: Prepared files missing for '{l.name}' ({lig_mae}). Run 'sbdd prep' first.[/bold red]"
+                )
+                session.close()
+                sys.exit(1)
+
             has_crystal_pose = (
                 session.query(Pose).filter_by(ligand_id=l.id, origin="crystal").first()
                 is not None
             )
-            lig_mae = prep_dir / f"{l.name}_prepared.maegz"
-            lig_sdf = prep_dir / f"{l.name}_prepared.sdf"
-
-            if not lig_mae.exists() or not lig_sdf.exists():
-                console.print(
-                    f"[bold red]FATAL: Prepared files not found for ligand '{l.name}' ({lig_sdf}). Run 'sbdd prep' first![/bold red]"
-                )
-                sys.exit(1)
 
             plan["ligands"].append(
                 {
                     "name": l.name,
-                    "path_sdf": str(lig_sdf.resolve()),
-                    "path_mae": str(lig_mae.resolve()),
+                    "path_sdf": str(lig_sdf),
+                    "path_mae": str(lig_mae),
                     "is_native": has_crystal_pose,
                 }
             )

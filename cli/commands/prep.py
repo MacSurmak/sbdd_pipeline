@@ -41,33 +41,36 @@ def cmd_prep(args):
         session.close()
         return
 
-    # 2. Fetch ligands needing preparation
-    query_ligands = session.query(Ligand).filter(Ligand.batch_id != "prepared").all()
+    # 2. Fetch raw chemical ligands that need LigPrep
+    query_ligands = session.query(Ligand).filter_by(state="raw").all()
 
     prepared_dir = (cwd / "prepared").resolve()
     prepared_lig_dir = prepared_dir / "ligands"
-    prepared_lig_dir.mkdir(parents=True, exist_ok=True)
+    raw_lig_dir = prepared_lig_dir / "raw"
+    raw_lig_dir.mkdir(parents=True, exist_ok=True)
 
     lig_plan = []
     for lig in query_ligands:
-        lig_sdf = prepared_lig_dir / f"{lig.name}.sdf"
-        # Export clean SDF from smiles if file does not exist
-        if not lig_sdf.exists() or lig_sdf.stat().st_size == 0:
-            try:
-                from rdkit import Chem
-                m = Chem.MolFromSmiles(lig.smiles)
-                if m:
-                    m.SetProp("_Name", lig.name)
-                    w = Chem.SDWriter(str(lig_sdf))
-                    w.write(m)
-                    w.close()
-            except Exception:
-                pass
-        
-        if lig_sdf.exists() and lig_sdf.stat().st_size > 0:
+        lig_raw_sdf = raw_lig_dir / f"{lig.name}.sdf"
+        # Always export 2D/3D seed SDF from canonical SMILES for un-biased LigPrep
+        try:
+            from rdkit import Chem
+            from rdkit.Chem import AllChem
+            m = Chem.MolFromSmiles(lig.smiles)
+            if m:
+                m = Chem.AddHs(m)
+                AllChem.EmbedMolecule(m, randomSeed=42)
+                m.SetProp("_Name", lig.name)
+                w = Chem.SDWriter(str(lig_raw_sdf))
+                w.write(m)
+                w.close()
+        except Exception:
+            pass
+
+        if lig_raw_sdf.exists() and lig_raw_sdf.stat().st_size > 0:
             lig_plan.append({
                 "name": lig.name,
-                "path": str(lig_sdf.resolve()),
+                "path": str(lig_raw_sdf.resolve()),
                 "status": "unprepared"
             })
 
@@ -187,7 +190,7 @@ def cmd_prep(args):
                 system.state = "ready"
             prepared_count += 1
 
-    # 5. Update prepared Ligands in DB
+    # 5. Update prepared Ligands in DB with LigPrep deliverable paths
     lig_receipt = cwd / "prep_ligand_receipt.tsv"
     prep_lig_count = 0
     if lig_receipt.exists():
@@ -197,7 +200,12 @@ def cmd_prep(args):
             lig_name, mae_name = line.split("\t")
             lig_obj = session.query(Ligand).filter_by(name=lig_name).first()
             if lig_obj:
-                lig_obj.batch_id = "prepared"
+                prep_mae = (cwd / "ligands" / mae_name).resolve()
+                prep_sdf = prep_mae.with_suffix(".sdf")
+
+                lig_obj.state = "ready"
+                lig_obj.path_mae = str(prep_mae)
+                lig_obj.path_sdf = str(prep_sdf)
                 prep_lig_count += 1
 
     session.commit()
