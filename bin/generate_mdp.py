@@ -60,7 +60,7 @@ def main():
 
     # 1. Minimization
     minim_tpl = (tpl_dir / "minim.mdp").read_text()
-    minim_content = minim_tpl.replace("{DEFINE}", "define = -DPOSRES -DPOSRES_LIG")
+    minim_content = minim_tpl.replace("{DEFINE}", "-DPOSRES -DPOSRES_LIG")
     minim_content = minim_content.replace("{EMSTEP}", str(dt_minim))
     minim_content = minim_content.replace("{CONSTRAINTS}", "h-bonds")
     (out_dir / "minim.mdp").write_text(minim_content)
@@ -80,16 +80,16 @@ def main():
         (out_dir / f"{name}.mdp").write_text(c)
 
     build_nvt(
-        "nvt_short", args.nvt_short_ps, "define = -DPOSRES -DPOSRES_LIG", "no", "yes"
+        "nvt_short", args.nvt_short_ps, "-DPOSRES -DPOSRES_LIG", "no", "yes"
     )
     build_nvt(
         "nvt_long",
         args.nvt_long_ps,
-        "define = -DPOSRES_250 -DPOSRES_LIG_250",
+        "-DPOSRES_250 -DPOSRES_LIG_250",
         "yes",
         "no",
     )
-    build_nvt("nvt", args.nvt_short_ps, "define = -DPOSRES -DPOSRES_LIG", "no", "yes")
+    build_nvt("nvt", args.nvt_short_ps, "-DPOSRES -DPOSRES_LIG", "no", "yes")
 
     # 3. NPT Stages
     npt_tpl = (tpl_dir / "npt.mdp").read_text()
@@ -110,21 +110,21 @@ def main():
     build_npt(
         "npt_berendsen",
         args.npt_berendsen_ps,
-        "define = -DPOSRES_250 -DPOSRES_LIG_250",
+        "-DPOSRES_250 -DPOSRES_LIG_250",
         "berendsen",
         1.0,
     )
     build_npt(
         "npt_pr",
         args.npt_pr_ps,
-        "define = -DPOSRES_50 -DPOSRES_LIG_50",
+        "-DPOSRES_50 -DPOSRES_LIG_50",
         "Parrinello-Rahman",
         5.0,
     )
     build_npt(
         "npt",
         args.npt_berendsen_ps,
-        "define = -DPOSRES_250 -DPOSRES_LIG_250",
+        "-DPOSRES_250 -DPOSRES_LIG_250",
         "Parrinello-Rahman",
         5.0,
     )
