@@ -89,7 +89,7 @@ def parse_gnina_sdf(sdf_path: Path, prefix: str = "") -> Dict[str, Dict[str, flo
             entry = entry[1:]
         elif entry.startswith("\r\n"):
             entry = entry[2:]
-            
+
         lines = entry.splitlines()
         if len(lines) < 4:
             continue

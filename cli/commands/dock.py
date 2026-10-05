@@ -122,7 +122,9 @@ def cmd_dock(args):
                 {
                     "name": unique_lig_name,
                     "path": str(Path(native_pose.path).resolve()),
-                    "status": "ready" if native_lig.batch_id == "crystal" else "unprepared",
+                    "status": (
+                        "ready" if native_lig.batch_id == "crystal" else "unprepared"
+                    ),
                     "is_native": True,
                     "receptor": r.name,
                     "ligand_title": native_lig.name,
@@ -153,26 +155,32 @@ def cmd_dock(args):
         for r in frames:
             sys_obj = session.query(System).filter_by(receptor_frame_id=r.id).first()
             if not sys_obj or not sys_obj.pose:
-                console.print(f"[bold red]FATAL: Receptor '{r.name}' has no reference pose! Screening requires a pocket reference.[/bold red]")
+                console.print(
+                    f"[bold red]FATAL: Receptor '{r.name}' has no reference pose! Screening requires a pocket reference.[/bold red]"
+                )
                 sys.exit(1)
-                
+
             pose_obj = sys_obj.pose
             native_lig = pose_obj.ligand.name
             pose_p = Path(pose_obj.path).resolve()
-            
+
             ref_sdf = pose_p.with_suffix(".sdf")
             ref_mae = pose_p.with_suffix(".mae")
-            
+
             if not ref_sdf.exists() or not ref_mae.exists():
-                console.print(f"[bold red]FATAL: Reference pose files missing for '{r.name}'. Need both .sdf and .mae![/bold red]")
+                console.print(
+                    f"[bold red]FATAL: Reference pose files missing for '{r.name}'. Need both .sdf and .mae![/bold red]"
+                )
                 sys.exit(1)
 
             frame_p = Path(r.path).resolve()
             path_mae = frame_p.with_suffix(".mae")
             path_pdb = frame_p.with_suffix(".pdb")
-            
+
             if not path_mae.exists() or not path_pdb.exists():
-                console.print(f"[bold red]FATAL: Receptor files missing for '{r.name}'. Need both .pdb and .mae![/bold red]")
+                console.print(
+                    f"[bold red]FATAL: Receptor files missing for '{r.name}'. Need both .pdb and .mae![/bold red]"
+                )
                 sys.exit(1)
 
             plan["receptors"].append(
@@ -188,9 +196,7 @@ def cmd_dock(args):
 
         for l in ligands:
             has_crystal_pose = (
-                session.query(Pose)
-                .filter_by(ligand_id=l.id, origin="crystal")
-                .first()
+                session.query(Pose).filter_by(ligand_id=l.id, origin="crystal").first()
                 is not None
             )
             # Use 'ready' status for standalone chemical ligands that don't need prep
@@ -279,11 +285,14 @@ def cmd_dock(args):
                         continue
 
                     pose_name = f"{frame_name}_{title}_dock"
-                    
+
                     sdf_path = None
                     for cand in [
                         cwd / "docking" / frame_name / f"{frame_name}_dock.sdf",
-                        cwd / "docking" / frame_name / f"{frame_name}_gnina_docked_all.sdf",
+                        cwd
+                        / "docking"
+                        / frame_name
+                        / f"{frame_name}_gnina_docked_all.sdf",
                         cwd / "docking" / f"{frame_name}_dock.sdf",
                         cwd / "docking" / f"{frame_name}_gnina_docked_all.sdf",
                     ]:
@@ -292,7 +301,9 @@ def cmd_dock(args):
                             break
 
                     if not sdf_path:
-                        console.print(f"[bold red]FATAL: Could not find docked SDF for {pose_name}. Pipeline failed to produce poses![/bold red]")
+                        console.print(
+                            f"[bold red]FATAL: Could not find docked SDF for {pose_name}. Pipeline failed to produce poses![/bold red]"
+                        )
                         sys.exit(1)
 
                     scores_dict = {

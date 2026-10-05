@@ -39,7 +39,10 @@ def main():
         for pv_file in pv_files:
             pv_path = Path(pv_file).resolve()
             if not pv_path.exists() or pv_path.stat().st_size == 0:
-                print(f"FATAL: PV chunk file is missing or empty: {pv_path}", file=sys.stderr)
+                print(
+                    f"FATAL: PV chunk file is missing or empty: {pv_path}",
+                    file=sys.stderr,
+                )
                 sys.exit(1)
 
             reader = None
@@ -73,7 +76,10 @@ def main():
             for sdf_file in sorted(args.sdf_files):
                 p = Path(sdf_file)
                 if not p.exists() or p.stat().st_size == 0:
-                    print(f"FATAL: SDF chunk file is missing or empty: {sdf_file}", file=sys.stderr)
+                    print(
+                        f"FATAL: SDF chunk file is missing or empty: {sdf_file}",
+                        file=sys.stderr,
+                    )
                     sys.exit(1)
                 out_sdf_f.write(p.read_text(encoding="utf-8", errors="ignore"))
         print(f"Merged SDF pose files -> {args.out_sdf}")
@@ -85,7 +91,10 @@ def main():
         for csv_file in sorted(args.csv_files):
             p = Path(csv_file)
             if not p.exists() or p.stat().st_size == 0:
-                print(f"FATAL: CSV chunk file is missing or empty: {csv_file}", file=sys.stderr)
+                print(
+                    f"FATAL: CSV chunk file is missing or empty: {csv_file}",
+                    file=sys.stderr,
+                )
                 sys.exit(1)
             with open(p, "r", encoding="utf-8", errors="ignore") as f:
                 r = csv.reader(f)

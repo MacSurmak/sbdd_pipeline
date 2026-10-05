@@ -290,10 +290,8 @@ def main():
                                             m_ref = Chem.RemoveHs(m_ref_raw)
                                         except Exception:
                                             if m_dock_raw:
-                                                m_ref_assigned = (
-                                                    AllChem.AssignBondOrdersFromTemplate(
-                                                        m_dock_raw, m_ref_raw
-                                                    )
+                                                m_ref_assigned = AllChem.AssignBondOrdersFromTemplate(
+                                                    m_dock_raw, m_ref_raw
                                                 )
                                                 m_ref = Chem.RemoveHs(m_ref_assigned)
                                 else:

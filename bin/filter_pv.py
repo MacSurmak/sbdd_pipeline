@@ -70,7 +70,10 @@ def main():
                 pose_counts[title] = pose_counts.get(title, 0) + 1
 
     if not whitelisted_poses:
-        print(f"FATAL: Frame {args.frame}: No whitelisted poses found. Filter returned empty result.", file=sys.stderr)
+        print(
+            f"FATAL: Frame {args.frame}: No whitelisted poses found. Filter returned empty result.",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     print(

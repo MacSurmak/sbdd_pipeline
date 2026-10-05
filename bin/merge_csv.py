@@ -23,7 +23,7 @@ def main():
         if not p.exists() or p.stat().st_size == 0:
             print(f"FATAL: CSV file is missing or empty: {p}", file=sys.stderr)
             sys.exit(1)
-            
+
         with open(p, "r", encoding="utf-8", errors="ignore") as fp:
             r = csv.reader(fp)
             for i, row in enumerate(r):
