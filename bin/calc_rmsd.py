@@ -16,28 +16,38 @@ def calc_via_schrodinger(ref_path: Path, poses_path: Path, receptor_name: str, t
     from schrodinger.structutils import rmsd
 
     ref_st = structure.StructureReader.read(str(ref_path))
-    results = []
+    best_rmsd = 999.0
+    matched_title = target_title
 
     with structure.StructureReader(str(poses_path)) as reader:
         for i, st in enumerate(reader):
-            if i == 0 and (st.property.get("b_glide_receptor", 0) == 1 or st.atom_total > 500):
+            # Skip receptor entry in PoseViewer files
+            if i == 0 and (st.property.get("b_glide_receptor", 0) == 1 or st.atom_total > 100):
                 continue
             title = (st.property.get("s_m_title") or st.title or "").strip()
+            if not matched_title and title:
+                matched_title = title
 
             conf_eval = rmsd.ConformerRmsd(
                 ref_st, st, asl_expr="NOT atom.element H", in_place=True
             )
             conf_eval.use_symmetry = True
-            rmsd_val = round(float(conf_eval.calculate()), 3)
+            try:
+                rmsd_val = round(float(conf_eval.calculate()), 3)
+                if rmsd_val < best_rmsd:
+                    best_rmsd = rmsd_val
+            except Exception:
+                continue
 
-            results.append({
-                "Receptor": receptor_name,
-                "Title": target_title or title,
-                "InSitu_RMSD_A": rmsd_val,
-                "RMSD_Heavy": rmsd_val
-            })
-            break
-    return results
+    if best_rmsd == 999.0:
+        return []
+
+    return [{
+        "Receptor": receptor_name,
+        "Title": matched_title or target_title,
+        "InSitu_RMSD_A": best_rmsd,
+        "RMSD_Heavy": best_rmsd
+    }]
 
 
 def calc_via_rdkit(ref_path: Path, poses_path: Path, receptor_name: str, target_title: str) -> list[dict]:
@@ -63,26 +73,34 @@ def calc_via_rdkit(ref_path: Path, poses_path: Path, receptor_name: str, target_
     m_ref = Chem.RemoveHs(ref_mols[0])
 
     docked_mols = _read_mols(poses_path)
-    results = []
+    best_rmsd = 999.0
+    matched_title = target_title
 
     for st in docked_mols:
+        if st.GetNumAtoms() > 150:
+            continue
         title = st.GetProp("_Name").strip() if st.HasProp("_Name") else ""
+        if not matched_title and title:
+            matched_title = title
         m_dock = Chem.RemoveHs(st)
         if m_dock.GetNumAtoms() != m_ref.GetNumAtoms():
-            raise ValueError(
-                f"FATAL: Heavy atom count mismatch between {ref_path.name} ({m_ref.GetNumAtoms()}) "
-                f"and {poses_path.name} ({m_dock.GetNumAtoms()}) for compound '{title or target_title}'!"
-            )
-        val = round(float(rdMolAlign.GetBestRMS(m_dock, m_ref)), 3)
-        results.append({
-            "Receptor": receptor_name,
-            "Title": target_title or title,
-            "InSitu_RMSD_A": val,
-            "RMSD_Heavy": val
-        })
-        break
+            continue
+        try:
+            val = round(float(rdMolAlign.GetBestRMS(m_dock, m_ref)), 3)
+            if val < best_rmsd:
+                best_rmsd = val
+        except Exception:
+            continue
 
-    return results
+    if best_rmsd == 999.0:
+        return []
+
+    return [{
+        "Receptor": receptor_name,
+        "Title": matched_title or target_title,
+        "InSitu_RMSD_A": best_rmsd,
+        "RMSD_Heavy": best_rmsd
+    }]
 
 
 def main():

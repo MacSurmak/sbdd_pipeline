@@ -1,9 +1,9 @@
 gnina:
   enabled: true
-  exhaustiveness: 16
+  exhaustiveness: 32
   cnn_scoring: "rescore"             # none, rescore, refinement, all
-  num_modes: 3                       # Number of binding poses to output
-  autobox_add: 4.0                   # Padding around autobox reference ligand (Å)
+  num_modes: 5                       # Number of binding poses to output
+  autobox_add: 3.0                   # Padding around autobox reference ligand (Å)
   cnn_model: "crossdock_default2018" # Default GNINA CNN model
   batch_size: 5                      # 5 ligands per chunk for maximum cluster scalability
 

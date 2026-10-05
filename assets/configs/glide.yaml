@@ -1,7 +1,7 @@
 glide:
   enabled: true
   precision: "SP"                    # HTVS, SP, XP
-  poses_per_lig: 1
+  poses_per_lig: 5
   sample_rings: true
   epik_penalties: true
   forcefield: "OPLS4"

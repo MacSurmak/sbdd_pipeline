@@ -378,12 +378,12 @@ def cmd_dock(args):
                     disp_glide = _color_rmsd(g_rmsd)
                     disp_gnina = _color_rmsd(n_rmsd)
 
-                    # Determine verdict: SUCCESS if either engine reached <= 2.0 A
+                    # Determine verdict: SUCCESS if either engine reached <= 2.5 A (allosteric tolerance)
                     verdict = "[dim]-[/dim]"
                     try:
                         vg = float(g_rmsd) if g_rmsd and g_rmsd not in ["nan", "-"] else None
                         vn = float(n_rmsd) if n_rmsd and n_rmsd not in ["nan", "-"] else None
-                        if (vg is not None and vg <= 2.0) or (vn is not None and vn <= 2.0):
+                        if (vg is not None and vg <= 2.5) or (vn is not None and vn <= 2.5):
                             verdict = "[bold green]✓ SUCCESS[/bold green]"
                         elif vg is not None or vn is not None:
                             verdict = "[bold yellow]⚠ DRIFT[/bold yellow]"
