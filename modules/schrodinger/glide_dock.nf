@@ -12,6 +12,7 @@ process GLIDE_DOCK {
     val(precision)
     val(poses_per_lig)
     val(forcefield)
+    val(lig_vscale)
 
     output:
     tuple val(meta), path("${meta.id}_dock_pv.maegz"), emit: pv_maegz
@@ -33,6 +34,8 @@ EPIK_PENALTIES  yes
 SAMPLE_RINGS    yes
 WRITE_CSV       yes
 FORCEFIELD      ${forcefield}
+LIG_VSCALE      ${lig_vscale}
+LIG_CCUT        0.15
 EOF
 
     schrodinger glide dock.in -OVERWRITE -WAIT -HOST localhost

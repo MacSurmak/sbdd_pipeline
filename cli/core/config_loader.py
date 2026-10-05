@@ -167,6 +167,10 @@ def build_nextflow_args(
             args.extend(["--poses_per_lig", str(glide_cfg["poses_per_lig"])])
         if "forcefield" in glide_cfg:
             args.extend(["--glide_forcefield", str(glide_cfg["forcefield"])])
+        if "recep_vscale" in glide_cfg:
+            args.extend(["--glide_recep_vscale", str(glide_cfg["recep_vscale"])])
+        if "lig_vscale" in glide_cfg:
+            args.extend(["--glide_lig_vscale", str(glide_cfg["lig_vscale"])])
         grid_cfg = glide_cfg.get("grid", {})
         if grid_cfg:
             if "inner_box" in grid_cfg:

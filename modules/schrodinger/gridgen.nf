@@ -12,6 +12,7 @@ process GLIDE_GRIDGEN {
     val(inner_box)
     val(outer_box)
     val(forcefield)
+    val(recep_vscale)
 
     output:
     tuple val(meta), path("${meta.id}_grid.zip"), emit: grid_zip
@@ -46,7 +47,7 @@ print(f'{cx:.4f}, {cy:.4f}, {cz:.4f}')
         exit 1
     fi
 
-    # 3. Build input and generate grid
+    # 3. Build input and generate grid with softened van der Waals potential
     cat << EOF > gridgen.in
 GRIDFILE ${meta.id}_grid.zip
 RECEP_FILE ${receptor_mae}
@@ -55,6 +56,8 @@ REF_LIGAND_FILE \${REF_FILE}
 INNERBOX ${inner_box}
 OUTERBOX ${outer_box}
 FORCEFIELD ${forcefield}
+RECEP_VSCALE ${recep_vscale}
+RECEP_CCUT 0.25
 EOF
 
     schrodinger glide gridgen.in -OVERWRITE -WAIT -HOST localhost

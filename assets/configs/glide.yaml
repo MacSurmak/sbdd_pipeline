@@ -5,11 +5,13 @@ glide:
   sample_rings: true
   epik_penalties: true
   forcefield: "OPLS4"
+  recep_vscale: 0.85                 # Softened vdW potential for cryo-EM & MD breathing
+  lig_vscale: 0.85
   postdock: true
   write_csv: true
   grid:
-    inner_box: [10, 10, 10]
-    outer_box: [26, 26, 26]
+    inner_box: [6, 6, 6]
+    outer_box: [18, 18, 18]
     forcefield: "OPLS4"
   ligprep:
     target_ph: 7.4
