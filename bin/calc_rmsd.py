@@ -1,115 +1,111 @@
 """
-Worker script to calculate symmetry-aware heavy-atom RMSD between reference and docked poses.
+bin/calc_rmsd.py
+Calculates exact symmetry-aware, in-situ heavy-atom RMSD between reference ligand
+and docked poses.
+Single deterministic implementation via topological graph isomorphism and symmetry
+automorphism permutation. Strictly invariant to atom ordering, file format differences,
+and bond-type assignments.
 """
 
 import argparse
 import csv
 import logging
+import math
 import sys
 from pathlib import Path
+from rdkit import Chem
+from rdkit.Chem import rdFMCS
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
 
-def calc_via_schrodinger(ref_path: Path, poses_path: Path, receptor_name: str, target_title: str) -> list[dict]:
-    from schrodinger import structure
-    from schrodinger.structutils import rmsd
+def read_heavy_atoms_mol(path: Path) -> list:
+    """Reads 3D structures from SDF/PDB and returns list of heavy-atom molecules."""
+    raw_mols = []
+    if path.suffix.lower() == ".sdf":
+        suppl = Chem.SDMolSupplier(str(path), sanitize=False, removeHs=False)
+        for m in suppl:
+            if m is not None:
+                raw_mols.append(m)
+    elif path.suffix.lower() == ".pdb":
+        m = Chem.MolFromPDBFile(str(path), sanitize=False, removeHs=False)
+        if m is not None:
+            raw_mols.append(m)
+    else:
+        raise ValueError(f"Unsupported molecule format: {path.suffix}")
 
-    ref_st = structure.StructureReader.read(str(ref_path))
-    best_rmsd = 999.0
-    matched_title = target_title
-
-    with structure.StructureReader(str(poses_path)) as reader:
-        for i, st in enumerate(reader):
-            # Skip receptor entry in PoseViewer files
-            if i == 0 and (st.property.get("b_glide_receptor", 0) == 1 or st.atom_total > 100):
-                continue
-            title = (st.property.get("s_m_title") or st.title or "").strip()
-            if not matched_title and title:
-                matched_title = title
-
-            conf_eval = rmsd.ConformerRmsd(
-                ref_st, st, asl_expr="NOT atom.element H", in_place=True
-            )
-            conf_eval.use_symmetry = True
-            conf_eval.renumber_structures = True
-            conf_eval.use_heavy_atom_graph = True
-            try:
-                rmsd_val = round(float(conf_eval.calculate()), 3)
-                if rmsd_val < best_rmsd:
-                    best_rmsd = rmsd_val
-            except Exception:
-                continue
-
-    if best_rmsd == 999.0:
-        return []
-
-    return [{
-        "Receptor": receptor_name,
-        "Title": matched_title or target_title,
-        "InSitu_RMSD_A": best_rmsd,
-        "RMSD_Heavy": best_rmsd
-    }]
-
-
-def calc_via_rdkit(ref_path: Path, poses_path: Path, receptor_name: str, target_title: str) -> list[dict]:
-    from rdkit import Chem
-    from rdkit.Chem import rdMolAlign
-
-    def _read_mols(path: Path):
-        mols = []
-        if path.suffix.lower() == ".sdf":
-            suppl = Chem.SDMolSupplier(str(path), sanitize=False, removeHs=False)
-            for m in suppl:
-                if m is not None:
-                    mols.append(m)
-        elif path.suffix.lower() == ".pdb":
-            m = Chem.MolFromPDBFile(str(path), sanitize=False, removeHs=False)
-            if m:
-                mols.append(m)
-        return mols
-
-    ref_mols = _read_mols(ref_path)
-    if not ref_mols:
-        raise ValueError(f"FATAL: Could not read reference structure from {ref_path}")
-    m_ref = Chem.RemoveHs(ref_mols[0])
-
-    docked_mols = _read_mols(poses_path)
-    best_rmsd = 999.0
-    matched_title = target_title
-
-    for st in docked_mols:
-        if st.GetNumAtoms() > 150:
+    clean_mols = []
+    for m in raw_mols:
+        # Ignore protein or solvent residue artifacts
+        if m.GetNumAtoms() > 200:
             continue
-        title = st.GetProp("_Name").strip() if st.HasProp("_Name") else ""
-        if not matched_title and title:
-            matched_title = title
-        m_dock = Chem.RemoveHs(st)
-        if m_dock.GetNumAtoms() != m_ref.GetNumAtoms():
-            continue
-        try:
-            val = round(float(rdMolAlign.GetBestRMS(m_dock, m_ref)), 3)
-            if val < best_rmsd:
-                best_rmsd = val
-        except Exception:
-            continue
+        # Remove hydrogens deterministically without requiring valence perception
+        m_heavy = Chem.RemoveHs(m, sanitize=False)
+        if m_heavy.GetNumAtoms() > 0:
+            clean_mols.append(m_heavy)
 
-    if best_rmsd == 999.0:
-        return []
+    return clean_mols
 
-    return [{
-        "Receptor": receptor_name,
-        "Title": matched_title or target_title,
-        "InSitu_RMSD_A": best_rmsd,
-        "RMSD_Heavy": best_rmsd
-    }]
+
+def calculate_pair_rmsd(m_ref, m_dock) -> float:
+    """
+    Computes exact in-situ Cartesian RMSD across all symmetry automorphisms.
+    Matches molecular topology purely by elements and connectivity.
+    """
+    n_atoms = m_ref.GetNumAtoms()
+    if n_atoms != m_dock.GetNumAtoms():
+        raise ValueError(
+            f"Atom count mismatch: reference has {n_atoms} heavy atoms, docked pose has {m_dock.GetNumAtoms()}"
+        )
+
+    # Topological matching by elements and connectivity, bond-type agnostic
+    mcs = rdFMCS.FindMCS(
+        [m_ref, m_dock],
+        atomCompare=rdFMCS.AtomCompare.CompareElements,
+        bondCompare=rdFMCS.BondCompare.CompareAny,
+        ringMatchesRingOnly=False,
+        completeRingsOnly=False,
+        matchValences=False,
+        timeout=10,
+    )
+
+    if mcs.numAtoms != n_atoms:
+        raise ValueError(
+            f"Topological mismatch: MCS matched {mcs.numAtoms} of {n_atoms} heavy atoms."
+        )
+
+    query = Chem.MolFromSmarts(mcs.smartsString)
+    ref_match = m_ref.GetSubstructMatch(query)
+    dock_matches = m_dock.GetSubstructMatches(query, uniquify=False)
+
+    if not ref_match or not dock_matches:
+        raise ValueError("Failed to obtain substructure isomorphism matches.")
+
+    conf_ref = m_ref.GetConformer()
+    conf_dock = m_dock.GetConformer()
+
+    # Find minimum Cartesian distance across all symmetry automorphisms
+    best_sq_dist = float("inf")
+    for d_match in dock_matches:
+        sq_dist = 0.0
+        for r_idx, d_idx in zip(ref_match, d_match):
+            p_ref = conf_ref.GetAtomPosition(r_idx)
+            p_dock = conf_dock.GetAtomPosition(d_idx)
+            dx = p_ref.x - p_dock.x
+            dy = p_ref.y - p_dock.y
+            dz = p_ref.z - p_dock.z
+            sq_dist += dx * dx + dy * dy + dz * dz
+        if sq_dist < best_sq_dist:
+            best_sq_dist = sq_dist
+
+    return math.sqrt(best_sq_dist / n_atoms)
 
 
 def main():
     parser = argparse.ArgumentParser(description="Calculate In-Situ Heavy-Atom RMSD")
-    parser.add_argument("--reference", required=True, help="Path to reference ligand structure (.sdf or .mae)")
-    parser.add_argument("--poses", required=True, help="Path to docked ligand structure (.sdf or .maegz)")
-    parser.add_argument("--receptor", default="", help="Receptor frame name")
+    parser.add_argument("--reference", required=True, help="Path to reference ligand (.sdf or .pdb)")
+    parser.add_argument("--poses", required=True, help="Path to docked ligand poses (.sdf)")
+    parser.add_argument("--receptor", default="", help="Receptor name")
     parser.add_argument("--title", default="", help="Ligand title")
     parser.add_argument("--engine", default="generic", choices=["glide", "gnina", "generic"], help="Docking engine name")
     parser.add_argument("--output", required=True, help="Path to output CSV")
@@ -120,28 +116,45 @@ def main():
     out_path = Path(args.output).resolve()
 
     if not ref_path.exists():
-        raise FileNotFoundError(f"FATAL: Reference ligand file {ref_path} does not exist!")
+        raise FileNotFoundError(f"Reference file does not exist: {ref_path}")
     if not poses_path.exists():
-        raise FileNotFoundError(f"FATAL: Docked poses file {poses_path} does not exist!")
+        raise FileNotFoundError(f"Docked poses file does not exist: {poses_path}")
 
-    results = []
-    # RDKit GetBestRMS is primary as it performs subgraph isomorphism matching
-    # and is completely invariant to atom ordering or SDF coordinate permutations
-    try:
-        results = calc_via_rdkit(ref_path, poses_path, args.receptor, args.title)
-    except Exception as e_rdkit:
-        logging.info(f"RDKit RMSD unavailable or failed ({e_rdkit}), falling back to Schrodinger...")
-        results = calc_via_schrodinger(ref_path, poses_path, args.receptor, args.title)
+    ref_mols = read_heavy_atoms_mol(ref_path)
+    if not ref_mols:
+        raise ValueError(f"Could not read reference molecule from {ref_path}")
+    m_ref = ref_mols[0]
 
-    if not results:
-        raise ValueError(f"FATAL: RMSD calculation produced no results for {args.receptor} / {args.title}")
+    docked_mols = read_heavy_atoms_mol(poses_path)
+    if not docked_mols:
+        raise ValueError(f"Could not read docked poses from {poses_path}")
 
-    val = results[0]["InSitu_RMSD_A"]
+    matched_title = args.title
+    best_rmsd = float("inf")
+
+    # Evaluate all docked poses and find the minimum in-situ RMSD
+    for idx, m_dock in enumerate(docked_mols, start=1):
+        if not matched_title and m_dock.HasProp("_Name"):
+            matched_title = m_dock.GetProp("_Name").strip()
+
+        try:
+            rmsd_val = calculate_pair_rmsd(m_ref, m_dock)
+            if rmsd_val < best_rmsd:
+                best_rmsd = rmsd_val
+        except ValueError as err:
+            logging.debug(f"Pose {idx} skipped: {err}")
+
+    if math.isinf(best_rmsd):
+        raise ValueError(
+            f"FATAL: None of the {len(docked_mols)} poses in {poses_path.name} matched the reference topology {ref_path.name}"
+        )
+
+    val = round(best_rmsd, 3)
     engine_col = "InSitu_RMSD_Glide_A" if args.engine == "glide" else ("InSitu_RMSD_GNINA_A" if args.engine == "gnina" else "InSitu_RMSD_A")
 
     row = {
         "Receptor": args.receptor,
-        "Title": results[0]["Title"],
+        "Title": matched_title or args.title or "LIG",
         engine_col: val,
         "InSitu_RMSD_A": val,
         "RMSD_Heavy": val,
@@ -153,7 +166,7 @@ def main():
         writer.writeheader()
         writer.writerow(row)
 
-    logging.info(f"Successfully calculated in-situ RMSD ({args.engine}): {val} Å -> {out_path}")
+    logging.info(f"Calculated in-situ RMSD ({args.engine}): {val} Å -> {out_path}")
 
 
 if __name__ == "__main__":

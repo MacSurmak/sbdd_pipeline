@@ -56,7 +56,7 @@ process CALCULATE_IN_SITU_RMSD_GLIDE {
     script:
     def lig_title = meta.native_ligand ?: meta.ligand_title ?: ""
     """
-    schrodinger run python3 ${projectDir}/bin/calc_rmsd.py \\
+    python3 ${projectDir}/bin/calc_rmsd.py \\
         --reference ${ref_sdf} \\
         --poses ${docked_sdf} \\
         --receptor "${meta.id}" \\
@@ -85,7 +85,7 @@ process CALCULATE_IN_SITU_RMSD_GNINA {
     script:
     def lig_title = meta.native_ligand ?: meta.ligand_title ?: ""
     """
-    schrodinger run python3 ${projectDir}/bin/calc_rmsd.py \\
+    python3 ${projectDir}/bin/calc_rmsd.py \\
         --reference ${ref_sdf} \\
         --poses ${docked_sdf} \\
         --receptor "${meta.id}" \\
