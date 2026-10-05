@@ -190,27 +190,40 @@ def main():
     )
     df_resolved = compute_pose_consensus_rmsd(df_resolved, dock_dir)
 
-    # Read InSitu RMSD directly from individual RMSD calculations or plan
-    rmsd_map = {}
+    # Read separate Glide and GNINA in-situ RMSD directly from calculated CSVs
+    glide_rmsd_map = {}
+    gnina_rmsd_map = {}
+
     for rmsd_csv in dock_dir.glob("*_rmsd.csv"):
         try:
             r_df = pd.read_csv(rmsd_csv)
             for _, r_row in r_df.iterrows():
-                r_rec = str(r_row.get("Receptor", rmsd_csv.stem.replace("_rmsd", ""))).strip()
+                r_rec = str(r_row.get("Receptor", "")).strip()
                 r_title = str(r_row.get("Title", "")).strip()
-                r_val = r_row.get("InSitu_RMSD_A", r_row.get("RMSD_Heavy", np.nan))
-                if not pd.isna(r_val):
-                    rmsd_map[(r_rec, r_title)] = float(r_val)
+                if "InSitu_RMSD_Glide_A" in r_row and not pd.isna(r_row["InSitu_RMSD_Glide_A"]):
+                    glide_rmsd_map[(r_rec, r_title)] = float(r_row["InSitu_RMSD_Glide_A"])
+                if "InSitu_RMSD_GNINA_A" in r_row and not pd.isna(r_row["InSitu_RMSD_GNINA_A"]):
+                    gnina_rmsd_map[(r_rec, r_title)] = float(r_row["InSitu_RMSD_GNINA_A"])
         except Exception as e:
             print(f"Warning: Failed to parse RMSD CSV {rmsd_csv}: {e}", file=sys.stderr)
 
-    insitu_rmsds = []
+    glide_rmsds = []
+    gnina_rmsds = []
+    combined_rmsds = []
+
     for _, row in df_resolved.iterrows():
         rec_id = str(row["Receptor"]).strip()
         title = str(row["Title"]).strip()
-        insitu_rmsds.append(rmsd_map.get((rec_id, title), np.nan))
+        val_glide = glide_rmsd_map.get((rec_id, title), np.nan)
+        val_gnina = gnina_rmsd_map.get((rec_id, title), np.nan)
+        glide_rmsds.append(val_glide)
+        gnina_rmsds.append(val_gnina)
+        # Primary RMSD defaults to Glide if available, otherwise GNINA
+        combined_rmsds.append(val_glide if not np.isnan(val_glide) else val_gnina)
 
-    df_resolved["InSitu_RMSD_A"] = insitu_rmsds
+    df_resolved["InSitu_RMSD_Glide_A"] = glide_rmsds
+    df_resolved["InSitu_RMSD_GNINA_A"] = gnina_rmsds
+    df_resolved["InSitu_RMSD_A"] = combined_rmsds
 
     # Delta score relative to native ligand if present
     native_targets = []

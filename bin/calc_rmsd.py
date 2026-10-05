@@ -91,6 +91,7 @@ def main():
     parser.add_argument("--poses", required=True, help="Path to docked ligand structure (.sdf or .maegz)")
     parser.add_argument("--receptor", default="", help="Receptor frame name")
     parser.add_argument("--title", default="", help="Ligand title")
+    parser.add_argument("--engine", default="generic", choices=["glide", "gnina", "generic"], help="Docking engine name")
     parser.add_argument("--output", required=True, help="Path to output CSV")
     args = parser.parse_args()
 
@@ -113,13 +114,24 @@ def main():
     if not results:
         raise ValueError(f"FATAL: RMSD calculation produced no results for {args.receptor} / {args.title}")
 
-    fieldnames = ["Receptor", "Title", "InSitu_RMSD_A", "RMSD_Heavy"]
+    val = results[0]["InSitu_RMSD_A"]
+    engine_col = "InSitu_RMSD_Glide_A" if args.engine == "glide" else ("InSitu_RMSD_GNINA_A" if args.engine == "gnina" else "InSitu_RMSD_A")
+
+    row = {
+        "Receptor": args.receptor,
+        "Title": results[0]["Title"],
+        engine_col: val,
+        "InSitu_RMSD_A": val,
+        "RMSD_Heavy": val,
+    }
+
+    fieldnames = ["Receptor", "Title", engine_col, "InSitu_RMSD_A", "RMSD_Heavy"]
     with open(out_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
-        writer.writerows(results)
+        writer.writerow(row)
 
-    logging.info(f"Successfully calculated in-situ RMSD: {results[0]['InSitu_RMSD_A']} Å -> {out_path}")
+    logging.info(f"Successfully calculated in-situ RMSD ({args.engine}): {val} Å -> {out_path}")
 
 
 if __name__ == "__main__":

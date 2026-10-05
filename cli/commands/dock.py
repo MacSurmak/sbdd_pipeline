@@ -341,7 +341,8 @@ def cmd_dock(args):
             table.add_column("GlideScore", justify="right")
             table.add_column("CNN Affinity", justify="right")
             table.add_column("MM-GBSA (kcal/mol)", justify="right")
-            table.add_column("InSitu RMSD (Å)", justify="center")
+            table.add_column("Glide RMSD (Å)", justify="center")
+            table.add_column("GNINA RMSD (Å)", justify="center")
             table.add_column("Verdict", justify="center")
 
             with open(res_csv, "r", encoding="utf-8", errors="ignore") as f:
@@ -356,27 +357,38 @@ def cmd_dock(args):
                         or "-"
                     )
                     mmgbsa = row.get("MMGBSA", "-")
-                    rmsd_str = row.get("InSitu_RMSD_A", "-")
-
-                    verdict = "[dim]-[/dim]"
-                    rmsd_display = "-"
-                    if rmsd_str and rmsd_str != "nan" and rmsd_str != "-":
-                        try:
-                            val = float(rmsd_str)
-                            if val <= 2.0:
-                                rmsd_display = f"[bold green]{val:.2f}[/bold green]"
-                                verdict = "[bold green]✓ SUCCESS[/bold green]"
-                            else:
-                                rmsd_display = f"[bold red]{val:.2f}[/bold red]"
-                                verdict = "[bold yellow]⚠ DRIFT[/bold yellow]"
-                        except ValueError:
-                            rmsd_display = rmsd_str
+                    g_rmsd = row.get("InSitu_RMSD_Glide_A", "-")
+                    n_rmsd = row.get("InSitu_RMSD_GNINA_A", "-")
 
                     def _fmt(val):
                         try:
                             return f"{float(val):.2f}"
                         except (ValueError, TypeError):
-                            return str(val) if val else "-"
+                            return str(val) if val and val != "nan" else "-"
+
+                    def _color_rmsd(val_str):
+                        if val_str and val_str not in ["nan", "-"]:
+                            try:
+                                v = float(val_str)
+                                return f"[bold green]{v:.2f}[/bold green]" if v <= 2.0 else f"[bold red]{v:.2f}[/bold red]"
+                            except ValueError:
+                                return val_str
+                        return "-"
+
+                    disp_glide = _color_rmsd(g_rmsd)
+                    disp_gnina = _color_rmsd(n_rmsd)
+
+                    # Determine verdict: SUCCESS if either engine reached <= 2.0 A
+                    verdict = "[dim]-[/dim]"
+                    try:
+                        vg = float(g_rmsd) if g_rmsd and g_rmsd not in ["nan", "-"] else None
+                        vn = float(n_rmsd) if n_rmsd and n_rmsd not in ["nan", "-"] else None
+                        if (vg is not None and vg <= 2.0) or (vn is not None and vn <= 2.0):
+                            verdict = "[bold green]✓ SUCCESS[/bold green]"
+                        elif vg is not None or vn is not None:
+                            verdict = "[bold yellow]⚠ DRIFT[/bold yellow]"
+                    except ValueError:
+                        pass
 
                     table.add_row(
                         rec,
@@ -384,7 +396,8 @@ def cmd_dock(args):
                         _fmt(gscore),
                         _fmt(cnn),
                         _fmt(mmgbsa),
-                        rmsd_display,
+                        disp_glide,
+                        disp_gnina,
                         verdict,
                     )
             console.print(table)

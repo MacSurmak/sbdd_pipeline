@@ -11,7 +11,39 @@ include { BUILD_FUNNEL_WHITELIST }  from '../modules/reporting/build_funnel'
 include { FILTER_PV }               from '../modules/schrodinger/filter_pv'
 include { PRIME_MMGBSA }            from '../modules/schrodinger/prime_mmgbsa'
 
-process CALCULATE_IN_SITU_RMSD {
+process GENERATE_DOCKING_BOX {
+    tag "${meta.id}"
+    executor 'local'
+    scratch false
+    label 'process_single'
+
+    input:
+    tuple val(meta), path(ref_sdf)
+    val(inner_box)
+    val(outer_box)
+    val(autobox_add)
+
+    output:
+    tuple val(meta), path("${meta.id}_docking_box.pml"), emit: box_pml
+
+    script:
+    """
+    python3 ${projectDir}/bin/generate_docking_box.py \\
+        --reference ${ref_sdf} \\
+        --receptor_name "${meta.id}" \\
+        --inner_box "${inner_box}" \\
+        --outer_box "${outer_box}" \\
+        --autobox_add ${autobox_add} \\
+        --output "${meta.id}_docking_box.pml"
+    """
+
+    stub:
+    """
+    touch ${meta.id}_docking_box.pml
+    """
+}
+
+process CALCULATE_IN_SITU_RMSD_GLIDE {
     tag "${meta.id}"
     label 'process_single'
 
@@ -19,7 +51,7 @@ process CALCULATE_IN_SITU_RMSD {
     tuple val(meta), path(docked_sdf), path(ref_sdf)
 
     output:
-    tuple val(meta), path("${meta.id}_rmsd.csv"), emit: rmsd_csv
+    tuple val(meta), path("${meta.id}_glide_rmsd.csv"), emit: rmsd_csv
 
     script:
     def lig_title = meta.native_ligand ?: meta.ligand_title ?: ""
@@ -29,13 +61,43 @@ process CALCULATE_IN_SITU_RMSD {
         --poses ${docked_sdf} \\
         --receptor "${meta.id}" \\
         --title "${lig_title}" \\
-        --output ${meta.id}_rmsd.csv
+        --engine glide \\
+        --output ${meta.id}_glide_rmsd.csv
     """
 
     stub:
     """
-    echo "Receptor,Title,InSitu_RMSD_A,RMSD_Heavy" > ${meta.id}_rmsd.csv
-    echo "${meta.id},${meta.native_ligand ?: 'LIG'},1.50,1.50" >> ${meta.id}_rmsd.csv
+    echo "Receptor,Title,InSitu_RMSD_Glide_A,InSitu_RMSD_A,RMSD_Heavy" > ${meta.id}_glide_rmsd.csv
+    echo "${meta.id},${meta.native_ligand ?: 'LIG'},1.50,1.50,1.50" >> ${meta.id}_glide_rmsd.csv
+    """
+}
+
+process CALCULATE_IN_SITU_RMSD_GNINA {
+    tag "${meta.id}"
+    label 'process_single'
+
+    input:
+    tuple val(meta), path(docked_sdf), path(ref_sdf)
+
+    output:
+    tuple val(meta), path("${meta.id}_gnina_rmsd.csv"), emit: rmsd_csv
+
+    script:
+    def lig_title = meta.native_ligand ?: meta.ligand_title ?: ""
+    """
+    schrodinger run python3 ${projectDir}/bin/calc_rmsd.py \\
+        --reference ${ref_sdf} \\
+        --poses ${docked_sdf} \\
+        --receptor "${meta.id}" \\
+        --title "${lig_title}" \\
+        --engine gnina \\
+        --output ${meta.id}_gnina_rmsd.csv
+    """
+
+    stub:
+    """
+    echo "Receptor,Title,InSitu_RMSD_GNINA_A,InSitu_RMSD_A,RMSD_Heavy" > ${meta.id}_gnina_rmsd.csv
+    echo "${meta.id},${meta.native_ligand ?: 'LIG'},1.80,1.80,1.80" >> ${meta.id}_gnina_rmsd.csv
     """
 }
 
@@ -171,6 +233,15 @@ workflow DOCK_LIBRARY {
     ch_summary_files = Channel.empty()
     ch_primary_poses = Channel.empty()
 
+    // 0. Generate PyMOL docking box script for every receptor pocket
+    GENERATE_DOCKING_BOX(
+        ch_ref_lig_sdf,
+        params.inner_box,
+        params.outer_box,
+        autobox_add
+    )
+    ch_summary_files = ch_summary_files.mix(GENERATE_DOCKING_BOX.out.box_pml.map { meta, pml -> pml })
+
     // 1. GLIDE DOCKING & GNINA RESCORE & SCREENING FUNNEL -> PRIME MM-GBSA
     if (dock_engine in ["glide", "both"]) {
         def inner_box = params.inner_box
@@ -240,27 +311,23 @@ workflow DOCK_LIBRARY {
 
         MERGE_RESC_CHUNKS(ch_to_merge_resc)
 
-        // 1.1 In-situ RMSD calculation matched strictly by frame ID string
+        // 1.1 In-situ RMSD calculation for Glide poses
         ch_glide_rmsd_in = MERGE_GLIDE_CHUNKS.out.poses_sdf
             .map { meta, docked_sdf -> [ meta.id, meta, docked_sdf ] }
             .join(ch_ref_lig_sdf.map { meta, ref_sdf -> [ meta.id, ref_sdf ] }, by: 0)
             .map { frame_id, meta, docked_sdf, ref_sdf -> [ meta, docked_sdf, ref_sdf ] }
 
-        CALCULATE_IN_SITU_RMSD(ch_glide_rmsd_in)
+        CALCULATE_IN_SITU_RMSD_GLIDE(ch_glide_rmsd_in)
+        ch_summary_files = ch_summary_files.mix(CALCULATE_IN_SITU_RMSD_GLIDE.out.rmsd_csv.map { meta, csv -> csv })
 
         if (is_self) {
-            // Direct MM-GBSA on 100% of redocked structures without screening triage
-            ch_mmgbsa_in = MERGE_GLIDE_CHUNKS.out.pv_maegz.map { meta, pv ->
-                [ meta, pv ]
-            }
-
+            ch_mmgbsa_in = MERGE_GLIDE_CHUNKS.out.pv_maegz.map { meta, pv -> [ meta, pv ] }
             PRIME_MMGBSA(ch_mmgbsa_in, prime_job, membrane_enabled)
 
             ch_summary_files = ch_summary_files
                 .mix(MERGE_GLIDE_CHUNKS.out.scores_csv.map { meta, csv -> csv })
                 .mix(MERGE_GLIDE_CHUNKS.out.poses_sdf.map { meta, sdf -> sdf })
                 .mix(MERGE_RESC_CHUNKS.out.rescored_sdf.map { meta, sdf -> sdf })
-                .mix(CALCULATE_IN_SITU_RMSD.out.rmsd_csv.map { meta, csv -> csv })
                 .mix(PRIME_MMGBSA.out.scores_csv.map { meta, csv -> csv })
                 .mix(ch_ref_lig_sdf.map { meta, sdf -> sdf })
         } else {
@@ -364,8 +431,17 @@ workflow DOCK_LIBRARY {
 
         MERGE_DOCK_CHUNKS(ch_to_merge)
 
+        // 2.1 In-situ RMSD calculation for GNINA poses
+        ch_gnina_rmsd_in = MERGE_DOCK_CHUNKS.out.merged_sdf
+            .map { meta, docked_sdf -> [ meta.id, meta, docked_sdf ] }
+            .join(ch_ref_lig_sdf.map { meta, ref_sdf -> [ meta.id, ref_sdf ] }, by: 0)
+            .map { frame_id, meta, docked_sdf, ref_sdf -> [ meta, docked_sdf, ref_sdf ] }
+
+        CALCULATE_IN_SITU_RMSD_GNINA(ch_gnina_rmsd_in)
+
         ch_summary_files = ch_summary_files
             .mix(MERGE_DOCK_CHUNKS.out.merged_sdf.map { meta, sdf -> sdf })
+            .mix(CALCULATE_IN_SITU_RMSD_GNINA.out.rmsd_csv.map { meta, csv -> csv })
 
         if (dock_engine == "gnina") {
             ch_primary_poses = MERGE_DOCK_CHUNKS.out.merged_sdf
