@@ -5,9 +5,8 @@ Worker script to calculate symmetry-aware heavy-atom RMSD between reference and 
 import argparse
 import csv
 import logging
+import sys
 from pathlib import Path
-from schrodinger import structure
-from schrodinger.structutils import rmsd
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
@@ -68,18 +67,16 @@ def calc_via_rdkit(ref_path: Path, poses_path: Path, receptor_name: str, target_
 
     for st in docked_mols:
         title = st.GetProp("_Name").strip() if st.HasProp("_Name") else ""
-        if target_title and title and title != target_title:
-            continue
         m_dock = Chem.RemoveHs(st)
         if m_dock.GetNumAtoms() != m_ref.GetNumAtoms():
             raise ValueError(
                 f"FATAL: Heavy atom count mismatch between {ref_path.name} ({m_ref.GetNumAtoms()}) "
-                f"and {poses_path.name} ({m_dock.GetNumAtoms()}) for compound '{title}'!"
+                f"and {poses_path.name} ({m_dock.GetNumAtoms()}) for compound '{title or target_title}'!"
             )
         val = round(float(rdMolAlign.GetBestRMS(m_dock, m_ref)), 3)
         results.append({
             "Receptor": receptor_name,
-            "Title": title or target_title,
+            "Title": target_title or title,
             "InSitu_RMSD_A": val,
             "RMSD_Heavy": val
         })
@@ -109,8 +106,8 @@ def main():
     results = []
     try:
         results = calc_via_schrodinger(ref_path, poses_path, args.receptor, args.title)
-    except Exception as e:
-        logging.info(f"Schrodinger RMSD unavailable ({e}), trying RDKit fallback...")
+    except Exception as e_schrod:
+        logging.info(f"Schrodinger RMSD failed or unavailable ({e_schrod}), falling back to RDKit...")
         results = calc_via_rdkit(ref_path, poses_path, args.receptor, args.title)
 
     if not results:

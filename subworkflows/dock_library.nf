@@ -22,9 +22,9 @@ process CALCULATE_IN_SITU_RMSD {
     tuple val(meta), path("${meta.id}_rmsd.csv"), emit: rmsd_csv
 
     script:
-    def lig_title = meta.ligand_title ?: meta.native_ligand ?: ""
+    def lig_title = meta.native_ligand ?: meta.ligand_title ?: ""
     """
-    python3 ${projectDir}/bin/calc_rmsd.py \\
+    schrodinger run python3 ${projectDir}/bin/calc_rmsd.py \\
         --reference ${ref_sdf} \\
         --poses ${docked_sdf} \\
         --receptor "${meta.id}" \\
@@ -35,7 +35,7 @@ process CALCULATE_IN_SITU_RMSD {
     stub:
     """
     echo "Receptor,Title,InSitu_RMSD_A,RMSD_Heavy" > ${meta.id}_rmsd.csv
-    echo "${meta.id},${meta.ligand_title ?: 'LIG'},1.50,1.50" >> ${meta.id}_rmsd.csv
+    echo "${meta.id},${meta.native_ligand ?: 'LIG'},1.50,1.50" >> ${meta.id}_rmsd.csv
     """
 }
 
