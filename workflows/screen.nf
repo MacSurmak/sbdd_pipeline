@@ -18,7 +18,7 @@ process SPLIT_PREPARED_SDF {
     val(batch_size)
 
     output:
-    tuple val(meta), path("dock_chunk_*.sdf"), emit: chunks
+    tuple val(meta), path("chunk_*.sdf"), emit: chunks
 
     script:
     """
@@ -30,7 +30,7 @@ process SPLIT_PREPARED_SDF {
 
     stub:
     """
-    touch dock_chunk_000.sdf
+    touch chunk_000.sdf
     """
 }
 
