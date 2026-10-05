@@ -64,16 +64,6 @@ def cmd_dock(args):
             native_pose = target_sys.pose
             native_lig = native_pose.ligand
 
-            # Check if self-docking pose already exists in DB
-            dock_pose_name = f"{r.name}_{native_lig.name}_dock"
-            ex = (
-                session.query(Pose)
-                .filter_by(name=dock_pose_name, origin="docking", state="ready")
-                .first()
-            )
-            if ex:
-                continue
-
             active_frames.append((r, native_pose, native_lig))
 
         if not active_frames:

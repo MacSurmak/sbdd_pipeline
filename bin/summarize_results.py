@@ -228,7 +228,7 @@ def main():
     # Calculate in-situ redocking RMSD against reference pose if available
     try:
         from rdkit import Chem
-        from rdkit.Chem import rdMolAlign
+        from rdkit.Chem import rdMolAlign, AllChem
 
         insitu_rmsds = []
         for _, row in df_resolved.iterrows():
@@ -237,20 +237,32 @@ def main():
 
             # Search for reference pose in workdir (staged) and in prepared/
             ref_sdf = None
+            cand_patterns = []
             if "centroid" in rec_id:
                 parts = rec_id.split("_centroid_")
-                cand_name = (
-                    f"*{parts[0]}*pose_{parts[1]}.pdb"
-                    if len(parts) == 2
-                    else f"*{rec_id}*pose*.pdb"
-                )
-                ref_sdf = next(dock_dir.glob(cand_name), None) or next(
-                    Path("prepared").glob(cand_name), None
-                )
+                idx_part = parts[1] if len(parts) == 2 else "*"
+                cand_patterns = [
+                    f"*{parts[0]}*pose*{idx_part}.sdf",
+                    f"*{parts[0]}*pose*{idx_part}.pdb",
+                    f"*{rec_id}*pose*.sdf",
+                    f"*{rec_id}*pose*.pdb",
+                    f"*pose_{idx_part}.sdf",
+                    f"*pose_{idx_part}.pdb",
+                ]
             else:
-                ref_sdf = next(dock_dir.glob(f"*{rec_id}*ref_native*"), None) or next(
-                    Path("prepared").glob(f"*{rec_id}*ref_native*"), None
+                cand_patterns = [
+                    f"*{rec_id}*ref_native*.sdf",
+                    f"*{rec_id}*ref_native*.pdb",
+                    f"*{rec_id}*pose*.sdf",
+                    f"*{rec_id}*pose*.pdb",
+                ]
+
+            for pat in cand_patterns:
+                ref_sdf = next(dock_dir.glob(pat), None) or next(
+                    Path("prepared").glob(pat), None
                 )
+                if ref_sdf:
+                    break
 
             rmsd_val = np.nan
             if ref_sdf and ref_sdf.exists():
@@ -267,14 +279,25 @@ def main():
                                 )
                                 m_dock = Chem.RemoveHs(m_dock_raw)
 
+                                m_ref = None
                                 if ref_sdf.suffix == ".sdf":
-                                    m_ref = Chem.RemoveHs(
-                                        Chem.MolFromMolFile(str(ref_sdf))
+                                    m_ref_raw = Chem.MolFromMolFile(
+                                        str(ref_sdf), sanitize=False, removeHs=False
                                     )
+                                    if m_ref_raw:
+                                        try:
+                                            Chem.SanitizeMol(m_ref_raw)
+                                            m_ref = Chem.RemoveHs(m_ref_raw)
+                                        except Exception:
+                                            if m_dock_raw:
+                                                m_ref_assigned = (
+                                                    AllChem.AssignBondOrdersFromTemplate(
+                                                        m_dock_raw, m_ref_raw
+                                                    )
+                                                )
+                                                m_ref = Chem.RemoveHs(m_ref_assigned)
                                 else:
                                     # PDB from MD cluster lacks CONECT records; assign bond orders from docked ligand template
-                                    from rdkit.Chem import AllChem
-
                                     m_ref_raw = Chem.MolFromPDBFile(
                                         str(ref_sdf), sanitize=False, removeHs=False
                                     )
@@ -285,8 +308,6 @@ def main():
                                             )
                                         )
                                         m_ref = Chem.RemoveHs(m_ref_assigned)
-                                    else:
-                                        m_ref = None
 
                                 if (
                                     m_dock
