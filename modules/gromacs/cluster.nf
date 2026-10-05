@@ -53,50 +53,12 @@ process GMX_CLUSTER {
         \${wcl_flag} \
         -cl clusters_multi.pdb
 
-    schrodinger run python3 -c "
-import os
-import sys
-from pathlib import Path
-from schrodinger import structure
-
-lig_name = '${meta.ligand}'.strip().upper()
-max_c = int('${meta.max_clusters}' or 0)
-receipt_lines = []
-
-with structure.StructureReader('clusters_multi.pdb') as reader:
-    for i, st in enumerate(reader, 1):
-        if max_c > 0 and i > max_c:
-            break
-            
-        pose_path = 'NO_POSE'
-        if lig_name:
-            lig_atoms = [a.index for a in st.atom if a.pdbres.strip().upper() == lig_name]
-            if lig_atoms:
-                lig_st = st.extract(lig_atoms)
-                lig_st.title = lig_name
-                lig_st.property['s_m_title'] = lig_name
-                sdf_out = f'${meta.id}_pose_{i}.sdf'
-                mae_out = f'${meta.id}_pose_{i}.mae'
-                lig_st.write(sdf_out)
-                lig_st.write(mae_out)
-                st.deleteAtoms(lig_atoms)
-                pose_path = str(Path(sdf_out).resolve())
-                
-        c_title = f'${meta.id}_centroid_{i}'
-        st.title = c_title
-        st.property['s_m_title'] = c_title
-        pdb_out = f'${meta.id}_centroid_{i}.pdb'
-        mae_out = f'${meta.id}_centroid_{i}.mae'
-        st.write(pdb_out)
-        st.write(mae_out)
-        
-        row = f"{c_title}\\t{Path(pdb_out).resolve()}\\t{Path(mae_out).resolve()}\\t{pose_path}"
-        receipt_lines.append(row)
-
-with open('cluster_receipt_chunk.tsv', 'w') as rf:
-    for line in receipt_lines:
-        rf.write(line + chr(10))
-"
+    schrodinger run python3 ${projectDir}/bin/split_cluster_pdb.py \
+        --input clusters_multi.pdb \
+        --prefix "${meta.id}" \
+        --ligand "${meta.ligand ?: ''}" \
+        --max_clusters "${meta.max_clusters ?: 0}" \
+        --out_receipt cluster_receipt_chunk.tsv
     """
 
     stub:
