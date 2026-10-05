@@ -22,7 +22,7 @@ from utils.parsers import parse_glide_csv, parse_prime_csv, parse_gnina_sdf
 
 
 def compute_pose_consensus_rmsd(df: pd.DataFrame, dock_dir: Path):
-    """Calculates in-place heavy-atom RMSD between Glide and independent GNINA dock poses."""
+    """Calculates in-place heavy-atom RMSD between Glide and GNINA dock poses using explicit file paths."""
     try:
         from rdkit import Chem
         from rdkit.Chem import rdMolAlign
@@ -30,50 +30,32 @@ def compute_pose_consensus_rmsd(df: pd.DataFrame, dock_dir: Path):
         df["Pose_RMSD"] = np.nan
         return df
 
-    def _extract_sdf_block(filepath: Path, target_title: str) -> str:
-        if not filepath.exists():
-            return ""
-        with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
-            content = f.read()
-        for block in content.split("$$$$"):
-            lines = block.strip().splitlines()
-            if not lines:
-                continue
-            title = lines[0].strip()
-            if title == target_title:
-                return block.strip() + "\n$$$$\n"
-        return ""
+    def _extract_mol(filepath: Path, target_title: str):
+        if not filepath.exists() or filepath.stat().st_size == 0:
+            return None
+        suppl = Chem.SDMolSupplier(str(filepath), removeHs=True, sanitize=False)
+        for m in suppl:
+            if m is not None:
+                m_title = m.GetProp("_Name").strip() if m.HasProp("_Name") else ""
+                if m_title == target_title:
+                    return m
+        return None
 
     rmsd_list = []
     for _, row in df.iterrows():
-        frame_id = str(row["Frame"]).replace("F", "").replace("f", "")
-        title = row["Title"]
+        rec_id = str(row["Receptor"]).strip()
+        title = str(row["Title"]).strip()
 
-        # Search for glide and gnina poses in dock_dir with exact frame boundary
-        patt = rf"_f{frame_id}(?:[^0-9]|$)"
-        glide_sdfs = [
-            f for f in dock_dir.glob("**/*dock*.sdf") if re.search(patt, f.name)
-        ]
-        gnina_sdfs = [
-            f for f in dock_dir.glob("**/*gnina*.sdf") if re.search(patt, f.name)
-        ]
+        glide_sdf = dock_dir / f"{rec_id}_dock.sdf"
+        gnina_sdf = dock_dir / f"{rec_id}_gnina_docked_all.sdf"
 
-        glide_sdf = glide_sdfs[0] if glide_sdfs else None
-        gnina_sdf = gnina_sdfs[0] if gnina_sdfs else None
-
-        if glide_sdf and gnina_sdf:
-            block_g = _extract_sdf_block(glide_sdf, title)
-            block_n = _extract_sdf_block(gnina_sdf, title)
-            if block_g and block_n:
-                try:
-                    mg = Chem.RemoveHs(Chem.MolFromMolBlock(block_g))
-                    mn = Chem.RemoveHs(Chem.MolFromMolBlock(block_n))
-                    if mg and mn and mg.GetNumAtoms() == mn.GetNumAtoms():
-                        val = rdMolAlign.GetBestRMS(mg, mn)
-                        rmsd_list.append(round(val, 2))
-                        continue
-                except Exception:
-                    pass
+        if glide_sdf.exists() and gnina_sdf.exists():
+            mg = _extract_mol(glide_sdf, title)
+            mn = _extract_mol(gnina_sdf, title)
+            if mg is not None and mn is not None and mg.GetNumAtoms() == mn.GetNumAtoms():
+                val = rdMolAlign.GetBestRMS(mg, mn)
+                rmsd_list.append(round(val, 2))
+                continue
         rmsd_list.append(np.nan)
 
     df["Pose_RMSD"] = rmsd_list
@@ -129,66 +111,49 @@ def main():
     dock_dir = Path(args.docking_dir) if args.docking_dir else Path(".")
     analysis_dir = Path(args.analysis_dir) if args.analysis_dir else dock_dir
 
-    # Identify unique Receptors by stripping known task suffixes
-    all_receptors = set()
-    all_files = (
-        list(dock_dir.glob("**/*_dock.csv"))
-        + list(dock_dir.glob("**/*_rescored.sdf"))
-        + list(dock_dir.glob("**/*_gnina_docked_all.sdf"))
-        + list(analysis_dir.glob("**/*_mmgbsa-out.csv"))
-    )
+    # Optional plan JSON provides explicit receptor list (SSOT)
+    plan_file = dock_dir / "dock_plan.json"
+    receptors_ordered = []
+    if plan_file.exists():
+        with open(plan_file, "r", encoding="utf-8") as pf:
+            plan_data = json.load(pf)
+            for rec in plan_data.get("receptors", []):
+                receptors_ordered.append(rec["name"])
+    else:
+        # Fallback to direct file naming without regex stripping
+        for p in dock_dir.iterdir():
+            if p.is_file():
+                for sfx in ["_dock.csv", "_gnina_docked_all.sdf", "_rescored.sdf"]:
+                    if p.name.endswith(sfx):
+                        rec_name = p.name[:-len(sfx)]
+                        if rec_name not in receptors_ordered:
+                            receptors_ordered.append(rec_name)
+                        break
 
-    for p in all_files:
-        name = p.name
-        for sfx in [
-            "_dock.csv",
-            "_dock_pv.maegz",
-            "_dock.sdf",
-            "_rescored.sdf",
-            "_gnina_docked_all.sdf",
-            "_mmgbsa-out.csv",
-        ]:
-            if name.endswith(sfx):
-                rec_name = name[: -len(sfx)]
-                # Clean sub-chunk prefixes and mmc task suffixes
-                rec_name = re.sub(r"(_mmc\d+|_c\d+|_cnative)$", "", rec_name)
-                all_receptors.add(rec_name)
-                break
-
-    if not all_receptors:
+    if not receptors_ordered:
         raise ValueError(
             f"FATAL: No docking results found in {dock_dir} or {analysis_dir}"
         )
 
     rows = []
-    for rec_id in sorted(all_receptors):
-        g_files = list(dock_dir.glob(f"**/{rec_id}*_dock.csv"))
-        m_files = list(analysis_dir.glob(f"**/{rec_id}*_mmgbsa-out.csv"))
-        r_files = list(dock_dir.glob(f"**/{rec_id}*_rescored.sdf"))
-        d_files = list(dock_dir.glob(f"**/{rec_id}*_gnina_docked_all.sdf"))
+    for rec_id in receptors_ordered:
+        g_file = dock_dir / f"{rec_id}_dock.csv"
+        m_file = analysis_dir / f"{rec_id}_mmgbsa-out.csv"
+        r_file = dock_dir / f"{rec_id}_rescored.sdf"
+        d_file = dock_dir / f"{rec_id}_gnina_docked_all.sdf"
 
-        glide_data = {}
-        for f in g_files:
-            glide_data.update(parse_glide_csv(f))
+        glide_data = parse_glide_csv(g_file) if g_file.exists() else {}
+        prime_data = parse_prime_csv(m_file) if m_file.exists() else {}
+        resc_data = parse_gnina_sdf(r_file, prefix="Resc_") if r_file.exists() else {}
+        dock_data = parse_gnina_sdf(d_file, prefix="Dock_") if d_file.exists() else {}
 
-        prime_data = {}
-        for f in m_files:
-            prime_data.update(parse_prime_csv(f))
+        titles = sorted(list(
+            set(glide_data.keys())
+            | set(prime_data.keys())
+            | set(resc_data.keys())
+            | set(dock_data.keys())
+        ))
 
-        resc_data = {}
-        for f in r_files:
-            resc_data.update(parse_gnina_sdf(f, prefix="Resc_"))
-
-        dock_data = {}
-        for f in d_files:
-            dock_data.update(parse_gnina_sdf(f, prefix="Dock_"))
-
-        titles = set(
-            list(glide_data.keys())
-            + list(prime_data.keys())
-            + list(resc_data.keys())
-            + list(dock_data.keys())
-        )
         for t in titles:
             r = {"Title": t, "Receptor": rec_id, "Frame": rec_id}
             r.update(glide_data.get(t, {}))
@@ -225,103 +190,27 @@ def main():
     )
     df_resolved = compute_pose_consensus_rmsd(df_resolved, dock_dir)
 
-    # Calculate in-situ redocking RMSD against reference pose if available
-    try:
-        from rdkit import Chem
-        from rdkit.Chem import rdMolAlign, AllChem
+    # Read InSitu RMSD directly from individual RMSD calculations or plan
+    rmsd_map = {}
+    for rmsd_csv in dock_dir.glob("*_rmsd.csv"):
+        try:
+            r_df = pd.read_csv(rmsd_csv)
+            for _, r_row in r_df.iterrows():
+                r_rec = str(r_row.get("Receptor", rmsd_csv.stem.replace("_rmsd", ""))).strip()
+                r_title = str(r_row.get("Title", "")).strip()
+                r_val = r_row.get("InSitu_RMSD_A", r_row.get("RMSD_Heavy", np.nan))
+                if not pd.isna(r_val):
+                    rmsd_map[(r_rec, r_title)] = float(r_val)
+        except Exception as e:
+            print(f"Warning: Failed to parse RMSD CSV {rmsd_csv}: {e}", file=sys.stderr)
 
-        insitu_rmsds = []
-        for _, row in df_resolved.iterrows():
-            rec_id = str(row.get("Receptor", row.get("Frame", "")))
-            title = row["Title"]
+    insitu_rmsds = []
+    for _, row in df_resolved.iterrows():
+        rec_id = str(row["Receptor"]).strip()
+        title = str(row["Title"]).strip()
+        insitu_rmsds.append(rmsd_map.get((rec_id, title), np.nan))
 
-            # Search for reference pose in workdir (staged) and in prepared/
-            ref_sdf = None
-            cand_patterns = []
-            if "centroid" in rec_id:
-                parts = rec_id.split("_centroid_")
-                idx_part = parts[1] if len(parts) == 2 else "*"
-                cand_patterns = [
-                    f"*{parts[0]}*pose*{idx_part}.sdf",
-                    f"*{parts[0]}*pose*{idx_part}.pdb",
-                    f"*{rec_id}*pose*.sdf",
-                    f"*{rec_id}*pose*.pdb",
-                    f"*pose_{idx_part}.sdf",
-                    f"*pose_{idx_part}.pdb",
-                ]
-            else:
-                cand_patterns = [
-                    f"*{rec_id}*ref_native*.sdf",
-                    f"*{rec_id}*ref_native*.pdb",
-                    f"*{rec_id}*pose*.sdf",
-                    f"*{rec_id}*pose*.pdb",
-                ]
-
-            for pat in cand_patterns:
-                ref_sdf = next(dock_dir.glob(pat), None) or next(
-                    Path("prepared").glob(pat), None
-                )
-                if ref_sdf:
-                    break
-
-            rmsd_val = np.nan
-            if ref_sdf and ref_sdf.exists():
-                dock_candidates = list(dock_dir.glob(f"**/{rec_id}*dock*.sdf"))
-                if dock_candidates:
-                    with open(dock_candidates[0], "r", errors="ignore") as f:
-                        for b in f.read().split("$$$$"):
-                            if not b.strip():
-                                continue
-                            try:
-                                block_str = b.strip() + "\n$$$$\n"
-                                m_dock_raw = Chem.MolFromMolBlock(
-                                    block_str, removeHs=False
-                                )
-                                m_dock = Chem.RemoveHs(m_dock_raw)
-
-                                m_ref = None
-                                if ref_sdf.suffix == ".sdf":
-                                    m_ref_raw = Chem.MolFromMolFile(
-                                        str(ref_sdf), sanitize=False, removeHs=False
-                                    )
-                                    if m_ref_raw:
-                                        try:
-                                            Chem.SanitizeMol(m_ref_raw)
-                                            m_ref = Chem.RemoveHs(m_ref_raw)
-                                        except Exception:
-                                            if m_dock_raw:
-                                                m_ref_assigned = AllChem.AssignBondOrdersFromTemplate(
-                                                    m_dock_raw, m_ref_raw
-                                                )
-                                                m_ref = Chem.RemoveHs(m_ref_assigned)
-                                else:
-                                    # PDB from MD cluster lacks CONECT records; assign bond orders from docked ligand template
-                                    m_ref_raw = Chem.MolFromPDBFile(
-                                        str(ref_sdf), sanitize=False, removeHs=False
-                                    )
-                                    if m_ref_raw and m_dock_raw:
-                                        m_ref_assigned = (
-                                            AllChem.AssignBondOrdersFromTemplate(
-                                                m_dock_raw, m_ref_raw
-                                            )
-                                        )
-                                        m_ref = Chem.RemoveHs(m_ref_assigned)
-
-                                if (
-                                    m_dock
-                                    and m_ref
-                                    and m_dock.GetNumAtoms() == m_ref.GetNumAtoms()
-                                ):
-                                    rmsd_val = round(
-                                        rdMolAlign.GetBestRMS(m_dock, m_ref), 2
-                                    )
-                                    break
-                            except Exception:
-                                pass
-            insitu_rmsds.append(rmsd_val)
-        df_resolved["InSitu_RMSD_A"] = insitu_rmsds
-    except Exception:
-        df_resolved["InSitu_RMSD_A"] = np.nan
+    df_resolved["InSitu_RMSD_A"] = insitu_rmsds
 
     # Delta score relative to native ligand if present
     native_targets = []

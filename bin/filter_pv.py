@@ -39,18 +39,14 @@ def main():
     )
     args = parser.parse_args()
 
-    import re
-
     allowed_titles = set()
-    with open(args.whitelist, "r") as f:
+    with open(args.whitelist, "r", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
-            f_clean = str(row["Frame"]).replace("F", "").replace("f", "").strip()
-            req_clean = str(args.frame).replace("F", "").replace("f", "").strip()
+            f_clean = str(row["Frame"]).strip()
+            req_clean = str(args.frame).strip()
             if f_clean == req_clean:
-                raw_t = row["Title"].strip()
-                allowed_titles.add(raw_t)
-                allowed_titles.add(re.sub(r"(_model_\d+|_dock_\d+|_\d+)$", "", raw_t))
+                allowed_titles.add(row["Title"].strip())
 
     receptor = None
     whitelisted_poses = []
@@ -63,8 +59,7 @@ def main():
                 continue
 
             title = (st.property.get("s_m_title") or st.title or "").strip()
-            title_norm = re.sub(r"(_model_\d+|_dock_\d+|_\d+)$", "", title)
-            is_match = (title in allowed_titles) or (title_norm in allowed_titles)
+            is_match = (title in allowed_titles)
             if is_match and pose_counts.get(title, 0) < args.max_poses:
                 whitelisted_poses.append(st.copy())
                 pose_counts[title] = pose_counts.get(title, 0) + 1

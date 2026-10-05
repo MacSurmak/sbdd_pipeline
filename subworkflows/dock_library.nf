@@ -11,6 +11,34 @@ include { BUILD_FUNNEL_WHITELIST }  from '../modules/reporting/build_funnel'
 include { FILTER_PV }               from '../modules/schrodinger/filter_pv'
 include { PRIME_MMGBSA }            from '../modules/schrodinger/prime_mmgbsa'
 
+process CALCULATE_IN_SITU_RMSD {
+    tag "${meta.id}"
+    label 'process_single'
+
+    input:
+    tuple val(meta), path(docked_sdf), path(ref_sdf)
+
+    output:
+    tuple val(meta), path("${meta.id}_rmsd.csv"), emit: rmsd_csv
+
+    script:
+    def lig_title = meta.ligand_title ?: meta.native_ligand ?: ""
+    """
+    python3 ${projectDir}/bin/calc_rmsd.py \\
+        --reference ${ref_sdf} \\
+        --poses ${docked_sdf} \\
+        --receptor "${meta.id}" \\
+        --title "${lig_title}" \\
+        --output ${meta.id}_rmsd.csv
+    """
+
+    stub:
+    """
+    echo "Receptor,Title,InSitu_RMSD_A,RMSD_Heavy" > ${meta.id}_rmsd.csv
+    echo "${meta.id},${meta.ligand_title ?: 'LIG'},1.50,1.50" >> ${meta.id}_rmsd.csv
+    """
+}
+
 process MERGE_DOCK_CHUNKS {
     tag "${meta.id}"
     executor 'local'
@@ -18,14 +46,14 @@ process MERGE_DOCK_CHUNKS {
     label 'process_single'
 
     input:
-    tuple val(meta), path(chunk_sdfs, stageAs: 'chunks_?/*')
+    tuple val(meta), path(chunk_sdfs)
 
     output:
     tuple val(meta), path("${meta.id}_gnina_docked_all.sdf"), emit: merged_sdf
 
     script:
     """
-    find -L . -type f -name "*.sdf" ! -name "${meta.id}_gnina_docked_all.sdf" -exec cat {} + > ${meta.id}_gnina_docked_all.sdf
+    cat ${chunk_sdfs} > ${meta.id}_gnina_docked_all.sdf
     if [ ! -s "${meta.id}_gnina_docked_all.sdf" ]; then
         echo "FATAL: MERGE_DOCK_CHUNKS produced an empty file!"
         exit 1
@@ -78,14 +106,14 @@ process MERGE_RESC_CHUNKS {
     label 'process_single'
 
     input:
-    tuple val(meta), path(chunk_sdfs, stageAs: 'resc_?/*')
+    tuple val(meta), path(chunk_sdfs)
 
     output:
     tuple val(meta), path("${meta.id}_rescored.sdf"), emit: rescored_sdf
 
     script:
     """
-    find -L . -type f -name "*.sdf" ! -name "${meta.id}_rescored.sdf" -exec cat {} + > ${meta.id}_rescored.sdf
+    cat ${chunk_sdfs} > ${meta.id}_rescored.sdf
     if [ ! -s "${meta.id}_rescored.sdf" ]; then
         echo "FATAL: MERGE_RESC_CHUNKS produced an empty file!"
         exit 1
@@ -212,17 +240,16 @@ workflow DOCK_LIBRARY {
 
         MERGE_RESC_CHUNKS(ch_to_merge_resc)
 
+        // 1.1 In-situ RMSD calculation between docked pose and reference crystal/centroid pose
+        ch_glide_rmsd_in = MERGE_GLIDE_CHUNKS.out.poses_sdf
+            .join(ch_ref_lig_sdf, by: 0)
+
+        CALCULATE_IN_SITU_RMSD(ch_glide_rmsd_in)
+
         if (is_self) {
             // Direct MM-GBSA on 100% of redocked structures without screening triage
             ch_mmgbsa_in = MERGE_GLIDE_CHUNKS.out.pv_maegz.map { meta, pv ->
-                def chunk_meta = [
-                    id: "${meta.id}_mmc0",
-                    frame_id: meta.id,
-                    frame: meta.frame,
-                    chunk_idx: 0,
-                    project: meta.project
-                ]
-                [ chunk_meta, pv ]
+                [ meta, pv ]
             }
 
             PRIME_MMGBSA(ch_mmgbsa_in, prime_job, membrane_enabled)
@@ -231,6 +258,7 @@ workflow DOCK_LIBRARY {
                 .mix(MERGE_GLIDE_CHUNKS.out.scores_csv.map { meta, csv -> csv })
                 .mix(MERGE_GLIDE_CHUNKS.out.poses_sdf.map { meta, sdf -> sdf })
                 .mix(MERGE_RESC_CHUNKS.out.rescored_sdf.map { meta, sdf -> sdf })
+                .mix(CALCULATE_IN_SITU_RMSD.out.rmsd_csv.map { meta, csv -> csv })
                 .mix(PRIME_MMGBSA.out.scores_csv.map { meta, csv -> csv })
                 .mix(ch_ref_lig_sdf.map { meta, sdf -> sdf })
         } else {

@@ -62,16 +62,7 @@ workflow ANALYZE_WF {
 
         GMX_CLUSTER(ch_cluster_in)
 
-        GMX_CLUSTER.out.cluster_frames.flatMap { m, pdbs, maes ->
-            def plist = pdbs instanceof List ? pdbs : [pdbs]
-            plist.sort { it.name }.collect { p ->
-                def frame_id = p.baseName
-                def idx_str = frame_id.tokenize('_').last()
-                def pose_file = file("${p.parent}/${m.id}_pose_${idx_str}.sdf")
-                def pose_path = pose_file.exists() ? pose_file.toAbsolutePath() : "NO_POSE"
-                "${frame_id}\t${p.toAbsolutePath()}\t${pose_path}"
-            }
-        }.collectFile(name: 'cluster_receipt.tsv', storeDir: params.outdir, newLine: true)
+        GMX_CLUSTER.out.cluster_manifest.collectFile(name: 'cluster_receipt.tsv', storeDir: params.outdir, newLine: false)
 
         return
     }

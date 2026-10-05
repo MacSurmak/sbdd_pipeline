@@ -126,12 +126,6 @@ def cmd_clean_traj(args):
     for item in plan_list:
         clean_dir = Path(item["clean_dir"])
         clean_xtc = clean_dir / "trajectory_clean.xtc"
-        ref_gro = clean_dir / "complex_ref.gro"
-        ref_pdb = clean_dir / "complex_ref.pdb"
-        t_record.path_ref_pdb = (
-            str(ref_gro.resolve()) if ref_gro.exists() else str(ref_pdb.resolve())
-        )
-
         ref_struct = clean_dir / "complex_ref.gro"
         if not ref_struct.exists():
             ref_struct = clean_dir / "complex_ref.pdb"
@@ -303,7 +297,7 @@ def cmd_cluster(args):
             .filter(
                 ReceptorFrame.target_id == sys_obj.target_id,
                 ReceptorFrame.source_type == "md_centroid",
-                ReceptorFrame.name.like(f"{sys_obj.name}_%"),
+                ReceptorFrame.parent_frame_id == sys_obj.receptor_frame_id,
             )
             .all()
         )
@@ -388,14 +382,12 @@ def cmd_cluster(args):
         if not line.strip():
             continue
         parts = line.split("\t")
-        cluster_id = parts[0]
+        centroid_title = parts[0]
         pdb_path = parts[1]
-        pose_path = parts[2] if len(parts) > 2 else "NO_POSE"
+        mae_path = parts[2] if len(parts) > 2 else Path(pdb_path).with_suffix(".mae")
+        pose_path = parts[3] if len(parts) > 3 else "NO_POSE"
 
-        if "_pose" in cluster_id:
-            continue
-
-        parent_sys_key = cluster_id.split("_centroid_")[0]
+        parent_sys_key = centroid_title.replace("_cluster", "").split("_centroid_")[0] + "_cluster"
         mapped_item = sys_map.get(parent_sys_key)
         if not mapped_item:
             continue
@@ -407,10 +399,7 @@ def cmd_cluster(args):
         parent_sys.environment_dict = env
 
         # A. Register Centroid as a peer ReceptorFrame in Target (MAE is primary)
-        centroid_frame_name = (
-            f"{parent_sys.name}_{cluster_id.split('_')[-2]}_{cluster_id.split('_')[-1]}"
-        )
-        mae_path = Path(pdb_path).with_suffix(".mae")
+        centroid_frame_name = centroid_title.replace("_cluster", "")
         ex_frame = (
             session.query(ReceptorFrame).filter_by(name=centroid_frame_name).first()
         )
@@ -421,19 +410,19 @@ def cmd_cluster(args):
                 source_type="md_centroid",
                 state="ready",
                 parent_frame_id=parent_sys.receptor_frame_id,
-                path=str(mae_path.resolve()),
+                path=str(Path(mae_path).resolve()),
             )
             new_frame.cofactors_list = parent_sys.receptor_frame.cofactors_list
             session.add(new_frame)
             session.flush()
             frame_obj = new_frame
         else:
-            ex_frame.path = str(mae_path.resolve())
+            ex_frame.path = str(Path(mae_path).resolve())
             frame_obj = ex_frame
 
         # B. Register in-situ Pose if extracted from cluster (SDF is primary)
         pose_obj = None
-        if pose_path != "NO_POSE" and parent_sys.pose:
+        if pose_path != "NO_POSE" and parent_sys.pose and Path(pose_path).exists():
             pose_sdf_path = Path(pose_path).with_suffix(".sdf")
             cluster_pose_name = f"{centroid_frame_name}_pose"
             ex_pose = session.query(Pose).filter_by(name=cluster_pose_name).first()

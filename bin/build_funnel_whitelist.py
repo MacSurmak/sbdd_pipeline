@@ -46,22 +46,18 @@ def main():
     parser.add_argument("--output", required=True, help="Output whitelist CSV path")
     args = parser.parse_args()
 
-    # Map frame id to collections of chunk files to prevent silent overwriting
-    import re
     from collections import defaultdict
 
     glide_by_frame = defaultdict(list)
     for f in args.glide_csvs:
         p = Path(f)
-        m = re.search(r"_f(\d+)", p.stem)
-        frame_id = m.group(1) if m else "1"
+        frame_id = p.stem.replace("_dock", "")
         glide_by_frame[frame_id].append(p)
 
     gnina_by_frame = defaultdict(list)
     for f in args.gnina_sdfs:
         p = Path(f)
-        m = re.search(r"_f(\d+)", p.stem)
-        frame_id = m.group(1) if m else "1"
+        frame_id = p.stem.replace("_rescored", "")
         gnina_by_frame[frame_id].append(p)
 
     all_data = []

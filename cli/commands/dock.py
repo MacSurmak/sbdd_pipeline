@@ -286,25 +286,15 @@ def cmd_dock(args):
 
                     pose_name = f"{frame_name}_{title}_dock"
 
-                    sdf_path = None
-                    for cand in [
-                        cwd / "docking" / frame_name / f"{frame_name}_dock.sdf",
-                        cwd
-                        / "docking"
-                        / frame_name
-                        / f"{frame_name}_gnina_docked_all.sdf",
-                        cwd / "docking" / f"{frame_name}_dock.sdf",
-                        cwd / "docking" / f"{frame_name}_gnina_docked_all.sdf",
-                    ]:
-                        if cand.exists():
-                            sdf_path = cand
-                            break
+                    # Directly resolve docked pose file published by Nextflow
+                    sdf_path = cwd / "docking" / frame_name / f"{frame_name}_dock.sdf"
+                    if not sdf_path.exists():
+                        sdf_path = cwd / "docking" / frame_name / f"{frame_name}_gnina_docked_all.sdf"
 
-                    if not sdf_path:
-                        console.print(
-                            f"[bold red]FATAL: Could not find docked SDF for {pose_name}. Pipeline failed to produce poses![/bold red]"
+                    if not sdf_path.exists():
+                        raise FileNotFoundError(
+                            f"FATAL: Could not find docked SDF for {pose_name} at {sdf_path}. Pipeline failed to produce poses!"
                         )
-                        sys.exit(1)
 
                     scores_dict = {
                         k: float(v)

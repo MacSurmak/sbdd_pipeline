@@ -41,7 +41,8 @@ workflow SCREEN_WF {
         def meta = [
             id: target_id,
             frame: 1,
-            project: params.project_name
+            project: params.project_name,
+            native_ligand: rec.native_ligand ?: ""
         ]
 
         [ meta, rec_pdb.toAbsolutePath(), rec_mae.toAbsolutePath(), ref_sdf.toAbsolutePath(), ref_mae.toAbsolutePath() ]

@@ -8,8 +8,7 @@ import pandas as pd
 def test_summarize_results_gnina(sample_sdf, tmp_path):
     docking_dir = tmp_path / "docking"
     docking_dir.mkdir()
-    # Put sample_sdf into docking_dir matching canonical gnina dock naming
-    (docking_dir / "test_f1_gnina_dock.sdf").write_text(sample_sdf.read_text())
+    (docking_dir / "test_f1_gnina_docked_all.sdf").write_text(sample_sdf.read_text())
 
     reports_dir = tmp_path / "reports"
     summarize_script = (
@@ -35,7 +34,6 @@ def test_summarize_results_gnina(sample_sdf, tmp_path):
 
     df = pd.read_csv(ranking_csv)
     assert len(df) == 3
-    # Sorted by Dock_CNNaffinity descending: MOL3 (8.4) > MOL1 (7.2) > MOL2 (6.1)
     assert df.iloc[0]["Title"] == "MOL3"
     assert df.iloc[0]["Dock_CNNaffinity"] == 8.4
     assert df.iloc[1]["Title"] == "MOL1"
