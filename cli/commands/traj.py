@@ -382,13 +382,23 @@ def cmd_cluster(args):
         console.print("[bold red]Nextflow clustering failed.[/bold red]")
         sys.exit(ret_code)
 
-    receipt_file = cwd / "cluster_receipt.tsv"
-    if not receipt_file.exists():
-        console.print("[bold red]FATAL: cluster_receipt.tsv not found![/bold red]")
+    prepared_dir = (cwd / "prepared").resolve()
+    receipt_files = sorted(prepared_dir.glob("*_cluster_receipt.tsv"))
+    if not receipt_files:
+        legacy = cwd / "cluster_receipt.tsv"
+        if legacy.exists():
+            receipt_files = [legacy]
+
+    if not receipt_files:
+        console.print(f"[bold red]FATAL: No cluster receipt files found in {prepared_dir}![/bold red]")
         sys.exit(1)
 
     registered_frames = 0
-    for line in receipt_file.read_text().strip().splitlines():
+    lines = []
+    for rf in receipt_files:
+        lines.extend(rf.read_text().strip().splitlines())
+
+    for line in lines:
         if not line.strip():
             continue
         parts = line.split("\t")
