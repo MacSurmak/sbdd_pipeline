@@ -59,7 +59,7 @@ def main():
                 continue
 
             title = (st.property.get("s_m_title") or st.title or "").strip()
-            is_match = (title in allowed_titles)
+            is_match = title in allowed_titles
             if is_match and pose_counts.get(title, 0) < args.max_poses:
                 whitelisted_poses.append(st.copy())
                 pose_counts[title] = pose_counts.get(title, 0) + 1

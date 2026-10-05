@@ -127,9 +127,13 @@ def cmd_prep(args):
         # Update existing Pose in-place if native ligand was prepared
         system = session.query(System).filter_by(receptor_frame_id=frame.id).first()
         if system and system.pose:
-            prep_sdf_path = (cwd / "prepared" / f"{orig_frame_name}_ref_native_prepared.sdf").resolve()
+            prep_sdf_path = (
+                cwd / "prepared" / f"{orig_frame_name}_ref_native_prepared.sdf"
+            ).resolve()
             if not prep_sdf_path.exists():
-                prep_sdf_path = (cwd / "prepared" / f"{orig_frame_name}_ref_native.sdf").resolve()
+                prep_sdf_path = (
+                    cwd / "prepared" / f"{orig_frame_name}_ref_native.sdf"
+                ).resolve()
 
             if prep_sdf_path.exists() and prep_sdf_path.stat().st_size > 0:
                 system.pose.path = str(prep_sdf_path)

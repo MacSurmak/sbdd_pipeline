@@ -103,11 +103,20 @@ def calculate_pair_rmsd(m_ref, m_dock) -> float:
 
 def main():
     parser = argparse.ArgumentParser(description="Calculate In-Situ Heavy-Atom RMSD")
-    parser.add_argument("--reference", required=True, help="Path to reference ligand (.sdf or .pdb)")
-    parser.add_argument("--poses", required=True, help="Path to docked ligand poses (.sdf)")
+    parser.add_argument(
+        "--reference", required=True, help="Path to reference ligand (.sdf or .pdb)"
+    )
+    parser.add_argument(
+        "--poses", required=True, help="Path to docked ligand poses (.sdf)"
+    )
     parser.add_argument("--receptor", default="", help="Receptor name")
     parser.add_argument("--title", default="", help="Ligand title")
-    parser.add_argument("--engine", default="generic", choices=["glide", "gnina", "generic"], help="Docking engine name")
+    parser.add_argument(
+        "--engine",
+        default="generic",
+        choices=["glide", "gnina", "generic"],
+        help="Docking engine name",
+    )
     parser.add_argument("--output", required=True, help="Path to output CSV")
     args = parser.parse_args()
 
@@ -150,7 +159,11 @@ def main():
         )
 
     val = round(best_rmsd, 3)
-    engine_col = "InSitu_RMSD_Glide_A" if args.engine == "glide" else ("InSitu_RMSD_GNINA_A" if args.engine == "gnina" else "InSitu_RMSD_A")
+    engine_col = (
+        "InSitu_RMSD_Glide_A"
+        if args.engine == "glide"
+        else ("InSitu_RMSD_GNINA_A" if args.engine == "gnina" else "InSitu_RMSD_A")
+    )
 
     row = {
         "Receptor": args.receptor,

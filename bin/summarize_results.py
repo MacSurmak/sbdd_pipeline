@@ -52,7 +52,11 @@ def compute_pose_consensus_rmsd(df: pd.DataFrame, dock_dir: Path):
         if glide_sdf.exists() and gnina_sdf.exists():
             mg = _extract_mol(glide_sdf, title)
             mn = _extract_mol(gnina_sdf, title)
-            if mg is not None and mn is not None and mg.GetNumAtoms() == mn.GetNumAtoms():
+            if (
+                mg is not None
+                and mn is not None
+                and mg.GetNumAtoms() == mn.GetNumAtoms()
+            ):
                 val = rdMolAlign.GetBestRMS(mg, mn)
                 rmsd_list.append(round(val, 2))
                 continue
@@ -125,7 +129,7 @@ def main():
             if p.is_file():
                 for sfx in ["_dock.csv", "_gnina_docked_all.sdf", "_rescored.sdf"]:
                     if p.name.endswith(sfx):
-                        rec_name = p.name[:-len(sfx)]
+                        rec_name = p.name[: -len(sfx)]
                         if rec_name not in receptors_ordered:
                             receptors_ordered.append(rec_name)
                         break
@@ -147,12 +151,14 @@ def main():
         resc_data = parse_gnina_sdf(r_file, prefix="Resc_") if r_file.exists() else {}
         dock_data = parse_gnina_sdf(d_file, prefix="Dock_") if d_file.exists() else {}
 
-        titles = sorted(list(
-            set(glide_data.keys())
-            | set(prime_data.keys())
-            | set(resc_data.keys())
-            | set(dock_data.keys())
-        ))
+        titles = sorted(
+            list(
+                set(glide_data.keys())
+                | set(prime_data.keys())
+                | set(resc_data.keys())
+                | set(dock_data.keys())
+            )
+        )
 
         for t in titles:
             r = {"Title": t, "Receptor": rec_id, "Frame": rec_id}
@@ -200,10 +206,18 @@ def main():
             for _, r_row in r_df.iterrows():
                 r_rec = str(r_row.get("Receptor", "")).strip()
                 r_title = str(r_row.get("Title", "")).strip()
-                if "InSitu_RMSD_Glide_A" in r_row and not pd.isna(r_row["InSitu_RMSD_Glide_A"]):
-                    glide_rmsd_map[(r_rec, r_title)] = float(r_row["InSitu_RMSD_Glide_A"])
-                if "InSitu_RMSD_GNINA_A" in r_row and not pd.isna(r_row["InSitu_RMSD_GNINA_A"]):
-                    gnina_rmsd_map[(r_rec, r_title)] = float(r_row["InSitu_RMSD_GNINA_A"])
+                if "InSitu_RMSD_Glide_A" in r_row and not pd.isna(
+                    r_row["InSitu_RMSD_Glide_A"]
+                ):
+                    glide_rmsd_map[(r_rec, r_title)] = float(
+                        r_row["InSitu_RMSD_Glide_A"]
+                    )
+                if "InSitu_RMSD_GNINA_A" in r_row and not pd.isna(
+                    r_row["InSitu_RMSD_GNINA_A"]
+                ):
+                    gnina_rmsd_map[(r_rec, r_title)] = float(
+                        r_row["InSitu_RMSD_GNINA_A"]
+                    )
         except Exception as e:
             print(f"Warning: Failed to parse RMSD CSV {rmsd_csv}: {e}", file=sys.stderr)
 

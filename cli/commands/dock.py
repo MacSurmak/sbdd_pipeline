@@ -92,9 +92,13 @@ def cmd_dock(args):
             path_pdb = frame_p.with_suffix(".pdb")
 
             if not path_mae.exists():
-                raise FileNotFoundError(f"FATAL: Receptor MAE not found for frame '{r.name}': {path_mae}")
+                raise FileNotFoundError(
+                    f"FATAL: Receptor MAE not found for frame '{r.name}': {path_mae}"
+                )
             if not path_pdb.exists():
-                raise FileNotFoundError(f"FATAL: Receptor PDB not found for frame '{r.name}': {path_pdb}")
+                raise FileNotFoundError(
+                    f"FATAL: Receptor PDB not found for frame '{r.name}': {path_pdb}"
+                )
 
             # Reconcile pose scratch paths strictly with the permanent prepared/ folder
             pose_p = Path(native_pose.path).resolve()
@@ -114,9 +118,13 @@ def cmd_dock(args):
             pose_mae = pose_p.with_suffix(".mae")
 
             if not pose_sdf.exists():
-                raise FileNotFoundError(f"FATAL: Reference pose SDF not found for frame '{r.name}': {pose_sdf}")
+                raise FileNotFoundError(
+                    f"FATAL: Reference pose SDF not found for frame '{r.name}': {pose_sdf}"
+                )
             if not pose_mae.exists():
-                raise FileNotFoundError(f"FATAL: Reference pose MAE not found for frame '{r.name}': {pose_mae}")
+                raise FileNotFoundError(
+                    f"FATAL: Reference pose MAE not found for frame '{r.name}': {pose_mae}"
+                )
 
             plan["receptors"].append(
                 {
@@ -301,7 +309,12 @@ def cmd_dock(args):
                     # Directly resolve docked pose file published by Nextflow
                     sdf_path = cwd / "docking" / frame_name / f"{frame_name}_dock.sdf"
                     if not sdf_path.exists():
-                        sdf_path = cwd / "docking" / frame_name / f"{frame_name}_gnina_docked_all.sdf"
+                        sdf_path = (
+                            cwd
+                            / "docking"
+                            / frame_name
+                            / f"{frame_name}_gnina_docked_all.sdf"
+                        )
 
                     if not sdf_path.exists():
                         raise FileNotFoundError(
@@ -382,7 +395,11 @@ def cmd_dock(args):
                         if val_str and val_str not in ["nan", "-"]:
                             try:
                                 v = float(val_str)
-                                return f"[bold green]{v:.2f}[/bold green]" if v <= 2.0 else f"[bold red]{v:.2f}[/bold red]"
+                                return (
+                                    f"[bold green]{v:.2f}[/bold green]"
+                                    if v <= 2.0
+                                    else f"[bold red]{v:.2f}[/bold red]"
+                                )
                             except ValueError:
                                 return val_str
                         return "-"
@@ -393,9 +410,19 @@ def cmd_dock(args):
                     # Determine verdict: SUCCESS if either engine reached <= 2.5 A (allosteric tolerance)
                     verdict = "[dim]-[/dim]"
                     try:
-                        vg = float(g_rmsd) if g_rmsd and g_rmsd not in ["nan", "-"] else None
-                        vn = float(n_rmsd) if n_rmsd and n_rmsd not in ["nan", "-"] else None
-                        if (vg is not None and vg <= 2.5) or (vn is not None and vn <= 2.5):
+                        vg = (
+                            float(g_rmsd)
+                            if g_rmsd and g_rmsd not in ["nan", "-"]
+                            else None
+                        )
+                        vn = (
+                            float(n_rmsd)
+                            if n_rmsd and n_rmsd not in ["nan", "-"]
+                            else None
+                        )
+                        if (vg is not None and vg <= 2.5) or (
+                            vn is not None and vn <= 2.5
+                        ):
                             verdict = "[bold green]✓ SUCCESS[/bold green]"
                         elif vg is not None or vn is not None:
                             verdict = "[bold yellow]⚠ DRIFT[/bold yellow]"

@@ -316,7 +316,9 @@ def cmd_cluster(args):
         if existing_centroids:
             stored_sig = sys_obj.environment_dict.get("cluster_params_sig")
             if stored_sig is None:
-                stored_sig = {"trajs": sys_obj.environment_dict.get("cluster_active_trajs", [])}
+                stored_sig = {
+                    "trajs": sys_obj.environment_dict.get("cluster_active_trajs", [])
+                }
 
             if stored_sig == current_cluster_sig and not getattr(args, "force", False):
                 console.print(
@@ -390,7 +392,9 @@ def cmd_cluster(args):
             receipt_files = [legacy]
 
     if not receipt_files:
-        console.print(f"[bold red]FATAL: No cluster receipt files found in {prepared_dir}![/bold red]")
+        console.print(
+            f"[bold red]FATAL: No cluster receipt files found in {prepared_dir}![/bold red]"
+        )
         sys.exit(1)
 
     registered_frames = 0
@@ -404,10 +408,20 @@ def cmd_cluster(args):
         parts = line.split("\t")
         centroid_title = parts[0]
         pdb_filename = Path(parts[1]).name
-        mae_filename = Path(parts[2]).name if len(parts) > 2 and parts[2].strip() else f"{centroid_title}.mae"
-        pose_filename = Path(parts[3]).name if len(parts) > 3 and parts[3].strip() != "NO_POSE" else None
+        mae_filename = (
+            Path(parts[2]).name
+            if len(parts) > 2 and parts[2].strip()
+            else f"{centroid_title}.mae"
+        )
+        pose_filename = (
+            Path(parts[3]).name
+            if len(parts) > 3 and parts[3].strip() != "NO_POSE"
+            else None
+        )
 
-        parent_sys_key = centroid_title.replace("_cluster", "").split("_centroid_")[0] + "_cluster"
+        parent_sys_key = (
+            centroid_title.replace("_cluster", "").split("_centroid_")[0] + "_cluster"
+        )
         mapped_item = sys_map.get(parent_sys_key)
         if not mapped_item:
             continue
@@ -490,7 +504,11 @@ def cmd_cluster(args):
             f"{centroid_frame_name}_holo" if pose_obj else f"{centroid_frame_name}_apo"
         )
         if pose_obj:
-            legacy_apo = session.query(System).filter_by(name=f"{centroid_frame_name}_apo").first()
+            legacy_apo = (
+                session.query(System)
+                .filter_by(name=f"{centroid_frame_name}_apo")
+                .first()
+            )
             if legacy_apo:
                 session.delete(legacy_apo)
                 session.flush()

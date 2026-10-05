@@ -27,10 +27,14 @@ def get_coords_rdkit(path: Path) -> List[Tuple[float, float, float]]:
         return []
 
     conf = mols[0].GetConformer()
-    return [(float(conf.GetAtomPosition(i).x),
-             float(conf.GetAtomPosition(i).y),
-             float(conf.GetAtomPosition(i).z))
-            for i in range(mols[0].GetNumAtoms())]
+    return [
+        (
+            float(conf.GetAtomPosition(i).x),
+            float(conf.GetAtomPosition(i).y),
+            float(conf.GetAtomPosition(i).z),
+        )
+        for i in range(mols[0].GetNumAtoms())
+    ]
 
 
 def get_coords_schrodinger(path: Path) -> List[Tuple[float, float, float]]:
@@ -40,7 +44,9 @@ def get_coords_schrodinger(path: Path) -> List[Tuple[float, float, float]]:
     return [(float(a.x), float(a.y), float(a.z)) for a in st.atom]
 
 
-def parse_box_dims(val: str, default: Tuple[float, float, float]) -> Tuple[float, float, float]:
+def parse_box_dims(
+    val: str, default: Tuple[float, float, float]
+) -> Tuple[float, float, float]:
     try:
         parts = [float(x.strip()) for x in val.replace(",", " ").split() if x.strip()]
         if len(parts) == 3:
@@ -50,7 +56,17 @@ def parse_box_dims(val: str, default: Tuple[float, float, float]) -> Tuple[float
     return default
 
 
-def cgo_box_lines(min_x: float, max_x: float, min_y: float, max_y: float, min_z: float, max_z: float, r: float, g: float, b: float) -> str:
+def cgo_box_lines(
+    min_x: float,
+    max_x: float,
+    min_y: float,
+    max_y: float,
+    min_z: float,
+    max_z: float,
+    r: float,
+    g: float,
+    b: float,
+) -> str:
     """Generates Python CGO lines representation for PyMOL."""
     return f"""[
     BEGIN, LINES,
@@ -72,12 +88,23 @@ def cgo_box_lines(min_x: float, max_x: float, min_y: float, max_y: float, min_z:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Generate PyMOL docking box representation script")
+    parser = argparse.ArgumentParser(
+        description="Generate PyMOL docking box representation script"
+    )
     parser.add_argument("--reference", required=True, help="Reference ligand file")
     parser.add_argument("--receptor_name", default="receptor", help="Receptor name")
-    parser.add_argument("--inner_box", default="10, 10, 10", help="Glide inner box dimensions")
-    parser.add_argument("--outer_box", default="26, 26, 26", help="Glide outer box dimensions")
-    parser.add_argument("--autobox_add", type=float, default=4.0, help="GNINA autobox padding in Angstroms")
+    parser.add_argument(
+        "--inner_box", default="10, 10, 10", help="Glide inner box dimensions"
+    )
+    parser.add_argument(
+        "--outer_box", default="26, 26, 26", help="Glide outer box dimensions"
+    )
+    parser.add_argument(
+        "--autobox_add",
+        type=float,
+        default=4.0,
+        help="GNINA autobox padding in Angstroms",
+    )
     parser.add_argument("--output", required=True, help="Output .pml script path")
     args = parser.parse_args()
 
@@ -89,7 +116,10 @@ def main():
         try:
             coords = get_coords_schrodinger(ref_p)
         except Exception as e:
-            print(f"FATAL: Could not read reference coordinates from {ref_p}: {e}", file=sys.stderr)
+            print(
+                f"FATAL: Could not read reference coordinates from {ref_p}: {e}",
+                file=sys.stderr,
+            )
             sys.exit(1)
 
     if not coords:
