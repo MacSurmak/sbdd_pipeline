@@ -134,7 +134,8 @@ def cmd_dock(args):
                     "path": str(Path(native_pose.path).resolve()),
                     "status": "ready" if native_lig.batch_id == "crystal" else "unprepared",
                     "is_native": True,
-                    "receptor": r.name
+                    "receptor": r.name,
+                    "ligand_title": native_lig.name,
                 }
             )
 

@@ -45,6 +45,7 @@ process CONVERT_READY_LIGAND {
     tuple val(meta), path("${meta.id}.sdf"), emit: prepared_sdf
 
     script:
+    def lig_title = meta.ligand_title ?: meta.id
     """
     IN_SDF=\$(ls in_ligand/* | head -n 1)
     if [ -z "\$IN_SDF" ] || [ ! -s "\$IN_SDF" ]; then
@@ -52,8 +53,15 @@ process CONVERT_READY_LIGAND {
         exit 1
     fi
 
-    schrodinger structconvert "\$IN_SDF" "${meta.id}.maegz"
-    cp "\$IN_SDF" "${meta.id}.sdf"
+    schrodinger run python3 -c "
+from schrodinger import structure
+st = structure.StructureReader.read('\$IN_SDF')
+title = '${lig_title}'.strip()
+st.title = title
+st.property['s_m_title'] = title
+st.write('${meta.id}.maegz')
+st.write('${meta.id}.sdf')
+"
     """
 
     stub:
@@ -136,7 +144,8 @@ workflow PREPARE_LIGANDS {
                     project: meta.project ?: meta.id,
                     status: "ready",
                     is_native: meta.is_native ?: false,
-                    receptor: meta.receptor ?: ""
+                    receptor: meta.receptor ?: "",
+                    ligand_title: meta.ligand_title ?: meta.id
                 ]
                 [ chunk_meta, f, "native_${idx}" ]
             }
