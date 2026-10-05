@@ -85,8 +85,13 @@ def parse_gnina_sdf(sdf_path: Path, prefix: str = "") -> Dict[str, Dict[str, flo
         content = f.read()
 
     for entry in content.split("$$$$"):
-        lines = entry.strip().splitlines()
-        if not lines:
+        if entry.startswith("\n"):
+            entry = entry[1:]
+        elif entry.startswith("\r\n"):
+            entry = entry[2:]
+            
+        lines = entry.splitlines()
+        if len(lines) < 4:
             continue
 
         raw_title = lines[0].strip()
