@@ -74,37 +74,49 @@ def cmd_dock(args):
             return
 
         for r, native_pose, native_lig in active_frames:
-            # Strictly resolve existing MAE and PDB files for the receptor
+            # Reconcile any existing corrupted scratch paths strictly with the permanent prepared/ folder
             frame_p = Path(r.path).resolve()
+            if "/work/" in str(frame_p) or not frame_p.exists():
+                canonical_mae = (cwd / "prepared" / frame_p.name).resolve()
+                if canonical_mae.exists():
+                    frame_p = canonical_mae
+                    r.path = str(canonical_mae)
+                    session.add(r)
+                else:
+                    raise FileNotFoundError(
+                        f"FATAL: Receptor frame '{r.name}' references invalid path: {r.path}. "
+                        f"File not found at canonical location: {canonical_mae}"
+                    )
+
             path_mae = frame_p.with_suffix(".mae")
             path_pdb = frame_p.with_suffix(".pdb")
 
             if not path_mae.exists():
-                console.print(
-                    f"[bold red]FATAL: Receptor MAE not found for frame '{r.name}': {path_mae}[/bold red]"
-                )
-                sys.exit(1)
+                raise FileNotFoundError(f"FATAL: Receptor MAE not found for frame '{r.name}': {path_mae}")
             if not path_pdb.exists():
-                console.print(
-                    f"[bold red]FATAL: Receptor PDB not found for frame '{r.name}': {path_pdb}[/bold red]"
-                )
-                sys.exit(1)
+                raise FileNotFoundError(f"FATAL: Receptor PDB not found for frame '{r.name}': {path_pdb}")
 
-            # Strictly resolve existing SDF and MAE files for reference pose
+            # Reconcile pose scratch paths strictly with the permanent prepared/ folder
             pose_p = Path(native_pose.path).resolve()
+            if "/work/" in str(pose_p) or not pose_p.exists():
+                canonical_sdf = (cwd / "prepared" / pose_p.name).resolve()
+                if canonical_sdf.exists():
+                    pose_p = canonical_sdf
+                    native_pose.path = str(canonical_sdf)
+                    session.add(native_pose)
+                else:
+                    raise FileNotFoundError(
+                        f"FATAL: Pose '{native_pose.name}' references invalid path: {native_pose.path}. "
+                        f"File not found at canonical location: {canonical_sdf}"
+                    )
+
             pose_sdf = pose_p.with_suffix(".sdf")
             pose_mae = pose_p.with_suffix(".mae")
 
             if not pose_sdf.exists():
-                console.print(
-                    f"[bold red]FATAL: Reference pose SDF not found for frame '{r.name}': {pose_sdf}[/bold red]"
-                )
-                sys.exit(1)
+                raise FileNotFoundError(f"FATAL: Reference pose SDF not found for frame '{r.name}': {pose_sdf}")
             if not pose_mae.exists():
-                console.print(
-                    f"[bold red]FATAL: Reference pose MAE not found for frame '{r.name}': {pose_mae}[/bold red]"
-                )
-                sys.exit(1)
+                raise FileNotFoundError(f"FATAL: Reference pose MAE not found for frame '{r.name}': {pose_mae}")
 
             plan["receptors"].append(
                 {

@@ -393,9 +393,9 @@ def cmd_cluster(args):
             continue
         parts = line.split("\t")
         centroid_title = parts[0]
-        raw_pdb_path = parts[1]
-        raw_mae_path = parts[2] if len(parts) > 2 else ""
-        raw_pose_path = parts[3] if len(parts) > 3 else "NO_POSE"
+        pdb_filename = Path(parts[1]).name
+        mae_filename = Path(parts[2]).name if len(parts) > 2 and parts[2].strip() else f"{centroid_title}.mae"
+        pose_filename = Path(parts[3]).name if len(parts) > 3 and parts[3].strip() != "NO_POSE" else None
 
         parent_sys_key = centroid_title.replace("_cluster", "").split("_centroid_")[0] + "_cluster"
         mapped_item = sys_map.get(parent_sys_key)
@@ -403,23 +403,27 @@ def cmd_cluster(args):
             continue
         parent_sys, active_traj_names, cluster_sig = mapped_item
 
-        # Resolve paths published by Nextflow in prepared/ or fallback to local files
-        prepared_dir = cwd / "prepared"
-        pdb_file = prepared_dir / Path(raw_pdb_path).name
-        if not pdb_file.exists():
-            pdb_file = Path(raw_pdb_path)
+        # Strictly enforce permanent project prepared/ directory resolution
+        prepared_dir = (cwd / "prepared").resolve()
+        mae_file = (prepared_dir / mae_filename).resolve()
+        pdb_file = (prepared_dir / pdb_filename).resolve()
 
-        mae_file = prepared_dir / Path(raw_mae_path).name
         if not mae_file.exists():
-            mae_file = Path(raw_mae_path) if raw_mae_path else pdb_file.with_suffix(".mae")
+            raise FileNotFoundError(
+                f"FATAL: Published centroid MAE not found at canonical location: {mae_file}"
+            )
+        if not pdb_file.exists():
+            raise FileNotFoundError(
+                f"FATAL: Published centroid PDB not found at canonical location: {pdb_file}"
+            )
 
         pose_sdf_file = None
-        if raw_pose_path and raw_pose_path != "NO_POSE":
-            cand_pose = prepared_dir / Path(raw_pose_path).name
-            if cand_pose.exists() and cand_pose.stat().st_size > 0:
-                pose_sdf_file = cand_pose
-            elif Path(raw_pose_path).exists() and Path(raw_pose_path).stat().st_size > 0:
-                pose_sdf_file = Path(raw_pose_path)
+        if pose_filename:
+            pose_sdf_file = (prepared_dir / pose_filename).resolve()
+            if not pose_sdf_file.exists() or pose_sdf_file.stat().st_size == 0:
+                raise FileNotFoundError(
+                    f"FATAL: Published centroid pose SDF not found at canonical location: {pose_sdf_file}"
+                )
 
         # Record full clustering signature on parent system to prevent redundant re-clustering
         env = parent_sys.environment_dict
@@ -439,14 +443,14 @@ def cmd_cluster(args):
                 source_type="md_centroid",
                 state="ready",
                 parent_frame_id=parent_sys.receptor_frame_id,
-                path=str(mae_file.resolve()),
+                path=str(mae_file),
             )
             new_frame.cofactors_list = parent_sys.receptor_frame.cofactors_list
             session.add(new_frame)
             session.flush()
             frame_obj = new_frame
         else:
-            ex_frame.path = str(mae_file.resolve())
+            ex_frame.path = str(mae_file)
             frame_obj = ex_frame
 
         # B. Register in-situ Pose if extracted from cluster (SDF is primary)
@@ -461,13 +465,13 @@ def cmd_cluster(args):
                     name=cluster_pose_name,
                     origin="md_cluster",
                     state="ready",
-                    path=str(pose_sdf_file.resolve()),
+                    path=str(pose_sdf_file),
                 )
                 session.add(new_pose)
                 session.flush()
                 pose_obj = new_pose
             else:
-                ex_pose.path = str(pose_sdf_file.resolve())
+                ex_pose.path = str(pose_sdf_file)
                 ex_pose.state = "ready"
                 pose_obj = ex_pose
 
@@ -475,7 +479,6 @@ def cmd_cluster(args):
         cluster_sys_name = (
             f"{centroid_frame_name}_holo" if pose_obj else f"{centroid_frame_name}_apo"
         )
-        # Clean up legacy apo record if pose was found
         if pose_obj:
             legacy_apo = session.query(System).filter_by(name=f"{centroid_frame_name}_apo").first()
             if legacy_apo:

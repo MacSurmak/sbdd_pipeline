@@ -235,6 +235,24 @@ class Trajectory(Base):
     system = relationship("System", back_populates="trajectories")
 
 
+@event.listens_for(ReceptorFrame.path, "set")
+def forbid_scratch_in_receptor_frame_path(target, value, oldvalue, initiator):
+    if value and ("/work/" in str(value) or ".nextflow" in str(value)):
+        raise ValueError(
+            f"FORBIDDEN: Attempted to write ephemeral scratch path into ReceptorFrame.path: {value}. "
+            f"All database records must strictly reference permanent project deliverables."
+        )
+
+
+@event.listens_for(Pose.path, "set")
+def forbid_scratch_in_pose_path(target, value, oldvalue, initiator):
+    if value and ("/work/" in str(value) or ".nextflow" in str(value)):
+        raise ValueError(
+            f"FORBIDDEN: Attempted to write ephemeral scratch path into Pose.path: {value}. "
+            f"All database records must strictly reference permanent project deliverables."
+        )
+
+
 def init_db(db_path: Path = None):
     """
     Initializes SQLite connection and creates all 3NF tables if not existing.

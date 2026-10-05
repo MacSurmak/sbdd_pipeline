@@ -109,35 +109,32 @@ def cmd_prep(args):
     for line in lines:
         if not line.strip():
             continue
-        orig_frame_name, raw_out_path = line.split("\t")
+        orig_frame_name, mae_filename = line.split("\t")
         frame = frame_map.get(orig_frame_name)
         if not frame:
             continue
 
-        prep_frame_path = Path(raw_out_path)
-        if not prep_frame_path.exists():
-            cand = cwd / "prepared" / f"{orig_frame_name}_prepared.mae"
-            if cand.exists():
-                prep_frame_path = cand
+        # Strictly construct and enforce permanent project deliverable location
+        prep_mae_path = (cwd / "prepared" / Path(mae_filename).name).resolve()
+        if not prep_mae_path.exists():
+            raise FileNotFoundError(
+                f"FATAL: Prepared receptor MAE not found at canonical location: {prep_mae_path}"
+            )
 
-        # 1. Update existing ReceptorFrame state to ready and point to prepared structure
-        frame.path = str(prep_frame_path.resolve())
+        frame.path = str(prep_mae_path)
         frame.state = "ready"
 
-        # 2. Update existing Pose in-place if native ligand was prepared
+        # Update existing Pose in-place if native ligand was prepared
         system = session.query(System).filter_by(receptor_frame_id=frame.id).first()
         if system and system.pose:
-            prep_sdf_cand = (
-                cwd / "prepared" / f"{orig_frame_name}_ref_native_prepared.sdf"
-            )
-            if not prep_sdf_cand.exists():
-                prep_sdf_cand = cwd / "prepared" / f"{orig_frame_name}_ref_native.sdf"
+            prep_sdf_path = (cwd / "prepared" / f"{orig_frame_name}_ref_native_prepared.sdf").resolve()
+            if not prep_sdf_path.exists():
+                prep_sdf_path = (cwd / "prepared" / f"{orig_frame_name}_ref_native.sdf").resolve()
 
-            if prep_sdf_cand.exists() and prep_sdf_cand.stat().st_size > 0:
-                system.pose.path = str(prep_sdf_cand.resolve())
+            if prep_sdf_path.exists() and prep_sdf_path.stat().st_size > 0:
+                system.pose.path = str(prep_sdf_path)
                 system.pose.state = "ready"
 
-        # 3. Update existing System state to ready
         if system:
             system.state = "ready"
 
