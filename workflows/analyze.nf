@@ -62,8 +62,6 @@ workflow ANALYZE_WF {
 
         GMX_CLUSTER(ch_cluster_in)
 
-        GMX_CLUSTER.out.cluster_manifest.collectFile(name: 'cluster_receipt.tsv', storeDir: params.outdir, newLine: false)
-
         return
     }
 

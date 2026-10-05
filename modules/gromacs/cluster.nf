@@ -13,7 +13,7 @@ process GMX_CLUSTER {
     output:
     tuple val(meta), path("${meta.id}_centroid_*.pdb"), path("${meta.id}_centroid_*.mae"), emit: cluster_frames
     tuple val(meta), path("${meta.id}_pose_*.sdf"), path("${meta.id}_pose_*.mae"), emit: cluster_poses, optional: true
-    path("cluster_receipt_chunk.tsv"), emit: cluster_manifest
+    path("${meta.id}_cluster_receipt.tsv"), emit: cluster_manifest
 
     script:
     def dt_flag = (dt && dt.toString() != '0') ? "-dt ${dt}" : ""
@@ -58,7 +58,7 @@ process GMX_CLUSTER {
         --prefix "${meta.id}" \
         --ligand "${meta.ligand ?: ''}" \
         --max_clusters "${meta.max_clusters ?: 0}" \
-        --out_receipt cluster_receipt_chunk.tsv
+        --out_receipt "${meta.id}_cluster_receipt.tsv"
     """
 
     stub:
