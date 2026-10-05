@@ -34,15 +34,16 @@ def cmd_prep(args):
         query = query.filter(ReceptorFrame.name.in_(frame_names))
 
     raw_frames = query.all()
-    if not raw_frames:
-        console.print(
-            "[green]No raw frames needing preparation found. Everything is up to date![/green]"
-        )
-        session.close()
-        return
 
     # 2. Fetch raw chemical ligands that need LigPrep
     query_ligands = session.query(Ligand).filter_by(state="raw").all()
+
+    if not raw_frames and not query_ligands:
+        console.print(
+            "[green]No raw frames or ligands needing preparation found. Everything is up to date![/green]"
+        )
+        session.close()
+        return
 
     prepared_dir = (cwd / "prepared").resolve()
     prepared_lig_dir = prepared_dir / "ligands"
@@ -201,7 +202,8 @@ def cmd_prep(args):
             lig_obj = session.query(Ligand).filter_by(name=lig_name).first()
             if lig_obj:
                 prep_mae = (cwd / "ligands" / mae_name).resolve()
-                prep_sdf = prep_mae.with_suffix(".sdf")
+                sdf_name = mae_name.replace(".maegz", ".sdf").replace(".mae", ".sdf")
+                prep_sdf = (cwd / "ligands" / sdf_name).resolve()
 
                 lig_obj.state = "ready"
                 lig_obj.path_mae = str(prep_mae)
