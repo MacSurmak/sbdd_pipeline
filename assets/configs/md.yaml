@@ -22,9 +22,9 @@ md_simulation:
     tolerance: 1e-6
   production:
     temperature: 310.15
-    total_time_ns: 0.05
-    chunk_size_ns: 0.01
-    replicates: 2
+    total_time_ns: 100
+    chunk_size_ns: 10
+    replicates: 3
     dt_ps: 0.002
     compressibility: "4.5e-5"
     tau_p: 5.0

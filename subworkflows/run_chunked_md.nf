@@ -6,7 +6,6 @@ include { RUN_MD_CHUNK as RUN_MD_CHUNK_2 } from '../modules/gromacs/run_chunk'
 include { RUN_MD_CHUNK as RUN_MD_CHUNK_3 } from '../modules/gromacs/run_chunk'
 include { RUN_MD_CHUNK as RUN_MD_CHUNK_4 } from '../modules/gromacs/run_chunk'
 include { RUN_MD_CHUNK as RUN_MD_CHUNK_5 } from '../modules/gromacs/run_chunk'
-include { RUN_MD_CHUNK as RUN_MD_CHUNK_6 } from '../modules/gromacs/run_chunk'
 
 workflow RUN_CHUNKED_MD {
     take:
@@ -51,13 +50,9 @@ workflow RUN_CHUNKED_MD {
     ch_state_5 = step_5.state.map { meta, out_gro, out_cpt, out_tpr, top, ndx, pos -> [meta, out_gro, out_cpt, out_tpr, top, ndx, pos] }
     ch_all_xtcs = ch_all_xtcs.mix(step_5.xtc)
 
-    step_6 = RUN_MD_CHUNK_6(ch_state_5, ch_md_protocol, chunk_ns, 6)
-    ch_state_6 = step_6.state.map { meta, out_gro, out_cpt, out_tpr, top, ndx, pos -> [meta, out_gro, out_cpt, out_tpr, top, ndx, pos] }
-    ch_all_xtcs = ch_all_xtcs.mix(step_6.xtc)
-
     sys_files = step_1.sys_files
 
-    ch_grouped_xtcs = ch_all_xtcs.groupTuple(by: 0, size: 6, sort: true)
+    ch_grouped_xtcs = ch_all_xtcs.groupTuple(by: 0, size: 5, sort: true)
     TRJCAT(ch_grouped_xtcs)
 
     emit:
