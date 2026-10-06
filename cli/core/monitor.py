@@ -110,18 +110,8 @@ def run_monitor(port: int = 8089):
                     current_step = msg.get("step")
 
                     if current_step is not None:
-                        if (
-                            start_step is not None
-                            and total_steps is not None
-                            and total_steps > start_step
-                        ):
-                            display_total = total_steps - start_step
-                            display_step = max(
-                                0, min(display_total, current_step - start_step)
-                            )
-                        else:
-                            display_total = total_steps
-                            display_step = current_step
+                        display_total = total_steps
+                        display_step = current_step
 
                         if task_name not in task_stats:
                             task_stats[task_name] = {
