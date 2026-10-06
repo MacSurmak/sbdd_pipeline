@@ -279,13 +279,23 @@ def main():
         for a in r["atoms"]:
             formatted_atom = format_atom_name(a["atom_name"])
             orig = a["line"]
-            # Col 0-5 (Record), 6-10 (Serial), 11 (Space), 12-15 (Atom), 16 (altLoc),
-            # 17-19 (resName), 20 (Space), 21 (Chain), 22-25 (resSeq), 26 (Blank iCode),
-            # 27-29 (Spaces), 30+ (Coordinates, occupancy, tempFactor, element)
-            rest_coords = orig[30:] if len(orig) >= 30 else ""
+            record_type = orig[:6] if len(orig) >= 6 else "ATOM  "
+            alt_loc = orig[16] if len(orig) > 16 else " "
+            x_str = f"{a['x']:8.3f}"
+            y_str = f"{a['y']:8.3f}"
+            z_str = f"{a['z']:8.3f}"
+            occ_str = orig[54:60] if len(orig) >= 60 else "  1.00"
+            tf_str = orig[60:66] if len(orig) >= 66 else "  0.00"
+            elem_str = orig[76:78] if len(orig) >= 78 else f"{formatted_atom.strip()[:1]:>2s}"
+
+            # Strict standard PDB column allocation:
+            # 1-6 Record, 7-11 Serial, 12 Space, 13-16 AtomName, 17 altLoc, 18-20 resName,
+            # 21 Space, 22 ChainID, 23-26 resSeq, 27 iCode (blank), 28-30 Spaces,
+            # 31-38 X, 39-46 Y, 47-54 Z, 55-60 Occ, 61-66 TF, 67-76 Spaces, 77-78 Element
             new_line = (
-                f"{orig[:6]}{global_atom_idx:5d} {formatted_atom}{orig[16]}{formatted_res} "
-                f"{prev_chain}{r['clean_res_seq']:4d}   {rest_coords}"
+                f"{record_type}{global_atom_idx:5d} {formatted_atom:4s}{alt_loc}{formatted_res:>3s} "
+                f"{prev_chain}{r['clean_res_seq']:4d}    "
+                f"{x_str}{y_str}{z_str}{occ_str}{tf_str}          {elem_str}"
             )
             out_lines.append(new_line)
             global_atom_idx += 1
