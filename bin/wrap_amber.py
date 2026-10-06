@@ -20,14 +20,31 @@ def cmd_antechamber(args):
 
 def cmd_tleap(args):
     subprocess.run([sys.executable, f"{Path(__file__).parent}/amber_cap_fixer.py", args.complex_pdb, "complex_clean.pdb", "--bonds_out", "apply_bonds.in"], check=True)
+    AMBER_WATER_MODELS = {
+        "tip3p": {"leaprc": "leaprc.water.tip3p", "box": "TIP3PBOX"},
+        "opc": {"leaprc": "leaprc.water.opc", "box": "OPCBOX"},
+        "opc3": {"leaprc": "leaprc.water.opc3", "box": "OPC3BOX"},
+        "spce": {"leaprc": "leaprc.water.spce", "box": "SPCBOX"},
+        "tip4pew": {"leaprc": "leaprc.water.tip4pew", "box": "TIP4PEWBOX"},
+        "fb3": {"leaprc": "leaprc.water.fb3", "box": "FB3BOX"},
+        "fb4": {"leaprc": "leaprc.water.fb4", "box": "FB4BOX"},
+    }
+
+    w_model = args.water_model.lower().strip()
+    if w_model not in AMBER_WATER_MODELS:
+        print(
+            f"FATAL: Water model '{args.water_model}' specified in md.yaml is not supported by Amber tLEaP!\n"
+            f"Supported models: {list(AMBER_WATER_MODELS.keys())}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    w_cfg = AMBER_WATER_MODELS[w_model]
+    box = w_cfg["box"]
+    leaprc_water = w_cfg["leaprc"]
+
     with open("tleap.in", "w") as f:
-        f.write("source leaprc.protein.ff19SB\nsource leaprc.gaff2\nsource leaprc.lipid21\n")
-        if args.water_model.lower() == "tip3p":
-            f.write("source leaprc.water.tip3p\nloadAmberParams frcmod.ionslm_126_tip3p\n")
-            box = "TIP3PBOX"
-        else:
-            f.write("source leaprc.water.opc\nloadAmberParams frcmod.ionslm_126_opc\n")
-            box = "OPCBOX"
+        f.write(f"source leaprc.protein.ff19SB\nsource leaprc.gaff2\nsource leaprc.lipid21\nsource {leaprc_water}\n")
             
         for m in args.mol2s:
             name = Path(m).stem.replace("_gaff2", "")

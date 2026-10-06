@@ -163,6 +163,9 @@ def execute_nextflow(
     unrolled_nf = pipeline_code_dir / "subworkflows" / "run_chunked_md.nf"
     unrolled_nf.write_text(unrolled_code)
 
+    # Synchronize repository copy so standalone calls without CLI also reflect configured DAG
+    (FRAMEWORK_DIR / "subworkflows" / "run_chunked_md.nf").write_text(unrolled_code)
+
     for script_file in (pipeline_code_dir / "bin").glob("*.py"):
         try:
             script_file.chmod(0o755)
@@ -172,12 +175,13 @@ def execute_nextflow(
     env["NXF_HOME"] = str(scratch_nxf_home.resolve())
     env["NXF_WORK"] = str(scratch_work.resolve())
 
+    target_main = pipeline_code_dir / "main.nf"
     cmd = [
         "nextflow",
         "-log",
         str(log_file.resolve()),
         "run",
-        str(main_nf.resolve()),
+        str(target_main.resolve()),
         "-work-dir",
         str(scratch_work.resolve()),
         "-profile",
