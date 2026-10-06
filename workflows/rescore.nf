@@ -107,11 +107,11 @@ workflow RESCORE_WF {
 
     ch_all_summary = ch_mmgbsa_csvs.map { meta, csv -> csv }
         .mix(ch_dock_files)
-        .mix(ch_rescore_plan)
         .collect()
 
     SUMMARIZE_DOCKING(
         params.project_name,
+        ch_rescore_plan,
         ch_all_summary,
         params.native_ligand ?: "",
         bench_str

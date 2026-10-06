@@ -124,17 +124,14 @@ def main():
     dock_dir = Path(args.docking_dir)
     analysis_dir = Path(args.analysis_dir) if args.analysis_dir else dock_dir
 
+    if not args.plan:
+        raise ValueError("FATAL: --plan argument is required. Execution manifest must be passed explicitly.")
+
+    plan_path = Path(args.plan).resolve()
+    if not plan_path.exists():
+        raise FileNotFoundError(f"FATAL: Execution plan JSON was not found at canonical path: {plan_path}")
+
     receptors_ordered = []
-    plan_path = Path(args.plan) if args.plan else (dock_dir / "dock_plan.json")
-    if not plan_path.exists():
-        plan_path = dock_dir / "rescore_plan.json"
-
-    if not plan_path.exists():
-        raise FileNotFoundError(
-            f"FATAL: Execution plan JSON was not found at {plan_path}. "
-            "Receptor entities must be defined strictly via manifest."
-        )
-
     with open(plan_path, "r", encoding="utf-8") as pf:
         plan_data = json.load(pf)
         for rec in plan_data.get("receptors", []):
@@ -210,26 +207,23 @@ def main():
     glide_rmsd_map = {}
     gnina_rmsd_map = {}
 
-    for rmsd_csv in dock_dir.glob("*_rmsd.csv"):
-        try:
-            r_df = pd.read_csv(rmsd_csv)
-            for _, r_row in r_df.iterrows():
-                r_rec = str(r_row.get("Receptor", "")).strip()
-                r_title = str(r_row.get("Title", "")).strip()
-                if "InSitu_RMSD_Glide_A" in r_row and not pd.isna(
-                    r_row["InSitu_RMSD_Glide_A"]
-                ):
-                    glide_rmsd_map[(r_rec, r_title)] = float(
-                        r_row["InSitu_RMSD_Glide_A"]
-                    )
-                if "InSitu_RMSD_GNINA_A" in r_row and not pd.isna(
-                    r_row["InSitu_RMSD_GNINA_A"]
-                ):
-                    gnina_rmsd_map[(r_rec, r_title)] = float(
-                        r_row["InSitu_RMSD_GNINA_A"]
-                    )
-        except Exception as e:
-            print(f"Warning: Failed to parse RMSD CSV {rmsd_csv}: {e}", file=sys.stderr)
+    # Deterministic lookup per target receptor from manifest without filesystem glob scanning
+    for rec_id in receptors_ordered:
+        for engine, target_map, col_name in [
+            ("glide", glide_rmsd_map, "InSitu_RMSD_Glide_A"),
+            ("gnina", gnina_rmsd_map, "InSitu_RMSD_GNINA_A"),
+        ]:
+            rmsd_csv = dock_dir / f"{rec_id}_{engine}_rmsd.csv"
+            if rmsd_csv.exists() and rmsd_csv.stat().st_size > 0:
+                try:
+                    r_df = pd.read_csv(rmsd_csv)
+                    for _, r_row in r_df.iterrows():
+                        r_rec = str(r_row.get("Receptor", "")).strip()
+                        r_title = str(r_row.get("Title", "")).strip()
+                        if col_name in r_row and not pd.isna(r_row[col_name]):
+                            target_map[(r_rec, r_title)] = float(r_row[col_name])
+                except Exception as e:
+                    print(f"Warning: Failed to parse RMSD CSV {rmsd_csv}: {e}", file=sys.stderr)
 
     glide_rmsds = []
     gnina_rmsds = []

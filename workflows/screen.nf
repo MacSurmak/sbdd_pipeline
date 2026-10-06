@@ -96,8 +96,11 @@ workflow SCREEN_WF {
 
     // 4. Summarize results
     def bench_ligands_str = params.benchmark_ligands ? (params.benchmark_ligands instanceof List ? params.benchmark_ligands.join(" ") : params.benchmark_ligands) : ""
+    ch_dock_plan = Channel.fromPath(params.dock_plan, checkIfExists: true)
+
     SUMMARIZE_DOCKING(
         params.project_name,
+        ch_dock_plan,
         DOCK_LIBRARY.out.summary_files,
         params.native_ligand ?: "",
         bench_ligands_str
