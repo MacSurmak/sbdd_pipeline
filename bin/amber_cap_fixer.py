@@ -263,9 +263,13 @@ def main():
     prev_chain = None
 
     for r_idx, r in enumerate(residues):
-        # Insert TER when chain physically changes or before organic molecules
+        # Insert TER strictly when chain ID changes or between distinct non-protein molecules
         if prev_chain is not None and (
-            r["chain_id"] != prev_chain or r["chain_id"] in "ZYXWVUTSRQPONMLKJIHGFEDCB"
+            r["chain_id"] != prev_chain
+            or (
+                r["res_name"] not in STANDARD_PROTEIN_RESIDUES
+                and residues[r_idx - 1]["res_name"] not in STANDARD_PROTEIN_RESIDUES
+            )
         ):
             prev_r = residues[r_idx - 1]
             out_lines.append(
