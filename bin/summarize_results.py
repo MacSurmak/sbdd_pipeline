@@ -99,7 +99,10 @@ def main():
         description="Aggregate project results into master ranking"
     )
     parser.add_argument(
-        "--docking_dir", help="Directory containing docking poses and tables"
+        "--docking_dir", required=True, help="Directory containing docking poses and tables"
+    )
+    parser.add_argument(
+        "--plan", default=None, help="Explicit JSON execution plan (dock_plan.json or rescore_plan.json)"
     )
     parser.add_argument("--analysis_dir", help="Directory containing MM-GBSA csv files")
     parser.add_argument(
@@ -114,31 +117,32 @@ def main():
     out_dir = Path(args.outdir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    dock_dir = Path(args.docking_dir) if args.docking_dir else Path(".")
+    dock_dir = Path(args.docking_dir)
     analysis_dir = Path(args.analysis_dir) if args.analysis_dir else dock_dir
 
-    # Optional plan JSON provides explicit receptor list (SSOT)
-    plan_file = dock_dir / "dock_plan.json"
     receptors_ordered = []
-    if plan_file.exists():
-        with open(plan_file, "r", encoding="utf-8") as pf:
-            plan_data = json.load(pf)
-            for rec in plan_data.get("receptors", []):
-                receptors_ordered.append(rec["name"])
-    else:
-        # Fallback to direct file naming without regex stripping
-        for p in dock_dir.iterdir():
-            if p.is_file():
-                for sfx in ["_dock.csv", "_gnina_docked_all.sdf", "_rescored.sdf"]:
-                    if p.name.endswith(sfx):
-                        rec_name = p.name[: -len(sfx)]
-                        if rec_name not in receptors_ordered:
-                            receptors_ordered.append(rec_name)
-                        break
+    plan_path = Path(args.plan) if args.plan else (dock_dir / "dock_plan.json")
+    if not plan_path.exists():
+        plan_path = dock_dir / "rescore_plan.json"
+
+    if not plan_path.exists():
+        raise FileNotFoundError(
+            f"FATAL: Execution plan JSON was not found at {plan_path}. "
+            "Receptor entities must be defined strictly via manifest."
+        )
+
+    with open(plan_path, "r", encoding="utf-8") as pf:
+        plan_data = json.load(pf)
+        for rec in plan_data.get("receptors", []):
+            receptors_ordered.append(rec["name"])
+        for task in plan_data.get("tasks", []):
+            t_name = task.get("name")
+            if t_name and t_name not in receptors_ordered:
+                receptors_ordered.append(t_name)
 
     if not receptors_ordered:
         raise ValueError(
-            f"FATAL: No docking results found in {dock_dir} or {analysis_dir}"
+            f"FATAL: Manifest {plan_path} does not specify any target receptors or tasks."
         )
 
     rows = []

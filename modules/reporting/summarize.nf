@@ -24,11 +24,18 @@ process SUMMARIZE_DOCKING {
     def nat_arg = native_ligand ? "--native_ligand ${native_ligand}" : ""
     def bench_arg = benchmark_ligands ? "--benchmark_ligands ${benchmark_ligands}" : ""
     """
-    # Flattens all inputs staged into in_files into the current execution directory
-    cp -L in_files/* . 2>/dev/null || true
+    cp -L -t . in_files/*
+
+    PLAN_ARG=""
+    if [ -f rescore_plan.json ]; then
+        PLAN_ARG="--plan rescore_plan.json"
+    elif [ -f dock_plan.json ]; then
+        PLAN_ARG="--plan dock_plan.json"
+    fi
 
     python3 ${projectDir}/bin/summarize_results.py \\
         --docking_dir . \\
+        \${PLAN_ARG} \\
         ${nat_arg} \\
         ${bench_arg} \\
         --outdir .

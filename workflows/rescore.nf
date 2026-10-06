@@ -94,17 +94,47 @@ workflow RESCORE_WF {
         }.groupTuple(by: 0, sort: true)
 
         MERGE_MMGBSA_CHUNKS(ch_to_merge)
-        ch_all_csvs = MERGE_MMGBSA_CHUNKS.out.scores_csv.map { meta, csv -> csv }.collect()
+        ch_mmgbsa_csvs = MERGE_MMGBSA_CHUNKS.out.scores_csv
+        ch_mmgbsa_maes = PRIME_MMGBSA.out.out_maegz.map { chunk_meta, mae ->
+            def frame_meta = [id: chunk_meta.frame_id, frame: chunk_meta.frame, project: chunk_meta.project]
+            [ frame_meta, mae ]
+        }.groupTuple(by: 0, sort: true).map { frame_meta, maes -> [ frame_meta, maes[0] ] }
     } else {
-        ch_all_csvs = PRIME_MMGBSA.out.scores_csv.map { meta, csv -> csv }.collect()
+        ch_mmgbsa_csvs = PRIME_MMGBSA.out.scores_csv
+        ch_mmgbsa_maes = PRIME_MMGBSA.out.out_maegz
     }
 
-    // Re-summarize master ranking including Prime MM-GBSA
+    // Generate execution receipt for atomic database synchronization
+    ch_receipt_entries = ch_mmgbsa_csvs.join(ch_mmgbsa_maes, by: 0).map { meta, csv, mae ->
+        "${meta.id}\t${csv.toAbsolutePath()}\t${mae.toAbsolutePath()}"
+    }
+    ch_receipt_entries.collectFile(name: 'rescore_receipt.tsv', storeDir: params.outdir, newLine: true)
+
+    // Re-summarize master ranking with deterministic staging from plan
     def bench_str = params.benchmark_ligands ? (params.benchmark_ligands instanceof List ? params.benchmark_ligands.join(" ") : params.benchmark_ligands) : ""
+
+    if (!planData.dock_summary_files) {
+        error "FATAL: 'dock_summary_files' list is missing in rescore_plan.json. Manifest must be strictly deterministic."
+    }
+
+    ch_dock_files = Channel.fromList(planData.dock_summary_files).map { path_str ->
+        def f = file(path_str)
+        if (!f.exists()) {
+            error "FATAL: Required docking artifact referenced in plan does not exist: ${path_str}"
+        }
+        f
+    }
+
+    ch_rescore_plan = Channel.fromPath(params.rescore_plan, checkIfExists: true)
+
+    ch_all_summary = ch_mmgbsa_csvs.map { meta, csv -> csv }
+        .mix(ch_dock_files)
+        .mix(ch_rescore_plan)
+        .collect()
 
     SUMMARIZE_DOCKING(
         params.project_name,
-        ch_all_csvs,
+        ch_all_summary,
         params.native_ligand ?: "",
         bench_str
     )
