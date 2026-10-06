@@ -4,7 +4,68 @@ import sys
 import subprocess
 import shutil
 import re
+import socket
+import json
+import os
 from pathlib import Path
+
+
+def send_telemetry(msg):
+    master = os.environ.get("SLURM_SUBMIT_HOST", "127.0.0.1")
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        sock.sendto(json.dumps(msg).encode("utf-8"), (master, 8089))
+    except Exception:
+        pass
+    finally:
+        sock.close()
+
+
+def run_mdrun(cmd, task_name):
+    if "-v" not in cmd:
+        cmd.append("-v")
+    
+    print(f"Exec: {' '.join(cmd)}")
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    
+    total_steps = None
+    start_step = None
+    dt_ps = None
+    node_name = os.environ.get("SLURMD_NODENAME", "local")
+
+    for line in proc.stdout:
+        sys.stdout.write(line)
+        sys.stdout.flush()
+
+        m_tot = re.search(r"(?:number of steps|nsteps)\s*[=:]\s*(\d+)", line, re.I)
+        if m_tot:
+            total_steps = int(m_tot.group(1))
+            
+        m_dt = re.search(r"dt\s*=\s*([\d.]+)", line, re.I)
+        if m_dt:
+            dt_ps = float(m_dt.group(1))
+
+        m_step = re.search(r"(?:step|Step=)\s*(\d+)", line, re.I)
+        if m_step:
+            current_step = int(m_step.group(1))
+            if start_step is None:
+                start_step = current_step
+            
+            send_telemetry({
+                "task": task_name,
+                "event": "progress",
+                "step": current_step,
+                "start": start_step,
+                "total": total_steps,
+                "dt_ps": dt_ps,
+                "node": node_name
+            })
+    
+    proc.wait()
+    send_telemetry({"task": task_name, "event": "exit", "node": node_name})
+    if proc.returncode != 0:
+        print(f"FATAL: mdrun failed with exit code {proc.returncode}", file=sys.stderr)
+        sys.exit(proc.returncode)
 
 
 def run_gmx(cmd, input_str=None):
@@ -262,7 +323,7 @@ def cmd_equilibration(args):
             if "em" not in stage and "minim" not in stage:
                 run_cmd.extend(["-pme", "gpu"])
 
-            run_gmx(run_cmd)
+            run_mdrun(run_cmd, f"EQ: {args.sys_name} [{stage}]")
 
             out_gro = Path(f"{stage}.gro")
             if not out_gro.exists():
@@ -350,7 +411,7 @@ def cmd_run_chunk(args):
                 "3",
             ]
         )
-        run_gmx(
+        run_mdrun(
             [
                 "gmx",
                 "mdrun",
@@ -366,7 +427,8 @@ def cmd_run_chunk(args):
                 "1",
                 "-ntomp",
                 str(args.cpus),
-            ]
+            ],
+            f"MD: {args.sys_name}"
         )
         shutil.copy2("out.tpr", "sys_ref.tpr")
     else:
@@ -382,7 +444,7 @@ def cmd_run_chunk(args):
                 "out.tpr",
             ]
         )
-        run_gmx(
+        run_mdrun(
             [
                 "gmx",
                 "mdrun",
@@ -401,7 +463,8 @@ def cmd_run_chunk(args):
                 "1",
                 "-ntomp",
                 str(args.cpus),
-            ]
+            ],
+            f"MD: {args.sys_name}"
         )
         shutil.copy2("out.tpr", "sys_ref.tpr")
 
@@ -586,6 +649,7 @@ def main():
     p_chunk.add_argument("--chunk_idx", required=True)
     p_chunk.add_argument("--cpus", required=True)
     p_chunk.add_argument("--posre_files", nargs="+", required=True)
+    p_chunk.add_argument("--sys_name", required=True)
 
     p_mmpbsa = subparsers.add_parser("mmpbsa")
     p_mmpbsa.add_argument("--clean_xtc", required=True)

@@ -101,42 +101,15 @@ def run_monitor(port: int = 8089):
                         continue
 
                     last_seen[task_name] = now
-                    log_line = msg.get("log", "").replace("\r", " ").strip()
-
-                    # Make description compact so it never wraps on narrow terminal windows
-                    clean_name = task_name.split(":")[-1].strip()
-                    clean_name = clean_name.replace("GMX_EQUILIBRATION_", "EQ: ")
-                    clean_name = clean_name.replace("GMX_EQUILIBRATION", "EQ")
-                    clean_name = clean_name.replace("RUN_MD_CHUNK_", "MD: ")
-                    clean_name = clean_name.replace("RUN_MD_CHUNK", "MD")
+                    clean_name = task_name
 
                     node_name = msg.get("node", "local")
                     dt_ps = msg.get("dt_ps")
                     start_step = msg.get("start")
-
-                    # Extract total from packet metadata or log line
                     total_steps = msg.get("total")
-                    match_total = re.search(r"(\d+)\s+steps,\s+([\d.]+)\s+ps", log_line)
-                    if match_total:
-                        total_steps = int(match_total.group(1))
-                        total_ps = float(match_total.group(2))
-                        if total_steps > 0:
-                            dt_ps = total_ps / total_steps
-                    else:
-                        m_steps_only = re.search(
-                            r"(?i)number of steps\s*=\s*(\d+)", log_line
-                        ) or re.search(
-                            r"(?i)overriding nsteps.*:\s*(\d+)\s+steps", log_line
-                        )
-                        if m_steps_only:
-                            total_steps = int(m_steps_only.group(1))
+                    current_step = msg.get("step")
 
-                    # GROMACS Step Progress (Matches 'step 11280500' and 'Step= 50')
-                    match_step = re.search(r"(?i)step[=\s]+(\d+)", log_line)
-                    if match_step:
-                        current_step = int(match_step.group(1))
-
-                        # Strictly adhere to telemetry metadata: use start_step if present, otherwise raw steps
+                    if current_step is not None:
                         if (
                             start_step is not None
                             and total_steps is not None

@@ -30,7 +30,8 @@ process RUN_MD_CHUNK {
         --chunk_ns ${chunk_ns} \\
         --chunk_idx ${chunk_idx} \\
         --cpus ${task.cpus} \\
-        --posre_files posre_*.itp
+        --posre_files posre_*.itp \\
+        --sys_name "${meta.id}_R${meta.rep}_C${chunk_idx}"
     """
 
     stub:

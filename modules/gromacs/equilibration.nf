@@ -22,7 +22,8 @@ process GMX_EQUILIBRATION {
         --topol ${topol_top} \\
         --ndx ${index_ndx} \\
         --cpus ${task.cpus} \\
-        --posre_files posre_*.itp
+        --posre_files posre_*.itp \\
+        --sys_name "${meta.id}"
     """
 
     stub:
