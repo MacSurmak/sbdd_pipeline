@@ -19,20 +19,33 @@ console = Console()
 
 def cmd_init(args):
     """Initializes a new project workspace with atomic YAML configs."""
+    import random
+    import string
+
     target_dir = Path(args.directory).resolve()
     target_dir.mkdir(parents=True, exist_ok=True)
 
     config_dir = target_dir / "configs"
     config_dir.mkdir(parents=True, exist_ok=True)
 
+    project_name = args.name
+    if not project_name:
+        suffix = "".join(random.choices(string.ascii_lowercase + string.digits, k=6))
+        project_name = f"SBDD_{suffix}"
+
     src_configs = FRAMEWORK_DIR / "assets" / "configs"
     if src_configs.exists():
         for f in src_configs.glob("*.yaml"):
             dest = config_dir / f.name
             if not dest.exists() or args.force:
-                shutil.copy(f, dest)
+                if f.name == "project.yaml":
+                    content = f.read_text(encoding="utf-8")
+                    content = content.replace('name: "SBDD_Project"', f'name: "{project_name}"')
+                    dest.write_text(content, encoding="utf-8")
+                else:
+                    shutil.copy(f, dest)
 
-    console.print(f"[bold green]✓ Project initialized at: {target_dir}[/bold green]")
+    console.print(f"[bold green]✓ Project '{project_name}' initialized at: {target_dir}[/bold green]")
     console.print(f"[cyan]Configurations created in:[/cyan] {config_dir}")
     console.print("\n[bold]Next steps:[/bold]")
     console.print(
@@ -285,6 +298,9 @@ def main():
         nargs="?",
         default=".",
         help="Target project directory (default: current)",
+    )
+    p_init.add_argument(
+        "--name", help="Explicit project name (default: auto-generated random name)"
     )
     p_init.add_argument(
         "--force", action="store_true", help="Overwrite existing templates"
