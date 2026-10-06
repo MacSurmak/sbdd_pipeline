@@ -107,9 +107,6 @@ def run_monitor(port: int = 8089):
     )
 
     task_bars = {}
-    task_stats = (
-        {}
-    )  # task_name -> {"last_step": int, "last_time": float, "ema_rate": float, "dt_ps": float, "speed_str": str}
     last_seen = {}
     last_reap = time.time()
 
@@ -134,7 +131,7 @@ def run_monitor(port: int = 8089):
 
                     for t_name in list(task_bars.keys()):
                         m_job = re.search(r"#(\d+)", t_name)
-                        # When job has a Slurm ID and is no longer present in squeue (even if squeue is completely empty)
+                        # When job has a Slurm ID and is no longer present in squeue
                         if (
                             m_job
                             and active_job_ids is not None
@@ -157,7 +154,7 @@ def run_monitor(port: int = 8089):
                     task_name = msg.get("task", "unknown")
                     event = msg.get("event")
 
-                    # Handle explicit exit signal from wrapper trap
+                    # Handle explicit exit signal from worker telemetry emitter
                     if event == "exit":
                         if task_name in task_bars:
                             progress.remove_task(task_bars[task_name])
@@ -182,108 +179,24 @@ def run_monitor(port: int = 8089):
                         clean_name = clean_name.split(":")[-1].strip()
 
                     node_name = msg.get("node", "local")
-                    dt_ps = msg.get("dt_ps")
-                    start_step = msg.get("start")
-                    total_steps = msg.get("total")
-                    current_step = msg.get("step")
 
-                    if current_step is not None:
-                        # Distinguish discrete pipeline chunks from continuous/external runs
-                        is_chunk = bool(re.search(r"(?:_C\d+|RUN_MD_CHUNK)", task_name))
+                    # Extract authoritative pre-computed metrics emitted by worker
+                    display_step = msg.get("display_step", msg.get("step"))
+                    display_total = msg.get("display_total", msg.get("total"))
+                    step_info_str = msg.get("step_info")
+                    speed_display = msg.get("speed", "-- ns/day")
+                    eta_display = msg.get("eta", "--:--")
 
-                        if (
-                            is_chunk
-                            and start_step is not None
-                            and total_steps is not None
-                            and total_steps > start_step
-                        ):
-                            display_total = total_steps - start_step
-                            display_step = max(
-                                0, min(display_total, current_step - start_step)
-                            )
+                    # Fallback formatting if raw telemetry packet arrives without pre-rendered strings
+                    if step_info_str is None and display_step is not None:
+                        dt_ps = msg.get("dt_ps")
+                        t_str = f" [dim]({format_time_ns(display_step * dt_ps)})[/dim]" if dt_ps else ""
+                        if display_total is not None:
+                            step_info_str = f"[cyan]{format_steps(display_step)}/{format_steps(display_total)}[/cyan]{t_str}"
                         else:
-                            display_total = total_steps
-                            display_step = current_step
+                            step_info_str = f"[cyan]{format_steps(display_step)}[/cyan]{t_str}"
 
-                        # Physical simulation time string (absolute trajectory time: step * dt)
-                        time_info = ""
-                        if dt_ps is not None and current_step is not None:
-                            t_str = format_time_ns(current_step * dt_ps)
-                            if t_str:
-                                time_info = f" [dim]({t_str})[/dim]"
-
-                        if display_total is not None and display_step is not None:
-                            step_info_str = f"[cyan]{format_steps(display_step)}/{format_steps(display_total)}[/cyan]{time_info}"
-                        elif display_step is not None:
-                            step_info_str = (
-                                f"[cyan]{format_steps(display_step)}[/cyan]{time_info}"
-                            )
-                        else:
-                            step_info_str = time_info
-
-                        if task_name not in task_stats:
-                            task_stats[task_name] = {
-                                "last_step": current_step,
-                                "last_time": now,
-                                "ema_rate": None,
-                                "dt_ps": dt_ps,
-                                "speed_str": "-- ns/day" if dt_ps else "-- step/s",
-                            }
-                        else:
-                            stats = task_stats[task_name]
-                            if dt_ps and not stats["dt_ps"]:
-                                stats["dt_ps"] = dt_ps
-
-                            # Reset on stage transition or step rollback
-                            if current_step < stats["last_step"]:
-                                stats["last_step"] = current_step
-                                stats["last_time"] = now
-                                stats["ema_rate"] = None
-
-                            dt_wall = now - stats["last_time"]
-                            if dt_wall >= 1.0:
-                                d_step = current_step - stats["last_step"]
-                                if d_step >= 0:
-                                    inst_rate = d_step / dt_wall
-                                    if stats["ema_rate"] is None:
-                                        stats["ema_rate"] = inst_rate
-                                    else:
-                                        # Exponential moving average with time constant tau = 8.0s
-                                        alpha = 1.0 - math.exp(-dt_wall / 8.0)
-                                        stats["ema_rate"] = (
-                                            alpha * inst_rate
-                                            + (1.0 - alpha) * stats["ema_rate"]
-                                        )
-
-                                    smoothed_rate = stats["ema_rate"]
-                                    if stats["dt_ps"]:
-                                        ns_day = smoothed_rate * stats["dt_ps"] * 86.4
-                                        stats["speed_str"] = f"{ns_day:>5.1f} ns/d"
-                                    else:
-                                        stats["speed_str"] = (
-                                            f"{smoothed_rate:>5.0f} st/s"
-                                        )
-
-                                stats["last_step"] = current_step
-                                stats["last_time"] = now
-
-                        speed_display = task_stats[task_name]["speed_str"]
-
-                        rem_steps = (
-                            (display_total - display_step)
-                            if (display_total is not None and display_step is not None)
-                            else None
-                        )
-                        eta_display = "--:--"
-                        if rem_steps is not None and rem_steps > 0:
-                            ema = task_stats[task_name]["ema_rate"]
-                            if ema and ema > 0:
-                                eta_display = format_eta(rem_steps / ema)
-                            else:
-                                eta_display = "calculating..."
-                        elif rem_steps == 0:
-                            eta_display = "done"
-
+                    if display_step is not None:
                         if task_name not in task_bars:
                             task_bars[task_name] = progress.add_task(
                                 f"[green]{escape(clean_name)}",
@@ -291,7 +204,7 @@ def run_monitor(port: int = 8089):
                                 completed=display_step,
                                 node=escape(node_name),
                                 speed=speed_display,
-                                step_info=step_info_str,
+                                step_info=step_info_str or "",
                                 eta=eta_display,
                             )
                         else:
@@ -309,7 +222,7 @@ def run_monitor(port: int = 8089):
                                 completed=display_step,
                                 node=escape(node_name),
                                 speed=speed_display,
-                                step_info=step_info_str,
+                                step_info=step_info_str or "",
                                 eta=eta_display,
                             )
                         continue
