@@ -76,6 +76,8 @@ def cmd_tleap(args):
             "apply_bonds.in",
             "--ss_cutoff",
             str(args.ss_cutoff),
+            "--water_names",
+            args.water_names,
         ],
         check=True,
     )
@@ -131,6 +133,7 @@ def main():
     p_tleap.add_argument("--box_type", required=True)
     p_tleap.add_argument("--box_padding", required=True)
     p_tleap.add_argument("--ss_cutoff", required=True)
+    p_tleap.add_argument("--water_names", required=True)
     p_tleap.add_argument("--mol2s", nargs="*", default=[])
     p_tleap.add_argument("--frcmods", nargs="*", default=[])
     p_tleap.add_argument("--membrane", action="store_true")

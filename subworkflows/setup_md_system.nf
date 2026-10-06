@@ -104,7 +104,7 @@ workflow SETUP_MD_SYSTEM {
             [ meta, pdb, mol2s, frcmods ]
         }
     
-    TLEAP(ch_tleap_in, water_leaprc, water_box, box_type, is_membrane, wat_pad, ss_cutoff)
+    TLEAP(ch_tleap_in, water_leaprc, water_box, box_type, is_membrane, wat_pad, ss_cutoff, water_names)
 
     // 6. ParmEd conversion to GROMACS
     PARMED(TLEAP.out.amber_system)

@@ -74,6 +74,12 @@ def extract_via_schrodinger(args):
                 )
                 sys.exit(1)
 
+    # Strictly strip all crystallographic and bulk solvent to ensure 100% dry receptor for MD
+    water_atoms = analyze.evaluate_asl(rec_st, "water")
+    if water_atoms:
+        rec_st.deleteAtoms(water_atoms)
+        print(f"Removed {len(water_atoms)} crystallographic water atoms from receptor.", flush=True)
+
     # Save dry receptor (Protein + Ions)
     rec_out = out_dir / "receptor_dry.pdb"
     rec_st.write(str(rec_out))

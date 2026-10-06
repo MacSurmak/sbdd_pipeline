@@ -17,7 +17,4 @@ vdwtype                  = cutoff
 rvdw                     = 1.0
 pbc                      = xyz
 
-constraints              = h-bonds
-constraint-algorithm     = lincs
-lincs-order              = 4
-lincs-iter               = 1
+constraints              = none
