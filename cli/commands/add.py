@@ -90,9 +90,9 @@ def _extract_ligand_atoms(rec_path: Path, lig_resname: str, out_sdf: Path) -> No
         )
 
     schrod_cmd = (
-        [schrod_bin, "run", "python3", "-c"]
+        [schrod_bin, "run", "python3"]
         if not schrod_bin.endswith("/run")
-        else [schrod_bin, "python3", "-c"]
+        else [schrod_bin, "python3"]
     )
 
     script_path = Path(__file__).parent.parent.parent / "bin" / "utils" / "extract_ligand_bonds.py"
