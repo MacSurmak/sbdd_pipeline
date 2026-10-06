@@ -64,6 +64,7 @@ workflow SETUP_MD_SYSTEM {
     wat_pad           // val: 15.0
     salt_conc         // val: 0.15
     water_model       // val: "opc"
+    restraints_fc     // val: "1000,250,50"
 
     main:
     // 1. Extract files
@@ -146,7 +147,7 @@ workflow SETUP_MD_SYSTEM {
 
     // 8. Index & Position Restraints
     ch_ndx_in = ch_final_gro.join(PARMED.out.gmx_system.map { meta, topol, gro -> [ meta, topol ] })
-    NDX_POSRE(ch_ndx_in)
+    NDX_POSRE(ch_ndx_in, restraints_fc)
 
     ch_system_ready = ch_final_gro.join(NDX_POSRE.out.restraints)
         .map { meta, gro, ndx, topol, posre_files ->

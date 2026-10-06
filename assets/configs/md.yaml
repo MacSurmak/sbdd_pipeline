@@ -7,6 +7,7 @@ md_simulation:
     box_padding: 15.0
     neutralize: true
     salt_conc: 0.15
+    restraint_forces: [1000, 500, 250, 100, 50, 10]
   production:
     temperature: 310.15
     total_time_ns: 60

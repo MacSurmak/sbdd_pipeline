@@ -263,13 +263,15 @@ if __name__ == "__main__":
         required=True,
     )
     parser.add_argument("--orgs", default="")
+    parser.add_argument("--forces", default="", help="Comma-separated list of force constants from YAML")
     args = parser.parse_args()
 
     if args.action == "add_groups":
         add_thermostat_groups_by_name(Path(args.ndx))
     elif args.action == "generate_posre":
-        if args.top:
-            generate_posre(Path(args.top))
+        if not args.top:
+            raise ValueError("FATAL: --top is required for generate_posre")
+        generate_posre(Path(args.top), args.forces)
     elif args.action == "ensure_complex":
         ensure_complex_ndx_group(Path(args.ndx))
     elif args.action == "add_pocket":

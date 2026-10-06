@@ -217,6 +217,17 @@ def build_nextflow_args(
                 )
             args.extend([flag, str(sys_build[key])])
 
+        if "restraint_forces" not in sys_build:
+            raise ValueError(
+                "Config validation failed: 'md_simulation.system_build.restraint_forces' in md.yaml is required!"
+            )
+        rf_list = sys_build["restraint_forces"]
+        if not isinstance(rf_list, list) or not rf_list:
+            raise ValueError(
+                "Config validation failed: 'restraint_forces' must be a non-empty list of force constants!"
+            )
+        args.extend(["--md_restraints_fc", ",".join(map(str, rf_list))])
+
         # Production chunks
         prod_cfg = md_cfg.get("production")
         if not prod_cfg:

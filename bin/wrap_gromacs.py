@@ -154,7 +154,7 @@ def cmd_trjcat(args):
 def cmd_ndx_posre(args):
     run_gmx(["gmx", "make_ndx", "-f", args.input_gro, "-o", "index.ndx"], input_str="q\n")
     subprocess.run([sys.executable, f"{Path(__file__).parent}/gromacs_ndx_fixer.py", "--ndx", "index.ndx", "--action", "add_groups"], check=True)
-    subprocess.run([sys.executable, f"{Path(__file__).parent}/gromacs_ndx_fixer.py", "--ndx", "index.ndx", "--top", args.topol, "--action", "generate_posre"], check=True)
+    subprocess.run([sys.executable, f"{Path(__file__).parent}/gromacs_ndx_fixer.py", "--ndx", "index.ndx", "--top", args.topol, "--forces", args.forces, "--action", "generate_posre"], check=True)
 
 def main():
     parser = argparse.ArgumentParser()
@@ -219,6 +219,7 @@ def main():
     p_ndx = subparsers.add_parser("ndx_posre")
     p_ndx.add_argument("--input_gro", required=True)
     p_ndx.add_argument("--topol", required=True)
+    p_ndx.add_argument("--forces", required=True)
 
     args = parser.parse_args()
     if args.subcommand == "cluster": cmd_cluster(args)

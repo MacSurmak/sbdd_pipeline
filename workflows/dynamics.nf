@@ -71,7 +71,8 @@ workflow DYNAMICS_WF {
         params.lipid_padding,
         params.box_padding,
         params.md_salt_conc,
-        params.water_model
+        params.water_model,
+        params.md_restraints_fc
     )
 
     ch_md_protocol = Channel.fromPath("${params.md_protocol}/*", checkIfExists: true).collect()

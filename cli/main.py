@@ -87,6 +87,13 @@ def cmd_md_init(args):
         console.print("[bold red]FATAL: Missing simulation temperature in configs (md.yaml or mmpbsa.yaml)![/bold red]")
         sys.exit(1)
 
+    chunk_ns = (
+        configs.get("md_simulation", {}).get("production", {}).get("chunk_size_ns")
+    )
+    if not chunk_ns:
+        console.print("[bold red]FATAL: Missing 'md_simulation.production.chunk_size_ns' in configs/md.yaml![/bold red]")
+        sys.exit(1)
+
     cmd = [
         sys.executable,
         str(script),
@@ -98,6 +105,8 @@ def cmd_md_init(args):
         is_mem,
         "--temperature",
         str(temp),
+        "--chunk_ns",
+        str(chunk_ns),
     ]
     res = subprocess.run(cmd, capture_output=True, text=True)
     if res.returncode != 0:

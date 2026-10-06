@@ -25,6 +25,9 @@ def main():
     parser.add_argument(
         "--temperature", type=float, required=True, help="Simulation temperature in K"
     )
+    parser.add_argument(
+        "--chunk_ns", type=float, required=True, help="Production chunk size in ns directly from md.yaml"
+    )
     args = parser.parse_args()
 
     tpl_dir = Path(args.templates_dir)
@@ -102,8 +105,16 @@ def main():
 
         playlist = ["em.mdp", "nvt.mdp", "npt.mdp"]
 
-    # 4. Production Template (unrestrained)
-    prod_content = prod_tpl.replace("{TC_GRPS}", "PROT_LIG SOL_ION")
+    # 4. Production Template (Directly synchronized with chunk_size_ns from md.yaml)
+    dt_prod = 0.002
+    prod_steps = int(round((args.chunk_ns * 1000.0) / dt_prod))
+    nstxout = max(1, min(5000, prod_steps // 10))
+    nstenergy = max(1, min(1000, prod_steps // 10))
+
+    prod_content = prod_tpl.replace("{NSTEPS}", str(prod_steps))
+    prod_content = prod_content.replace("{NSTXOUT}", str(nstxout))
+    prod_content = prod_content.replace("{NSTENERGY}", str(nstenergy))
+    prod_content = prod_content.replace("{TC_GRPS}", "PROT_LIG SOL_ION")
     prod_content = prod_content.replace("{TEMP}", str(temp))
     prod_content = prod_content.replace("{PCOUPL_TYPE}", pcoupl_type)
     prod_content = prod_content.replace("{REF_P}", ref_p)
