@@ -376,23 +376,31 @@ def cmd_run_chunk(args):
             pp.unlink()
             shutil.copy2(real, pp)
 
-    steps = int(round((float(args.chunk_ns) * 1000.0) / 0.002))
+    mdp_template = Path("prod.mdp") if Path("prod.mdp").exists() else Path("md.mdp")
+    if not mdp_template.exists():
+        print(
+            "FATAL: Production template (prod.mdp) was not found in staged protocol directory!",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    mdp_content = mdp_template.read_text()
+    dt_match = re.search(r"dt\s*=\s*([\d.]+)", mdp_content)
+    if not dt_match:
+        print(
+            "FATAL: Time step 'dt' was not found in production MDP template!",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    dt_ps = float(dt_match.group(1))
+    steps = int(round((float(args.chunk_ns) * 1000.0) / dt_ps))
     ext_ps = int(round(float(args.chunk_ns) * 1000.0))
     nstxout = max(1, min(5000, steps // 10))
     nstenergy = max(1, min(1000, steps // 10))
 
     if int(args.chunk_idx) == 1:
-        mdp_path = Path("prod.mdp")
-        if not mdp_path.exists():
-            mdp_path = Path("md.mdp")
-        if not mdp_path.exists():
-            print(
-                "FATAL: Production template (prod.mdp) was not found in staged protocol directory!",
-                file=sys.stderr,
-            )
-            sys.exit(1)
-        mdp = mdp_path.read_text()
-        mdp = re.sub(r"nsteps\s*=.*", f"nsteps = {steps}", mdp)
+        mdp = re.sub(r"nsteps\s*=.*", f"nsteps = {steps}", mdp_content)
         mdp = re.sub(
             r"nstxout-compressed\s*=.*", f"nstxout-compressed = {nstxout}", mdp
         )
@@ -653,7 +661,6 @@ def main():
     p_eq.add_argument("--cpus", required=True)
     p_eq.add_argument("--posre_files", nargs="+", required=True)
     p_eq.add_argument("--sys_name", required=True)
-    p_eq.add_argument("--water_names", required=True)
 
     p_chunk = subparsers.add_parser("run_chunk")
     p_chunk.add_argument("--prev_gro", required=True)
