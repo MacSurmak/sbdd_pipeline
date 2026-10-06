@@ -3,12 +3,13 @@ File: cli/commands/rescore.py
 Description: CLI handler for 'sbdd rescore': standalone Prime MM-GBSA and Consensus rescoring.
 """
 
+import csv
 import json
 import sys
 from pathlib import Path
 from rich.console import Console
 from rich.table import Table
-from cli.core.db import init_db, Target, ReceptorFrame, Pose
+from cli.core.db import init_db, Target, ReceptorFrame, Pose, System
 from cli.core.runner import execute_nextflow
 from cli.core.config_loader import load_project_configs, build_nextflow_args
 
@@ -131,7 +132,6 @@ def cmd_rescore(args):
             f"FATAL: Consolidated ranking {res_csv} is missing. Process aborted."
         )
 
-    import csv
     with open(res_csv, "r", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
@@ -158,7 +158,6 @@ def cmd_rescore(args):
     session.close()
 
     # Render summary results table
-    from rich.table import Table
     table = Table(title="🎯 Post-Rescore Consensus Ranking Summary", show_header=True)
     table.add_column("Receptor", style="cyan")
     table.add_column("Ligand", style="bold")
