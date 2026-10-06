@@ -427,7 +427,10 @@ def cmd_dock(args):
                 if eng == "glide":
                     if row.get("GlideScore") and row["GlideScore"] != "nan":
                         scores_dict["GlideScore"] = float(row["GlideScore"])
-                    if row.get("InSitu_RMSD_Glide_A") and row["InSitu_RMSD_Glide_A"] != "nan":
+                    if (
+                        row.get("InSitu_RMSD_Glide_A")
+                        and row["InSitu_RMSD_Glide_A"] != "nan"
+                    ):
                         scores_dict["RMSD_Glide_A"] = float(row["InSitu_RMSD_Glide_A"])
                 elif eng == "gnina":
                     if row.get("Dock_CNNaffinity") and row["Dock_CNNaffinity"] != "nan":
@@ -436,7 +439,10 @@ def cmd_dock(args):
                         scores_dict["CNNscore"] = float(row["Dock_CNNscore"])
                     if row.get("Dock_VinaAff") and row["Dock_VinaAff"] != "nan":
                         scores_dict["VinaAff"] = float(row["Dock_VinaAff"])
-                    if row.get("InSitu_RMSD_GNINA_A") and row["InSitu_RMSD_GNINA_A"] != "nan":
+                    if (
+                        row.get("InSitu_RMSD_GNINA_A")
+                        and row["InSitu_RMSD_GNINA_A"] != "nan"
+                    ):
                         scores_dict["RMSD_GNINA_A"] = float(row["InSitu_RMSD_GNINA_A"])
 
                 if row.get("Ultimate_Score") and row["Ultimate_Score"] != "nan":

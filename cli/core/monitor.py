@@ -169,10 +169,16 @@ def run_monitor(port: int = 8089):
 
                     # Clean task description and normalize container wrapper task tags
                     clean_name = task_name.strip()
-                    m_chunk_wrap = re.match(r"^RUN_MD_CHUNK_\d+_(.+?)\s+(\(#\d+\))\s*\([^)]*\)$", clean_name)
+                    m_chunk_wrap = re.match(
+                        r"^RUN_MD_CHUNK_\d+_(.+?)\s+(\(#\d+\))\s*\([^)]*\)$", clean_name
+                    )
                     if m_chunk_wrap:
-                        clean_name = f"MD: {m_chunk_wrap.group(1)} {m_chunk_wrap.group(2)}"
-                    elif ":" in clean_name and not clean_name.startswith(("EQ:", "MD:", "SWISH:")):
+                        clean_name = (
+                            f"MD: {m_chunk_wrap.group(1)} {m_chunk_wrap.group(2)}"
+                        )
+                    elif ":" in clean_name and not clean_name.startswith(
+                        ("EQ:", "MD:", "SWISH:")
+                    ):
                         clean_name = clean_name.split(":")[-1].strip()
 
                     node_name = msg.get("node", "local")
@@ -209,7 +215,9 @@ def run_monitor(port: int = 8089):
                         if display_total is not None and display_step is not None:
                             step_info_str = f"[cyan]{format_steps(display_step)}/{format_steps(display_total)}[/cyan]{time_info}"
                         elif display_step is not None:
-                            step_info_str = f"[cyan]{format_steps(display_step)}[/cyan]{time_info}"
+                            step_info_str = (
+                                f"[cyan]{format_steps(display_step)}[/cyan]{time_info}"
+                            )
                         else:
                             step_info_str = time_info
 
@@ -261,7 +269,11 @@ def run_monitor(port: int = 8089):
 
                         speed_display = task_stats[task_name]["speed_str"]
 
-                        rem_steps = (display_total - display_step) if (display_total is not None and display_step is not None) else None
+                        rem_steps = (
+                            (display_total - display_step)
+                            if (display_total is not None and display_step is not None)
+                            else None
+                        )
                         eta_display = "--:--"
                         if rem_steps is not None and rem_steps > 0:
                             ema = task_stats[task_name]["ema_rate"]

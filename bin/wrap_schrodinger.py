@@ -168,11 +168,19 @@ def cmd_prime_mmgbsa(args):
         diag_output = []
 
         if prime_log.exists():
-            diag_output.append(f"=== {prime_log.name} ===\n" + prime_log.read_text(errors="ignore"))
+            diag_output.append(
+                f"=== {prime_log.name} ===\n" + prime_log.read_text(errors="ignore")
+            )
         if general_log.exists():
-            diag_output.append(f"=== {general_log.name} ===\n" + general_log.read_text(errors="ignore"))
+            diag_output.append(
+                f"=== {general_log.name} ===\n" + general_log.read_text(errors="ignore")
+            )
 
-        log_content = "\n\n".join(diag_output) if diag_output else "No Schrödinger diagnostic logs found."
+        log_content = (
+            "\n\n".join(diag_output)
+            if diag_output
+            else "No Schrödinger diagnostic logs found."
+        )
         print(
             f"FATAL: Prime MM-GBSA failed to generate deliverables for task '{args.job_id}'!\n"
             f"Expected: {canonical_csv.name} and {canonical_mae.name}\n"
@@ -188,11 +196,13 @@ def cmd_light_prep(args):
 
     if in_path.suffix.lower() in [".mae", ".maegz"]:
         import shutil
+
         shutil.copy2(in_path, raw_mae)
     else:
         run_cmd(get_tool("structconvert") + [str(in_path), raw_mae])
 
     from schrodinger import structure
+
     st = structure.StructureReader.read(raw_mae)
 
     if args.native_ligand:
@@ -203,9 +213,14 @@ def cmd_light_prep(args):
 
     # Pure text normalization of AMBER residue names: preserves 100% of MD coordinates, hydrogens, and charges
     res_translation = {
-        "HIE": "HIS", "HID": "HIS", "HIP": "HIS",
-        "CYX": "CYS", "CYM": "CYS",
-        "ASH": "ASP", "GLH": "GLU", "LYN": "LYS"
+        "HIE": "HIS",
+        "HID": "HIS",
+        "HIP": "HIS",
+        "CYX": "CYS",
+        "CYM": "CYS",
+        "ASH": "ASP",
+        "GLH": "GLU",
+        "LYN": "LYS",
     }
     for res in st.residue:
         r_name = res.pdbres.strip().upper()

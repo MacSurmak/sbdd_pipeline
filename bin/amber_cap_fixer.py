@@ -21,10 +21,36 @@ def format_atom_name(name: str) -> str:
 
 
 STANDARD_PROTEIN_RESIDUES = {
-    "ALA", "ARG", "ASN", "ASP", "CYS", "CYX", "GLN", "GLU", "GLY",
-    "HIS", "HID", "HIE", "HIP", "ILE", "LEU", "LYS", "LYN", "MET",
-    "PHE", "PRO", "SER", "THR", "TRP", "TYR", "VAL", "ASH", "GLH",
-    "ACE", "NME", "NMA"
+    "ALA",
+    "ARG",
+    "ASN",
+    "ASP",
+    "CYS",
+    "CYX",
+    "GLN",
+    "GLU",
+    "GLY",
+    "HIS",
+    "HID",
+    "HIE",
+    "HIP",
+    "ILE",
+    "LEU",
+    "LYS",
+    "LYN",
+    "MET",
+    "PHE",
+    "PRO",
+    "SER",
+    "THR",
+    "TRP",
+    "TYR",
+    "VAL",
+    "ASH",
+    "GLH",
+    "ACE",
+    "NME",
+    "NMA",
 }
 
 
@@ -41,11 +67,15 @@ def main():
         "--ss_cutoff", type=float, required=True, help="Distance cutoff for SS bonds"
     )
     parser.add_argument(
-        "--water_names", required=True, help="Comma-separated water residue names to strip"
+        "--water_names",
+        required=True,
+        help="Comma-separated water residue names to strip",
     )
     args = parser.parse_args()
 
-    water_residues = {w.strip().upper() for w in args.water_names.split(",") if w.strip()}
+    water_residues = {
+        w.strip().upper() for w in args.water_names.split(",") if w.strip()
+    }
     lines = Path(args.input_pdb).read_text(errors="ignore").splitlines()
 
     # 1. Parse atoms into structured records, grouped by residue

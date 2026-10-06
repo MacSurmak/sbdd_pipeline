@@ -60,9 +60,14 @@ def main():
 
             # Translate AMBER/GROMACS protonation variants to standard PDB residues for Maestro compatibility
             res_translation = {
-                "HIE": "HIS", "HID": "HIS", "HIP": "HIS",
-                "CYX": "CYS", "CYM": "CYS",
-                "ASH": "ASP", "GLH": "GLU", "LYN": "LYS"
+                "HIE": "HIS",
+                "HID": "HIS",
+                "HIP": "HIS",
+                "CYX": "CYS",
+                "CYM": "CYS",
+                "ASH": "ASP",
+                "GLH": "GLU",
+                "LYN": "LYS",
             }
             for res in st.residue:
                 r_clean = res.pdbres.strip().upper()
@@ -71,9 +76,14 @@ def main():
 
             # Translate AMBER/GROMACS protonation variants to standard PDB residues for Maestro compatibility
             res_translation = {
-                "HIE": "HIS", "HID": "HIS", "HIP": "HIS",
-                "CYX": "CYS", "CYM": "CYS",
-                "ASH": "ASP", "GLH": "GLU", "LYN": "LYS"
+                "HIE": "HIS",
+                "HID": "HIS",
+                "HIP": "HIS",
+                "CYX": "CYS",
+                "CYM": "CYS",
+                "ASH": "ASP",
+                "GLH": "GLU",
+                "LYN": "LYS",
             }
             for res in st.residue:
                 r_clean = res.pdbres.strip().upper()
