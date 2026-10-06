@@ -99,10 +99,14 @@ def main():
         description="Aggregate project results into master ranking"
     )
     parser.add_argument(
-        "--docking_dir", required=True, help="Directory containing docking poses and tables"
+        "--docking_dir",
+        required=True,
+        help="Directory containing docking poses and tables",
     )
     parser.add_argument(
-        "--plan", default=None, help="Explicit JSON execution plan (dock_plan.json or rescore_plan.json)"
+        "--plan",
+        default=None,
+        help="Explicit JSON execution plan (dock_plan.json or rescore_plan.json)",
     )
     parser.add_argument("--analysis_dir", help="Directory containing MM-GBSA csv files")
     parser.add_argument(

@@ -38,11 +38,9 @@ def cmd_rescore(args):
         if not pv_file.exists() or pv_file.stat().st_size == 0:
             continue
 
-        tasks.append({
-            "name": frame.name,
-            "pv_path": str(pv_file.resolve()),
-            "frame": frame.name
-        })
+        tasks.append(
+            {"name": frame.name, "pv_path": str(pv_file.resolve()), "frame": frame.name}
+        )
 
         expected_artifacts = [
             frame_dir / f"{frame.name}_dock.csv",
@@ -77,7 +75,9 @@ def cmd_rescore(args):
     whitelist_csv = cwd / "funnel_whitelist.csv"
     plan = {
         "use_whitelist": getattr(args, "use_whitelist", False),
-        "whitelist_path": str(whitelist_csv.resolve()) if whitelist_csv.exists() else "",
+        "whitelist_path": (
+            str(whitelist_csv.resolve()) if whitelist_csv.exists() else ""
+        ),
         "dock_summary_files": sorted(list(dock_summary_files)),
         "tasks": tasks,
     }
@@ -189,7 +189,11 @@ def cmd_rescore(args):
                 if val_str and val_str not in ["nan", "-"]:
                     try:
                         v = float(val_str)
-                        return f"[bold green]{v:.2f}[/bold green]" if v <= 2.0 else f"[bold red]{v:.2f}[/bold red]"
+                        return (
+                            f"[bold green]{v:.2f}[/bold green]"
+                            if v <= 2.0
+                            else f"[bold red]{v:.2f}[/bold red]"
+                        )
                     except ValueError:
                         return val_str
                 return "-"
