@@ -11,9 +11,9 @@ process GMX_CLUSTER {
     tuple val(meta), path(clean_xtcs, stageAs: 'trajs_?/*'), path(ref_pdb), val(cutoff), val(method), val(dt), val(cluster_group)
 
     output:
-    tuple val(meta), path("${meta.id}_centroid_*.pdb"), path("${meta.id}_centroid_*.mae"), emit: cluster_frames
-    tuple val(meta), path("${meta.id}_pose_*.sdf"), path("${meta.id}_pose_*.mae"), emit: cluster_poses, optional: true
-    path("${meta.id}_cluster_receipt.tsv"), emit: cluster_manifest
+    tuple val(meta), path("centroid_*.pdb"), path("centroid_*.mae"), emit: cluster_frames
+    tuple val(meta), path("pose_*.sdf"), path("pose_*.mae"), emit: cluster_poses, optional: true
+    path("cluster_receipt.tsv"), emit: cluster_manifest
 
     script:
     def max_c = meta.max_clusters ?: 0
@@ -27,7 +27,7 @@ process GMX_CLUSTER {
         --group ${cluster_group} \\
         --ligand "${meta.ligand ?: ''}" \\
         --max_clusters ${max_c} \\
-        --out_id "${meta.id}" \\
+        --sys_name "${meta.id}" \\
         ${dt_arg}
     """
 

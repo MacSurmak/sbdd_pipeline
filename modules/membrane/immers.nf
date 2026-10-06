@@ -15,9 +15,9 @@ process IMMERS {
     val(membrane_chains)
 
     output:
-    tuple val(meta), path("${meta.id}_oriented.pdb"), emit: oriented_pdb
-    tuple val(meta), path("${meta.id}_membrane.json"), emit: membrane_json
-    tuple val(meta), path("${meta.id}_membrane.txt"), emit: membrane_txt
+    tuple val(meta), path("oriented.pdb"), emit: oriented_pdb
+    tuple val(meta), path("membrane.json"), emit: membrane_json
+    tuple val(meta), path("membrane.txt"), emit: membrane_txt
 
     script:
     """
@@ -26,7 +26,10 @@ process IMMERS {
         --membrane_type ${membrane_type} \\
         --membrane_topo ${membrane_topo} \\
         --membrane_chains ${membrane_chains} \\
-        --out_id ${meta.id}
+        --out_id .
+    mv ._oriented.pdb oriented.pdb
+    mv ._membrane.json membrane.json
+    mv ._membrane.txt membrane.txt
     """
 
     stub:

@@ -92,24 +92,32 @@ def cmd_prime_mmgbsa(args):
         sys.exit(1)
 
 def cmd_light_prep(args):
-    run_cmd(["schrodinger", "structconvert", args.input_pdb, f"{args.out_id}_prepared.mae"])
+    run_cmd(["schrodinger", "structconvert", args.input_pdb, args.out_mae])
     if args.native_ligand:
         from schrodinger import structure
-        st = structure.StructureReader.read(f"{args.out_id}_prepared.mae")
+        st = structure.StructureReader.read(args.out_mae)
         lig_res = args.native_ligand.split('_')[-1].strip().upper()
         lig_atoms = [a.index for a in st.atom if a.pdbres.strip().upper() == lig_res]
         if lig_atoms:
             st.deleteAtoms(lig_atoms)
-            st.write(f"{args.out_id}_prepared.mae")
-    run_cmd(["schrodinger", "structconvert", f"{args.out_id}_prepared.mae", f"{args.out_id}_prepared.pdb"])
+            st.write(args.out_mae)
+    run_cmd(["schrodinger", "structconvert", args.out_mae, args.out_pdb])
 
 def cmd_ligprep(args):
     in_flag = "-imae" if args.ligand_file.endswith(".mae") or args.ligand_file.endswith(".maegz") else "-isd"
-    run_cmd(["schrodinger", "ligprep", in_flag, args.ligand_file, "-omae", f"{args.out_id}_prepared.maegz", "-epik", "-ph", args.target_ph, "-pht", args.ph_tolerance, "-s", args.max_states, "-bff", args.ff_version, "-WAIT"])
-    if not Path(f"{args.out_id}_prepared.maegz").exists():
+    run_cmd(["schrodinger", "ligprep", in_flag, args.ligand_file, "-omae", args.out_maegz, "-epik", "-ph", args.target_ph, "-pht", args.ph_tolerance, "-s", args.max_states, "-bff", args.ff_version, "-WAIT"])
+    if not Path(args.out_maegz).exists():
         print("FATAL: Ligprep output missing")
         sys.exit(1)
-    run_cmd(["schrodinger", "structconvert", f"{args.out_id}_prepared.maegz", f"{args.out_id}_prepared.sdf"])
+    run_cmd(["schrodinger", "structconvert", args.out_maegz, args.out_sdf])
+
+def cmd_convert_ligand(args):
+    from schrodinger import structure
+    st = structure.StructureReader.read(args.in_sdf)
+    st.title = args.title.strip()
+    st.property['s_m_title'] = args.title.strip()
+    st.write(args.out_maegz)
+    st.write(args.out_sdf)
 
 def main():
     parser = argparse.ArgumentParser()
@@ -143,7 +151,8 @@ def main():
 
     p_light = subparsers.add_parser("light_prep")
     p_light.add_argument("--input_pdb", required=True)
-    p_light.add_argument("--out_id", required=True)
+    p_light.add_argument("--out_mae", required=True)
+    p_light.add_argument("--out_pdb", required=True)
     p_light.add_argument("--native_ligand")
 
     p_ligprep = subparsers.add_parser("ligprep")
@@ -152,7 +161,14 @@ def main():
     p_ligprep.add_argument("--ph_tolerance", required=True)
     p_ligprep.add_argument("--ff_version", required=True)
     p_ligprep.add_argument("--max_states", required=True)
-    p_ligprep.add_argument("--out_id", required=True)
+    p_ligprep.add_argument("--out_maegz", required=True)
+    p_ligprep.add_argument("--out_sdf", required=True)
+
+    p_conv = subparsers.add_parser("convert_ligand")
+    p_conv.add_argument("--in_sdf", required=True)
+    p_conv.add_argument("--out_maegz", required=True)
+    p_conv.add_argument("--out_sdf", required=True)
+    p_conv.add_argument("--title", required=True)
 
     args = parser.parse_args()
     if args.subcommand == "gridgen": cmd_gridgen(args)
@@ -160,6 +176,7 @@ def main():
     elif args.subcommand == "prime_mmgbsa": cmd_prime_mmgbsa(args)
     elif args.subcommand == "light_prep": cmd_light_prep(args)
     elif args.subcommand == "ligprep": cmd_ligprep(args)
+    elif args.subcommand == "convert_ligand": cmd_convert_ligand(args)
 
 if __name__ == "__main__":
     main()

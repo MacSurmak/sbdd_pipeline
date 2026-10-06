@@ -7,29 +7,7 @@ include { BUILD_FUNNEL_WHITELIST }  from '../modules/reporting/build_funnel'
 include { FILTER_PV }               from '../modules/schrodinger/filter_pv'
 include { PRIME_MMGBSA }            from '../modules/schrodinger/prime_mmgbsa'
 include { SUMMARIZE_DOCKING }       from '../modules/reporting/summarize'
-
-process MERGE_MMGBSA_CHUNKS {
-    tag "${meta.id}"
-    executor 'local'
-    scratch false
-    label 'process_single'
-
-    input:
-    tuple val(meta), path(csv_files, stageAs: 'mmgbsa_?/*')
-
-    output:
-    tuple val(meta), path("${meta.id}_mmgbsa-out.csv"), emit: scores_csv
-
-    script:
-    """
-    python3 ${projectDir}/bin/merge_csv.py --inputs ${csv_files} --output ${meta.id}_mmgbsa-out.csv
-    """
-
-    stub:
-    """
-    touch ${meta.id}_mmgbsa-out.csv
-    """
-}
+include { MERGE_CSV }               from '../modules/common/helpers'
 
 workflow RESCORE_WF {
     if (!params.rescore_plan) {
@@ -93,8 +71,8 @@ workflow RESCORE_WF {
             [ frame_meta, csv ]
         }.groupTuple(by: 0, sort: true)
 
-        MERGE_MMGBSA_CHUNKS(ch_to_merge)
-        ch_mmgbsa_csvs = MERGE_MMGBSA_CHUNKS.out.scores_csv
+        MERGE_CSV(ch_to_merge)
+        ch_mmgbsa_csvs = MERGE_CSV.out.merged_csv
         ch_mmgbsa_maes = PRIME_MMGBSA.out.out_maegz.map { chunk_meta, mae ->
             def frame_meta = [id: chunk_meta.frame_id, frame: chunk_meta.frame, project: chunk_meta.project]
             [ frame_meta, mae ]

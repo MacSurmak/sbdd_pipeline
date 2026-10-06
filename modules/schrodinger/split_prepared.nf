@@ -11,10 +11,10 @@ process SPLIT_PREPARED {
     tuple val(meta), path(complex_prepared_mae)
 
     output:
-    tuple val(meta), path("${meta.id}_prepared.mae"), emit: prepared_mae
-    tuple val(meta), path("${meta.id}_prepared.pdb"), emit: prepared_pdb
-    tuple val(meta), path("${meta.id}_ref_native_prepared.mae"), emit: ref_native_mae
-    tuple val(meta), path("${meta.id}_ref_native_prepared.sdf"), emit: ref_native_sdf
+    tuple val(meta), path("receptor.mae"), emit: prepared_mae
+    tuple val(meta), path("receptor.pdb"), emit: prepared_pdb
+    tuple val(meta), path("native.mae"), emit: ref_native_mae, optional: true
+    tuple val(meta), path("native.sdf"), emit: ref_native_sdf, optional: true
 
     script:
     def lig_arg = meta.native_ligand ? "--ligand ${meta.native_ligand}" : ""
@@ -22,10 +22,10 @@ process SPLIT_PREPARED {
     schrodinger run ${projectDir}/bin/split_prepared_complex.py \\
         --complex_mae ${complex_prepared_mae} \\
         ${lig_arg} \\
-        --out_receptor_mae ${meta.id}_prepared.mae \\
-        --out_receptor_pdb ${meta.id}_prepared.pdb \\
-        --out_ligand_mae ${meta.id}_ref_native_prepared.mae \\
-        --out_ligand_sdf ${meta.id}_ref_native_prepared.sdf
+        --out_receptor_mae receptor.mae \\
+        --out_receptor_pdb receptor.pdb \\
+        --out_ligand_mae native.mae \\
+        --out_ligand_sdf native.sdf
     """
 
     stub:

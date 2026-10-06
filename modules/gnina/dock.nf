@@ -14,8 +14,8 @@ process GNINA_DOCK {
     val(num_modes)
     val(autobox_add)
     output:
-    tuple val(meta), path("${meta.id}_docked.sdf"), emit: docked_sdf
-    tuple val(meta), path("${meta.id}_gnina.log"), emit: log
+    tuple val(meta), path("gnina_dock.sdf"), emit: docked_sdf
+    tuple val(meta), path("gnina_dock.log"), emit: log
 
     script:
     """
@@ -27,8 +27,8 @@ process GNINA_DOCK {
         --exhaustiveness ${exhaustiveness} \\
         --cnn_scoring ${cnn_scoring} \\
         --num_modes ${num_modes} \\
-        --out_sdf ${meta.id}_docked.sdf \\
-        --out_log ${meta.id}_gnina.log
+        --out_sdf gnina_dock.sdf \\
+        --out_log gnina_dock.log
     """
 
     stub:

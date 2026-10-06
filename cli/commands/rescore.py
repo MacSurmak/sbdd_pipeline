@@ -34,25 +34,29 @@ def cmd_rescore(args):
 
     for frame in ready_frames:
         frame_dir = cwd / "docking" / frame.name
-        pv_file = frame_dir / f"{frame.name}_dock_pv.maegz"
-        if not pv_file.exists() or pv_file.stat().st_size == 0:
+        if not frame_dir.exists():
             continue
+            
+        for lig_dir in frame_dir.iterdir():
+            if not lig_dir.is_dir():
+                continue
+            
+            pv_file = lig_dir / "glide_dock_pv.maegz"
+            if pv_file.exists() and pv_file.stat().st_size > 0:
+                tasks.append(
+                    {"name": lig_dir.name, "pv_path": str(pv_file.resolve()), "frame": frame.name}
+                )
 
-        tasks.append(
-            {"name": frame.name, "pv_path": str(pv_file.resolve()), "frame": frame.name}
-        )
-
-        expected_artifacts = [
-            frame_dir / f"{frame.name}_dock.csv",
-            frame_dir / f"{frame.name}_dock.sdf",
-            frame_dir / f"{frame.name}_rescored.sdf",
-            frame_dir / f"{frame.name}_glide_rmsd.csv",
-            frame_dir / f"{frame.name}_gnina_docked_all.sdf",
-            frame_dir / f"{frame.name}_gnina_rmsd.csv",
-        ]
-        for art in expected_artifacts:
-            if art.exists() and art.stat().st_size > 0:
-                dock_summary_files.add(str(art.resolve()))
+            expected_artifacts = [
+                lig_dir / "glide_dock.csv",
+                lig_dir / "glide_dock.sdf",
+                lig_dir / "rescored.sdf",
+                lig_dir / "rmsd.csv",
+                lig_dir / "gnina_dock.sdf"
+            ]
+            for art in expected_artifacts:
+                if art.exists() and art.stat().st_size > 0:
+                    dock_summary_files.add(str(art.resolve()))
 
     if not tasks:
         console.print(

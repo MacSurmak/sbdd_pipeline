@@ -17,7 +17,7 @@ def main():
         description="Split cluster PDB and extract ligand poses"
     )
     parser.add_argument("--input", required=True, help="Input clusters_multi.pdb")
-    parser.add_argument("--prefix", required=True, help="Prefix for output structures")
+    parser.add_argument("--sys_name", required=True, help="Parent system name")
     parser.add_argument("--ligand", default="", help="Ligand residue name (e.g. KVR)")
     parser.add_argument(
         "--max_clusters", type=int, default=0, help="Max clusters to extract"
@@ -51,27 +51,27 @@ def main():
                     lig_st = st.extract(lig_atoms)
                     lig_st.title = lig_name
                     lig_st.property["s_m_title"] = lig_name
-                    sdf_out = f"{args.prefix}_pose_{i}.sdf"
-                    mae_out = f"{args.prefix}_pose_{i}.mae"
+                    sdf_out = f"pose_{i}.sdf"
+                    mae_out = f"pose_{i}.mae"
                     lig_st.write(sdf_out)
                     lig_st.write(mae_out)
                     st.deleteAtoms(lig_atoms)
                     pose_path = str(Path(sdf_out).resolve())
 
-            c_title = f"{args.prefix}_centroid_{i}"
+            c_title = f"{args.sys_name}_centroid_{i}"
             st.title = c_title
             st.property["s_m_title"] = c_title
-            pdb_out = f"{args.prefix}_centroid_{i}.pdb"
-            mae_out = f"{args.prefix}_centroid_{i}.mae"
+            pdb_out = f"centroid_{i}.pdb"
+            mae_out = f"centroid_{i}.mae"
             st.write(pdb_out)
             st.write(mae_out)
 
-            # Store clean filenames so master node resolves them from permanent prepared/ directory
             p_name = Path(pdb_out).name
             m_name = Path(mae_out).name
             s_name = Path(pose_path).name if pose_path != "NO_POSE" else "NO_POSE"
 
-            row = f"{c_title}\t{p_name}\t{m_name}\t{s_name}\n"
+            # Use relative paths for database resolution
+            row = f"{c_title}\t{args.sys_name}/{p_name}\t{args.sys_name}/{m_name}\t{args.sys_name}/{s_name}\n"
             receipt_lines.append(row)
 
     with open(args.out_receipt, "w", encoding="utf-8") as rf:

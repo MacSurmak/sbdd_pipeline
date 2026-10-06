@@ -77,7 +77,7 @@ workflow PREPARE_WF {
         )
 
         PREPARE_LIGANDS.out.prepared_ligands.map { meta, mae ->
-            "${meta.name ?: meta.id}\t${mae.name}"
+            "${meta.name ?: meta.id}\t${meta.name ?: meta.id}/${mae.name}"
         }.collectFile(name: 'prep_ligand_receipt.tsv', storeDir: params.outdir, newLine: true)
     }
 }

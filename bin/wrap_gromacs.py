@@ -37,7 +37,7 @@ def cmd_cluster(args):
     cmd.extend(["-cl", "clusters_multi.pdb"])
     
     run_gmx(cmd, input_str=f"{grp}\nCOMPLEX\n")
-    subprocess.run(["schrodinger", "run", "python3", f"{Path(__file__).parent}/split_cluster_pdb.py", "--input", "clusters_multi.pdb", "--prefix", args.out_id, "--ligand", args.ligand, "--max_clusters", str(args.max_clusters), "--out_receipt", f"{args.out_id}_cluster_receipt.tsv"], check=True)
+    subprocess.run(["schrodinger", "run", "python3", f"{Path(__file__).parent}/split_cluster_pdb.py", "--input", "clusters_multi.pdb", "--sys_name", args.sys_name, "--ligand", args.ligand, "--max_clusters", str(args.max_clusters), "--out_receipt", "cluster_receipt.tsv"], check=True)
 
 def cmd_trjconv(args):
     tgt = args.xtcs[0]
@@ -162,7 +162,7 @@ def main():
     p_cluster.add_argument("--group", required=True)
     p_cluster.add_argument("--ligand", required=True)
     p_cluster.add_argument("--max_clusters", required=True)
-    p_cluster.add_argument("--out_id", required=True)
+    p_cluster.add_argument("--sys_name", required=True)
     p_cluster.add_argument("--dt")
 
     p_trjconv = subparsers.add_parser("trjconv")

@@ -11,15 +11,16 @@ process LIGHT_PREPWIZARD {
     input:
     tuple val(meta), path(input_pdb)
     output:
-    tuple val(meta), path("${meta.id}_prepared.mae"), emit: prepared_mae
-    tuple val(meta), path("${meta.id}_prepared.pdb"), emit: prepared_pdb
+    tuple val(meta), path("receptor.mae"), emit: prepared_mae
+    tuple val(meta), path("receptor.pdb"), emit: prepared_pdb
 
     script:
     def lig_arg = meta.native_ligand ? "--native_ligand ${meta.native_ligand}" : ""
     """
     schrodinger run python3 ${projectDir}/bin/wrap_schrodinger.py light_prep \\
         --input_pdb ${input_pdb} \\
-        --out_id ${meta.id} \\
+        --out_mae receptor.mae \\
+        --out_pdb receptor.pdb \\
         ${lig_arg}
     """
 

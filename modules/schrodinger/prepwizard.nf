@@ -15,7 +15,7 @@ process PREPWIZARD {
     val(cap_termini)
 
     output:
-    tuple val(meta), path("${meta.id}_prepared.mae"), emit: prepared_mae
+    tuple val(meta), path("receptor.mae"), emit: prepared_mae
 
     script:
     def cap_flag = cap_termini ? "-captermini" : ""
@@ -30,7 +30,7 @@ process PREPWIZARD {
         ${cap_flag} \\
         -WAIT \\
         ${complex_mae} \\
-        ${meta.id}_prepared.mae
+        receptor.mae
     """
 
     stub:

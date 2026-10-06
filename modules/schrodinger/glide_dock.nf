@@ -15,9 +15,9 @@ process GLIDE_DOCK {
     val(lig_vscale)
 
     output:
-    tuple val(meta), path("${meta.id}_dock_pv.maegz"), emit: pv_maegz
-    tuple val(meta), path("${meta.id}_dock.csv"), emit: scores_csv
-    tuple val(meta), path("${meta.id}_dock.sdf"), emit: poses_sdf
+    tuple val(meta), path("glide_dock_pv.maegz"), emit: pv_maegz
+    tuple val(meta), path("glide_dock.csv"), emit: scores_csv
+    tuple val(meta), path("glide_dock.sdf"), emit: poses_sdf
 
     script:
     """
@@ -28,9 +28,9 @@ process GLIDE_DOCK {
         --poses_per_lig ${poses_per_lig} \\
         --forcefield ${forcefield} \\
         --lig_vscale ${lig_vscale} \\
-        --out_pv ${meta.id}_dock_pv.maegz \\
-        --out_csv ${meta.id}_dock.csv \\
-        --out_sdf ${meta.id}_dock.sdf
+        --out_pv glide_dock_pv.maegz \\
+        --out_csv glide_dock.csv \\
+        --out_sdf glide_dock.sdf
     """
 
     stub:

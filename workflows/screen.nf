@@ -6,33 +6,7 @@
 
 include { DOCK_LIBRARY      } from "../subworkflows/dock_library"
 include { SUMMARIZE_DOCKING } from "../modules/reporting/summarize"
-
-process SPLIT_PREPARED_SDF {
-    tag "${meta.id}"
-    executor 'local'
-    scratch false
-    label 'process_single'
-
-    input:
-    tuple val(meta), path(prepared_sdf)
-    val(batch_size)
-
-    output:
-    tuple val(meta), path("chunk_*.sdf"), emit: chunks
-
-    script:
-    """
-    python3 ${projectDir}/bin/split_sdf.py \\
-        --input ${prepared_sdf} \\
-        --batch_size ${batch_size} \\
-        --outdir .
-    """
-
-    stub:
-    """
-    touch chunk_000.sdf
-    """
-}
+include { SPLIT_SDF         } from "../modules/common/helpers"
 
 workflow SCREEN_WF {
     if (!params.dock_plan) { error "FATAL: Parameter --dock_plan (JSON) is required." }
@@ -89,9 +63,9 @@ workflow SCREEN_WF {
 
     // Chunk prepared SDF for cluster GPU parallelization
     ch_sdf_for_chunk = ch_ready_ligands.map { meta, sdf, mae -> [ meta, sdf ] }
-    SPLIT_PREPARED_SDF(ch_sdf_for_chunk, params.batch_size ?: 10)
+    SPLIT_SDF(ch_sdf_for_chunk, params.batch_size ?: 10)
 
-    ch_chunks_sdf = SPLIT_PREPARED_SDF.out.chunks.flatMap { meta, files ->
+    ch_chunks_sdf = SPLIT_SDF.out.chunks.flatMap { meta, files ->
         def fileList = files instanceof List ? files : (files ? [files] : [])
         fileList.withIndex().collect { f, idx ->
             def chunk_meta = meta + [chunk_idx: idx]

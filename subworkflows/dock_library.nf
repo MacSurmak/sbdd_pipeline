@@ -7,183 +7,7 @@ include { GNINA_DOCK }              from '../modules/gnina/dock'
 include { GNINA_RESCORE }           from '../modules/gnina/rescore'
 include { GLIDE_GRIDGEN }           from '../modules/schrodinger/gridgen'
 include { GLIDE_DOCK }              from '../modules/schrodinger/glide_dock'
-
-process GENERATE_DOCKING_BOX {
-    tag "${meta.id}"
-    executor 'local'
-    scratch false
-    label 'process_single'
-
-    input:
-    tuple val(meta), path(ref_sdf)
-    val(inner_box)
-    val(outer_box)
-    val(autobox_add)
-
-    output:
-    tuple val(meta), path("${meta.id}_docking_box.pml"), emit: box_pml
-
-    script:
-    """
-    python3 ${projectDir}/bin/generate_docking_box.py \\
-        --reference ${ref_sdf} \\
-        --receptor_name "${meta.id}" \\
-        --inner_box "${inner_box}" \\
-        --outer_box "${outer_box}" \\
-        --autobox_add ${autobox_add} \\
-        --output "${meta.id}_docking_box.pml"
-    """
-
-    stub:
-    """
-    touch ${meta.id}_docking_box.pml
-    """
-}
-
-process CALCULATE_IN_SITU_RMSD_GLIDE {
-    tag "${meta.id}"
-    label 'process_single'
-
-    input:
-    tuple val(meta), path(docked_sdf), path(ref_sdf)
-
-    output:
-    tuple val(meta), path("${meta.id}_glide_rmsd.csv"), emit: rmsd_csv
-
-    script:
-    def lig_title = meta.native_ligand ?: meta.ligand_title ?: ""
-    """
-    python3 ${projectDir}/bin/calc_rmsd.py \\
-        --reference ${ref_sdf} \\
-        --poses ${docked_sdf} \\
-        --receptor "${meta.id}" \\
-        --title "${lig_title}" \\
-        --engine glide \\
-        --output ${meta.id}_glide_rmsd.csv
-    """
-
-    stub:
-    """
-    echo "Receptor,Title,InSitu_RMSD_Glide_A,InSitu_RMSD_A,RMSD_Heavy" > ${meta.id}_glide_rmsd.csv
-    echo "${meta.id},${meta.native_ligand ?: 'LIG'},1.50,1.50,1.50" >> ${meta.id}_glide_rmsd.csv
-    """
-}
-
-process CALCULATE_IN_SITU_RMSD_GNINA {
-    tag "${meta.id}"
-    label 'process_single'
-
-    input:
-    tuple val(meta), path(docked_sdf), path(ref_sdf)
-
-    output:
-    tuple val(meta), path("${meta.id}_gnina_rmsd.csv"), emit: rmsd_csv
-
-    script:
-    def lig_title = meta.native_ligand ?: meta.ligand_title ?: ""
-    """
-    python3 ${projectDir}/bin/calc_rmsd.py \\
-        --reference ${ref_sdf} \\
-        --poses ${docked_sdf} \\
-        --receptor "${meta.id}" \\
-        --title "${lig_title}" \\
-        --engine gnina \\
-        --output ${meta.id}_gnina_rmsd.csv
-    """
-
-    stub:
-    """
-    echo "Receptor,Title,InSitu_RMSD_GNINA_A,InSitu_RMSD_A,RMSD_Heavy" > ${meta.id}_gnina_rmsd.csv
-    echo "${meta.id},${meta.native_ligand ?: 'LIG'},1.80,1.80,1.80" >> ${meta.id}_gnina_rmsd.csv
-    """
-}
-
-process MERGE_DOCK_CHUNKS {
-    tag "${meta.id}"
-    executor 'local'
-    scratch false
-    label 'process_single'
-
-    input:
-    tuple val(meta), path(chunk_sdfs)
-
-    output:
-    tuple val(meta), path("${meta.id}_gnina_docked_all.sdf"), emit: merged_sdf
-
-    script:
-    """
-    cat ${chunk_sdfs} > ${meta.id}_gnina_docked_all.sdf
-    if [ ! -s "${meta.id}_gnina_docked_all.sdf" ]; then
-        echo "FATAL: MERGE_DOCK_CHUNKS produced an empty file!"
-        exit 1
-    fi
-    """
-
-    stub:
-    """
-    touch ${meta.id}_gnina_docked_all.sdf
-    """
-}
-
-process MERGE_GLIDE_CHUNKS {
-    tag "${meta.id}"
-    executor 'local'
-    scratch false
-    label 'process_single'
-
-    input:
-    tuple val(meta), path(pv_files, stageAs: 'pvs_?/*'), path(csv_files, stageAs: 'csvs_?/*'), path(sdf_files, stageAs: 'sdfs_?/*')
-
-    output:
-    tuple val(meta), path("${meta.id}_dock_pv.maegz"), emit: pv_maegz
-    tuple val(meta), path("${meta.id}_dock.csv"), emit: scores_csv
-    tuple val(meta), path("${meta.id}_dock.sdf"), emit: poses_sdf
-
-    script:
-    """
-    schrodinger run ${projectDir}/bin/merge_pv.py \\
-        --pv_files ${pv_files} \\
-        --csv_files ${csv_files} \\
-        --sdf_files ${sdf_files} \\
-        --out_pv ${meta.id}_dock_pv.maegz \\
-        --out_csv ${meta.id}_dock.csv \\
-        --out_sdf ${meta.id}_dock.sdf
-    """
-
-    stub:
-    """
-    touch ${meta.id}_dock_pv.maegz
-    touch ${meta.id}_dock.csv
-    touch ${meta.id}_dock.sdf
-    """
-}
-
-process MERGE_RESC_CHUNKS {
-    tag "${meta.id}"
-    executor 'local'
-    scratch false
-    label 'process_single'
-
-    input:
-    tuple val(meta), path(chunk_sdfs)
-
-    output:
-    tuple val(meta), path("${meta.id}_rescored.sdf"), emit: rescored_sdf
-
-    script:
-    """
-    cat ${chunk_sdfs} > ${meta.id}_rescored.sdf
-    if [ ! -s "${meta.id}_rescored.sdf" ]; then
-        echo "FATAL: MERGE_RESC_CHUNKS produced an empty file!"
-        exit 1
-    fi
-    """
-
-    stub:
-    """
-    touch ${meta.id}_rescored.sdf
-    """
-}
+include { GENERATE_DOCKING_BOX; CALC_RMSD as CALC_RMSD_GLIDE; CALC_RMSD as CALC_RMSD_GNINA; MERGE_SDF as MERGE_DOCK_CHUNKS; MERGE_SDF as MERGE_RESC_CHUNKS; MERGE_GLIDE as MERGE_GLIDE_CHUNKS } from '../modules/docking/helpers'
 
 workflow DOCK_LIBRARY {
     take:
@@ -289,13 +113,13 @@ workflow DOCK_LIBRARY {
             .join(ch_ref_lig_sdf.map { meta, ref_sdf -> [ meta.id, ref_sdf ] }, by: 0)
             .map { frame_id, meta, docked_sdf, ref_sdf -> [ meta, docked_sdf, ref_sdf ] }
 
-        CALCULATE_IN_SITU_RMSD_GLIDE(ch_glide_rmsd_in)
+        CALC_RMSD_GLIDE(ch_glide_rmsd_in, 'glide')
 
         ch_summary_files = ch_summary_files
             .mix(MERGE_GLIDE_CHUNKS.out.scores_csv.map { meta, csv -> csv })
             .mix(MERGE_GLIDE_CHUNKS.out.poses_sdf.map { meta, sdf -> sdf })
-            .mix(MERGE_RESC_CHUNKS.out.rescored_sdf.map { meta, sdf -> sdf })
-            .mix(CALCULATE_IN_SITU_RMSD_GLIDE.out.rmsd_csv.map { meta, csv -> csv })
+            .mix(MERGE_RESC_CHUNKS.out.merged_sdf.map { meta, sdf -> sdf })
+            .mix(CALC_RMSD_GLIDE.out.rmsd_csv.map { meta, csv -> csv })
             .mix(ch_ref_lig_sdf.map { meta, sdf -> sdf })
 
         ch_primary_poses = MERGE_GLIDE_CHUNKS.out.poses_sdf
@@ -342,11 +166,11 @@ workflow DOCK_LIBRARY {
             .join(ch_ref_lig_sdf.map { meta, ref_sdf -> [ meta.id, ref_sdf ] }, by: 0)
             .map { frame_id, meta, docked_sdf, ref_sdf -> [ meta, docked_sdf, ref_sdf ] }
 
-        CALCULATE_IN_SITU_RMSD_GNINA(ch_gnina_rmsd_in)
+        CALC_RMSD_GNINA(ch_gnina_rmsd_in, 'gnina')
 
         ch_summary_files = ch_summary_files
             .mix(MERGE_DOCK_CHUNKS.out.merged_sdf.map { meta, sdf -> sdf })
-            .mix(CALCULATE_IN_SITU_RMSD_GNINA.out.rmsd_csv.map { meta, csv -> csv })
+            .mix(CALC_RMSD_GNINA.out.rmsd_csv.map { meta, csv -> csv })
 
         if (dock_engine == "gnina") {
             ch_primary_poses = MERGE_DOCK_CHUNKS.out.merged_sdf

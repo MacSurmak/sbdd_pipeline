@@ -123,7 +123,7 @@ workflow PREPARE_RECEPTOR {
     // ==========================================
     ch_all_maes = ch_full_prepared_mae.mix(ch_light_prepared_mae)
 
-    ch_all_maes.map { meta, mae -> "${meta.name}\t${mae.name}" }
+    ch_all_maes.map { meta, mae -> "${meta.name}\t${meta.id}/${mae.name}" }
                .collectFile(name: 'prep_receipt.tsv', storeDir: params.outdir, newLine: true)
 
     emit:

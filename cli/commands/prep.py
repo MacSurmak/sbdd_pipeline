@@ -147,12 +147,12 @@ def cmd_prep(args):
         for line in lines:
             if not line.strip():
                 continue
-            orig_frame_name, mae_filename = line.split("\t")
+            orig_frame_name, rel_path = line.split("\t")
             frame = frame_map.get(orig_frame_name)
             if not frame:
                 continue
 
-            prep_mae_path = (cwd / "prepared" / Path(mae_filename).name).resolve()
+            prep_mae_path = (cwd / "prepared" / rel_path).resolve()
             if not prep_mae_path.exists():
                 raise FileNotFoundError(
                     f"FATAL: Prepared receptor MAE not found at canonical location: {prep_mae_path}"
@@ -164,13 +164,7 @@ def cmd_prep(args):
             # In-situ reference pose from PrepWizard
             system = session.query(System).filter_by(receptor_frame_id=frame.id).first()
             if system and system.pose:
-                prep_sdf_path = (
-                    cwd / "prepared" / f"{orig_frame_name}_ref_native_prepared.sdf"
-                ).resolve()
-                if not prep_sdf_path.exists():
-                    prep_sdf_path = (
-                        cwd / "prepared" / f"{orig_frame_name}_ref_native.sdf"
-                    ).resolve()
+                prep_sdf_path = (cwd / "prepared" / orig_frame_name / "native.sdf").resolve()
 
                 if prep_sdf_path.exists() and prep_sdf_path.stat().st_size > 0:
                     system.pose.path = str(prep_sdf_path)
@@ -199,12 +193,12 @@ def cmd_prep(args):
         for line in lig_receipt.read_text().strip().splitlines():
             if not line.strip():
                 continue
-            lig_name, mae_name = line.split("\t")
+            lig_name, rel_path = line.split("\t")
             lig_obj = session.query(Ligand).filter_by(name=lig_name).first()
             if lig_obj:
-                prep_mae = (cwd / "ligands" / mae_name).resolve()
-                sdf_name = mae_name.replace(".maegz", ".sdf").replace(".mae", ".sdf")
-                prep_sdf = (cwd / "ligands" / sdf_name).resolve()
+                prep_mae = (cwd / "ligands" / rel_path).resolve()
+                sdf_name = Path(rel_path).name.replace(".maegz", ".sdf").replace(".mae", ".sdf")
+                prep_sdf = (cwd / "ligands" / Path(rel_path).parent / sdf_name).resolve()
 
                 lig_obj.state = "ready"
                 lig_obj.path_mae = str(prep_mae)

@@ -13,17 +13,17 @@ process EXTRACT_COMPLEX {
     val(membrane_enabled)
 
     output:
-    tuple val(meta), path("${meta.id}_pure_protein.pdb"), emit: pure_protein_pdb, optional: true
-    tuple val(meta), path("${meta.id}_complex.mae"), emit: complex_mae
+    tuple val(meta), path("receptor_pure.pdb"), emit: pure_protein_pdb, optional: true
+    tuple val(meta), path("complex_raw.mae"), emit: complex_mae
 
     script:
-    def pure_prot_arg = (membrane_enabled.toString() == 'true') ? "--out_pure_protein ${meta.id}_pure_protein.pdb" : ""
+    def pure_prot_arg = (membrane_enabled.toString() == 'true') ? "--out_pure_protein receptor_pure.pdb" : ""
     """
     schrodinger run ${projectDir}/bin/extract_complex.py \\
         --input ${complex_file} \\
         --frame_index ${frame_idx} \\
         ${pure_prot_arg} \\
-        --out_complex_mae ${meta.id}_complex.mae
+        --out_complex_mae complex_raw.mae
     """
     stub:
     """

@@ -11,7 +11,7 @@ process ORIENT_COMPLEX {
     tuple val(meta), path(raw_protein), path(oriented_protein), path(complex_mae)
 
     output:
-    tuple val(meta), path("${meta.id}_complex_oriented.mae"), emit: oriented_mae
+    tuple val(meta), path("complex_oriented.mae"), emit: oriented_mae
 
     script:
     """
@@ -19,7 +19,7 @@ process ORIENT_COMPLEX {
         --raw_protein ${raw_protein} \\
         --oriented_protein ${oriented_protein} \\
         --complex_mae ${complex_mae} \\
-        --out_complex_mae ${meta.id}_complex_oriented.mae
+        --out_complex_mae complex_oriented.mae
     """
     stub:
     """

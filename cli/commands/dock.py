@@ -338,15 +338,10 @@ def cmd_dock(args):
 
                     pose_name = f"{frame_name}_{title}_dock"
 
-                    # Directly resolve docked pose file published by Nextflow
-                    sdf_path = cwd / "docking" / frame_name / f"{frame_name}_dock.sdf"
+                    # Resolve short files inside nested directory
+                    sdf_path = cwd / "docking" / frame_name / title / "glide_dock.sdf"
                     if not sdf_path.exists():
-                        sdf_path = (
-                            cwd
-                            / "docking"
-                            / frame_name
-                            / f"{frame_name}_gnina_docked_all.sdf"
-                        )
+                        sdf_path = cwd / "docking" / frame_name / title / "gnina_dock.sdf"
 
                     if not sdf_path.exists():
                         raise FileNotFoundError(
