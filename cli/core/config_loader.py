@@ -16,8 +16,13 @@ def load_project_configs(project_dir: Path) -> Dict[str, Any]:
 
     merged: Dict[str, Any] = {}
     expected_configs = [
-        "project.yaml", "glide.yaml", "gnina.yaml", "md.yaml", 
-        "membrane.yaml", "mmpbsa.yaml", "manifest.yaml"
+        "project.yaml",
+        "glide.yaml",
+        "gnina.yaml",
+        "md.yaml",
+        "membrane.yaml",
+        "mmpbsa.yaml",
+        "manifest.yaml",
     ]
 
     for sdir in search_dirs:
@@ -30,7 +35,9 @@ def load_project_configs(project_dir: Path) -> Dict[str, Any]:
                         if isinstance(data, dict):
                             merged.update(data)
                 except Exception as e:
-                    raise ValueError(f"FATAL: Failed to parse required YAML file {yf.name}: {e}")
+                    raise ValueError(
+                        f"FATAL: Failed to parse required YAML file {yf.name}: {e}"
+                    )
 
     return merged
 
@@ -240,14 +247,23 @@ def build_nextflow_args(
 
         declash = md_cfg.get("declash", {})
         if declash:
-            for k, f in [("cutoff", "--declash_cutoff"), ("niter", "--declash_niter"), 
-                         ("damping", "--declash_damping"), ("max_move", "--declash_max_move"),
-                         ("jitter", "--declash_jitter"), ("tolerance", "--declash_tol")]:
+            for k, f in [
+                ("cutoff", "--declash_cutoff"),
+                ("niter", "--declash_niter"),
+                ("damping", "--declash_damping"),
+                ("max_move", "--declash_max_move"),
+                ("jitter", "--declash_jitter"),
+                ("tolerance", "--declash_tol"),
+            ]:
                 args.extend([f, str(declash.get(k))])
-                
+
         metrics = md_cfg.get("metrics", {})
         if metrics:
-            for k, f in [("heavy_cutoff", "--metric_heavy"), ("hyd_cutoff", "--metric_hyd"), ("pol_cutoff", "--metric_pol")]:
+            for k, f in [
+                ("heavy_cutoff", "--metric_heavy"),
+                ("hyd_cutoff", "--metric_hyd"),
+                ("pol_cutoff", "--metric_pol"),
+            ]:
                 args.extend([f, str(metrics.get(k))])
 
         if "restraint_forces" not in sys_build:

@@ -34,7 +34,9 @@ def add_pocket_group(ndx_path: Path, pdb_path: Path, ligand_name: str):
     import MDAnalysis as mda
 
     if not ligand_name:
-        raise ValueError("FATAL: ligand_name must be explicitly provided to generate the Pocket group.")
+        raise ValueError(
+            "FATAL: ligand_name must be explicitly provided to generate the Pocket group."
+        )
 
     u = mda.Universe(str(pdb_path))
     lig_res = ligand_name.strip().upper()
@@ -74,7 +76,7 @@ def add_thermostat_groups_by_name(ndx_path: Path, water_names: str, ion_names: s
         if w_name in groups:
             water_and_ion_atoms.update(groups[w_name])
             matched_water = True
-            
+
     if not matched_water:
         raise KeyError(f"None of the config water names {w_set} found in index.ndx")
 
@@ -237,6 +239,8 @@ if __name__ == "__main__":
             raise ValueError("FATAL: --top is required for generate_posre")
         generate_posre(Path(args.top), args.forces, args.water_names, args.ion_names)
     elif args.action == "ensure_complex":
-        ensure_complex_ndx_group(Path(args.ndx), args.water_names, args.ion_names, args.lipid_names)
+        ensure_complex_ndx_group(
+            Path(args.ndx), args.water_names, args.ion_names, args.lipid_names
+        )
     elif args.action == "add_pocket":
         add_pocket_group(Path(args.ndx), Path(args.pdb), args.ligand)

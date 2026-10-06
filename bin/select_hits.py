@@ -41,13 +41,17 @@ def main():
                 )
                 title = title.strip()
                 frame = row.get("Frame") or row.get("frame")
-                
+
                 if not frame:
-                    raise ValueError(f"FATAL: Missing 'Frame' column in ranking row for {title}")
-                
+                    raise ValueError(
+                        f"FATAL: Missing 'Frame' column in ranking row for {title}"
+                    )
+
                 frame_id = str(frame).replace("F", "").replace("f", "").strip()
                 if not frame_id:
-                    raise ValueError(f"FATAL: Empty 'Frame' value in ranking row for {title}")
+                    raise ValueError(
+                        f"FATAL: Empty 'Frame' value in ranking row for {title}"
+                    )
 
                 if title and not any(s[0] == title for s in selected):
                     selected.append((title, frame_id))

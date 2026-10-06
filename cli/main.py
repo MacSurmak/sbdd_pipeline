@@ -40,12 +40,16 @@ def cmd_init(args):
             if not dest.exists() or args.force:
                 if f.name == "project.yaml":
                     content = f.read_text(encoding="utf-8")
-                    content = content.replace('name: "SBDD_Project"', f'name: "{project_name}"')
+                    content = content.replace(
+                        'name: "SBDD_Project"', f'name: "{project_name}"'
+                    )
                     dest.write_text(content, encoding="utf-8")
                 else:
                     shutil.copy(f, dest)
 
-    console.print(f"[bold green]✓ Project '{project_name}' initialized at: {target_dir}[/bold green]")
+    console.print(
+        f"[bold green]✓ Project '{project_name}' initialized at: {target_dir}[/bold green]"
+    )
     console.print(f"[cyan]Configurations created in:[/cyan] {config_dir}")
     console.print("\n[bold]Next steps:[/bold]")
     console.print(
@@ -127,7 +131,7 @@ def cmd_md_init(args):
         "--compressibility",
         str(prod.get("compressibility", "4.5e-5")),
         "--tau_p",
-        str(prod.get("tau_p", "5.0"))
+        str(prod.get("tau_p", "5.0")),
     ]
     res = subprocess.run(cmd, capture_output=True, text=True)
     if res.returncode != 0:

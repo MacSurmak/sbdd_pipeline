@@ -3,6 +3,7 @@ import sys
 from schrodinger import structure
 from schrodinger.structutils import assignbondorders
 
+
 def main():
     if len(sys.argv) < 4:
         sys.exit(1)
@@ -29,6 +30,7 @@ def main():
         sys.stderr.write(f"Warning: assignbondorders note: {e}\n")
 
     lig_st.write(out_file)
+
 
 if __name__ == "__main__":
     main()

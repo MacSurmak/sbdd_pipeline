@@ -29,7 +29,9 @@ def main():
     parser.add_argument(
         "--bonds_out", default=None, help="Output tLEaP bond commands file"
     )
-    parser.add_argument("--ss_cutoff", type=float, required=True, help="Distance cutoff for SS bonds")
+    parser.add_argument(
+        "--ss_cutoff", type=float, required=True, help="Distance cutoff for SS bonds"
+    )
     args = parser.parse_args()
 
     lines = Path(args.input_pdb).read_text(errors="ignore").splitlines()

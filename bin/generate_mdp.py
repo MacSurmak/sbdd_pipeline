@@ -53,7 +53,7 @@ def main():
 
     pcoupl_type = "semiisotropic" if is_mem else "isotropic"
     ref_p = "1.0 1.0" if is_mem else "1.0"
-    
+
     comp_base = args.compressibility
     compressibility = f"{comp_base} {comp_base}" if is_mem else comp_base
 

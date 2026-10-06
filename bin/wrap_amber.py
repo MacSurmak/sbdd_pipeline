@@ -75,14 +75,18 @@ def cmd_tleap(args):
             "--bonds_out",
             "apply_bonds.in",
             "--ss_cutoff",
-            str(args.ss_cutoff)
+            str(args.ss_cutoff),
         ],
         check=True,
     )
 
     box = args.water_box
     leaprc_water = args.water_leaprc
-    box_cmd = f"solvateBox complex {box} {args.box_padding}" if args.box_type == "box" else f"solvateOct complex {box} {args.box_padding}"
+    box_cmd = (
+        f"solvateBox complex {box} {args.box_padding}"
+        if args.box_type == "box"
+        else f"solvateOct complex {box} {args.box_padding}"
+    )
 
     with open("tleap.in", "w") as f:
         f.write(

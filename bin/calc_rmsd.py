@@ -167,7 +167,9 @@ def main():
 
     final_title = matched_title or args.title
     if not final_title:
-        raise ValueError("FATAL: Ligand title could not be resolved from file properties or CLI arguments.")
+        raise ValueError(
+            "FATAL: Ligand title could not be resolved from file properties or CLI arguments."
+        )
 
     row = {
         "Receptor": args.receptor,

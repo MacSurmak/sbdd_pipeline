@@ -71,7 +71,7 @@ def cmd_clean_traj(args):
     plan_list = []
     for t in trajs:
         raw_dir = Path(t.raw_dir).resolve()
-        
+
         chunks = []
         chunk_idx = 1
         while True:
@@ -81,7 +81,7 @@ def cmd_clean_traj(args):
                 chunk_idx += 1
             else:
                 break
-                
+
         if not chunks:
             single_file = raw_dir / f"{t.name}.xtc"
             if single_file.exists():
@@ -393,12 +393,12 @@ def cmd_cluster(args):
 
     prepared_dir = (cwd / "prepared").resolve()
     receipt_files = []
-    
+
     for task_id in sys_map.keys():
         expected_receipt = prepared_dir / f"{task_id}_cluster_receipt.tsv"
         if expected_receipt.exists():
             receipt_files.append(expected_receipt)
-            
+
     if not receipt_files:
         console.print(
             f"[bold red]FATAL: Expected cluster receipt files not found in {prepared_dir}![/bold red]"
@@ -422,9 +422,7 @@ def cmd_cluster(args):
             else f"{centroid_title}.mae"
         )
         pose_filename = (
-            Path(parts[3]).name
-            if len(parts) > 3 and parts[3].strip()
-            else None
+            Path(parts[3]).name if len(parts) > 3 and parts[3].strip() else None
         )
 
         parent_sys_key = (

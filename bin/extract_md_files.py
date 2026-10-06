@@ -81,7 +81,9 @@ def extract_via_schrodinger(args):
     # 2. Extract Ligand preserving canonical residue name strictly
     if args.lig_file:
         if not args.lig_name:
-            raise ValueError("FATAL: --lig_name must be explicitly provided when ligand file is present.")
+            raise ValueError(
+                "FATAL: --lig_name must be explicitly provided when ligand file is present."
+            )
         lig_code = args.lig_name.strip()[:4].upper()
         if not Path(args.lig_file).exists():
             raise FileNotFoundError(f"FATAL: Ligand file {args.lig_file} not found!")
@@ -128,7 +130,10 @@ def main():
     try:
         extract_via_schrodinger(args)
     except ImportError as e:
-        print(f"FATAL: Schrödinger API not found. extract_md_files.py must be run within a container providing schrodinger environment. Error: {e}", file=sys.stderr)
+        print(
+            f"FATAL: Schrödinger API not found. extract_md_files.py must be run within a container providing schrodinger environment. Error: {e}",
+            file=sys.stderr,
+        )
         sys.exit(1)
     except Exception as e:
         print(f"FATAL: Error in extract_md_files: {e}", file=sys.stderr)

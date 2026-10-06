@@ -95,7 +95,12 @@ def _extract_ligand_atoms(rec_path: Path, lig_resname: str, out_sdf: Path) -> No
         else [schrod_bin, "python3"]
     )
 
-    script_path = Path(__file__).parent.parent.parent / "bin" / "utils" / "extract_ligand_bonds.py"
+    script_path = (
+        Path(__file__).parent.parent.parent
+        / "bin"
+        / "utils"
+        / "extract_ligand_bonds.py"
+    )
     if not script_path.exists():
         raise FileNotFoundError(f"FATAL: Extraction script not found at {script_path}")
 

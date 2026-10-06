@@ -24,10 +24,12 @@ def send_telemetry(msg):
 def run_mdrun(cmd, task_name):
     if "-v" not in cmd:
         cmd.append("-v")
-    
+
     print(f"Exec: {' '.join(cmd)}")
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-    
+    proc = subprocess.Popen(
+        cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
+    )
+
     total_steps = None
     start_step = None
     dt_ps = None
@@ -40,7 +42,7 @@ def run_mdrun(cmd, task_name):
         m_tot = re.search(r"(?:number of steps|nsteps)\s*[=:]\s*(\d+)", line, re.I)
         if m_tot:
             total_steps = int(m_tot.group(1))
-            
+
         m_dt = re.search(r"dt\s*=\s*([\d.]+)", line, re.I)
         if m_dt:
             dt_ps = float(m_dt.group(1))
@@ -50,17 +52,19 @@ def run_mdrun(cmd, task_name):
             current_step = int(m_step.group(1))
             if start_step is None:
                 start_step = current_step
-            
-            send_telemetry({
-                "task": task_name,
-                "event": "progress",
-                "step": current_step,
-                "start": start_step,
-                "total": total_steps,
-                "dt_ps": dt_ps,
-                "node": node_name
-            })
-    
+
+            send_telemetry(
+                {
+                    "task": task_name,
+                    "event": "progress",
+                    "step": current_step,
+                    "start": start_step,
+                    "total": total_steps,
+                    "dt_ps": dt_ps,
+                    "node": node_name,
+                }
+            )
+
     proc.wait()
     send_telemetry({"task": task_name, "event": "exit", "node": node_name})
     if proc.returncode != 0:
@@ -93,9 +97,12 @@ def cmd_cluster(args):
             "index.ndx",
             "--action",
             "ensure_complex",
-            "--water_names", args.water_names,
-            "--ion_names", args.ion_names,
-            "--lipid_names", args.lipid_names
+            "--water_names",
+            args.water_names,
+            "--ion_names",
+            args.ion_names,
+            "--lipid_names",
+            args.lipid_names,
         ],
         check=True,
     )
@@ -180,9 +187,12 @@ def cmd_trjconv(args):
             "index.ndx",
             "--action",
             "ensure_complex",
-            "--water_names", args.water_names,
-            "--ion_names", args.ion_names,
-            "--lipid_names", args.lipid_names
+            "--water_names",
+            args.water_names,
+            "--ion_names",
+            args.ion_names,
+            "--lipid_names",
+            args.lipid_names,
         ],
         check=True,
     )
@@ -428,7 +438,7 @@ def cmd_run_chunk(args):
                 "-ntomp",
                 str(args.cpus),
             ],
-            f"MD: {args.sys_name}"
+            f"MD: {args.sys_name}",
         )
         shutil.copy2("out.tpr", "sys_ref.tpr")
     else:
@@ -464,7 +474,7 @@ def cmd_run_chunk(args):
                 "-ntomp",
                 str(args.cpus),
             ],
-            f"MD: {args.sys_name}"
+            f"MD: {args.sys_name}",
         )
         shutil.copy2("out.tpr", "sys_ref.tpr")
 
@@ -579,8 +589,10 @@ def cmd_ndx_posre(args):
             "index.ndx",
             "--action",
             "add_groups",
-            "--water_names", args.water_names,
-            "--ion_names", args.ion_names
+            "--water_names",
+            args.water_names,
+            "--ion_names",
+            args.ion_names,
         ],
         check=True,
     )
@@ -596,8 +608,10 @@ def cmd_ndx_posre(args):
             args.forces,
             "--action",
             "generate_posre",
-            "--water_names", args.water_names,
-            "--ion_names", args.ion_names
+            "--water_names",
+            args.water_names,
+            "--ion_names",
+            args.ion_names,
         ],
         check=True,
     )

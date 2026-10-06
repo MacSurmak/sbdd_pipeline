@@ -31,7 +31,9 @@ def write_ndx_group(f, name: str, atom_ids: List[int]):
         f.write(" ".join(f"{x:5d}" for x in atom_ids[i : i + 15]) + "\n")
 
 
-def ensure_complex_ndx_group(ndx_path: Path, water_names: str, ion_names: str, lipid_names: str):
+def ensure_complex_ndx_group(
+    ndx_path: Path, water_names: str, ion_names: str, lipid_names: str
+):
     """
     Builds [ COMPLEX ] strictly containing Protein + Ligands + all Cofactors.
     Excludes water, bulk ions, and membrane lipids purely by provided yaml names.
