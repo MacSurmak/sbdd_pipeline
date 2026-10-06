@@ -112,13 +112,29 @@ def add_thermostat_groups_by_name(ndx_path: Path):
         write_ndx_group(f, "SOL_ION", sorted(list(water_and_ion_atoms)))
 
 
-def generate_posre(top_file: Path):
-    """Parses topology and generates strictly local position restraints for heavy atoms."""
+def generate_posre(top_file: Path, forces_str: str):
+    """Parses topology and dynamically generates position restraints strictly based on user configuration."""
+    if not forces_str or not forces_str.strip():
+        raise ValueError("FATAL: --forces argument cannot be empty. Restraint forces must be specified explicitly in md.yaml.")
+
+    raw_forces = [int(float(x.strip())) for x in forces_str.split(",") if x.strip()]
+    if not raw_forces:
+        raise ValueError("FATAL: No valid force constants parsed from configuration.")
+
+    sorted_forces = sorted(list(set(raw_forces)), reverse=True)
+    max_fc = sorted_forces[0]
+
+    force_levels = []
+    for fc in sorted_forces:
+        suffix = f"_{fc}"
+        force_levels.append((suffix, fc))
+        if fc == max_fc:
+            force_levels.append(("", fc))
+
     lines = top_file.read_text().splitlines()
     current_mol = None
     in_atoms = False
-
-    mols = {}  # name -> list of heavy atom local indices
+    mols = {}
 
     for line in lines:
         stripped = line.strip()
@@ -145,24 +161,11 @@ def generate_posre(top_file: Path):
             if len(parts) >= 8:
                 atom_nr = parts[0]
                 mass = float(parts[7])
-                if mass > 1.5:  # Heavy atom threshold
+                if mass > 1.5:
                     mols[current_mol].append(atom_nr)
 
     ions = {
-        "K+",
-        "NA+",
-        "CL-",
-        "Cl-",
-        "Na+",
-        "ZN",
-        "MG",
-        "CA",
-        "ZN2",
-        "MG2",
-        "CA2",
-        "K",
-        "CL",
-        "NA",
+        "K+", "NA+", "CL-", "Cl-", "Na+", "ZN", "MG", "CA", "ZN2", "MG2", "CA2", "K", "CL", "NA"
     }
     water = {"SOL", "Water", "HOH", "WAT"}
 
@@ -175,41 +178,12 @@ def generate_posre(top_file: Path):
 
         if stripped.startswith("[ moleculetype ]") or stripped.startswith("[ system ]"):
             if current_mol and current_mol not in ions and current_mol not in water:
-                # Decouple protein and ligand/organic preprocessor flags
-                if current_mol.startswith("system") or current_mol.startswith(
-                    "Protein"
-                ):
-                    out_lines.append(
-                        '#ifdef POSRES\n#include "posre_'
-                        + current_mol
-                        + '.itp"\n#endif'
-                    )
-                    out_lines.append(
-                        '#ifdef POSRES_250\n#include "posre_'
-                        + current_mol
-                        + '_250.itp"\n#endif'
-                    )
-                    out_lines.append(
-                        '#ifdef POSRES_50\n#include "posre_'
-                        + current_mol
-                        + '_50.itp"\n#endif'
-                    )
-                else:
-                    out_lines.append(
-                        '#ifdef POSRES_LIG\n#include "posre_'
-                        + current_mol
-                        + '.itp"\n#endif'
-                    )
-                    out_lines.append(
-                        '#ifdef POSRES_LIG_250\n#include "posre_'
-                        + current_mol
-                        + '_250.itp"\n#endif'
-                    )
-                    out_lines.append(
-                        '#ifdef POSRES_LIG_50\n#include "posre_'
-                        + current_mol
-                        + '_50.itp"\n#endif'
-                    )
+                is_protein = current_mol.startswith("system") or current_mol.startswith("Protein")
+                prefix = "POSRES" if is_protein else "POSRES_LIG"
+
+                for suffix, fc in force_levels:
+                    macro = f"{prefix}{suffix}"
+                    out_lines.append(f'#ifdef {macro}\n#include "posre_{current_mol}_{fc}.itp"\n#endif')
 
             state = "MOL_START" if stripped.startswith("[ moleculetype ]") else "SYSTEM"
             current_mol = None
@@ -222,18 +196,11 @@ def generate_posre(top_file: Path):
 
     top_file.write_text("\n".join(out_lines) + "\n")
 
-    # Generate explicit, multi-level physical force constant tables without text macros
-    force_levels = [
-        ("", 1000),  # Standard full restraint
-        ("_250", 250),  # Medium restraint
-        ("_50", 50),  # Soft backbone restraint
-    ]
-
     for mol, heavy_atoms in mols.items():
         if mol in ions or mol in water:
             continue
 
-        for suffix, fc in force_levels:
+        for fc in sorted_forces:
             itp_lines = [
                 "[ position_restraints ]",
                 "; atom  type      fx      fy      fz",
@@ -241,11 +208,11 @@ def generate_posre(top_file: Path):
             for nr in heavy_atoms:
                 itp_lines.append(f"{nr:>6}     1  {fc:6d}  {fc:6d}  {fc:6d}")
 
-            itp_file = Path(f"posre_{mol}{suffix}.itp")
+            itp_file = Path(f"posre_{mol}_{fc}.itp")
             itp_file.write_text("\n".join(itp_lines) + "\n")
 
         print(
-            f"Generated physical multi-level restraints for {mol} ({len(heavy_atoms)} atoms, FC=1000/250/50)"
+            f"Dynamically generated restraints for {mol} ({len(heavy_atoms)} atoms) with forces: {sorted_forces}"
         )
 
 
