@@ -190,11 +190,17 @@ def run_monitor(port: int = 8089):
                     # Fallback formatting if raw telemetry packet arrives without pre-rendered strings
                     if step_info_str is None and display_step is not None:
                         dt_ps = msg.get("dt_ps")
-                        t_str = f" [dim]({format_time_ns(display_step * dt_ps)})[/dim]" if dt_ps else ""
+                        t_str = (
+                            f" [dim]({format_time_ns(display_step * dt_ps)})[/dim]"
+                            if dt_ps
+                            else ""
+                        )
                         if display_total is not None:
                             step_info_str = f"[cyan]{format_steps(display_step)}/{format_steps(display_total)}[/cyan]{t_str}"
                         else:
-                            step_info_str = f"[cyan]{format_steps(display_step)}[/cyan]{t_str}"
+                            step_info_str = (
+                                f"[cyan]{format_steps(display_step)}[/cyan]{t_str}"
+                            )
 
                     if display_step is not None:
                         if task_name not in task_bars:

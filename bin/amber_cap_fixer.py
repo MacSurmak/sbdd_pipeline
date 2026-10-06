@@ -290,7 +290,9 @@ def main():
             z_str = f"{a['z']:8.3f}"
             occ_str = orig[54:60] if len(orig) >= 60 else "  1.00"
             tf_str = orig[60:66] if len(orig) >= 66 else "  0.00"
-            elem_str = orig[76:78] if len(orig) >= 78 else f"{formatted_atom.strip()[:1]:>2s}"
+            elem_str = (
+                orig[76:78] if len(orig) >= 78 else f"{formatted_atom.strip()[:1]:>2s}"
+            )
 
             # Strict standard PDB column allocation:
             # 1-6 Record, 7-11 Serial, 12 Space, 13-16 AtomName, 17 altLoc, 18-20 resName,
