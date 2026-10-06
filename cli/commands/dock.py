@@ -14,6 +14,29 @@ from cli.core.config_loader import load_project_configs, build_nextflow_args
 console = Console()
 
 
+def _format_metric(val):
+    if val is None or val == "" or str(val).lower() == "nan":
+        return "-"
+    try:
+        return f"{float(val):.2f}"
+    except (ValueError, TypeError):
+        return str(val)
+
+
+def _color_rmsd(val_str):
+    if val_str is None or val_str == "" or str(val_str).lower() in ["nan", "-"]:
+        return "-"
+    try:
+        v = float(val_str)
+        return (
+            f"[bold green]{v:.2f}[/bold green]"
+            if v <= 2.0
+            else f"[bold red]{v:.2f}[/bold red]"
+        )
+    except (ValueError, TypeError):
+        return str(val_str)
+
+
 def cmd_dock(args):
     cwd = Path.cwd()
     session = init_db()
@@ -329,6 +352,17 @@ def cmd_dock(args):
                 receipt_map[(r_frame_id, r_engine)] = r_sdf_path
 
     import csv
+    from rich.table import Table
+
+    table = Table(title="🎯 Redocking & Scoring Summary", show_header=True)
+    table.add_column("Receptor", style="cyan")
+    table.add_column("Ligand", style="bold")
+    table.add_column("GlideScore", justify="right")
+    table.add_column("CNN Affinity", justify="right")
+    table.add_column("MM-GBSA (kcal/mol)", justify="right")
+    table.add_column("Glide RMSD (Å)", justify="center")
+    table.add_column("GNINA RMSD (Å)", justify="center")
+    table.add_column("Verdict", justify="center")
 
     poses_count = 0
     with open(res_csv, "r", encoding="utf-8") as f:
@@ -397,98 +431,42 @@ def cmd_dock(args):
                 session.add(new_p)
             poses_count += 1
 
+            # Populate display row for the Rich Summary Table
+            gscore = row.get("GlideScore", "-")
+            cnn = row.get("Resc_CNNaffinity") or row.get("Dock_CNNaffinity") or "-"
+            mmgbsa = row.get("MMGBSA", "-")
+            g_rmsd = row.get("InSitu_RMSD_Glide_A", "-")
+            n_rmsd = row.get("InSitu_RMSD_GNINA_A", "-")
+
+            disp_glide = _color_rmsd(g_rmsd)
+            disp_gnina = _color_rmsd(n_rmsd)
+
+            verdict = "[dim]-[/dim]"
+            try:
+                vg = float(g_rmsd) if g_rmsd and g_rmsd not in ["nan", "-"] else None
+                vn = float(n_rmsd) if n_rmsd and n_rmsd not in ["nan", "-"] else None
+                if (vg is not None and vg <= 2.5) or (vn is not None and vn <= 2.5):
+                    verdict = "[bold green]✓ SUCCESS[/bold green]"
+                elif vg is not None or vn is not None:
+                    verdict = "[bold yellow]⚠ DRIFT[/bold yellow]"
+            except (ValueError, TypeError):
+                pass
+
+            table.add_row(
+                frame_name,
+                title,
+                _format_metric(gscore),
+                _format_metric(cnn),
+                _format_metric(mmgbsa),
+                disp_glide,
+                disp_gnina,
+                verdict,
+            )
+
     session.commit()
+    session.close()
+
     console.print(
         f"\n[bold green]✓ Docking verified via receipt! Registered {poses_count} pose(s) in DB as '{poses_name}'.[/bold green]\n"
     )
-
-        # Render Rich Summary Table
-        try:
-            from rich.table import Table
-
-            table = Table(title="🎯 Redocking & Scoring Summary", show_header=True)
-            table.add_column("Receptor", style="cyan")
-            table.add_column("Ligand", style="bold")
-            table.add_column("GlideScore", justify="right")
-            table.add_column("CNN Affinity", justify="right")
-            table.add_column("MM-GBSA (kcal/mol)", justify="right")
-            table.add_column("Glide RMSD (Å)", justify="center")
-            table.add_column("GNINA RMSD (Å)", justify="center")
-            table.add_column("Verdict", justify="center")
-
-            with open(res_csv, "r", encoding="utf-8", errors="ignore") as f:
-                reader = csv.DictReader(f)
-                for row in reader:
-                    rec = row.get("Receptor", row.get("Frame", "-"))
-                    lig = row.get("Title", "-")
-                    gscore = row.get("GlideScore", "-")
-                    cnn = (
-                        row.get("Resc_CNNaffinity")
-                        or row.get("Dock_CNNaffinity")
-                        or "-"
-                    )
-                    mmgbsa = row.get("MMGBSA", "-")
-                    g_rmsd = row.get("InSitu_RMSD_Glide_A", "-")
-                    n_rmsd = row.get("InSitu_RMSD_GNINA_A", "-")
-
-                    def _fmt(val):
-                        try:
-                            return f"{float(val):.2f}"
-                        except (ValueError, TypeError):
-                            return str(val) if val and val != "nan" else "-"
-
-                    def _color_rmsd(val_str):
-                        if val_str and val_str not in ["nan", "-"]:
-                            try:
-                                v = float(val_str)
-                                return (
-                                    f"[bold green]{v:.2f}[/bold green]"
-                                    if v <= 2.0
-                                    else f"[bold red]{v:.2f}[/bold red]"
-                                )
-                            except ValueError:
-                                return val_str
-                        return "-"
-
-                    disp_glide = _color_rmsd(g_rmsd)
-                    disp_gnina = _color_rmsd(n_rmsd)
-
-                    # Determine verdict: SUCCESS if either engine reached <= 2.5 A (allosteric tolerance)
-                    verdict = "[dim]-[/dim]"
-                    try:
-                        vg = (
-                            float(g_rmsd)
-                            if g_rmsd and g_rmsd not in ["nan", "-"]
-                            else None
-                        )
-                        vn = (
-                            float(n_rmsd)
-                            if n_rmsd and n_rmsd not in ["nan", "-"]
-                            else None
-                        )
-                        if (vg is not None and vg <= 2.5) or (
-                            vn is not None and vn <= 2.5
-                        ):
-                            verdict = "[bold green]✓ SUCCESS[/bold green]"
-                        elif vg is not None or vn is not None:
-                            verdict = "[bold yellow]⚠ DRIFT[/bold yellow]"
-                    except ValueError:
-                        pass
-
-                    table.add_row(
-                        rec,
-                        lig,
-                        _fmt(gscore),
-                        _fmt(cnn),
-                        _fmt(mmgbsa),
-                        disp_glide,
-                        disp_gnina,
-                        verdict,
-                    )
-            console.print(table)
-        except Exception as e:
-            console.print(
-                f"[yellow]Warning: Could not render console table: {e}[/yellow]"
-            )
-
-    session.close()
+    console.print(table)
