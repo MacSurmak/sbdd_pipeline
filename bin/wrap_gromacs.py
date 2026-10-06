@@ -98,7 +98,13 @@ def cmd_run_chunk(args):
     nstenergy = max(1, min(1000, steps // 10))
     
     if int(args.chunk_idx) == 1:
-        mdp = Path("md.mdp").read_text()
+        mdp_path = Path("prod.mdp")
+        if not mdp_path.exists():
+            mdp_path = Path("md.mdp")
+        if not mdp_path.exists():
+            print("FATAL: Production template (prod.mdp) was not found in staged protocol directory!", file=sys.stderr)
+            sys.exit(1)
+        mdp = mdp_path.read_text()
         mdp = re.sub(r"nsteps\s*=.*", f"nsteps = {steps}", mdp)
         mdp = re.sub(r"nstxout-compressed\s*=.*", f"nstxout-compressed = {nstxout}", mdp)
         mdp = re.sub(r"nstenergy\s*=.*", f"nstenergy = {nstenergy}", mdp)

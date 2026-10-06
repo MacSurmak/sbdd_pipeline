@@ -1,8 +1,8 @@
-; Universal Energy Minimization Template
+; Energy Minimization Archetype Template
 define                   = {DEFINE}
 integrator               = steep
 emtol                    = 500.0
-emstep                   = {EMSTEP}
+emstep                   = 0.01
 nsteps                   = 50000
 
 nstxout                  = 0
@@ -17,7 +17,7 @@ vdwtype                  = cutoff
 rvdw                     = 1.0
 pbc                      = xyz
 
-constraints              = {CONSTRAINTS}
+constraints              = h-bonds
 constraint-algorithm     = lincs
 lincs-order              = 4
 lincs-iter               = 1

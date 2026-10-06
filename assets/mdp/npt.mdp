@@ -1,14 +1,12 @@
-; Universal NPT Equilibration Template
+; NPT Equilibration Archetype Template
 define                   = {DEFINE}
 integrator               = md
 dt                       = 0.002
 nsteps                   = {NSTEPS}
 
-nstxout                  = 5000
-nstvout                  = 5000
+nstxout-compressed       = 5000
 nstenergy                = 1000
 nstlog                   = 1000
-nstxout-compressed       = 1000
 
 cutoff-scheme            = Verlet
 coulombtype              = PME
@@ -35,3 +33,4 @@ lincs-order              = 4
 lincs-iter               = 1
 
 continuation             = yes
+gen_vel                  = no

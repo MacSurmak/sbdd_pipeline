@@ -11,7 +11,7 @@ from pathlib import Path
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Generate GROMACS MDP files from templates"
+        description="Generate pure, system-specific GROMACS MDP protocol suite"
     )
     parser.add_argument(
         "--templates_dir", required=True, help="Directory containing template MDPs"
@@ -20,31 +20,22 @@ def main():
         "--outdir", required=True, help="Output directory for generated MDPs"
     )
     parser.add_argument(
-        "--is_membrane", default="false", help="Whether system is a membrane system"
+        "--is_membrane", required=True, help="Whether system is a membrane system (true/false)"
     )
     parser.add_argument(
-        "--temperature", type=float, default=310.15, help="Simulation temperature in K"
-    )
-    parser.add_argument(
-        "--nvt_short_ps", type=float, default=50.0, help="NVT short duration in ps"
-    )
-    parser.add_argument(
-        "--nvt_long_ps", type=float, default=500.0, help="NVT long duration in ps"
-    )
-    parser.add_argument(
-        "--npt_berendsen_ps",
-        type=float,
-        default=1000.0,
-        help="NPT Berendsen duration in ps",
-    )
-    parser.add_argument(
-        "--npt_pr_ps", type=float, default=1000.0, help="NPT PR duration in ps"
+        "--temperature", type=float, required=True, help="Simulation temperature in K"
     )
     args = parser.parse_args()
 
     tpl_dir = Path(args.templates_dir)
     out_dir = Path(args.outdir)
     out_dir.mkdir(parents=True, exist_ok=True)
+
+    # Purge any old, stale MDP files and lists in the target directory
+    for stale_file in out_dir.glob("*.mdp"):
+        stale_file.unlink()
+    for stale_list in ["protocol.txt", "stages_list.txt"]:
+        (out_dir / stale_list).unlink(missing_ok=True)
 
     is_mem = str(args.is_membrane).lower() in ["true", "1", "yes"]
     temp = args.temperature
@@ -53,99 +44,76 @@ def main():
     ref_p = "1.0 1.0" if is_mem else "1.0"
     compressibility = "4.5e-5 4.5e-5" if is_mem else "4.5e-5"
 
-    dt_minim = 0.01
-    dt_nvt = 0.001
-    dt_npt = 0.002
-    dt_md = 0.002
-
-    # 1. Minimization
-    minim_tpl = (tpl_dir / "minim.mdp").read_text()
-    minim_content = minim_tpl.replace("{DEFINE}", "-DPOSRES -DPOSRES_LIG")
-    minim_content = minim_content.replace("{EMSTEP}", str(dt_minim))
-    minim_content = minim_content.replace("{CONSTRAINTS}", "h-bonds")
-    (out_dir / "minim.mdp").write_text(minim_content)
-
-    # 2. NVT Stages
+    em_tpl = (tpl_dir / "em.mdp").read_text()
     nvt_tpl = (tpl_dir / "nvt.mdp").read_text()
-
-    def build_nvt(name, duration_ps, define_str, cont, gen_vel):
-        steps = int(round(duration_ps / dt_nvt))
-        c = nvt_tpl.replace("{DEFINE}", define_str)
-        c = c.replace("{DT}", str(dt_nvt))
-        c = c.replace("{NSTEPS}", str(steps))
-        c = c.replace("{TC_GRPS}", "PROT_LIG SOL_ION")
-        c = c.replace("{TEMP}", str(temp))
-        c = c.replace("{CONTINUATION}", cont)
-        c = c.replace("{GEN_VEL}", gen_vel)
-        (out_dir / f"{name}.mdp").write_text(c)
-
-    build_nvt("nvt_short", args.nvt_short_ps, "-DPOSRES -DPOSRES_LIG", "no", "yes")
-    build_nvt(
-        "nvt_long",
-        args.nvt_long_ps,
-        "-DPOSRES_250 -DPOSRES_LIG_250",
-        "yes",
-        "no",
-    )
-    build_nvt("nvt", args.nvt_short_ps, "-DPOSRES -DPOSRES_LIG", "no", "yes")
-
-    # 3. NPT Stages
     npt_tpl = (tpl_dir / "npt.mdp").read_text()
+    prod_tpl = (tpl_dir / "prod.mdp").read_text()
 
-    def build_npt(name, duration_ps, define_str, pcoupl, tau_p):
-        steps = int(round(duration_ps / dt_npt))
-        c = npt_tpl.replace("{DEFINE}", define_str)
-        c = c.replace("{NSTEPS}", str(steps))
-        c = c.replace("{TC_GRPS}", "PROT_LIG SOL_ION")
-        c = c.replace("{TEMP}", str(temp))
-        c = c.replace("{PCOUPL}", pcoupl)
-        c = c.replace("{PCOUPL_TYPE}", pcoupl_type)
-        c = c.replace("{TAU_P}", str(tau_p))
-        c = c.replace("{REF_P}", ref_p)
-        c = c.replace("{COMPRESSIBILITY}", compressibility)
-        (out_dir / f"{name}.mdp").write_text(c)
+    # 1. EM: Energy Minimization (Steepest descent with strong restraints)
+    em_content = em_tpl.replace("{DEFINE}", "-DPOSRES -DPOSRES_LIG")
+    (out_dir / "em.mdp").write_text(em_content)
 
-    build_npt(
-        "npt_berendsen",
-        args.npt_berendsen_ps,
-        "-DPOSRES_250 -DPOSRES_LIG_250",
-        "berendsen",
-        1.0,
-    )
-    build_npt(
-        "npt_pr",
-        args.npt_pr_ps,
-        "-DPOSRES_50 -DPOSRES_LIG_50",
-        "Parrinello-Rahman",
-        5.0,
-    )
-    build_npt(
-        "npt",
-        args.npt_berendsen_ps,
-        "-DPOSRES_250 -DPOSRES_LIG_250",
-        "Parrinello-Rahman",
-        5.0,
-    )
+    # 2. NVT: Thermalization / Heating
+    nvt_content = nvt_tpl.replace("{DEFINE}", "-DPOSRES -DPOSRES_LIG")
+    nvt_content = nvt_content.replace("{TC_GRPS}", "PROT_LIG SOL_ION")
+    nvt_content = nvt_content.replace("{TEMP}", str(temp))
+    (out_dir / "nvt.mdp").write_text(nvt_content)
 
-    # 4. Production MD
-    md_tpl = (tpl_dir / "md.mdp").read_text()
-    md_content = md_tpl.replace("{NSTEPS}", "5000000")
-    md_content = md_content.replace("{NSTXOUT}", "5000")
-    md_content = md_content.replace("{NSTENERGY}", "5000")
-    md_content = md_content.replace("{TC_GRPS}", "PROT_LIG SOL_ION")
-    md_content = md_content.replace("{TEMP}", str(temp))
-    md_content = md_content.replace("{PCOUPL_TYPE}", pcoupl_type)
-    md_content = md_content.replace("{REF_P}", ref_p)
-    md_content = md_content.replace("{COMPRESSIBILITY}", compressibility)
-    (out_dir / "md.mdp").write_text(md_content)
+    # 3. NPT Stages & Playlist
+    if is_mem:
+        # Stepwise Membrane Relaxation:
+        # Stage 1: Berendsen relaxation to pack lipid area without PR oscillations
+        npt_relax = npt_tpl.replace("{DEFINE}", "-DPOSRES_250 -DPOSRES_LIG_250")
+        npt_relax = npt_relax.replace("{NSTEPS}", "500000") # 1 ns
+        npt_relax = npt_relax.replace("{TC_GRPS}", "PROT_LIG SOL_ION")
+        npt_relax = npt_relax.replace("{TEMP}", str(temp))
+        npt_relax = npt_relax.replace("{PCOUPL}", "berendsen")
+        npt_relax = npt_relax.replace("{PCOUPL_TYPE}", pcoupl_type)
+        npt_relax = npt_relax.replace("{TAU_P}", "2.0")
+        npt_relax = npt_relax.replace("{REF_P}", ref_p)
+        npt_relax = npt_relax.replace("{COMPRESSIBILITY}", compressibility)
+        (out_dir / "npt_relax.mdp").write_text(npt_relax)
 
-    # 5. Playlists
-    (out_dir / "stages_list.txt").write_text(
-        "minim.mdp\nnvt_short.mdp\nnvt_long.mdp\nnpt_berendsen.mdp\nnpt_pr.mdp\n"
-    )
-    (out_dir / "protocol.txt").write_text("minim.mdp\nnvt.mdp\nnpt.mdp\n")
+        # Stage 2: Parrinello-Rahman density equilibration with soft restraints
+        npt_equil = npt_tpl.replace("{DEFINE}", "-DPOSRES_50 -DPOSRES_LIG_50")
+        npt_equil = npt_equil.replace("{NSTEPS}", "500000") # 1 ns
+        npt_equil = npt_equil.replace("{TC_GRPS}", "PROT_LIG SOL_ION")
+        npt_equil = npt_equil.replace("{TEMP}", str(temp))
+        npt_equil = npt_equil.replace("{PCOUPL}", "Parrinello-Rahman")
+        npt_equil = npt_equil.replace("{PCOUPL_TYPE}", pcoupl_type)
+        npt_equil = npt_equil.replace("{TAU_P}", "5.0")
+        npt_equil = npt_equil.replace("{REF_P}", ref_p)
+        npt_equil = npt_equil.replace("{COMPRESSIBILITY}", compressibility)
+        (out_dir / "npt_equil.mdp").write_text(npt_equil)
 
-    print(f"Generated complete MDP suite in {out_dir}")
+        playlist = ["em.mdp", "nvt.mdp", "npt_relax.mdp", "npt_equil.mdp"]
+    else:
+        # Water/Solvent Relaxation: Single robust NPT stage
+        npt_content = npt_tpl.replace("{DEFINE}", "-DPOSRES_250 -DPOSRES_LIG_250")
+        npt_content = npt_content.replace("{NSTEPS}", "500000") # 1 ns
+        npt_content = npt_content.replace("{TC_GRPS}", "PROT_LIG SOL_ION")
+        npt_content = npt_content.replace("{TEMP}", str(temp))
+        npt_content = npt_content.replace("{PCOUPL}", "Parrinello-Rahman")
+        npt_content = npt_content.replace("{PCOUPL_TYPE}", pcoupl_type)
+        npt_content = npt_content.replace("{TAU_P}", "5.0")
+        npt_content = npt_content.replace("{REF_P}", ref_p)
+        npt_content = npt_content.replace("{COMPRESSIBILITY}", compressibility)
+        (out_dir / "npt.mdp").write_text(npt_content)
+
+        playlist = ["em.mdp", "nvt.mdp", "npt.mdp"]
+
+    # 4. Production Template (unrestrained)
+    prod_content = prod_tpl.replace("{TC_GRPS}", "PROT_LIG SOL_ION")
+    prod_content = prod_content.replace("{TEMP}", str(temp))
+    prod_content = prod_content.replace("{PCOUPL_TYPE}", pcoupl_type)
+    prod_content = prod_content.replace("{REF_P}", ref_p)
+    prod_content = prod_content.replace("{COMPRESSIBILITY}", compressibility)
+    (out_dir / "prod.mdp").write_text(prod_content)
+
+    # 5. Master Equilibration Playlist
+    (out_dir / "protocol.txt").write_text("\n".join(playlist) + "\n")
+
+    print(f"Generated clean {('membrane' if is_mem else 'water')} MD protocol suite ({len(playlist) + 1} files) in {out_dir}")
 
 
 if __name__ == "__main__":

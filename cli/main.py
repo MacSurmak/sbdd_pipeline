@@ -79,6 +79,14 @@ def cmd_md_init(args):
     tpl_dir = FRAMEWORK_DIR / "assets" / "mdp"
     script = FRAMEWORK_DIR / "bin" / "generate_mdp.py"
 
+    temp = (
+        configs.get("md_simulation", {}).get("production", {}).get("temperature")
+        or configs.get("mmpbsa", {}).get("temperature")
+    )
+    if not temp:
+        console.print("[bold red]FATAL: Missing simulation temperature in configs (md.yaml or mmpbsa.yaml)![/bold red]")
+        sys.exit(1)
+
     cmd = [
         sys.executable,
         str(script),
@@ -88,6 +96,8 @@ def cmd_md_init(args):
         str(md_dir),
         "--is_membrane",
         is_mem,
+        "--temperature",
+        str(temp),
     ]
     res = subprocess.run(cmd, capture_output=True, text=True)
     if res.returncode != 0:

@@ -8,6 +8,7 @@ md_simulation:
     neutralize: true
     salt_conc: 0.15
   production:
+    temperature: 310.15
     total_time_ns: 60
     chunk_size_ns: 10
     replicates: 3

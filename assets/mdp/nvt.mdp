@@ -1,14 +1,12 @@
-; Universal NVT Equilibration Template
+; NVT Thermalization Archetype Template
 define                   = {DEFINE}
 integrator               = md
-dt                       = {DT}
-nsteps                   = {NSTEPS}
+dt                       = 0.001
+nsteps                   = 100000 ; 100 ps
 
-nstxout                  = 5000
-nstvout                  = 5000
+nstxout-compressed       = 5000
 nstenergy                = 1000
 nstlog                   = 1000
-nstxout-compressed       = 1000
 
 cutoff-scheme            = Verlet
 coulombtype              = PME
@@ -29,7 +27,7 @@ constraint-algorithm     = lincs
 lincs-order              = 4
 lincs-iter               = 1
 
-continuation             = {CONTINUATION}
-gen_vel                  = {GEN_VEL}
+continuation             = no
+gen_vel                  = yes
 gen_temp                 = {TEMP}
 gen_seed                 = -1
