@@ -3,47 +3,14 @@
  * Full MD System Build: Extraction -> Amberization -> Membrane/Solvation -> GROMACS conversion -> Restraints
  */
 
-include { ANTECHAMBER    } from '../modules/amber/antechamber'
-include { MERGE_PDB      } from '../modules/amber/merge_pdb'
-include { PACKMOL_MEMGEN } from '../modules/membrane/packmol'
-include { TLEAP          } from '../modules/amber/tleap'
-include { PARMED         } from '../modules/amber/parmed'
-include { DECLASH        } from '../modules/membrane/declash'
-include { NDX_POSRE      } from '../modules/gromacs/ndx_posre'
-
-process EXTRACT_MD_SYSTEM {
-    tag "${meta.id}"
-    label 'process_single'
-
-    input:
-    tuple val(meta), path(rec_file), path(lig_file), val(cofactors)
-
-    output:
-    tuple val(meta), path("receptor_dry.pdb"), path("organics.json"), path("org_files/*"), emit: extracted
-
-    script:
-    def cof_list = cofactors instanceof List ? cofactors.join(' ') : cofactors
-    def cof_arg = cof_list ? "--cofactors ${cof_list}" : ""
-    def lig_arg = ""
-    if (lig_file) {
-        def lig_name = meta.native_ligand ?: "LIG"
-        lig_arg = "--lig_file ${lig_file} --lig_name ${lig_name}"
-    }
-    """
-    schrodinger run ${projectDir}/bin/extract_md_files.py \\
-        --rec_file ${rec_file} \\
-        ${lig_arg} \\
-        ${cof_arg} \\
-        --out_dir .
-    """
-
-    stub:
-    """
-    touch receptor_dry.pdb
-    touch ligand.mol2
-    echo "0" > lig_charge.txt
-    """
-}
+include { EXTRACT_MD_SYSTEM } from '../modules/schrodinger/extract_md_system'
+include { ANTECHAMBER       } from '../modules/amber/antechamber'
+include { MERGE_PDB         } from '../modules/amber/merge_pdb'
+include { PACKMOL_MEMGEN    } from '../modules/membrane/packmol'
+include { TLEAP             } from '../modules/amber/tleap'
+include { PARMED            } from '../modules/amber/parmed'
+include { DECLASH           } from '../modules/membrane/declash'
+include { NDX_POSRE         } from '../modules/gromacs/ndx_posre'
 
 workflow SETUP_MD_SYSTEM {
     take:
@@ -64,6 +31,12 @@ workflow SETUP_MD_SYSTEM {
     ion_names
     lipid_names
     restraints_fc
+    declash_cutoff
+    declash_niter
+    declash_damping
+    declash_max_move
+    declash_jitter
+    declash_tol
 
     main:
     // 1. Extract files
@@ -71,7 +44,7 @@ workflow SETUP_MD_SYSTEM {
     
     // 2. Parse organic components for parallel Antechamber
     ch_ante_in = EXTRACT_MD_SYSTEM.out.extracted.flatMap { meta, rec_pdb, json_file, org_files ->
-        def org_list = org_files instanceof List ? org_files : [org_files]
+        def org_list = org_files instanceof List ? org_files : (org_files ? [org_files] : [])
         def data = new groovy.json.JsonSlurper().parseText(json_file.text)
         data.collect { org ->
             def mol_meta = meta + [mol_id: org.name]
@@ -91,8 +64,8 @@ workflow SETUP_MD_SYSTEM {
         .groupTuple(by: 0, sort: true)
 
     // 3. Clean Bash Merge of standardized protein and ALL organics
-    ch_merge_in = EXTRACT_MD_SYSTEM.out.extracted
-        .map { meta, rec_pdb, json_file, dir -> [ meta, rec_pdb ] }
+    ch_merge_in = EXTRACT_MD_SYSTEM.out.extracted_base
+        .map { meta, rec_pdb, json_file -> [ meta, rec_pdb ] }
         .join(ch_ante_grouped, remainder: true)
         .map { tuple ->
             def meta = tuple[0]
@@ -136,17 +109,17 @@ workflow SETUP_MD_SYSTEM {
     // 6. ParmEd conversion to GROMACS
     PARMED(TLEAP.out.amber_system)
 
-    // 7. Declash
+    // 7. Declash (Molecules-based)
     if (is_membrane.toString() == 'true') {
         ch_declash_in = PARMED.out.gmx_system.map { meta, topol, gro -> [ meta, gro, topol ] }
         DECLASH(
             ch_declash_in,
-            params.declash_cutoff,
-            params.declash_niter,
-            params.declash_damping,
-            params.declash_max_move,
-            params.declash_jitter,
-            params.declash_tol
+            declash_cutoff,
+            declash_niter,
+            declash_damping,
+            declash_max_move,
+            declash_jitter,
+            declash_tol
         )
         ch_final_gro = DECLASH.out.declashed_gro
     } else {

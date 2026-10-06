@@ -79,7 +79,13 @@ workflow DYNAMICS_WF {
         params.water_names,
         params.ion_names,
         params.lipid_names,
-        params.md_restraints_fc
+        params.md_restraints_fc,
+        params.declash_cutoff,
+        params.declash_niter,
+        params.declash_damping,
+        params.declash_max_move,
+        params.declash_jitter,
+        params.declash_tol
     )
 
     ch_md_protocol = Channel.fromPath("${params.md_protocol}/*", checkIfExists: true).collect()
