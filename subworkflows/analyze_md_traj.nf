@@ -22,7 +22,7 @@ workflow ANALYZE_MD_TRAJ {
     ch_metrics_in = ch_traj_clean.map { meta, clean_xtc, ref_pdb, topol, ndx ->
         [ meta, clean_xtc, ref_pdb ]
     }
-    MD_METRICS(ch_metrics_in)
+    MD_METRICS(ch_metrics_in, params.metric_heavy, params.metric_hyd, params.metric_pol)
 
     // 2. Run MM-PBSA free energy calculation
     GMX_MMPBSA(

@@ -63,8 +63,14 @@ workflow SETUP_MD_SYSTEM {
     lipid_pad         // val: 10.0
     wat_pad           // val: 15.0
     salt_conc         // val: 0.15
-    water_model       // val: "opc"
-    restraints_fc     // val: "1000,250,50"
+    water_leaprc
+    water_box
+    box_type
+    ss_cutoff
+    water_names
+    ion_names
+    lipid_names
+    restraints_fc
 
     main:
     // 1. Extract files
@@ -132,7 +138,7 @@ workflow SETUP_MD_SYSTEM {
             [ meta, pdb, mol2s, frcmods ]
         }
     
-    TLEAP(ch_tleap_in, water_model, is_membrane, wat_pad)
+    TLEAP(ch_tleap_in, water_leaprc, water_box, box_type, is_membrane, wat_pad, ss_cutoff)
 
     // 6. ParmEd conversion to GROMACS
     PARMED(TLEAP.out.amber_system)
@@ -147,7 +153,7 @@ workflow SETUP_MD_SYSTEM {
 
     // 8. Index & Position Restraints
     ch_ndx_in = ch_final_gro.join(PARMED.out.gmx_system.map { meta, topol, gro -> [ meta, topol ] })
-    NDX_POSRE(ch_ndx_in, restraints_fc)
+    NDX_POSRE(ch_ndx_in, restraints_fc, water_names, ion_names, lipid_names)
 
     ch_system_ready = ch_final_gro.join(NDX_POSRE.out.restraints)
         .map { meta, gro, ndx, topol, posre_files ->

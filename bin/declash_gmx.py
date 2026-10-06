@@ -333,6 +333,8 @@ def declash_sequential(
     niter: int,
     damping: float,
     max_move: float,
+    jitter_val: float,
+    tolerance: float,
     max_pairs: int,
     heavy_only: bool,
     seed: int,
@@ -387,7 +389,7 @@ def declash_sequential(
             mj = int(atom_molid[aj])
             if (not mobile_mol[mi]) and (not mobile_mol[mj]):
                 continue
-            if r < 1e-6:
+            if r < tolerance:
                 uvec = rng.normal(size=3)
                 uvec /= np.linalg.norm(uvec) + 1e-12
 
@@ -430,7 +432,7 @@ def declash_sequential(
 
         if applied == 0:
             # escape local trap
-            jitter = rng.normal(size=(nmol, 3)) * 0.02
+            jitter = rng.normal(size=(nmol, 3)) * jitter_val
             jitter[~mobile_mol] = 0.0
             jitter[restrict_xy_mol, 2] = 0.0
             for mid in range(nmol):
@@ -453,10 +455,12 @@ def main():
     ap.add_argument("-f", "--gro", required=True, type=Path)
     ap.add_argument("-p", "--top", required=True, type=Path)
     ap.add_argument("-o", "--out", required=True, type=Path)
-    ap.add_argument("--cutoff", type=float, default=0.10)
-    ap.add_argument("--niter", type=int, default=120)
-    ap.add_argument("--damping", type=float, default=0.8)
-    ap.add_argument("--max-move", type=float, default=0.10)
+    ap.add_argument("--cutoff", type=float, required=True)
+    ap.add_argument("--niter", type=int, required=True)
+    ap.add_argument("--damping", type=float, required=True)
+    ap.add_argument("--max-move", type=float, required=True)
+    ap.add_argument("--jitter", type=float, required=True)
+    ap.add_argument("--tolerance", type=float, required=True)
     ap.add_argument("--max-pairs", type=int, default=5000)
     ap.add_argument("--scale", type=float, default=1.0)
     ap.add_argument("--no-heavy-only", action="store_true")
@@ -514,6 +518,8 @@ def main():
         args.niter,
         args.damping,
         args.max_move,
+        args.jitter,
+        args.tolerance,
         args.max_pairs,
         heavy_only,
         args.seed,

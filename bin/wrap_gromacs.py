@@ -32,6 +32,9 @@ def cmd_cluster(args):
             "index.ndx",
             "--action",
             "ensure_complex",
+            "--water_names", args.water_names,
+            "--ion_names", args.ion_names,
+            "--lipid_names", args.lipid_names
         ],
         check=True,
     )
@@ -116,6 +119,9 @@ def cmd_trjconv(args):
             "index.ndx",
             "--action",
             "ensure_complex",
+            "--water_names", args.water_names,
+            "--ion_names", args.ion_names,
+            "--lipid_names", args.lipid_names
         ],
         check=True,
     )
@@ -510,6 +516,8 @@ def cmd_ndx_posre(args):
             "index.ndx",
             "--action",
             "add_groups",
+            "--water_names", args.water_names,
+            "--ion_names", args.ion_names
         ],
         check=True,
     )
@@ -525,6 +533,8 @@ def cmd_ndx_posre(args):
             args.forces,
             "--action",
             "generate_posre",
+            "--water_names", args.water_names,
+            "--ion_names", args.ion_names
         ],
         check=True,
     )
@@ -544,6 +554,9 @@ def main():
     p_cluster.add_argument("--max_clusters", required=True)
     p_cluster.add_argument("--sys_name", required=True)
     p_cluster.add_argument("--dt")
+    p_cluster.add_argument("--water_names", required=True)
+    p_cluster.add_argument("--ion_names", required=True)
+    p_cluster.add_argument("--lipid_names", required=True)
 
     p_trjconv = subparsers.add_parser("trjconv")
     p_trjconv.add_argument("--xtcs", nargs="+", required=True)
@@ -552,6 +565,9 @@ def main():
     p_trjconv.add_argument("--pbc_extract", required=True)
     p_trjconv.add_argument("--out_xtc", required=True)
     p_trjconv.add_argument("--out_gro", required=True)
+    p_trjconv.add_argument("--water_names", required=True)
+    p_trjconv.add_argument("--ion_names", required=True)
+    p_trjconv.add_argument("--lipid_names", required=True)
 
     p_eq = subparsers.add_parser("equilibration")
     p_eq.add_argument("--input_gro", required=True)
@@ -594,6 +610,9 @@ def main():
     p_ndx.add_argument("--input_gro", required=True)
     p_ndx.add_argument("--topol", required=True)
     p_ndx.add_argument("--forces", required=True)
+    p_ndx.add_argument("--water_names", required=True)
+    p_ndx.add_argument("--ion_names", required=True)
+    p_ndx.add_argument("--lipid_names", required=True)
 
     args = parser.parse_args()
     if args.subcommand == "cluster":

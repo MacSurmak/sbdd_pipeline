@@ -74,31 +74,15 @@ def cmd_tleap(args):
             "complex_clean.pdb",
             "--bonds_out",
             "apply_bonds.in",
+            "--ss_cutoff",
+            str(args.ss_cutoff)
         ],
         check=True,
     )
-    AMBER_WATER_MODELS = {
-        "tip3p": {"leaprc": "leaprc.water.tip3p", "box": "TIP3PBOX"},
-        "opc": {"leaprc": "leaprc.water.opc", "box": "OPCBOX"},
-        "opc3": {"leaprc": "leaprc.water.opc3", "box": "OPC3BOX"},
-        "spce": {"leaprc": "leaprc.water.spce", "box": "SPCBOX"},
-        "tip4pew": {"leaprc": "leaprc.water.tip4pew", "box": "TIP4PEWBOX"},
-        "fb3": {"leaprc": "leaprc.water.fb3", "box": "FB3BOX"},
-        "fb4": {"leaprc": "leaprc.water.fb4", "box": "FB4BOX"},
-    }
 
-    w_model = args.water_model.lower().strip()
-    if w_model not in AMBER_WATER_MODELS:
-        print(
-            f"FATAL: Water model '{args.water_model}' specified in md.yaml is not supported by Amber tLEaP!\n"
-            f"Supported models: {list(AMBER_WATER_MODELS.keys())}",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
-    w_cfg = AMBER_WATER_MODELS[w_model]
-    box = w_cfg["box"]
-    leaprc_water = w_cfg["leaprc"]
+    box = args.water_box
+    leaprc_water = args.water_leaprc
+    box_cmd = f"solvateBox complex {box} {args.box_padding}" if args.box_type == "box" else f"solvateOct complex {box} {args.box_padding}"
 
     with open("tleap.in", "w") as f:
         f.write(
@@ -118,7 +102,7 @@ def cmd_tleap(args):
         f.write("complex = loadPdb complex_clean.pdb\n")
         f.write("set default PBRadii mbondi3\nsource apply_bonds.in\n")
         if not args.membrane:
-            f.write(f"solvateOct complex {box} {args.box_padding}\n")
+            f.write(f"{box_cmd}\n")
         f.write("addIonsRand complex Cl- 0\naddIonsRand complex K+ 0\ncharge complex\n")
         f.write(
             "saveAmberParm complex complex.prmtop complex.inpcrd\nsavepdb complex complex_tleap.pdb\nquit\n"
@@ -138,8 +122,11 @@ def main():
 
     p_tleap = subparsers.add_parser("tleap")
     p_tleap.add_argument("--complex_pdb", required=True)
-    p_tleap.add_argument("--water_model", required=True)
+    p_tleap.add_argument("--water_leaprc", required=True)
+    p_tleap.add_argument("--water_box", required=True)
+    p_tleap.add_argument("--box_type", required=True)
     p_tleap.add_argument("--box_padding", required=True)
+    p_tleap.add_argument("--ss_cutoff", required=True)
     p_tleap.add_argument("--mol2s", nargs="*", default=[])
     p_tleap.add_argument("--frcmods", nargs="*", default=[])
     p_tleap.add_argument("--membrane", action="store_true")

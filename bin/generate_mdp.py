@@ -33,6 +33,9 @@ def main():
         required=True,
         help="Production chunk size in ns directly from md.yaml",
     )
+    parser.add_argument("--dt_ps", required=True)
+    parser.add_argument("--compressibility", required=True)
+    parser.add_argument("--tau_p", required=True)
     args = parser.parse_args()
 
     tpl_dir = Path(args.templates_dir)
@@ -50,7 +53,9 @@ def main():
 
     pcoupl_type = "semiisotropic" if is_mem else "isotropic"
     ref_p = "1.0 1.0" if is_mem else "1.0"
-    compressibility = "4.5e-5 4.5e-5" if is_mem else "4.5e-5"
+    
+    comp_base = args.compressibility
+    compressibility = f"{comp_base} {comp_base}" if is_mem else comp_base
 
     em_tpl = (tpl_dir / "em.mdp").read_text()
     nvt_tpl = (tpl_dir / "nvt.mdp").read_text()
@@ -89,7 +94,7 @@ def main():
         npt_equil = npt_equil.replace("{TEMP}", str(temp))
         npt_equil = npt_equil.replace("{PCOUPL}", "Parrinello-Rahman")
         npt_equil = npt_equil.replace("{PCOUPL_TYPE}", pcoupl_type)
-        npt_equil = npt_equil.replace("{TAU_P}", "5.0")
+        npt_equil = npt_equil.replace("{TAU_P}", str(args.tau_p))
         npt_equil = npt_equil.replace("{REF_P}", ref_p)
         npt_equil = npt_equil.replace("{COMPRESSIBILITY}", compressibility)
         (out_dir / "npt_equil.mdp").write_text(npt_equil)
@@ -103,7 +108,7 @@ def main():
         npt_content = npt_content.replace("{TEMP}", str(temp))
         npt_content = npt_content.replace("{PCOUPL}", "Parrinello-Rahman")
         npt_content = npt_content.replace("{PCOUPL_TYPE}", pcoupl_type)
-        npt_content = npt_content.replace("{TAU_P}", "5.0")
+        npt_content = npt_content.replace("{TAU_P}", str(args.tau_p))
         npt_content = npt_content.replace("{REF_P}", ref_p)
         npt_content = npt_content.replace("{COMPRESSIBILITY}", compressibility)
         (out_dir / "npt.mdp").write_text(npt_content)
@@ -111,7 +116,7 @@ def main():
         playlist = ["em.mdp", "nvt.mdp", "npt.mdp"]
 
     # 4. Production Template (Directly synchronized with chunk_size_ns from md.yaml)
-    dt_prod = 0.002
+    dt_prod = float(args.dt_ps)
     prod_steps = int(round((args.chunk_ns * 1000.0) / dt_prod))
     nstxout = max(1, min(5000, prod_steps // 10))
     nstenergy = max(1, min(1000, prod_steps // 10))

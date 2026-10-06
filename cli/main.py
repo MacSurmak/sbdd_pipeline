@@ -88,9 +88,8 @@ def cmd_md_init(args):
         )
         sys.exit(1)
 
-    chunk_ns = (
-        configs.get("md_simulation", {}).get("production", {}).get("chunk_size_ns")
-    )
+    prod = configs.get("md_simulation", {}).get("production", {})
+    chunk_ns = prod.get("chunk_size_ns")
     if not chunk_ns:
         console.print(
             "[bold red]FATAL: Missing 'md_simulation.production.chunk_size_ns' in configs/md.yaml![/bold red]"
@@ -110,6 +109,12 @@ def cmd_md_init(args):
         str(temp),
         "--chunk_ns",
         str(chunk_ns),
+        "--dt_ps",
+        str(prod.get("dt_ps", "0.002")),
+        "--compressibility",
+        str(prod.get("compressibility", "4.5e-5")),
+        "--tau_p",
+        str(prod.get("tau_p", "5.0"))
     ]
     res = subprocess.run(cmd, capture_output=True, text=True)
     if res.returncode != 0:

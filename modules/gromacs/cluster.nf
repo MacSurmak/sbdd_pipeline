@@ -9,6 +9,9 @@ process GMX_CLUSTER {
 
     input:
     tuple val(meta), path(clean_xtcs, stageAs: 'trajs_?/*'), path(ref_pdb), val(cutoff), val(method), val(dt), val(cluster_group)
+    val(water_names)
+    val(ion_names)
+    val(lipid_names)
 
     output:
     tuple val(meta), path("centroid_*.pdb"), path("centroid_*.mae"), emit: cluster_frames
@@ -28,6 +31,9 @@ process GMX_CLUSTER {
         --ligand "${meta.ligand ?: ''}" \\
         --max_clusters ${max_c} \\
         --sys_name "${meta.id}" \\
+        --water_names "${water_names}" \\
+        --ion_names "${ion_names}" \\
+        --lipid_names "${lipid_names}" \\
         ${dt_arg}
 
     mv cluster_receipt.tsv ${meta.id}_cluster_receipt.tsv

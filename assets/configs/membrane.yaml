@@ -3,6 +3,7 @@ membrane:
   type: "MOM"                        # PPM 3.0 membrane type (e.g. MOM, plasma)
   topology: "in"                     # N-terminus topology (in/out)
   chains: ["A"]                      # Chains participating in transmembrane bundle
+  lipid_names: ["POPC", "POPE", "CHL1", "POPS", "DPSM", "PAPC"]
   lipids:
     upper_leaflet:
       composition: "POPC:POPE:CHL1"

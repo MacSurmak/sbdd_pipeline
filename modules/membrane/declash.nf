@@ -10,6 +10,12 @@ process DECLASH {
 
     input:
     tuple val(meta), path(input_gro), path(topol_top)
+    val(cutoff)
+    val(niter)
+    val(damping)
+    val(max_move)
+    val(jitter)
+    val(tol)
 
     output:
     tuple val(meta), path("${meta.id}_declashed.gro"), emit: declashed_gro
@@ -23,9 +29,12 @@ process DECLASH {
         --fix-moltype system1 \\
         ${meta.native_ligand ? "--fix-moltype ${meta.native_ligand} \\\\" : ""}
         --no-heavy-only \\
-        --cutoff 0.10 \\
-        --niter 300 \\
-        --max-move 0.05 \\
+        --cutoff ${cutoff} \\
+        --niter ${niter} \\
+        --damping ${damping} \\
+        --max-move ${max_move} \\
+        --jitter ${jitter} \\
+        --tolerance ${tol} \\
         --report declash_report.txt
     """
 

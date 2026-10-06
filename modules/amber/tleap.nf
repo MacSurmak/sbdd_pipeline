@@ -9,9 +9,12 @@ process TLEAP {
 
     input:
     tuple val(meta), path(complex_pdb), path(mol2s), path(frcmods)
-    val(water_model)
+    val(water_leaprc)
+    val(water_box)
+    val(box_type)
     val(is_membrane)
     val(box_padding)
+    val(ss_cutoff)
 
     output:
     tuple val(meta), path("complex.prmtop"), path("complex.inpcrd"), emit: amber_system
@@ -22,8 +25,11 @@ process TLEAP {
     """
     python3 ${projectDir}/bin/wrap_amber.py tleap \\
         --complex_pdb ${complex_pdb} \\
-        --water_model ${water_model} \\
+        --water_leaprc ${water_leaprc} \\
+        --water_box ${water_box} \\
+        --box_type ${box_type} \\
         --box_padding ${box_padding} \\
+        --ss_cutoff ${ss_cutoff} \\
         --mol2s ${mol2s} \\
         --frcmods ${frcmods} \\
         ${mem_arg}

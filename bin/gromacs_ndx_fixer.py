@@ -53,10 +53,9 @@ def add_pocket_group(ndx_path: Path, pdb_path: Path, ligand_name: str):
     )
 
 
-def add_thermostat_groups_by_name(ndx_path: Path):
+def add_thermostat_groups_by_name(ndx_path: Path, water_names: str, ion_names: str):
     """
-    Builds PROT_LIG and SOL_ION groups strictly by string matching names in index.ndx.
-    NO numerical index offsets. Guaranteed partition of the entire System.
+    Builds PROT_LIG and SOL_ION groups strictly by string matching config names.
     """
     groups = parse_ndx(ndx_path)
 
@@ -64,33 +63,19 @@ def add_thermostat_groups_by_name(ndx_path: Path):
         raise KeyError("Group [ System ] not found in index.ndx")
 
     water_and_ion_atoms: Set[int] = set()
-    ion_names = {
-        "K+",
-        "Cl-",
-        "NA+",
-        "CL-",
-        "NA",
-        "CL",
-        "K",
-        "POT",
-        "CLA",
-        "SOD",
-        "MG",
-        "ZN",
-        "CA",
-        "CAL",
-    }
+    w_set = {x.strip() for x in water_names.split(",") if x.strip()}
+    i_set = {x.strip() for x in ion_names.split(",") if x.strip()}
 
-    # 1. Match water strictly by name
-    if "SOL" in groups:
-        water_and_ion_atoms.update(groups["SOL"])
-    elif "Water" in groups:
-        water_and_ion_atoms.update(groups["Water"])
-    else:
-        raise KeyError("Neither [ SOL ] nor [ Water ] found in index.ndx")
+    matched_water = False
+    for w_name in w_set:
+        if w_name in groups:
+            water_and_ion_atoms.update(groups[w_name])
+            matched_water = True
+            
+    if not matched_water:
+        raise KeyError(f"None of the config water names {w_set} found in index.ndx")
 
-    # 2. Match ions strictly by name
-    for ion_name in ion_names:
+    for ion_name in i_set:
         if ion_name in groups:
             water_and_ion_atoms.update(groups[ion_name])
 
@@ -112,7 +97,7 @@ def add_thermostat_groups_by_name(ndx_path: Path):
         write_ndx_group(f, "SOL_ION", sorted(list(water_and_ion_atoms)))
 
 
-def generate_posre(top_file: Path, forces_str: str):
+def generate_posre(top_file: Path, forces_str: str, water_names: str, ion_names: str):
     """Parses topology and dynamically generates position restraints strictly based on user configuration."""
     if not forces_str or not forces_str.strip():
         raise ValueError(
@@ -166,23 +151,8 @@ def generate_posre(top_file: Path, forces_str: str):
                 if mass > 1.5:
                     mols[current_mol].append(atom_nr)
 
-    ions = {
-        "K+",
-        "NA+",
-        "CL-",
-        "Cl-",
-        "Na+",
-        "ZN",
-        "MG",
-        "CA",
-        "ZN2",
-        "MG2",
-        "CA2",
-        "K",
-        "CL",
-        "NA",
-    }
-    water = {"SOL", "Water", "HOH", "WAT"}
+    ions = {x.strip() for x in ion_names.split(",") if x.strip()}
+    water = {x.strip() for x in water_names.split(",") if x.strip()}
 
     out_lines = []
     state = "NONE"
@@ -252,15 +222,18 @@ if __name__ == "__main__":
     parser.add_argument(
         "--forces", default="", help="Comma-separated list of force constants from YAML"
     )
+    parser.add_argument("--water_names", default="")
+    parser.add_argument("--ion_names", default="")
+    parser.add_argument("--lipid_names", default="")
     args = parser.parse_args()
 
     if args.action == "add_groups":
-        add_thermostat_groups_by_name(Path(args.ndx))
+        add_thermostat_groups_by_name(Path(args.ndx), args.water_names, args.ion_names)
     elif args.action == "generate_posre":
         if not args.top:
             raise ValueError("FATAL: --top is required for generate_posre")
-        generate_posre(Path(args.top), args.forces)
+        generate_posre(Path(args.top), args.forces, args.water_names, args.ion_names)
     elif args.action == "ensure_complex":
-        ensure_complex_ndx_group(Path(args.ndx))
+        ensure_complex_ndx_group(Path(args.ndx), args.water_names, args.ion_names, args.lipid_names)
     elif args.action == "add_pocket":
         add_pocket_group(Path(args.ndx), Path(args.pdb), args.ligand)

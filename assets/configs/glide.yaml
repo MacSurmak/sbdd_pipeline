@@ -7,6 +7,8 @@ glide:
   forcefield: "OPLS4"
   recep_vscale: 1.0                 # Softened vdW potential for cryo-EM & MD breathing
   lig_vscale: 1.0
+  recep_ccut: 0.25
+  lig_ccut: 0.15
   postdock: true
   write_csv: true
   grid:

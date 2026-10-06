@@ -29,6 +29,7 @@ def main():
     parser.add_argument(
         "--bonds_out", default=None, help="Output tLEaP bond commands file"
     )
+    parser.add_argument("--ss_cutoff", type=float, required=True, help="Distance cutoff for SS bonds")
     args = parser.parse_args()
 
     lines = Path(args.input_pdb).read_text(errors="ignore").splitlines()
@@ -100,7 +101,7 @@ def main():
                 + (sg1["y"] - sg2["y"]) ** 2
                 + (sg1["z"] - sg2["z"]) ** 2
             )
-            if dist < 2.5:
+            if dist < args.ss_cutoff:
                 cyx_indices.add(idx1)
                 cyx_indices.add(idx2)
                 bonds.append(

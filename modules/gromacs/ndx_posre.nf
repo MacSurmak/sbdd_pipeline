@@ -10,6 +10,9 @@ process NDX_POSRE {
     input:
     tuple val(meta), path(input_gro), path(topol_top)
     val(restraints_fc)
+    val(water_names)
+    val(ion_names)
+    val(lipid_names)
 
     output:
     tuple val(meta), path("index.ndx"), path("topol.top"), path("posre_*.itp"), emit: restraints
@@ -19,7 +22,10 @@ process NDX_POSRE {
     python3 ${projectDir}/bin/wrap_gromacs.py ndx_posre \\
         --input_gro ${input_gro} \\
         --topol ${topol_top} \\
-        --forces "${restraints_fc}"
+        --forces "${restraints_fc}" \\
+        --water_names "${water_names}" \\
+        --ion_names "${ion_names}" \\
+        --lipid_names "${lipid_names}"
     """
 
     stub:

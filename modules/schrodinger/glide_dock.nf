@@ -13,6 +13,7 @@ process GLIDE_DOCK {
     val(poses_per_lig)
     val(forcefield)
     val(lig_vscale)
+    val(lig_ccut)
 
     output:
     tuple val(meta), path("glide_dock_pv.maegz"), emit: pv_maegz
@@ -28,6 +29,7 @@ process GLIDE_DOCK {
         --poses_per_lig ${poses_per_lig} \\
         --forcefield ${forcefield} \\
         --lig_vscale ${lig_vscale} \\
+        --lig_ccut ${lig_ccut} \\
         --out_pv glide_dock_pv.maegz \\
         --out_csv glide_dock.csv \\
         --out_sdf glide_dock.sdf

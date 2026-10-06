@@ -31,10 +31,10 @@ def write_ndx_group(f, name: str, atom_ids: List[int]):
         f.write(" ".join(f"{x:5d}" for x in atom_ids[i : i + 15]) + "\n")
 
 
-def ensure_complex_ndx_group(ndx_path: Path):
+def ensure_complex_ndx_group(ndx_path: Path, water_names: str, ion_names: str, lipid_names: str):
     """
     Builds [ COMPLEX ] strictly containing Protein + Ligands + all Cofactors.
-    Excludes water (SOL), bulk ions (NA, CL, K, etc.), and membrane lipids.
+    Excludes water, bulk ions, and membrane lipids purely by provided yaml names.
     """
     if not ndx_path.exists():
         raise FileNotFoundError(f"FATAL: index.ndx not found at {ndx_path}")
@@ -43,36 +43,10 @@ def ensure_complex_ndx_group(ndx_path: Path):
     if "System" not in groups:
         raise KeyError("Group [ System ] not found in index.ndx")
 
-    solvent_and_lipid_names = {
-        "SOL",
-        "Water",
-        "HOH",
-        "WAT",
-        "TIP3",
-        "OPC",
-        "NA",
-        "CL",
-        "K",
-        "POT",
-        "SOD",
-        "CLA",
-        "CAL",
-        "MG",
-        "ZN",
-        "CA",
-        "NA+",
-        "CL-",
-        "K+",
-        "MG2+",
-        "CA2+",
-        "ZN2+",
-        "POPC",
-        "POPE",
-        "CHL1",
-        "POPS",
-        "DPSM",
-        "PAPC",
-    }
+    w_set = {x.strip() for x in water_names.split(",") if x.strip()}
+    i_set = {x.strip() for x in ion_names.split(",") if x.strip()}
+    l_set = {x.strip() for x in lipid_names.split(",") if x.strip()}
+    solvent_and_lipid_names = w_set | i_set | l_set
 
     solvent_atoms: set[int] = set()
     for name in solvent_and_lipid_names:

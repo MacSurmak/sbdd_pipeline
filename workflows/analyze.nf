@@ -32,7 +32,10 @@ workflow ANALYZE_WF {
         TRJCONV(
             ch_clean_in,
             params.pbc_center,
-            "COMPLEX"
+            "COMPLEX",
+            params.water_names,
+            params.ion_names,
+            params.lipid_names
         )
 
         TRJCONV.out.clean_traj.map { meta, clean_xtc, ref_pdb ->
@@ -60,7 +63,7 @@ workflow ANALYZE_WF {
             [ meta, xtcs, ref_pdb, item.cutoff, item.method, item.dt, item.group ]
         }
 
-        GMX_CLUSTER(ch_cluster_in)
+        GMX_CLUSTER(ch_cluster_in, params.water_names, params.ion_names, params.lipid_names)
 
         return
     }
@@ -84,7 +87,7 @@ workflow ANALYZE_WF {
             [ meta, file(item.clean_xtc), file(item.ref_gro) ]
         }
 
-        MD_METRICS(ch_metrics_in)
+        MD_METRICS(ch_metrics_in, params.metric_heavy, params.metric_hyd, params.metric_pol)
         return
     }
 
@@ -138,7 +141,10 @@ workflow ANALYZE_WF {
     TRJCONV(
         ch_trjconv_in,
         params.pbc_center,
-        params.pbc_extract
+        params.pbc_extract,
+        params.water_names,
+        params.ion_names,
+        params.lipid_names
     )
 
     ch_analyze_in = TRJCONV.out.clean_traj

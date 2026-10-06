@@ -10,6 +10,9 @@ process MD_METRICS {
 
     input:
     tuple val(meta), path(clean_xtc), path(ref_gro)
+    val(c_heavy)
+    val(c_hyd)
+    val(c_pol)
 
     output:
     tuple val(meta), path("rmsd.csv"), path("rmsf.csv"), path("contacts.csv"), emit: tables
@@ -26,6 +29,9 @@ process MD_METRICS {
         --xtc ${clean_xtc} \\
         ${lig_arg} \\
         ${cof_arg} \\
+        --heavy_cutoff ${c_heavy} \\
+        --hydrophobic_cutoff ${c_hyd} \\
+        --polar_cutoff ${c_pol} \\
         --outdir .
     """
 

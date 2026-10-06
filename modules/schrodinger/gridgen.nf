@@ -13,6 +13,7 @@ process GLIDE_GRIDGEN {
     val(outer_box)
     val(forcefield)
     val(recep_vscale)
+    val(recep_ccut)
 
     output:
     tuple val(meta), path("grid.zip"), emit: grid_zip
@@ -26,6 +27,7 @@ process GLIDE_GRIDGEN {
         --outer_box "${outer_box}" \\
         --forcefield ${forcefield} \\
         --recep_vscale ${recep_vscale} \\
+        --recep_ccut ${recep_ccut} \\
         --out_zip grid.zip
     """
 

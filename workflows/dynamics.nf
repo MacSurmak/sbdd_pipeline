@@ -71,7 +71,13 @@ workflow DYNAMICS_WF {
         params.lipid_padding,
         params.box_padding,
         params.md_salt_conc,
-        params.water_model,
+        params.water_leaprc,
+        params.water_box,
+        params.box_type,
+        params.ss_cutoff,
+        params.water_names,
+        params.ion_names,
+        params.lipid_names,
         params.md_restraints_fc
     )
 

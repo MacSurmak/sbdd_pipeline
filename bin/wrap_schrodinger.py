@@ -69,7 +69,7 @@ def cmd_gridgen(args):
         f.write(f"OUTERBOX {args.outer_box}\n")
         f.write(f"FORCEFIELD {args.forcefield}\n")
         f.write(f"RECEP_VSCALE {args.recep_vscale}\n")
-        f.write("RECEP_CCUT 0.25\n")
+        f.write(f"RECEP_CCUT {args.recep_ccut}\n")
 
     run_cmd(
         get_tool("glide") + ["gridgen.in", "-OVERWRITE", "-WAIT", "-HOST", "localhost"]
@@ -87,7 +87,7 @@ def cmd_glide_dock(args):
         f.write(f"POSES_PER_LIG {args.poses_per_lig}\n")
         f.write("POSTDOCK yes\nEPIK_PENALTIES yes\nSAMPLE_RINGS yes\nWRITE_CSV yes\n")
         f.write(f"FORCEFIELD {args.forcefield}\n")
-        f.write(f"LIG_VSCALE {args.lig_vscale}\nLIG_CCUT 0.15\n")
+        f.write(f"LIG_VSCALE {args.lig_vscale}\nLIG_CCUT {args.lig_ccut}\n")
     run_cmd(
         get_tool("glide") + ["dock.in", "-OVERWRITE", "-WAIT", "-HOST", "localhost"]
     )
@@ -223,6 +223,7 @@ def main():
     p_grid.add_argument("--outer_box", required=True)
     p_grid.add_argument("--forcefield", required=True)
     p_grid.add_argument("--recep_vscale", required=True)
+    p_grid.add_argument("--recep_ccut", required=True)
     p_grid.add_argument("--out_zip", required=True)
 
     p_dock = subparsers.add_parser("glide_dock")
@@ -232,6 +233,7 @@ def main():
     p_dock.add_argument("--poses_per_lig", required=True)
     p_dock.add_argument("--forcefield", required=True)
     p_dock.add_argument("--lig_vscale", required=True)
+    p_dock.add_argument("--lig_ccut", required=True)
     p_dock.add_argument("--out_pv", required=True)
     p_dock.add_argument("--out_csv", required=True)
     p_dock.add_argument("--out_sdf", required=True)

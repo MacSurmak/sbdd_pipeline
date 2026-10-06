@@ -276,9 +276,9 @@ def main():
         default=[],
         help="Cofactor residue names (e.g. ATP MG)",
     )
-    parser.add_argument("--heavy_cutoff", type=float, default=3.5)
-    parser.add_argument("--hydrophobic_cutoff", type=float, default=4.0)
-    parser.add_argument("--polar_cutoff", type=float, default=3.4)
+    parser.add_argument("--heavy_cutoff", type=float, required=True)
+    parser.add_argument("--hydrophobic_cutoff", type=float, required=True)
+    parser.add_argument("--polar_cutoff", type=float, required=True)
     args = parser.parse_args()
 
     out_dir = Path(args.outdir)

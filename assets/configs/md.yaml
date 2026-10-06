@@ -3,14 +3,33 @@ md_simulation:
   pbc_center: "Protein"
   pbc_extract: "COMPLEX"
   system_build:
-    water_model: "opc"
+    water_leaprc: "leaprc.water.opc"
+    water_box: "OPCBOX"
+    box_type: "oct"
     box_padding: 15.0
+    ss_cutoff: 2.5
     neutralize: true
     salt_conc: 0.15
     restraint_forces: [1000, 500, 250, 100, 50, 10]
+    water_names: ["SOL", "Water", "HOH", "WAT", "TIP3", "OPC"]
+    ion_names: ["K+", "Cl-", "NA+", "CL-", "NA", "CL", "K", "POT", "CLA", "SOD", "MG", "ZN", "CA", "CAL", "MG2+", "CA2+", "ZN2+"]
+  declash:
+    cutoff: 0.10
+    niter: 300
+    damping: 0.8
+    max_move: 0.05
+    jitter: 0.02
+    tolerance: 1e-6
   production:
     temperature: 310.15
     total_time_ns: 60
     chunk_size_ns: 10
     replicates: 3
+    dt_ps: 0.002
+    compressibility: "4.5e-5"
+    tau_p: 5.0
+  metrics:
+    heavy_cutoff: 3.5
+    hyd_cutoff: 4.0
+    pol_cutoff: 3.4
 

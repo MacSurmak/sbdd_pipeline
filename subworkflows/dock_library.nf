@@ -47,9 +47,11 @@ workflow DOCK_LIBRARY {
         def cnn_resc  = params.cnn_model
         def r_vscale  = params.glide_recep_vscale ?: 0.85
         def l_vscale  = params.glide_lig_vscale ?: 0.85
+        def r_ccut    = params.glide_recep_ccut ?: 0.25
+        def l_ccut    = params.glide_lig_ccut ?: 0.15
 
         ch_grid_in = ch_receptor_mae.join(ch_ref_lig_mae, by: 0)
-        GLIDE_GRIDGEN(ch_grid_in, inner_box, outer_box, ff_dock, r_vscale)
+        GLIDE_GRIDGEN(ch_grid_in, inner_box, outer_box, ff_dock, r_vscale, r_ccut)
 
         ch_glide_in = GLIDE_GRIDGEN.out.grid_zip.combine(ch_chunks_mae)
             .filter { meta_g, grid_zip, meta_l, lib_chunk_mae ->
@@ -66,7 +68,7 @@ workflow DOCK_LIBRARY {
                 ]
                 [ comb_meta, grid_zip, lib_chunk_mae ]
             }
-        GLIDE_DOCK(ch_glide_in, prec, poses_n, ff_dock, l_vscale)
+        GLIDE_DOCK(ch_glide_in, prec, poses_n, ff_dock, l_vscale, l_ccut)
 
         ch_rec_rescore = ch_receptor_pdb.join(ch_ref_lig_sdf, by: 0)
         ch_rescore_in = GLIDE_DOCK.out.poses_sdf

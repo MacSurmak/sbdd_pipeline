@@ -176,6 +176,10 @@ def build_nextflow_args(
             args.extend(["--glide_recep_vscale", str(glide_cfg["recep_vscale"])])
         if "lig_vscale" in glide_cfg:
             args.extend(["--glide_lig_vscale", str(glide_cfg["lig_vscale"])])
+        if "recep_ccut" in glide_cfg:
+            args.extend(["--glide_recep_ccut", str(glide_cfg["recep_ccut"])])
+        if "lig_ccut" in glide_cfg:
+            args.extend(["--glide_lig_ccut", str(glide_cfg["lig_ccut"])])
         grid_cfg = glide_cfg.get("grid", {})
         if grid_cfg:
             if "inner_box" in grid_cfg:
@@ -217,8 +221,11 @@ def build_nextflow_args(
                 "Config validation failed: 'md_simulation.system_build' section in md.yaml is required when MD is enabled!"
             )
         for key, flag in [
-            ("water_model", "--water_model"),
+            ("water_leaprc", "--water_leaprc"),
+            ("water_box", "--water_box"),
+            ("box_type", "--box_type"),
             ("box_padding", "--box_padding"),
+            ("ss_cutoff", "--ss_cutoff"),
             ("salt_conc", "--md_salt_conc"),
         ]:
             if key not in sys_build:
@@ -226,6 +233,22 @@ def build_nextflow_args(
                     f"Config validation failed: 'md_simulation.system_build.{key}' in md.yaml is required!"
                 )
             args.extend([flag, str(sys_build[key])])
+
+        args.extend(["--water_names", ",".join(sys_build.get("water_names", []))])
+        args.extend(["--ion_names", ",".join(sys_build.get("ion_names", []))])
+        args.extend(["--lipid_names", ",".join(mem_cfg.get("lipid_names", []))])
+
+        declash = md_cfg.get("declash", {})
+        if declash:
+            for k, f in [("cutoff", "--declash_cutoff"), ("niter", "--declash_niter"), 
+                         ("damping", "--declash_damping"), ("max_move", "--declash_max_move"),
+                         ("jitter", "--declash_jitter"), ("tolerance", "--declash_tol")]:
+                args.extend([f, str(declash.get(k))])
+                
+        metrics = md_cfg.get("metrics", {})
+        if metrics:
+            for k, f in [("heavy_cutoff", "--metric_heavy"), ("hyd_cutoff", "--metric_hyd"), ("pol_cutoff", "--metric_pol")]:
+                args.extend([f, str(metrics.get(k))])
 
         if "restraint_forces" not in sys_build:
             raise ValueError(
@@ -248,6 +271,9 @@ def build_nextflow_args(
             ("total_time_ns", "--md_total_ns"),
             ("chunk_size_ns", "--md_chunk_ns"),
             ("replicates", "--md_replicates"),
+            ("dt_ps", "--md_dt"),
+            ("compressibility", "--md_compressibility"),
+            ("tau_p", "--md_tau_p"),
         ]:
             if key not in prod_cfg:
                 raise ValueError(
