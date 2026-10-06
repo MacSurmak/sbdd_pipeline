@@ -26,7 +26,7 @@ process GENERATE_DOCKING_BOX {
 }
 
 process CALC_RMSD {
-    tag "${meta.id}"
+    tag "${meta.id}_${engine}"
     label 'process_single'
 
     input:
@@ -34,7 +34,7 @@ process CALC_RMSD {
     val(engine)
 
     output:
-    tuple val(meta), path("rmsd.csv"), emit: rmsd_csv
+    tuple val(meta), path("${meta.id}_${engine}_rmsd.csv"), emit: rmsd_csv
 
     script:
     def lig_title = meta.native_ligand ?: meta.ligand_title ?: ""
@@ -45,11 +45,11 @@ process CALC_RMSD {
         --receptor "${meta.frame_id ?: meta.id}" \\
         --title "${lig_title}" \\
         --engine ${engine} \\
-        --output rmsd.csv
+        --output ${meta.id}_${engine}_rmsd.csv
     """
 }
 
-process MERGE_SDF {
+process MERGE_GNINA_DOCK {
     tag "${meta.id}"
     executor 'local'
     scratch false
@@ -59,11 +59,29 @@ process MERGE_SDF {
     tuple val(meta), path(chunk_sdfs)
 
     output:
-    tuple val(meta), path("merged.sdf"), emit: merged_sdf
+    tuple val(meta), path("${meta.id}_gnina_docked_all.sdf"), emit: merged_sdf
 
     script:
     """
-    python3 ${projectDir}/bin/wrap_utils.py merge_sdf --in_sdfs ${chunk_sdfs} --out_sdf merged.sdf
+    python3 ${projectDir}/bin/wrap_utils.py merge_sdf --in_sdfs ${chunk_sdfs} --out_sdf ${meta.id}_gnina_docked_all.sdf
+    """
+}
+
+process MERGE_GNINA_RESC {
+    tag "${meta.id}"
+    executor 'local'
+    scratch false
+    label 'process_single'
+
+    input:
+    tuple val(meta), path(chunk_sdfs)
+
+    output:
+    tuple val(meta), path("${meta.id}_rescored.sdf"), emit: rescored_sdf
+
+    script:
+    """
+    python3 ${projectDir}/bin/wrap_utils.py merge_sdf --in_sdfs ${chunk_sdfs} --out_sdf ${meta.id}_rescored.sdf
     """
 }
 
@@ -77,9 +95,9 @@ process MERGE_GLIDE {
     tuple val(meta), path(pv_files, stageAs: 'pvs_?/*'), path(csv_files, stageAs: 'csvs_?/*'), path(sdf_files, stageAs: 'sdfs_?/*')
 
     output:
-    tuple val(meta), path("glide_dock_pv.maegz"), emit: pv_maegz
-    tuple val(meta), path("glide_dock.csv"), emit: scores_csv
-    tuple val(meta), path("glide_dock.sdf"), emit: poses_sdf
+    tuple val(meta), path("${meta.id}_dock_pv.maegz"), emit: pv_maegz
+    tuple val(meta), path("${meta.id}_dock.csv"), emit: scores_csv
+    tuple val(meta), path("${meta.id}_dock.sdf"), emit: poses_sdf
 
     script:
     """
@@ -87,8 +105,8 @@ process MERGE_GLIDE {
         --pv_files ${pv_files} \\
         --csv_files ${csv_files} \\
         --sdf_files ${sdf_files} \\
-        --out_pv glide_dock_pv.maegz \\
-        --out_csv glide_dock.csv \\
-        --out_sdf glide_dock.sdf
+        --out_pv ${meta.id}_dock_pv.maegz \\
+        --out_csv ${meta.id}_dock.csv \\
+        --out_sdf ${meta.id}_dock.sdf
     """
 }

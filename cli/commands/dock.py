@@ -338,10 +338,10 @@ def cmd_dock(args):
 
                     pose_name = f"{frame_name}_{title}_dock"
 
-                    # Resolve short files inside nested directory
-                    sdf_path = cwd / "docking" / frame_name / title / "glide_dock.sdf"
+                    # Deterministic resolution of docked pose files from task directory
+                    sdf_path = cwd / "docking" / frame_name / f"{frame_name}_dock.sdf"
                     if not sdf_path.exists():
-                        sdf_path = cwd / "docking" / frame_name / title / "gnina_dock.sdf"
+                        sdf_path = cwd / "docking" / frame_name / f"{frame_name}_gnina_docked_all.sdf"
 
                     if not sdf_path.exists():
                         raise FileNotFoundError(

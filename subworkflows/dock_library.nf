@@ -7,7 +7,7 @@ include { GNINA_DOCK }              from '../modules/gnina/dock'
 include { GNINA_RESCORE }           from '../modules/gnina/rescore'
 include { GLIDE_GRIDGEN }           from '../modules/schrodinger/gridgen'
 include { GLIDE_DOCK }              from '../modules/schrodinger/glide_dock'
-include { GENERATE_DOCKING_BOX; CALC_RMSD as CALC_RMSD_GLIDE; CALC_RMSD as CALC_RMSD_GNINA; MERGE_SDF as MERGE_DOCK_CHUNKS; MERGE_SDF as MERGE_RESC_CHUNKS; MERGE_GLIDE as MERGE_GLIDE_CHUNKS } from '../modules/docking/helpers'
+include { GENERATE_DOCKING_BOX; CALC_RMSD as CALC_RMSD_GLIDE; CALC_RMSD as CALC_RMSD_GNINA; MERGE_GNINA_DOCK as MERGE_DOCK_CHUNKS; MERGE_GNINA_RESC as MERGE_RESC_CHUNKS; MERGE_GLIDE as MERGE_GLIDE_CHUNKS } from '../modules/docking/helpers'
 
 workflow DOCK_LIBRARY {
     take:
@@ -118,7 +118,7 @@ workflow DOCK_LIBRARY {
         ch_summary_files = ch_summary_files
             .mix(MERGE_GLIDE_CHUNKS.out.scores_csv.map { meta, csv -> csv })
             .mix(MERGE_GLIDE_CHUNKS.out.poses_sdf.map { meta, sdf -> sdf })
-            .mix(MERGE_RESC_CHUNKS.out.merged_sdf.map { meta, sdf -> sdf })
+            .mix(MERGE_RESC_CHUNKS.out.rescored_sdf.map { meta, sdf -> sdf })
             .mix(CALC_RMSD_GLIDE.out.rmsd_csv.map { meta, csv -> csv })
             .mix(ch_ref_lig_sdf.map { meta, sdf -> sdf })
 
