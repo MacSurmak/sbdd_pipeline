@@ -11,6 +11,9 @@ include { ANALYZE_MD_TRAJ  } from '../subworkflows/analyze_md_traj'
 workflow DYNAMICS_WF {
     if (!params.md_protocol) { error "FATAL: Parameter --md_protocol is required. Did you run 'sbdd md-init'?" }
 
+    ch_targets = Channel.empty()
+    ch_plan_reps = Channel.empty()
+
     if (params.md_plan) {
         def planFile = file(params.md_plan)
         def jsonSlurper = new groovy.json.JsonSlurper()
@@ -25,6 +28,11 @@ workflow DYNAMICS_WF {
             ]
             def lig_f = target.lig_path ? file(target.lig_path).toAbsolutePath() : []
             [ meta, file(target.rec_path).toAbsolutePath(), lig_f, target.cofactors ?: [] ]
+        }
+
+        ch_plan_reps = Channel.fromList(planData).map { target ->
+            def reps = target.reps_to_run ?: (1..(params.md_replicates as int)).toList()
+            [ target.id, reps ]
         }
     } else if (params.manifest) {
         def manifestFile = file(params.manifest)
@@ -58,6 +66,10 @@ workflow DYNAMICS_WF {
             def lig_f = lig_path ? lig_path.toAbsolutePath() : []
             [ meta, rec_path.toAbsolutePath(), lig_f, target.cofactors ?: [] ]
         }
+
+        ch_plan_reps = Channel.fromList(manifestData.targets).map { target ->
+            [ target.id, (1..(params.md_replicates as int)).toList() ]
+        }
     } else {
         error "FATAL: Either --md_plan or --manifest must be provided for dynamics."
     }
@@ -89,19 +101,15 @@ workflow DYNAMICS_WF {
         params.declash_tol
     )
 
-    ch_md_protocol = Channel.fromPath("${params.md_protocol}/*", checkIfExists: true).collect()
-
     // 2. Attach replicate IDs strictly after system build completion
-    ch_plan_reps = Channel.fromList(planData).map { target ->
-        [ target.id, target.reps_to_run ?: [1] ]
-    }
-
     ch_systems_to_simulate = SETUP_MD_SYSTEM.out.system_ready.map { meta, gro, topol, ndx, posre_files ->
         [ meta.id, meta, gro, topol, ndx, posre_files ]
     }.join(ch_plan_reps, by: 0).map { id, meta, gro, topol, ndx, posre_files, reps_to_run ->
         def meta_with_reps = meta + [replicates: reps_to_run]
         [ meta_with_reps, gro, topol, ndx, posre_files ]
     }
+
+    ch_md_protocol = Channel.fromPath("${params.md_protocol}/*", checkIfExists: true).collect()
 
     // 3. Equilibration & Production using Protocol Playlist
     RUN_CHUNKED_MD(
