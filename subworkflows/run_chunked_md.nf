@@ -22,7 +22,8 @@ workflow RUN_CHUNKED_MD {
     ch_state_0 = GMX_EQUILIBRATION.out.equilibrated_state
         .join(ch_system.map{ m, gro, top, ndx, pos -> [m, top, ndx, pos] }, by: 0)
         .flatMap { meta, eq_gro, eq_cpt, eq_tpr, topol, ndx, posre_files ->
-            (1..num_reps).collect { rep_id ->
+            def rep_ids = meta.replicates ?: (1..num_reps).toList()
+            rep_ids.collect { rep_id ->
                 def rep_meta = meta + [rep: rep_id]
                 [ rep_meta, eq_gro, eq_cpt, eq_tpr, topol, ndx, posre_files ]
             }

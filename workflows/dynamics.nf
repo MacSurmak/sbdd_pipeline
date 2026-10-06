@@ -20,7 +20,8 @@ workflow DYNAMICS_WF {
             def meta = [
                 id: target.id,
                 project: params.project_name,
-                native_ligand: target.lig_name ?: ""
+                native_ligand: target.lig_name ?: "",
+                replicates: target.reps_to_run ?: [1]
             ]
             def lig_f = target.lig_path ? file(target.lig_path).toAbsolutePath() : []
             [ meta, file(target.rec_path).toAbsolutePath(), lig_f, target.cofactors ?: [] ]

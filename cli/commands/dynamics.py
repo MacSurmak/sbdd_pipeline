@@ -52,16 +52,27 @@ def cmd_dynamics(args):
     systems_to_run = []
 
     for s in candidate_systems:
-        active_reps = (
-            session.query(Trajectory)
-            .filter(
-                Trajectory.system_id == s.id, Trajectory.status.in_(["raw", "cleaned"])
-            )
-            .count()
-        )
+        existing_trajs = session.query(Trajectory).filter_by(system_id=s.id).all()
 
-        needed_reps = max(0, reps_target - active_reps)
-        if needed_reps <= 0:
+        # Purge any corrupted ghost records where raw_dir path doesn't match replicate number
+        for t in existing_trajs:
+            if f"rep_{t.replicate}" not in t.raw_dir:
+                console.print(
+                    f"[yellow]Purging corrupted trajectory record '{t.name}' (points to mismatched path {t.raw_dir})...[/yellow]"
+                )
+                session.delete(t)
+                session.flush()
+
+        # Identify truly valid existing replicates
+        valid_reps = {
+            t.replicate
+            for t in existing_trajs
+            if t.status in ["raw", "cleaned"] and f"rep_{t.replicate}" in t.raw_dir
+        }
+
+        # Calculate exact non-colliding replicate IDs needed to reach target
+        missing_reps = [r for r in range(1, reps_target + 1) if r not in valid_reps]
+        if not missing_reps:
             continue
 
         frame = s.receptor_frame
@@ -73,7 +84,7 @@ def cmd_dynamics(args):
             lig_path = str(Path(s.pose.path).resolve())
             lig_name = s.pose.ligand.name[:4].upper()
 
-        systems_to_run.append((s, needed_reps))
+        systems_to_run.append((s, missing_reps))
         plan_list.append(
             {
                 "id": s.name,
@@ -81,7 +92,7 @@ def cmd_dynamics(args):
                 "lig_path": lig_path,
                 "lig_name": lig_name,
                 "cofactors": frame.cofactors_list,
-                "reps_to_run": needed_reps,
+                "reps_to_run": missing_reps,
             }
         )
 
@@ -97,10 +108,10 @@ def cmd_dynamics(args):
         session.close()
         return
 
-    # Maximum reps needed across queued systems
-    max_reps_dispatch = max(item["reps_to_run"] for item in plan_list)
+    total_missing_dispatched = sum(len(item["reps_to_run"]) for item in plan_list)
+    max_reps_dispatch = max(len(item["reps_to_run"]) for item in plan_list)
     console.print(
-        f"[bold cyan]Dispatching simulation to replenish replicates (Target: {reps_target}, Max to run: {max_reps_dispatch})...[/bold cyan]"
+        f"[bold cyan]Dispatching simulation to replenish replicates (Target: {reps_target}, Missing: {total_missing_dispatched})...[/bold cyan]"
     )
 
     # 2. Check MD protocol
@@ -147,34 +158,41 @@ def cmd_dynamics(args):
         console.print("[bold red]Nextflow MD simulation failed.[/bold red]")
         sys.exit(ret_code)
 
-    # 4. Atomic Registration of Trajectories with Incremental Replicate Indexing
+    # 4. Atomic Registration of Trajectories directly linked to their published replicate paths
     registered_trajs = 0
-    for sys_obj, needed_reps in systems_to_run:
-        # Find highest existing replicate index
-        existing_trajs = session.query(Trajectory).filter_by(system_id=sys_obj.id).all()
-        max_idx = max([t.replicate for t in existing_trajs], default=0)
-
-        for offset in range(1, needed_reps + 1):
-            run_rep_idx = offset  # Index in current Nextflow run output
-            new_global_rep_idx = max_idx + offset  # Non-colliding global index
-
-            raw_dir = cwd / "md" / sys_obj.name / f"rep_{run_rep_idx}" / "raw"
+    for sys_obj, missing_reps in systems_to_run:
+        for rep_idx in missing_reps:
+            raw_dir = cwd / "md" / sys_obj.name / f"rep_{rep_idx}" / "raw"
             tpr_path = raw_dir / "sys_ref.tpr"
             chunks = list(raw_dir.glob("md_*.xtc"))
 
-            if chunks and tpr_path.exists():
-                traj_name = f"{sys_obj.name}_rep{new_global_rep_idx}"
+            if not chunks or not tpr_path.exists():
+                session.close()
+                raise FileNotFoundError(
+                    f"FATAL: Missing trajectory artifacts for {sys_obj.name} replicate {rep_idx} in {raw_dir}. "
+                    "Nextflow finished without generating expected deliverables."
+                )
+
+            traj_name = f"{sys_obj.name}_rep{rep_idx}"
+            ex_t = session.query(Trajectory).filter_by(name=traj_name).first()
+            if ex_t:
+                ex_t.replicate = rep_idx
+                ex_t.length_ns = total_duration_ns
+                ex_t.raw_dir = str(raw_dir.resolve())
+                ex_t.path_tpr = str(tpr_path.resolve())
+                ex_t.status = "raw"
+            else:
                 new_traj = Trajectory(
                     system_id=sys_obj.id,
                     name=traj_name,
-                    replicate=new_global_rep_idx,
+                    replicate=rep_idx,
                     length_ns=total_duration_ns,
                     raw_dir=str(raw_dir.resolve()),
                     path_tpr=str(tpr_path.resolve()),
                     status="raw",
                 )
                 session.add(new_traj)
-                registered_trajs += 1
+            registered_trajs += 1
 
     session.commit()
     session.close()
