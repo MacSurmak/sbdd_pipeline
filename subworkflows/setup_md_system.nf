@@ -138,7 +138,16 @@ workflow SETUP_MD_SYSTEM {
 
     // 7. Declash
     if (is_membrane.toString() == 'true') {
-        DECLASH(PARMED.out.gmx_system)
+        ch_declash_in = PARMED.out.gmx_system.map { meta, topol, gro -> [ meta, gro, topol ] }
+        DECLASH(
+            ch_declash_in,
+            params.declash_cutoff,
+            params.declash_niter,
+            params.declash_damping,
+            params.declash_max_move,
+            params.declash_jitter,
+            params.declash_tol
+        )
         ch_final_gro = DECLASH.out.declashed_gro
     } else {
         ch_final_gro = PARMED.out.gmx_system.map { meta, topol, gro -> [ meta, gro ] }
