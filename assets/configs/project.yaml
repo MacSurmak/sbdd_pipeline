@@ -5,3 +5,9 @@ project:
     queue: "main"                    # Options: main (default, 7 days), urgent (2 hours)
     urgent_quick_tasks: true         # Automatically route fast single tasks to urgent
 
+preparation:
+  target_ph: 7.4
+  ph_tolerance: 1.0
+  minimize_rmsd: 0.3
+  cap_termini: true
+
