@@ -311,75 +311,70 @@ def cmd_dock(args):
         import csv
 
         poses_count = 0
-        try:
-            with open(res_csv, "r", encoding="utf-8", errors="ignore") as f:
-                reader = csv.DictReader(f)
-                for row in reader:
-                    title = row.get("Title", "").strip()
-                    frame_name = row.get("Receptor", row.get("Frame", "")).strip()
-                    if not title or not frame_name:
-                        continue
+        with open(res_csv, "r", encoding="utf-8", errors="ignore") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                title = row.get("Title", "").strip()
+                frame_name = row.get("Receptor", row.get("Frame", "")).strip()
+                if not title or not frame_name:
+                    continue
 
-                    r_frame = (
-                        session.query(ReceptorFrame).filter_by(name=frame_name).first()
-                    )
-                    if not r_frame:
-                        continue
+                r_frame = (
+                    session.query(ReceptorFrame).filter_by(name=frame_name).first()
+                )
+                if not r_frame:
+                    continue
 
                 lig = session.query(Ligand).filter_by(name=title).first()
                 if not lig:
                     continue
 
-                    pose_name = f"{frame_name}_{title}_dock"
+                pose_name = f"{frame_name}_{title}_dock"
 
-                    # Deterministic resolution of docked pose files from task directory
-                    sdf_path = cwd / "docking" / frame_name / f"{frame_name}_dock.sdf"
-                    if not sdf_path.exists():
-                        sdf_path = (
-                            cwd
-                            / "docking"
-                            / frame_name
-                            / f"{frame_name}_gnina_docked_all.sdf"
-                        )
+                # Deterministic resolution of docked pose files from task directory
+                sdf_path = cwd / "docking" / frame_name / f"{frame_name}_dock.sdf"
+                if not sdf_path.exists():
+                    sdf_path = (
+                        cwd
+                        / "docking"
+                        / frame_name
+                        / f"{frame_name}_gnina_docked_all.sdf"
+                    )
 
-                    if not sdf_path.exists():
-                        raise FileNotFoundError(
-                            f"FATAL: Could not find docked SDF for {pose_name} at {sdf_path}. Pipeline failed to produce poses!"
-                        )
+                if not sdf_path.exists():
+                    raise FileNotFoundError(
+                        f"FATAL: Could not find docked SDF for {pose_name} at {sdf_path}. Pipeline failed to produce poses!"
+                    )
 
-                    scores_dict = {
-                        k: float(v)
-                        for k, v in row.items()
-                        if k not in ["Rank", "Title", "Receptor", "Frame"]
-                        and v
-                        and v != "nan"
-                        and v != ""
-                    }
+                scores_dict = {
+                    k: float(v)
+                    for k, v in row.items()
+                    if k not in ["Rank", "Title", "Receptor", "Frame"]
+                    and v
+                    and v != "nan"
+                    and v != ""
+                }
 
-                    ex = session.query(Pose).filter_by(name=pose_name).first()
-                    if ex:
-                        ex.path = str(sdf_path.resolve())
-                        ex.scores_dict = scores_dict
-                        ex.state = "ready"
-                    else:
-                        new_p = Pose(
-                            ligand_id=lig.id,
-                            receptor_frame_id=r_frame.id,
-                            name=pose_name,
-                            origin="docking",
-                            state="ready",
-                            path=str(sdf_path.resolve()),
-                        )
-                        new_p.scores_dict = scores_dict
-                        session.add(new_p)
-                    poses_count += 1
-            session.commit()
-        except Exception as e:
-            console.print(
-                f"[yellow]Warning: Could not record docking poses in DB: {e}[/yellow]"
-            )
+                ex = session.query(Pose).filter_by(name=pose_name).first()
+                if ex:
+                    ex.path = str(sdf_path.resolve())
+                    ex.scores_dict = scores_dict
+                    ex.state = "ready"
+                else:
+                    new_p = Pose(
+                        ligand_id=lig.id,
+                        receptor_frame_id=r_frame.id,
+                        name=pose_name,
+                        origin="docking",
+                        state="ready",
+                        path=str(sdf_path.resolve()),
+                    )
+                    new_p.scores_dict = scores_dict
+                    session.add(new_p)
+                poses_count += 1
+        session.commit()
         console.print(
-            f"\n[bold green]✓ Docking complete! Results registered as PoseSet '{poses_name}'.[/bold green]\n"
+            f"\n[bold green]✓ Docking complete! Registered {poses_count} pose(s) in DB as '{poses_name}'.[/bold green]\n"
         )
 
         # Render Rich Summary Table
