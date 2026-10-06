@@ -16,6 +16,7 @@ process TLEAP {
     val(box_padding)
     val(ss_cutoff)
     val(water_names)
+    val(salt_conc)
 
     output:
     tuple val(meta), path("complex.prmtop"), path("complex.inpcrd"), emit: amber_system
@@ -32,6 +33,7 @@ process TLEAP {
         --box_padding ${box_padding} \\
         --ss_cutoff ${ss_cutoff} \\
         --water_names "${water_names}" \\
+        --salt_conc ${salt_conc} \\
         --mol2s ${mol2s} \\
         --frcmods ${frcmods} \\
         ${mem_arg}

@@ -90,17 +90,16 @@ def cmd_tleap(args):
         else f"solvateOct complex {box} {args.box_padding}"
     )
 
-    with open("tleap.in", "w") as f:
+    # 1. First tLEaP pass: Solvation and accurate water molecule enumeration
+    with open("tleap_solv.in", "w") as f:
         f.write(
             f"source leaprc.protein.ff19SB\nsource leaprc.gaff2\nsource leaprc.lipid21\nsource {leaprc_water}\n"
         )
-
         for m in args.mol2s:
             name = Path(m).stem.replace("_gaff2", "")
             f.write(f"{name} = loadmol2 {m}\n")
         for m in args.frcmods:
             f.write(f"loadAmberParams {m}\n")
-
         f.write(
             'addPdbResMap { {"Zn2+" "ZN"} {"Ca2+" "CA"} {"Mg2+" "MG"} {"Na+" "NA"} {"K+" "K"} {"Cl-" "CL"} }\n'
         )
@@ -109,7 +108,50 @@ def cmd_tleap(args):
         f.write("set default PBRadii mbondi3\nsource apply_bonds.in\n")
         if not args.membrane:
             f.write(f"{box_cmd}\n")
-        f.write("addIonsRand complex Cl- 0\naddIonsRand complex K+ 0\ncharge complex\n")
+        f.write("savepdb complex complex_solv.pdb\nquit\n")
+
+    run_cmd(["tleap", "-f", "tleap_solv.in"])
+
+    # 2. Compute exact physiological salt ion pairs from real water count
+    salt_pairs = 0
+    salt_conc = float(args.salt_conc) if getattr(args, "salt_conc", None) else 0.0
+    if not args.membrane and salt_conc > 0.0 and Path("complex_solv.pdb").exists():
+        water_residues = {w.strip().upper() for w in args.water_names.split(",") if w.strip()}
+        wat_count = 0
+        current_res_key = None
+        for line in Path("complex_solv.pdb").read_text(errors="ignore").splitlines():
+            if line.startswith(("ATOM", "HETATM")):
+                r_name = line[17:20].strip().upper()
+                r_seq = line[21:26]
+                if r_name in water_residues and r_seq != current_res_key:
+                    current_res_key = r_seq
+                    wat_count += 1
+        # N_pairs = round(N_water * [salt] / 55.5)
+        salt_pairs = int(round(wat_count * (salt_conc / 55.5)))
+        print(f"Adding physiological salt: {salt_conc} M ({salt_pairs} K+/Cl- pairs for {wat_count} water molecules).")
+
+    # 3. Final production tLEaP topology generation with neutralization + physiological salt
+    with open("tleap.in", "w") as f:
+        f.write(
+            f"source leaprc.protein.ff19SB\nsource leaprc.gaff2\nsource leaprc.lipid21\nsource {leaprc_water}\n"
+        )
+        for m in args.mol2s:
+            name = Path(m).stem.replace("_gaff2", "")
+            f.write(f"{name} = loadmol2 {m}\n")
+        for m in args.frcmods:
+            f.write(f"loadAmberParams {m}\n")
+        f.write(
+            'addPdbResMap { {"Zn2+" "ZN"} {"Ca2+" "CA"} {"Mg2+" "MG"} {"Na+" "NA"} {"K+" "K"} {"Cl-" "CL"} }\n'
+        )
+        f.write('addPdbAtomMap { {"HZ" "HZ3"} }\n')
+        f.write("complex = loadPdb complex_clean.pdb\n")
+        f.write("set default PBRadii mbondi3\nsource apply_bonds.in\n")
+        if not args.membrane:
+            f.write(f"{box_cmd}\n")
+        f.write("addIonsRand complex Cl- 0\naddIonsRand complex K+ 0\n")
+        if salt_pairs > 0:
+            f.write(f"addIonsRand complex K+ {salt_pairs} Cl- {salt_pairs}\n")
+        f.write("charge complex\n")
         f.write(
             "saveAmberParm complex complex.prmtop complex.inpcrd\nsavepdb complex complex_tleap.pdb\nquit\n"
         )
@@ -134,6 +176,7 @@ def main():
     p_tleap.add_argument("--box_padding", required=True)
     p_tleap.add_argument("--ss_cutoff", required=True)
     p_tleap.add_argument("--water_names", required=True)
+    p_tleap.add_argument("--salt_conc", default="0.15")
     p_tleap.add_argument("--mol2s", nargs="*", default=[])
     p_tleap.add_argument("--frcmods", nargs="*", default=[])
     p_tleap.add_argument("--membrane", action="store_true")

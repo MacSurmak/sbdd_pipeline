@@ -101,19 +101,32 @@ def main():
 
         playlist = ["em.mdp", "nvt.mdp", "npt_relax.mdp", "npt_equil.mdp"]
     else:
-        # Water/Solvent Relaxation: Single robust NPT stage
-        npt_content = npt_tpl.replace("{DEFINE}", "-DPOSRES_250 -DPOSRES_LIG_250")
-        npt_content = npt_content.replace("{NSTEPS}", "500000")  # 1 ns
-        npt_content = npt_content.replace("{TC_GRPS}", "PROT_LIG SOL_ION")
-        npt_content = npt_content.replace("{TEMP}", str(temp))
-        npt_content = npt_content.replace("{PCOUPL}", "Parrinello-Rahman")
-        npt_content = npt_content.replace("{PCOUPL_TYPE}", pcoupl_type)
-        npt_content = npt_content.replace("{TAU_P}", str(args.tau_p))
-        npt_content = npt_content.replace("{REF_P}", ref_p)
-        npt_content = npt_content.replace("{COMPRESSIBILITY}", compressibility)
-        (out_dir / "npt.mdp").write_text(npt_content)
+        # Water/Solvent Relaxation: 2-stage density equilibration to eliminate pressure shock
+        # Stage 1: Berendsen relaxation to gently compress solvent to 1.0 g/cm3 without box oscillation
+        npt_relax = npt_tpl.replace("{DEFINE}", "-DPOSRES_250 -DPOSRES_LIG_250")
+        npt_relax = npt_relax.replace("{NSTEPS}", "100000")  # 200 ps
+        npt_relax = npt_relax.replace("{TC_GRPS}", "PROT_LIG SOL_ION")
+        npt_relax = npt_relax.replace("{TEMP}", str(temp))
+        npt_relax = npt_relax.replace("{PCOUPL}", "berendsen")
+        npt_relax = npt_relax.replace("{PCOUPL_TYPE}", pcoupl_type)
+        npt_relax = npt_relax.replace("{TAU_P}", "2.0")
+        npt_relax = npt_relax.replace("{REF_P}", ref_p)
+        npt_relax = npt_relax.replace("{COMPRESSIBILITY}", compressibility)
+        (out_dir / "npt_relax.mdp").write_text(npt_relax)
 
-        playlist = ["em.mdp", "nvt.mdp", "npt.mdp"]
+        # Stage 2: Parrinello-Rahman true isothermal-isobaric ensemble equilibration
+        npt_equil = npt_tpl.replace("{DEFINE}", "-DPOSRES_50 -DPOSRES_LIG_50")
+        npt_equil = npt_equil.replace("{NSTEPS}", "400000")  # 800 ps
+        npt_equil = npt_equil.replace("{TC_GRPS}", "PROT_LIG SOL_ION")
+        npt_equil = npt_equil.replace("{TEMP}", str(temp))
+        npt_equil = npt_equil.replace("{PCOUPL}", "Parrinello-Rahman")
+        npt_equil = npt_equil.replace("{PCOUPL_TYPE}", pcoupl_type)
+        npt_equil = npt_equil.replace("{TAU_P}", str(args.tau_p))
+        npt_equil = npt_equil.replace("{REF_P}", ref_p)
+        npt_equil = npt_equil.replace("{COMPRESSIBILITY}", compressibility)
+        (out_dir / "npt_equil.mdp").write_text(npt_equil)
+
+        playlist = ["em.mdp", "nvt.mdp", "npt_relax.mdp", "npt_equil.mdp"]
 
     # 4. Production Template (Directly synchronized with chunk_size_ns from md.yaml)
     dt_prod = float(args.dt_ps)
