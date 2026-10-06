@@ -1,17 +1,18 @@
-import socket
+from datetime import datetime, timedelta
 import json
 import math
+import os
 import re
-import time
+import socket
 import subprocess
+import time
 from rich.console import Console
 from rich.markup import escape
 from rich.progress import (
-    Progress,
     BarColumn,
+    Progress,
     TextColumn,
     TimeElapsedColumn,
-    TimeRemainingColumn,
 )
 
 console = Console()
@@ -49,6 +50,39 @@ def format_time_ns(ps: float | None) -> str:
         return f"{ps:.1f} ps"
 
 
+def format_eta(seconds_left: float | None) -> str:
+    """Format remaining seconds into human-readable duration and projected calendar completion date/time."""
+    if seconds_left is None or not math.isfinite(seconds_left) or seconds_left < 0:
+        return "--:--"
+
+    now = datetime.now()
+    finish_dt = now + timedelta(seconds=seconds_left)
+
+    if seconds_left >= 86400:
+        days = int(seconds_left // 86400)
+        hours = int((seconds_left % 86400) // 3600)
+        dur_str = f"{days}d {hours:02d}h"
+    elif seconds_left >= 3600:
+        hours = int(seconds_left // 3600)
+        mins = int((seconds_left % 3600) // 60)
+        dur_str = f"{hours}h {mins:02d}m"
+    elif seconds_left >= 60:
+        mins = int(seconds_left // 60)
+        secs = int(seconds_left % 60)
+        dur_str = f"{mins}m {secs:02d}s"
+    else:
+        dur_str = f"{int(seconds_left)}s"
+
+    if finish_dt.year != now.year:
+        date_str = finish_dt.strftime("%d.%m.%Y %H:%M")
+    elif (finish_dt.date() - now.date()).days > 0:
+        date_str = finish_dt.strftime("%d.%m %H:%M")
+    else:
+        date_str = finish_dt.strftime("%H:%M")
+
+    return f"{dur_str} (ETA: {date_str})"
+
+
 def run_monitor(port: int = 8089):
     """Listens for UDP telemetry packets from GROMACS and renders real-time progress bars with dynamic lifecycle."""
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -68,7 +102,7 @@ def run_monitor(port: int = 8089):
         TextColumn("{task.fields[step_info]}"),
         TextColumn("[bold green]{task.fields[speed]}[/bold green]"),
         TimeElapsedColumn(),
-        TimeRemainingColumn(),
+        TextColumn("[yellow]{task.fields[eta]}[/yellow]"),
         console=console,
     )
 
@@ -224,6 +258,17 @@ def run_monitor(port: int = 8089):
 
                         speed_display = task_stats[task_name]["speed_str"]
 
+                        rem_steps = (display_total - display_step) if (display_total is not None and display_step is not None) else None
+                        eta_display = "--:--"
+                        if rem_steps is not None and rem_steps > 0:
+                            ema = task_stats[task_name]["ema_rate"]
+                            if ema and ema > 0:
+                                eta_display = format_eta(rem_steps / ema)
+                            else:
+                                eta_display = "calculating..."
+                        elif rem_steps == 0:
+                            eta_display = "done"
+
                         if task_name not in task_bars:
                             task_bars[task_name] = progress.add_task(
                                 f"[green]{escape(clean_name)}",
@@ -232,6 +277,7 @@ def run_monitor(port: int = 8089):
                                 node=escape(node_name),
                                 speed=speed_display,
                                 step_info=step_info_str,
+                                eta=eta_display,
                             )
                         else:
                             task_obj = progress._tasks[task_bars[task_name]]
@@ -249,6 +295,7 @@ def run_monitor(port: int = 8089):
                                 node=escape(node_name),
                                 speed=speed_display,
                                 step_info=step_info_str,
+                                eta=eta_display,
                             )
                         continue
                 except socket.timeout:
