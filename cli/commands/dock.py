@@ -326,15 +326,9 @@ def cmd_dock(args):
                     if not r_frame:
                         continue
 
-                    lig = session.query(Ligand).filter_by(name=title).first()
-                    if not lig:
-                        lig = (
-                            session.query(Ligand)
-                            .filter(Ligand.name.like(f"%{title}%"))
-                            .first()
-                        )
-                    if not lig:
-                        continue
+                lig = session.query(Ligand).filter_by(name=title).first()
+                if not lig:
+                    continue
 
                     pose_name = f"{frame_name}_{title}_dock"
 
