@@ -94,7 +94,11 @@ workflow SCREEN_WF {
         (planData.mode == "self")
     )
 
-    // 4. Summarize results
+    // 4. Generate structured execution receipt
+    DOCK_LIBRARY.out.receipt_entries
+        .collectFile(name: 'dock_receipt.tsv', storeDir: params.outdir, newLine: true)
+
+    // 5. Summarize results
     def bench_ligands_str = params.benchmark_ligands ? (params.benchmark_ligands instanceof List ? params.benchmark_ligands.join(" ") : params.benchmark_ligands) : ""
     ch_dock_plan = Channel.fromPath(params.dock_plan, checkIfExists: true)
 
