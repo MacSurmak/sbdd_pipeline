@@ -14,11 +14,12 @@ process MERGE_PDB {
     tuple val(meta), path("complex_dry.pdb"), emit: complex_pdb
 
     script:
+    def org_arg = org_pdbs ? "--org_pdbs ${org_pdbs}" : ""
     """
     python3 ${projectDir}/bin/merge_complex.py \\
         --rec_pdb ${rec_pdb} \\
-        --org_pdbs ${org_pdbs} \\
-        --out_pdb complex_dry.pdb
+        --out_pdb complex_dry.pdb \\
+        ${org_arg}
     """
 
     stub:

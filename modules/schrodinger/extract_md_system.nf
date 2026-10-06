@@ -18,9 +18,11 @@ process EXTRACT_MD_SYSTEM {
     def cof_list = cofactors instanceof List ? cofactors.join(' ') : cofactors
     def cof_arg = cof_list ? "--cofactors ${cof_list}" : ""
     def lig_arg = ""
-    if (lig_file && !lig_file.isEmpty()) {
-        def lig_name = meta.native_ligand ?: "LIG"
-        lig_arg = "--lig_file ${lig_file} --lig_name ${lig_name}"
+    if (lig_file) {
+        if (!meta.native_ligand) {
+            error "FATAL: meta.native_ligand is required when lig_file is provided for system '${meta.id}'"
+        }
+        lig_arg = "--lig_file ${lig_file} --lig_name ${meta.native_ligand}"
     }
     """
     schrodinger run ${projectDir}/bin/extract_md_files.py \\
