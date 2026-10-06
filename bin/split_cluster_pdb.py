@@ -69,6 +69,17 @@ def main():
                 if r_clean in res_translation:
                     res.pdbres = res_translation[r_clean]
 
+            # Translate AMBER/GROMACS protonation variants to standard PDB residues for Maestro compatibility
+            res_translation = {
+                "HIE": "HIS", "HID": "HIS", "HIP": "HIS",
+                "CYX": "CYS", "CYM": "CYS",
+                "ASH": "ASP", "GLH": "GLU", "LYN": "LYS"
+            }
+            for res in st.residue:
+                r_clean = res.pdbres.strip().upper()
+                if r_clean in res_translation:
+                    res.pdbres = res_translation[r_clean]
+
             c_title = f"{args.sys_name}_centroid_{i}"
             st.title = c_title
             st.property["s_m_title"] = c_title

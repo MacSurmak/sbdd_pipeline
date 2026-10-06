@@ -183,8 +183,14 @@ def cmd_prime_mmgbsa(args):
 
 
 def cmd_light_prep(args):
+    in_path = Path(args.input_pdb)
     raw_mae = "raw_cluster.mae"
-    run_cmd(get_tool("structconvert") + [args.input_pdb, raw_mae])
+
+    if in_path.suffix.lower() in [".mae", ".maegz"]:
+        import shutil
+        shutil.copy2(in_path, raw_mae)
+    else:
+        run_cmd(get_tool("structconvert") + [str(in_path), raw_mae])
 
     from schrodinger import structure
     st = structure.StructureReader.read(raw_mae)
@@ -195,7 +201,7 @@ def cmd_light_prep(args):
         if lig_atoms:
             st.deleteAtoms(lig_atoms)
 
-    # Standardize AMBER residue codes to standard PDB names
+    # Pure text normalization of AMBER residue names: preserves 100% of MD coordinates, hydrogens, and charges
     res_translation = {
         "HIE": "HIS", "HID": "HIS", "HIP": "HIS",
         "CYX": "CYS", "CYM": "CYS",
@@ -205,20 +211,8 @@ def cmd_light_prep(args):
         r_name = res.pdbres.strip().upper()
         if r_name in res_translation:
             res.pdbres = res_translation[r_name]
-    st.write(raw_mae)
 
-    # Standardize atom types and bond orders via PrepWizard with strict 0.0 RMSD (zero heavy atom movement)
-    prep_cmd = get_tool("prepwizard") + [
-        "-fix",
-        "-noprotassign",
-        "-noepik",
-        "-rmsd", "0.0",
-        "-preserve_st_titles",
-        "-WAIT",
-        raw_mae,
-        args.out_mae,
-    ]
-    run_cmd(prep_cmd)
+    st.write(args.out_mae)
     run_cmd(get_tool("structconvert") + [args.out_mae, args.out_pdb])
 
 
