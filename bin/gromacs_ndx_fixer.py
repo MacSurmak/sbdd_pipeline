@@ -115,7 +115,9 @@ def add_thermostat_groups_by_name(ndx_path: Path):
 def generate_posre(top_file: Path, forces_str: str):
     """Parses topology and dynamically generates position restraints strictly based on user configuration."""
     if not forces_str or not forces_str.strip():
-        raise ValueError("FATAL: --forces argument cannot be empty. Restraint forces must be specified explicitly in md.yaml.")
+        raise ValueError(
+            "FATAL: --forces argument cannot be empty. Restraint forces must be specified explicitly in md.yaml."
+        )
 
     raw_forces = [int(float(x.strip())) for x in forces_str.split(",") if x.strip()]
     if not raw_forces:
@@ -165,7 +167,20 @@ def generate_posre(top_file: Path, forces_str: str):
                     mols[current_mol].append(atom_nr)
 
     ions = {
-        "K+", "NA+", "CL-", "Cl-", "Na+", "ZN", "MG", "CA", "ZN2", "MG2", "CA2", "K", "CL", "NA"
+        "K+",
+        "NA+",
+        "CL-",
+        "Cl-",
+        "Na+",
+        "ZN",
+        "MG",
+        "CA",
+        "ZN2",
+        "MG2",
+        "CA2",
+        "K",
+        "CL",
+        "NA",
     }
     water = {"SOL", "Water", "HOH", "WAT"}
 
@@ -178,12 +193,16 @@ def generate_posre(top_file: Path, forces_str: str):
 
         if stripped.startswith("[ moleculetype ]") or stripped.startswith("[ system ]"):
             if current_mol and current_mol not in ions and current_mol not in water:
-                is_protein = current_mol.startswith("system") or current_mol.startswith("Protein")
+                is_protein = current_mol.startswith("system") or current_mol.startswith(
+                    "Protein"
+                )
                 prefix = "POSRES" if is_protein else "POSRES_LIG"
 
                 for suffix, fc in force_levels:
                     macro = f"{prefix}{suffix}"
-                    out_lines.append(f'#ifdef {macro}\n#include "posre_{current_mol}_{fc}.itp"\n#endif')
+                    out_lines.append(
+                        f'#ifdef {macro}\n#include "posre_{current_mol}_{fc}.itp"\n#endif'
+                    )
 
             state = "MOL_START" if stripped.startswith("[ moleculetype ]") else "SYSTEM"
             current_mol = None
@@ -230,7 +249,9 @@ if __name__ == "__main__":
         required=True,
     )
     parser.add_argument("--orgs", default="")
-    parser.add_argument("--forces", default="", help="Comma-separated list of force constants from YAML")
+    parser.add_argument(
+        "--forces", default="", help="Comma-separated list of force constants from YAML"
+    )
     args = parser.parse_args()
 
     if args.action == "add_groups":

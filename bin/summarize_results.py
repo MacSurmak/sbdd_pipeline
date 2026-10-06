@@ -125,11 +125,15 @@ def main():
     analysis_dir = Path(args.analysis_dir) if args.analysis_dir else dock_dir
 
     if not args.plan:
-        raise ValueError("FATAL: --plan argument is required. Execution manifest must be passed explicitly.")
+        raise ValueError(
+            "FATAL: --plan argument is required. Execution manifest must be passed explicitly."
+        )
 
     plan_path = Path(args.plan).resolve()
     if not plan_path.exists():
-        raise FileNotFoundError(f"FATAL: Execution plan JSON was not found at canonical path: {plan_path}")
+        raise FileNotFoundError(
+            f"FATAL: Execution plan JSON was not found at canonical path: {plan_path}"
+        )
 
     receptors_ordered = []
     with open(plan_path, "r", encoding="utf-8") as pf:
@@ -223,7 +227,10 @@ def main():
                         if col_name in r_row and not pd.isna(r_row[col_name]):
                             target_map[(r_rec, r_title)] = float(r_row[col_name])
                 except Exception as e:
-                    print(f"Warning: Failed to parse RMSD CSV {rmsd_csv}: {e}", file=sys.stderr)
+                    print(
+                        f"Warning: Failed to parse RMSD CSV {rmsd_csv}: {e}",
+                        file=sys.stderr,
+                    )
 
     glide_rmsds = []
     gnina_rmsds = []

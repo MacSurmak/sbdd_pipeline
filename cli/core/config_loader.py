@@ -48,11 +48,17 @@ def build_nextflow_args(
     # PrepWizard strict parsing
     prep_cfg = config.get("preparation", {})
     if prep_cfg:
-        for key, flag in [("target_ph", "--target_ph"), ("ph_tolerance", "--ph_tolerance"), ("minimize_rmsd", "--minimize_rmsd")]:
+        for key, flag in [
+            ("target_ph", "--target_ph"),
+            ("ph_tolerance", "--ph_tolerance"),
+            ("minimize_rmsd", "--minimize_rmsd"),
+        ]:
             if key in prep_cfg:
                 args.extend([flag, str(prep_cfg[key])])
         if "cap_termini" in prep_cfg:
-            args.extend(["--cap_termini", "true" if prep_cfg["cap_termini"] else "false"])
+            args.extend(
+                ["--cap_termini", "true" if prep_cfg["cap_termini"] else "false"]
+            )
 
     # 3. Membrane
     mem_cfg = config.get("membrane", {})

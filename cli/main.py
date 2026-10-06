@@ -79,19 +79,22 @@ def cmd_md_init(args):
     tpl_dir = FRAMEWORK_DIR / "assets" / "mdp"
     script = FRAMEWORK_DIR / "bin" / "generate_mdp.py"
 
-    temp = (
-        configs.get("md_simulation", {}).get("production", {}).get("temperature")
-        or configs.get("mmpbsa", {}).get("temperature")
-    )
+    temp = configs.get("md_simulation", {}).get("production", {}).get(
+        "temperature"
+    ) or configs.get("mmpbsa", {}).get("temperature")
     if not temp:
-        console.print("[bold red]FATAL: Missing simulation temperature in configs (md.yaml or mmpbsa.yaml)![/bold red]")
+        console.print(
+            "[bold red]FATAL: Missing simulation temperature in configs (md.yaml or mmpbsa.yaml)![/bold red]"
+        )
         sys.exit(1)
 
     chunk_ns = (
         configs.get("md_simulation", {}).get("production", {}).get("chunk_size_ns")
     )
     if not chunk_ns:
-        console.print("[bold red]FATAL: Missing 'md_simulation.production.chunk_size_ns' in configs/md.yaml![/bold red]")
+        console.print(
+            "[bold red]FATAL: Missing 'md_simulation.production.chunk_size_ns' in configs/md.yaml![/bold red]"
+        )
         sys.exit(1)
 
     cmd = [

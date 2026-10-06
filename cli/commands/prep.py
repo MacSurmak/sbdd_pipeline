@@ -164,7 +164,9 @@ def cmd_prep(args):
             # In-situ reference pose from PrepWizard
             system = session.query(System).filter_by(receptor_frame_id=frame.id).first()
             if system and system.pose:
-                prep_sdf_path = (cwd / "prepared" / orig_frame_name / "native.sdf").resolve()
+                prep_sdf_path = (
+                    cwd / "prepared" / orig_frame_name / "native.sdf"
+                ).resolve()
 
                 if prep_sdf_path.exists() and prep_sdf_path.stat().st_size > 0:
                     system.pose.path = str(prep_sdf_path)
@@ -197,8 +199,14 @@ def cmd_prep(args):
             lig_obj = session.query(Ligand).filter_by(name=lig_name).first()
             if lig_obj:
                 prep_mae = (cwd / "ligands" / rel_path).resolve()
-                sdf_name = Path(rel_path).name.replace(".maegz", ".sdf").replace(".mae", ".sdf")
-                prep_sdf = (cwd / "ligands" / Path(rel_path).parent / sdf_name).resolve()
+                sdf_name = (
+                    Path(rel_path)
+                    .name.replace(".maegz", ".sdf")
+                    .replace(".mae", ".sdf")
+                )
+                prep_sdf = (
+                    cwd / "ligands" / Path(rel_path).parent / sdf_name
+                ).resolve()
 
                 lig_obj.state = "ready"
                 lig_obj.path_mae = str(prep_mae)

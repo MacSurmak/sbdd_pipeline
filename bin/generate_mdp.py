@@ -20,13 +20,18 @@ def main():
         "--outdir", required=True, help="Output directory for generated MDPs"
     )
     parser.add_argument(
-        "--is_membrane", required=True, help="Whether system is a membrane system (true/false)"
+        "--is_membrane",
+        required=True,
+        help="Whether system is a membrane system (true/false)",
     )
     parser.add_argument(
         "--temperature", type=float, required=True, help="Simulation temperature in K"
     )
     parser.add_argument(
-        "--chunk_ns", type=float, required=True, help="Production chunk size in ns directly from md.yaml"
+        "--chunk_ns",
+        type=float,
+        required=True,
+        help="Production chunk size in ns directly from md.yaml",
     )
     args = parser.parse_args()
 
@@ -67,7 +72,7 @@ def main():
         # Stepwise Membrane Relaxation:
         # Stage 1: Berendsen relaxation to pack lipid area without PR oscillations
         npt_relax = npt_tpl.replace("{DEFINE}", "-DPOSRES_250 -DPOSRES_LIG_250")
-        npt_relax = npt_relax.replace("{NSTEPS}", "500000") # 1 ns
+        npt_relax = npt_relax.replace("{NSTEPS}", "500000")  # 1 ns
         npt_relax = npt_relax.replace("{TC_GRPS}", "PROT_LIG SOL_ION")
         npt_relax = npt_relax.replace("{TEMP}", str(temp))
         npt_relax = npt_relax.replace("{PCOUPL}", "berendsen")
@@ -79,7 +84,7 @@ def main():
 
         # Stage 2: Parrinello-Rahman density equilibration with soft restraints
         npt_equil = npt_tpl.replace("{DEFINE}", "-DPOSRES_50 -DPOSRES_LIG_50")
-        npt_equil = npt_equil.replace("{NSTEPS}", "500000") # 1 ns
+        npt_equil = npt_equil.replace("{NSTEPS}", "500000")  # 1 ns
         npt_equil = npt_equil.replace("{TC_GRPS}", "PROT_LIG SOL_ION")
         npt_equil = npt_equil.replace("{TEMP}", str(temp))
         npt_equil = npt_equil.replace("{PCOUPL}", "Parrinello-Rahman")
@@ -93,7 +98,7 @@ def main():
     else:
         # Water/Solvent Relaxation: Single robust NPT stage
         npt_content = npt_tpl.replace("{DEFINE}", "-DPOSRES_250 -DPOSRES_LIG_250")
-        npt_content = npt_content.replace("{NSTEPS}", "500000") # 1 ns
+        npt_content = npt_content.replace("{NSTEPS}", "500000")  # 1 ns
         npt_content = npt_content.replace("{TC_GRPS}", "PROT_LIG SOL_ION")
         npt_content = npt_content.replace("{TEMP}", str(temp))
         npt_content = npt_content.replace("{PCOUPL}", "Parrinello-Rahman")
@@ -124,7 +129,9 @@ def main():
     # 5. Master Equilibration Playlist
     (out_dir / "protocol.txt").write_text("\n".join(playlist) + "\n")
 
-    print(f"Generated clean {('membrane' if is_mem else 'water')} MD protocol suite ({len(playlist) + 1} files) in {out_dir}")
+    print(
+        f"Generated clean {('membrane' if is_mem else 'water')} MD protocol suite ({len(playlist) + 1} files) in {out_dir}"
+    )
 
 
 if __name__ == "__main__":

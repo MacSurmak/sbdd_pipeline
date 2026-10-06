@@ -4,12 +4,14 @@ import sys
 import subprocess
 from pathlib import Path
 
+
 def run_cmd(cmd):
     print(f"Exec: {' '.join(cmd)}")
     res = subprocess.run(cmd, check=False)
     if res.returncode != 0:
         print(f"FATAL: Command failed with exit code {res.returncode}", file=sys.stderr)
         sys.exit(res.returncode)
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -31,24 +33,43 @@ def main():
         print(f"FATAL: Reference ligand missing or empty: {args.ref_ligand}")
         sys.exit(1)
 
-    cmd = ["gnina", "-r", args.receptor, "-l", args.ligand, "--autobox_ligand", args.ref_ligand]
-    
+    cmd = [
+        "gnina",
+        "-r",
+        args.receptor,
+        "-l",
+        args.ligand,
+        "--autobox_ligand",
+        args.ref_ligand,
+    ]
+
     if args.mode == "dock":
-        cmd.extend(["--autobox_add", args.autobox_add, "--exhaustiveness", args.exhaustiveness,
-                    "--cnn_scoring", args.cnn_scoring, "--num_modes", args.num_modes])
+        cmd.extend(
+            [
+                "--autobox_add",
+                args.autobox_add,
+                "--exhaustiveness",
+                args.exhaustiveness,
+                "--cnn_scoring",
+                args.cnn_scoring,
+                "--num_modes",
+                args.num_modes,
+            ]
+        )
     elif args.mode == "rescore":
         cmd.extend(["--score_only"])
         if args.cnn_model:
             cmd.extend(["--cnn", args.cnn_model])
-            
+
     cmd.extend(["-o", args.out_sdf])
-    
+
     with open(args.out_log, "w") as f:
         print(f"Exec: {' '.join(cmd)}")
         res = subprocess.run(cmd, stdout=f, stderr=subprocess.STDOUT)
         if res.returncode != 0:
             print(f"FATAL: GNINA failed. See {args.out_log}")
             sys.exit(1)
+
 
 if __name__ == "__main__":
     main()

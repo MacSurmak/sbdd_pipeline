@@ -341,7 +341,12 @@ def cmd_dock(args):
                     # Deterministic resolution of docked pose files from task directory
                     sdf_path = cwd / "docking" / frame_name / f"{frame_name}_dock.sdf"
                     if not sdf_path.exists():
-                        sdf_path = cwd / "docking" / frame_name / f"{frame_name}_gnina_docked_all.sdf"
+                        sdf_path = (
+                            cwd
+                            / "docking"
+                            / frame_name
+                            / f"{frame_name}_gnina_docked_all.sdf"
+                        )
 
                     if not sdf_path.exists():
                         raise FileNotFoundError(

@@ -24,9 +24,13 @@ def cmd_dynamics(args):
     # Strict Fail-Fast on missing parameters
     try:
         reps_target = int(configs["md_simulation"]["production"]["replicates"])
-        total_duration_ns = float(configs["md_simulation"]["production"]["total_time_ns"])
+        total_duration_ns = float(
+            configs["md_simulation"]["production"]["total_time_ns"]
+        )
     except KeyError as e:
-        console.print(f"[bold red]FATAL: Missing required MD configuration parameter in md.yaml: {e}[/bold red]")
+        console.print(
+            f"[bold red]FATAL: Missing required MD configuration parameter in md.yaml: {e}[/bold red]"
+        )
         sys.exit(1)
 
     query = session.query(System).filter_by(state="ready")
