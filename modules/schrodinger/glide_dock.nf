@@ -21,28 +21,16 @@ process GLIDE_DOCK {
 
     script:
     """
-    export SCHRODINGER_JOBDB="/tmp/schrodinger_jobdb_\${SLURM_JOB_ID:-\$\$}"
-    mkdir -p "\$SCHRODINGER_JOBDB"
-
-    cat << EOF > dock.in
-GRIDFILE        ${grid_zip}
-LIGANDFILE      ${ligands_mae}
-PRECISION       ${precision}
-POSES_PER_LIG   ${poses_per_lig}
-POSTDOCK        yes
-EPIK_PENALTIES  yes
-SAMPLE_RINGS    yes
-WRITE_CSV       yes
-FORCEFIELD      ${forcefield}
-LIG_VSCALE      ${lig_vscale}
-LIG_CCUT        0.15
-EOF
-
-    schrodinger glide dock.in -OVERWRITE -WAIT -HOST localhost
-    mv dock_pv.maegz ${meta.id}_dock_pv.maegz
-    mv dock.csv ${meta.id}_dock.csv
-
-    schrodinger run ${projectDir}/bin/pv_to_sdf.py --pv ${meta.id}_dock_pv.maegz --sdf ${meta.id}_dock.sdf --max_poses ${poses_per_lig}
+    schrodinger run python3 ${projectDir}/bin/wrap_schrodinger.py glide_dock \\
+        --grid_zip ${grid_zip} \\
+        --ligands_mae ${ligands_mae} \\
+        --precision ${precision} \\
+        --poses_per_lig ${poses_per_lig} \\
+        --forcefield ${forcefield} \\
+        --lig_vscale ${lig_vscale} \\
+        --out_pv ${meta.id}_dock_pv.maegz \\
+        --out_csv ${meta.id}_dock.csv \\
+        --out_sdf ${meta.id}_dock.sdf
     """
 
     stub:

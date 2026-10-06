@@ -15,24 +15,12 @@ process LIGHT_PREPWIZARD {
     tuple val(meta), path("${meta.id}_prepared.pdb"), emit: prepared_pdb
 
     script:
+    def lig_arg = meta.native_ligand ? "--native_ligand ${meta.native_ligand}" : ""
     """
-    schrodinger structconvert ${input_pdb} ${meta.id}_prepared.mae
-
-    # Ensure pocket is vacant if native ligand was retained in centroid PDB
-    if [ -n "${meta.native_ligand}" ]; then
-        schrodinger run python3 -c "
-from schrodinger import structure
-st = structure.StructureReader.read('${meta.id}_prepared.mae')
-lig_res = '${meta.native_ligand}'.split('_')[-1].strip().upper()
-lig_atoms = [a.index for a in st.atom if a.pdbres.strip().upper() == lig_res]
-if lig_atoms:
-    st.deleteAtoms(lig_atoms)
-    st.write('${meta.id}_prepared.mae')
-"
-    fi
-
-    # Explicitly emit matching PDB for docking frameworks
-    schrodinger structconvert ${meta.id}_prepared.mae ${meta.id}_prepared.pdb
+    schrodinger run python3 ${projectDir}/bin/wrap_schrodinger.py light_prep \\
+        --input_pdb ${input_pdb} \\
+        --out_id ${meta.id} \\
+        ${lig_arg}
     """
 
     stub:

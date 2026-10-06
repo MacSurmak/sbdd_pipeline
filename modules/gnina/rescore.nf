@@ -16,21 +16,15 @@ process GNINA_RESCORE {
     tuple val(meta), path("${meta.id}_gnina_rescore.log"), emit: log
 
     script:
-    def cnn_flag = cnn_model ? "--cnn ${cnn_model}" : ""
+    def cnn_arg = cnn_model ? "--cnn_model ${cnn_model}" : ""
     """
-    if [ ! -f "${ref_lig_sdf}" ] || [ ! -s "${ref_lig_sdf}" ]; then
-        echo "FATAL: Reference ligand SDF is missing or empty: ${ref_lig_sdf}"
-        exit 1
-    fi
-    AUTOBOX_FLAG="--autobox_ligand ${ref_lig_sdf}"
-
-    gnina \\
-        -r ${receptor_pdb} \\
-        -l ${poses_sdf} \\
-        \$AUTOBOX_FLAG \\
-        --score_only \\
-        ${cnn_flag} \\
-        -o ${meta.id}_rescored.sdf > ${meta.id}_gnina_rescore.log
+    python3 ${projectDir}/bin/wrap_gnina.py rescore \\
+        --receptor ${receptor_pdb} \\
+        --ligand ${poses_sdf} \\
+        --ref_ligand ${ref_lig_sdf} \\
+        ${cnn_arg} \\
+        --out_sdf ${meta.id}_rescored.sdf \\
+        --out_log ${meta.id}_gnina_rescore.log
     """
 
     stub:

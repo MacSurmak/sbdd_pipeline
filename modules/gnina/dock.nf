@@ -18,26 +18,17 @@ process GNINA_DOCK {
     tuple val(meta), path("${meta.id}_gnina.log"), emit: log
 
     script:
-    def autobox_flag = ""
     """
-    if [ ! -f "${ref_lig_sdf}" ] || [ ! -s "${ref_lig_sdf}" ]; then
-        echo "FATAL: Reference ligand SDF is missing or empty: ${ref_lig_sdf}"
-        exit 1
-    fi
-    AUTOBOX_FLAG="--autobox_ligand ${ref_lig_sdf}"
-
-    echo "=== Worker: \$(hostname) (GPU Node) ==="
-    nvidia-smi --query-gpu=name,memory.total --format=csv,noheader || true
-
-    gnina \
-        -r ${receptor_pdb} \
-        -l ${chunk_sdf} \
-        \$AUTOBOX_FLAG \
-        --autobox_add ${autobox_add} \
-        --exhaustiveness ${exhaustiveness} \
-        --cnn_scoring ${cnn_scoring} \
-        --num_modes ${num_modes} \
-        -o ${meta.id}_docked.sdf > ${meta.id}_gnina.log
+    python3 ${projectDir}/bin/wrap_gnina.py dock \\
+        --receptor ${receptor_pdb} \\
+        --ligand ${chunk_sdf} \\
+        --ref_ligand ${ref_lig_sdf} \\
+        --autobox_add ${autobox_add} \\
+        --exhaustiveness ${exhaustiveness} \\
+        --cnn_scoring ${cnn_scoring} \\
+        --num_modes ${num_modes} \\
+        --out_sdf ${meta.id}_docked.sdf \\
+        --out_log ${meta.id}_gnina.log
     """
 
     stub:

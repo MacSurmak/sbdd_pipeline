@@ -19,26 +19,14 @@ process LIGPREP {
     tuple val(meta), path("${meta.id}_prepared.sdf"), emit: prepared_sdf
 
     script:
-    def in_flag = (ligand_file.name.endsWith('.mae') || ligand_file.name.endsWith('.maegz')) ? "-imae" : "-isd"
     """
-    schrodinger ligprep \\
-        ${in_flag} ${ligand_file} \\
-        -omae ${meta.id}_prepared.maegz \\
-        -epik \\
-        -ph ${target_ph} \\
-        -pht ${ph_tolerance} \\
-        -s ${max_states} \\
-        -bff ${ff_version} \\
-        -WAIT
-
-    if [ ! -f "${meta.id}_prepared.maegz" ]; then
-        echo "FATAL: LigPrep failed to produce ${meta.id}_prepared.maegz!"
-        echo "=== LIGPREP LOG ==="
-        cat *.log 2>/dev/null || true
-        exit 1
-    fi
-
-    schrodinger structconvert ${meta.id}_prepared.maegz ${meta.id}_prepared.sdf
+    schrodinger run python3 ${projectDir}/bin/wrap_schrodinger.py ligprep \\
+        --ligand_file ${ligand_file} \\
+        --target_ph ${target_ph} \\
+        --ph_tolerance ${ph_tolerance} \\
+        --ff_version ${ff_version} \\
+        --max_states ${max_states} \\
+        --out_id ${meta.id}
     """
 
     stub:

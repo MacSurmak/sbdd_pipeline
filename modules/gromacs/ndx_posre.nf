@@ -15,11 +15,9 @@ process NDX_POSRE {
 
     script:
     """
-    echo "q" | gmx make_ndx -f ${input_gro} -o index.ndx
-    python3 ${projectDir}/bin/gromacs_ndx_fixer.py --ndx index.ndx --action add_groups
-
-    # Generate native position restraints directly from topology
-    python3 ${projectDir}/bin/gromacs_ndx_fixer.py --ndx index.ndx --top ${topol_top} --action generate_posre
+    python3 ${projectDir}/bin/wrap_gromacs.py ndx_posre \\
+        --input_gro ${input_gro} \\
+        --topol ${topol_top}
     """
 
     stub:

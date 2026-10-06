@@ -23,95 +23,22 @@ process GMX_MMPBSA {
     tuple val(meta), path("decomposition_mmpbsa_gb.csv"), path("thermodynamics_mmpbsa_gb.dat"), emit: gb_decomp_results, optional: true
 
     script:
-    def is_mem = (is_membrane.toString() == 'true')
-    def mthick_val = membrane_thickness as float
-    def pb_block = is_mem ? """
-&pb
-memopt=1,
-mthick=${mthick_val},
-mctrdz=0.0,
-emem=7.0,
-indi=4.0,
-istrng=${salt_conc},
-radiopt=0,
-poretype=1,
-fillratio=1.25,
-ipb=1,
-inp=2,
-sasopt=0,
-solvopt=2,
-bcopt=10,
-nfocus=1,
-linit=1000,
-eneopt=1,
-cutfd=7.0,
-cutnb=99.0,
-maxarcdot=15000
-/
-""" : """
-&gb
-igb=2,
-saltcon=${salt_conc}
-/
-"""
-    def mpirun_cmd = task.cpus > 1 ? "mpirun --oversubscribe -np ${task.cpus} gmx_MMPBSA MPI" : "gmx_MMPBSA"
+    def mem_arg = (is_membrane.toString() == 'true') ? "--membrane --membrane_thickness ${membrane_thickness}" : ""
+    def dec_arg = (decomp.toString() == 'true') ? "--decomp" : ""
     """
-    # 1. Total Binding Free Energy via Membrane-aware Poisson-Boltzmann (PB)
-    start_frame=\$(python3 ${projectDir}/bin/get_mda_startframe.py --pdb ${ref_pdb} --xtc ${clean_xtc} --start_ns ${start_ns})
-    cat << EOF > mmpbsa_pb.in
-&general
-sys_name="Protein_Ligand",
-startframe=\${start_frame},
-interval=${step_frames},
-temperature=${temp}
-/
-${pb_block}
-EOF
-
-    ${mpirun_cmd} \\
-        -O \\
-        -i mmpbsa_pb.in \\
-        -cs ${ref_pdb} \\
-        -ci ${index_ndx} \\
-        -cg Protein ${meta.ligand} \\
-        -ct ${clean_xtc} \\
-        -cp ${topol_top} \\
-        -nogui \\
-        -o thermodynamics_mmpbsa_pb.dat \\
-        -eo thermodynamics_mmpbsa_pb.csv
-
-    # 2. Per-Residue Decomposition via Generalized Born (GB)
-    if [ "${decomp}" = "true" ]; then
-        cat << EOF > mmpbsa_gb.in
-&general
-sys_name="Protein_Ligand",
-startframe=\${start_frame},
-interval=${step_frames},
-temperature=${temp}
-/
-&gb
-igb=2,
-saltcon=${salt_conc}
-/
-&decomp
-idecomp=2,
-dec_verbose=0
-/
-EOF
-
-        ${mpirun_cmd} \\
-            -O \\
-            -prefix _GMXMMPBSA_GB_ \\
-            -i mmpbsa_gb.in \\
-            -cs ${ref_pdb} \\
-            -ci ${index_ndx} \\
-            -cg Protein ${meta.ligand} \\
-            -ct ${clean_xtc} \\
-            -cp ${topol_top} \\
-            -nogui \\
-            -o thermodynamics_mmpbsa_gb.dat \\
-            -deo decomposition_mmpbsa_gb.csv
-    fi
+    python3 ${projectDir}/bin/wrap_gromacs.py mmpbsa \\
+        --clean_xtc ${clean_xtc} \\
+        --ref_pdb ${ref_pdb} \\
+        --topol ${topol_top} \\
+        --ndx ${index_ndx} \\
+        --ligand "${meta.ligand}" \\
+        --start_ns ${start_ns} \\
+        --step_frames ${step_frames} \\
+        --temp ${temp} \\
+        --salt_conc ${salt_conc} \\
+        --cpus ${task.cpus} \\
+        ${mem_arg} \\
+        ${dec_arg}
     """
 
     stub:

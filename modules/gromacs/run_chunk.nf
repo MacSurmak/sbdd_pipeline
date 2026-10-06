@@ -21,47 +21,16 @@ process RUN_MD_CHUNK {
 
     script:
     """
-    echo "=== Worker: \$(hostname) | Chunk: ${chunk_idx} ==="
-
-    # Materialize staged restraints and topology as real local files for output collection
-    for p in posre_*.itp; do
-        if [ -L "\$p" ]; then
-            cp --remove-destination "\$(readlink -f "\$p")" "\$p"
-        fi
-    done
-    
-    CHUNK_STEPS=\$(awk "BEGIN {printf \\"%.0f\\", (${chunk_ns} * 1000.0) / 0.002}")
-    EXTENSION_PS=\$(awk "BEGIN {printf \\"%.0f\\", ${chunk_ns} * 1000.0}")
-    NSTXOUT=\$(awk "BEGIN {steps=\${CHUNK_STEPS}; n=int(steps/10); if (n<1) n=1; if (n>5000) n=5000; print n}")
-    NSTENERGY=\$(awk "BEGIN {steps=\${CHUNK_STEPS}; n=int(steps/10); if (n<1) n=1; if (n>1000) n=1000; print n}")
-
-    if [ "${chunk_idx}" -eq 1 ]; then
-        sed -e "s/nsteps\\s*=.*/nsteps = \${CHUNK_STEPS}/g" \\
-            -e "s/nstxout-compressed\\s*=.*/nstxout-compressed = \${NSTXOUT}/g" \\
-            -e "s/nstenergy\\s*=.*/nstenergy = \${NSTENERGY}/g" \\
-            md.mdp > md_run.mdp
-
-        gmx grompp -f md_run.mdp -o out.tpr -c ${prev_gro} -r ${prev_gro} -t ${prev_cpt} -p ${topol_top} -n ${index_ndx} -maxwarn 3
-        gmx mdrun -deffnm md_${chunk_idx} -s out.tpr -nb gpu -pme gpu -ntmpi 1 -ntomp ${task.cpus}
-        cp out.tpr sys_ref.tpr
-    else
-        gmx convert-tpr -s ${prev_tpr} -extend \${EXTENSION_PS} -o out.tpr
-        gmx mdrun -deffnm md_${chunk_idx} -s out.tpr -cpi ${prev_cpt} -noappend -nb gpu -pme gpu -ntmpi 1 -ntomp ${task.cpus}
-        cp out.tpr sys_ref.tpr
-    fi
-
-    if [ -f md_${chunk_idx}.part*.gro ]; then
-        mv md_${chunk_idx}.part*.gro md_${chunk_idx}.gro
-    fi
-    if [ -f md_${chunk_idx}.part*.cpt ]; then
-        mv md_${chunk_idx}.part*.cpt md_${chunk_idx}.cpt
-    fi
-    if [ -f md_${chunk_idx}.part*.xtc ]; then
-        mv md_${chunk_idx}.part*.xtc md_${chunk_idx}.xtc
-    fi
-
-    cp md_${chunk_idx}.gro out.gro
-    cp md_${chunk_idx}.cpt out.cpt
+    python3 ${projectDir}/bin/wrap_gromacs.py run_chunk \\
+        --prev_gro ${prev_gro} \\
+        --prev_cpt ${prev_cpt} \\
+        --prev_tpr ${prev_tpr} \\
+        --topol ${topol_top} \\
+        --ndx ${index_ndx} \\
+        --chunk_ns ${chunk_ns} \\
+        --chunk_idx ${chunk_idx} \\
+        --cpus ${task.cpus} \\
+        --posre_files posre_*.itp
     """
 
     stub:

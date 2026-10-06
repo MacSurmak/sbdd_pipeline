@@ -22,28 +22,16 @@ process PACKMOL_MEMGEN {
 
     script:
     """
-    packmol-memgen \
-        --pdb ${complex_pdb} \
-        --lipids "${upper_lipids}//${lower_lipids}" \
-        --ratio "${upper_ratio}//${lower_ratio}" \
-        --preoriented \
-        --dist ${lipid_pad} \
-        --dist_wat ${wat_pad} \
-        --salt \
-        --salt_c "K+" \
-        --saltcon ${salt_conc} \
-        --notprotonate \
-        -o ${meta.id}_mem_complex
-
-    # Packmol-memgen outputs <output_prefix>.pdb
-    if [ -f "${meta.id}_mem_complex.pdb" ]; then
-        echo "Packmol bilayer generated successfully."
-    elif [ -f "${meta.id}_mem_complex_mempack.pdb" ]; then
-        mv "${meta.id}_mem_complex_mempack.pdb" "${meta.id}_mem_complex.pdb"
-    else
-        echo "FATAL: Packmol-memgen failed to generate output PDB."
-        exit 1
-    fi
+    python3 ${projectDir}/bin/wrap_membrane.py packmol \\
+        --pdb ${complex_pdb} \\
+        --upper_lipids "${upper_lipids}" \\
+        --upper_ratio "${upper_ratio}" \\
+        --lower_lipids "${lower_lipids}" \\
+        --lower_ratio "${lower_ratio}" \\
+        --lipid_pad ${lipid_pad} \\
+        --wat_pad ${wat_pad} \\
+        --salt_conc ${salt_conc} \\
+        --out_id ${meta.id}
     """
 
     stub:
