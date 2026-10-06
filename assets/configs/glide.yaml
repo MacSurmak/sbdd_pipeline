@@ -1,7 +1,7 @@
 glide:
   enabled: true
   precision: "SP"                    # HTVS, SP, XP
-  poses_per_lig: 16
+  poses_per_lig: 4
   sample_rings: true
   epik_penalties: true
   forcefield: "OPLS4"
@@ -13,7 +13,7 @@ glide:
   write_csv: true
   grid:
     inner_box: [10, 10, 10]
-    outer_box: [26, 26, 26]
+    outer_box: [20, 20, 20]
     forcefield: "OPLS4"
   ligprep:
     target_ph: 7.4

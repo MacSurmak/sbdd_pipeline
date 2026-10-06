@@ -1,8 +1,8 @@
 gnina:
   enabled: true
-  exhaustiveness: 64                 # Thorough sampling for blind docking of flexible ligands
+  exhaustiveness: 8                 # Thorough sampling for blind docking of flexible ligands
   cnn_scoring: "rescore"             # none, rescore, refinement, all
-  num_modes: 16                      # Number of binding poses to output
+  num_modes: 4                      # Number of binding poses to output
   autobox_add: 4.0                   # Tight binding cleft focus (Å)
   cnn_model: "crossdock_default2018" # Default GNINA CNN model
   batch_size: 5                      # 5 ligands per chunk for maximum cluster scalability
