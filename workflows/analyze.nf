@@ -14,8 +14,7 @@ workflow ANALYZE_WF {
     // MODE 1: Trajectory Cleaning (PBC whole -> center -> fit -> solvent strip)
     if (params.clean_plan) {
         def planFile = file(params.clean_plan)
-        def jsonSlurper = new groovy.json.JsonSlurper()
-        def planList = jsonSlurper.parseText(planFile.text)
+        def planList = new groovy.json.JsonSlurperClassic().parseText(planFile.text)
 
         ch_clean_in = Channel.fromList(planList).map { item ->
             def meta = [
@@ -48,8 +47,7 @@ workflow ANALYZE_WF {
     // MODE 2: Ensemble Clustering on Clean Trajectories
     if (params.cluster_plan) {
         def planFile = file(params.cluster_plan)
-        def jsonSlurper = new groovy.json.JsonSlurper()
-        def planList = jsonSlurper.parseText(planFile.text)
+        def planList = new groovy.json.JsonSlurperClassic().parseText(planFile.text)
 
         ch_cluster_in = Channel.fromList(planList).map { item ->
             def meta = [
@@ -71,8 +69,7 @@ workflow ANALYZE_WF {
     // MODE 3: Trajectory Metrics (RMSD, RMSF, Contacts)
     if (params.metrics_plan) {
         def planFile = file(params.metrics_plan)
-        def jsonSlurper = new groovy.json.JsonSlurper()
-        def planList = jsonSlurper.parseText(planFile.text)
+        def planList = new groovy.json.JsonSlurperClassic().parseText(planFile.text)
 
         ch_metrics_in = Channel.fromList(planList).map { item ->
             def meta = [
@@ -94,8 +91,7 @@ workflow ANALYZE_WF {
     // MODE 4: Standalone MM-PBSA from DB
     if (params.mmpbsa_plan) {
         def planFile = file(params.mmpbsa_plan)
-        def jsonSlurper = new groovy.json.JsonSlurper()
-        def planList = jsonSlurper.parseText(planFile.text)
+        def planList = new groovy.json.JsonSlurperClassic().parseText(planFile.text)
 
         ch_mmpbsa_in = Channel.fromList(planList).map { item ->
             def meta = [

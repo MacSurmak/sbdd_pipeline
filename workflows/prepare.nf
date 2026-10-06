@@ -12,8 +12,7 @@ workflow PREPARE_WF {
     def planFile = file(params.plan)
     if (!planFile.exists()) { error "FATAL: Plan file not found at ${params.plan}" }
     
-    def jsonSlurper = new groovy.json.JsonSlurper()
-    def planData = jsonSlurper.parseText(planFile.text)
+    def planData = new groovy.json.JsonSlurperClassic().parseText(planFile.text)
 
     // 1. Process Receptors if present in plan
     def receptorList = planData.receptors ?: (planData instanceof List ? planData : [])

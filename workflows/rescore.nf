@@ -21,8 +21,7 @@ workflow RESCORE_WF {
         return
     }
 
-    def jsonSlurper = new groovy.json.JsonSlurper()
-    def planData = jsonSlurper.parseText(planFile.text)
+    def planData = new groovy.json.JsonSlurperClassic().parseText(planFile.text)
 
     ch_tasks = Channel.fromList(planData.tasks ?: []).map { task ->
         def pv_file = file(task.pv_path)

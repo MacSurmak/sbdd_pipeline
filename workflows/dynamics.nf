@@ -16,8 +16,7 @@ workflow DYNAMICS_WF {
 
     if (params.md_plan) {
         def planFile = file(params.md_plan)
-        def jsonSlurper = new groovy.json.JsonSlurper()
-        def planData = jsonSlurper.parseText(planFile.text)
+        def planData = new groovy.json.JsonSlurperClassic().parseText(planFile.text)
 
         // Invariant system metadata (independent of replicate IDs to ensure 100% cache hits)
         ch_targets = Channel.fromList(planData).map { target ->

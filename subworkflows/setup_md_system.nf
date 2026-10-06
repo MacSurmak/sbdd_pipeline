@@ -45,7 +45,7 @@ workflow SETUP_MD_SYSTEM {
     // 2. Parse organic components for parallel Antechamber
     ch_ante_in = EXTRACT_MD_SYSTEM.out.extracted.flatMap { meta, rec_pdb, json_file, org_files ->
         def org_list = org_files instanceof List ? org_files : (org_files ? [org_files] : [])
-        def data = new groovy.json.JsonSlurper().parseText(json_file.text)
+        def data = new groovy.json.JsonSlurperClassic().parseText(json_file.text)
         data.collect { org ->
             def mol_meta = meta + [mol_id: org.name]
             def m_file = org_list.find { it.name == org.mol2 }

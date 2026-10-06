@@ -12,8 +12,7 @@ workflow SCREEN_WF {
     if (!params.dock_plan) { error "FATAL: Parameter --dock_plan (JSON) is required." }
 
     def planFile = file(params.dock_plan)
-    def jsonSlurper = new groovy.json.JsonSlurper()
-    def planData = jsonSlurper.parseText(planFile.text)
+    def planData = new groovy.json.JsonSlurperClassic().parseText(planFile.text)
 
     // 1. Receptors
     ch_targets = Channel.fromList(planData.receptors).map { rec ->
