@@ -638,6 +638,8 @@ def main():
     p_eq.add_argument("--ndx", required=True)
     p_eq.add_argument("--cpus", required=True)
     p_eq.add_argument("--posre_files", nargs="+", required=True)
+    p_eq.add_argument("--sys_name", required=True)
+    p_eq.add_argument("--water_names", required=True)
 
     p_chunk = subparsers.add_parser("run_chunk")
     p_chunk.add_argument("--prev_gro", required=True)
