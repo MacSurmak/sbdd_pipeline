@@ -22,7 +22,18 @@ workflow DOCK_LIBRARY {
     cnn_scoring         // val: "rescore"
     num_modes           // val: 3
     autobox_add         // val: 4.0
+    inner_box           // val: "10, 10, 10"
+    outer_box           // val: "26, 26, 26"
+    glide_forcefield    // val: "OPLS4"
+    glide_precision     // val: "SP"
+    poses_per_lig       // val: 16
+    cnn_model           // val: "crossdock_default2018"
+    glide_recep_vscale  // val: 1.0
+    glide_lig_vscale    // val: 1.0
+    glide_recep_ccut    // val: 0.25
+    glide_lig_ccut      // val: 0.15
     is_self             // val: boolean
+    outdir              // val: canonical project outdir string
 
     main:
     ch_summary_files = Channel.empty()
@@ -31,27 +42,23 @@ workflow DOCK_LIBRARY {
     // 0. Generate PyMOL docking box script for every receptor pocket
     GENERATE_DOCKING_BOX(
         ch_ref_lig_sdf,
-        params.inner_box,
-        params.outer_box,
+        inner_box,
+        outer_box,
         autobox_add
     )
     ch_summary_files = ch_summary_files.mix(GENERATE_DOCKING_BOX.out.box_pml.map { meta, pml -> pml })
 
     // 1. GLIDE DOCKING & GNINA RESCORE
     if (dock_engine in ["glide", "both"]) {
-        def inner_box = params.inner_box
-        def outer_box = params.outer_box
-        def ff_dock   = params.glide_forcefield
-        def prec      = params.glide_precision
-        def poses_n   = params.poses_per_lig
-        def cnn_resc  = params.cnn_model
-        def r_vscale  = params.glide_recep_vscale ?: 0.85
-        def l_vscale  = params.glide_lig_vscale ?: 0.85
-        def r_ccut    = params.glide_recep_ccut ?: 0.25
-        def l_ccut    = params.glide_lig_ccut ?: 0.15
-
         ch_grid_in = ch_receptor_mae.join(ch_ref_lig_mae, by: 0)
-        GLIDE_GRIDGEN(ch_grid_in, inner_box, outer_box, ff_dock, r_vscale, r_ccut)
+        GLIDE_GRIDGEN(
+            ch_grid_in,
+            inner_box,
+            outer_box,
+            glide_forcefield,
+            glide_recep_vscale,
+            glide_recep_ccut
+        )
 
         ch_glide_in = GLIDE_GRIDGEN.out.grid_zip.combine(ch_chunks_mae)
             .filter { meta_g, grid_zip, meta_l, lib_chunk_mae ->
@@ -68,7 +75,14 @@ workflow DOCK_LIBRARY {
                 ]
                 [ comb_meta, grid_zip, lib_chunk_mae ]
             }
-        GLIDE_DOCK(ch_glide_in, prec, poses_n, ff_dock, l_vscale, l_ccut)
+        GLIDE_DOCK(
+            ch_glide_in,
+            glide_precision,
+            poses_per_lig,
+            glide_forcefield,
+            glide_lig_vscale,
+            glide_lig_ccut
+        )
 
         ch_rec_rescore = ch_receptor_pdb.join(ch_ref_lig_sdf, by: 0)
         ch_rescore_in = GLIDE_DOCK.out.poses_sdf
@@ -77,7 +91,7 @@ workflow DOCK_LIBRARY {
             .map { frame_id, comb_meta, poses_sdf, rec_pdb, ref_sdf ->
                 [ comb_meta, rec_pdb, ref_sdf, poses_sdf ]
             }
-        GNINA_RESCORE(ch_rescore_in, cnn_resc)
+        GNINA_RESCORE(ch_rescore_in, cnn_model)
 
         // Consolidate Glide chunks per frame
         ch_to_merge_glide = GLIDE_DOCK.out.pv_maegz
@@ -186,14 +200,14 @@ workflow DOCK_LIBRARY {
     if (dock_engine in ["glide", "both"]) {
         ch_receipts = ch_receipts.mix(
             MERGE_GLIDE_CHUNKS.out.poses_sdf.map { meta, sdf ->
-                "${meta.id}\tglide\t${params.outdir}/docking/${meta.id}/${sdf.name}"
+                "${meta.id}\tglide\t${outdir}/docking/${meta.id}/${sdf.name}"
             }
         )
     }
     if (dock_engine in ["gnina", "both"]) {
         ch_receipts = ch_receipts.mix(
             MERGE_DOCK_CHUNKS.out.merged_sdf.map { meta, sdf ->
-                "${meta.id}\tgnina\t${params.outdir}/docking/${meta.id}/${sdf.name}"
+                "${meta.id}\tgnina\t${outdir}/docking/${meta.id}/${sdf.name}"
             }
         )
     }

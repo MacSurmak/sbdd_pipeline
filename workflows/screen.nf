@@ -78,10 +78,22 @@ workflow SCREEN_WF {
         [ chunk_meta, mae ]
     }
 
+    // Validate Fail-Fast parameters before dispatching tasks
+    if (params.dock_engine in ["glide", "both"]) {
+        if (!params.inner_box || !params.outer_box || !params.glide_forcefield || !params.glide_precision || !params.poses_per_lig || !params.glide_recep_vscale || !params.glide_lig_vscale || !params.glide_recep_ccut || !params.glide_lig_ccut) {
+            error "FATAL: Glide docking parameters missing in configuration! Check glide.yaml."
+        }
+    }
+    if (params.dock_engine in ["gnina", "both"]) {
+        if (!params.exhaustiveness || !params.cnn_scoring || !params.num_modes || !params.autobox_add) {
+            error "FATAL: GNINA docking parameters missing in configuration! Check gnina.yaml."
+        }
+    }
+
     // 3. Parallel Docking
     DOCK_LIBRARY(
         ch_rec_pdb,
-        ch_ref_sdf,
+        ch_ref_lig_sdf,
         ch_chunks_sdf,
         ch_rec_mae,
         ch_ref_mae,
@@ -91,7 +103,18 @@ workflow SCREEN_WF {
         params.cnn_scoring,
         params.num_modes,
         params.autobox_add,
-        (planData.mode == "self")
+        params.inner_box,
+        params.outer_box,
+        params.glide_forcefield,
+        params.glide_precision,
+        params.poses_per_lig,
+        params.cnn_model ?: "",
+        params.glide_recep_vscale,
+        params.glide_lig_vscale,
+        params.glide_recep_ccut,
+        params.glide_lig_ccut,
+        (planData.mode == "self"),
+        params.outdir
     )
 
     // 4. Generate structured execution receipt
