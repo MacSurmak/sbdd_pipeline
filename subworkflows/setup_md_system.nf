@@ -16,7 +16,7 @@ process EXTRACT_MD_SYSTEM {
     label 'process_single'
 
     input:
-    tuple val(meta), path(rec_file), path(lig_file, optional: true), val(cofactors)
+    tuple val(meta), path(rec_file), path(lig_file), val(cofactors)
 
     output:
     tuple val(meta), path("receptor_dry.pdb"), path("organics.json"), path("org_files/*"), emit: extracted
