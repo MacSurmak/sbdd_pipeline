@@ -12,10 +12,41 @@ from rich.progress import (
     TextColumn,
     TimeElapsedColumn,
     TimeRemainingColumn,
-    MofNCompleteColumn,
 )
 
 console = Console()
+
+
+def format_steps(n: int | float | None) -> str:
+    """Format step counts into dynamic readable metric units (units, K, M, G)."""
+    if n is None or not math.isfinite(float(n)):
+        return "?"
+    val = float(n)
+    abs_val = abs(val)
+    if abs_val >= 1e9:
+        return f"{val / 1e9:.2f}G"
+    elif abs_val >= 1e6:
+        return f"{val / 1e6:.2f}M"
+    elif abs_val >= 1e3:
+        if abs_val >= 100e3:
+            return f"{val / 1e3:.0f}K"
+        return f"{val / 1e3:.1f}K"
+    else:
+        return str(int(round(val)))
+
+
+def format_time_ns(ps: float | None) -> str:
+    """Format picoseconds into physical simulation time (ps, ns, µs)."""
+    if ps is None or not math.isfinite(float(ps)):
+        return ""
+    ns = ps / 1000.0
+    abs_ns = abs(ns)
+    if abs_ns >= 1000.0:
+        return f"{ns / 1000.0:.2f} µs"
+    elif abs_ns >= 1.0:
+        return f"{ns:.1f} ns"
+    else:
+        return f"{ps:.1f} ps"
 
 
 def run_monitor(port: int = 8089):
@@ -34,7 +65,7 @@ def run_monitor(port: int = 8089):
         TextColumn("[bold yellow]({task.fields[node]})[/bold yellow]"),
         BarColumn(),
         TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-        MofNCompleteColumn(),
+        TextColumn("{task.fields[step_info]}"),
         TextColumn("[bold green]{task.fields[speed]}[/bold green]"),
         TimeElapsedColumn(),
         TimeRemainingColumn(),
@@ -101,7 +132,11 @@ def run_monitor(port: int = 8089):
                         continue
 
                     last_seen[task_name] = now
-                    clean_name = task_name
+
+                    # Normalize task description without losing stage semantic tags (EQ, MD)
+                    clean_name = task_name.strip()
+                    if ":" in clean_name and not clean_name.startswith(("EQ:", "MD:", "SWISH:")):
+                        clean_name = clean_name.split(":")[-1].strip()
 
                     node_name = msg.get("node", "local")
                     dt_ps = msg.get("dt_ps")
@@ -110,8 +145,36 @@ def run_monitor(port: int = 8089):
                     current_step = msg.get("step")
 
                     if current_step is not None:
-                        display_total = total_steps
-                        display_step = current_step
+                        # Distinguish discrete pipeline chunks from continuous/external runs
+                        is_chunk = bool(re.search(r"(?:_C\d+|RUN_MD_CHUNK)", task_name))
+
+                        if (
+                            is_chunk
+                            and start_step is not None
+                            and total_steps is not None
+                            and total_steps > start_step
+                        ):
+                            display_total = total_steps - start_step
+                            display_step = max(
+                                0, min(display_total, current_step - start_step)
+                            )
+                        else:
+                            display_total = total_steps
+                            display_step = current_step
+
+                        # Physical simulation time string (absolute trajectory time: step * dt)
+                        time_info = ""
+                        if dt_ps is not None and current_step is not None:
+                            t_str = format_time_ns(current_step * dt_ps)
+                            if t_str:
+                                time_info = f" [dim]({t_str})[/dim]"
+
+                        if display_total is not None and display_step is not None:
+                            step_info_str = f"[cyan]{format_steps(display_step)}/{format_steps(display_total)}[/cyan]{time_info}"
+                        elif display_step is not None:
+                            step_info_str = f"[cyan]{format_steps(display_step)}[/cyan]{time_info}"
+                        else:
+                            step_info_str = time_info
 
                         if task_name not in task_stats:
                             task_stats[task_name] = {
@@ -168,6 +231,7 @@ def run_monitor(port: int = 8089):
                                 completed=display_step,
                                 node=escape(node_name),
                                 speed=speed_display,
+                                step_info=step_info_str,
                             )
                         else:
                             task_obj = progress._tasks[task_bars[task_name]]
@@ -184,6 +248,7 @@ def run_monitor(port: int = 8089):
                                 completed=display_step,
                                 node=escape(node_name),
                                 speed=speed_display,
+                                step_info=step_info_str,
                             )
                         continue
                 except socket.timeout:
