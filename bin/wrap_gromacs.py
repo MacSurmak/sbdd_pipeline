@@ -22,54 +22,18 @@ def send_telemetry(msg):
 
 
 def run_mdrun(cmd, task_name):
+    """
+    Executes GROMACS mdrun.
+    Low-level UDP telemetry is handled natively by the containerized /opt/containers/bin/gmx wrapper.
+    """
     if "-v" not in cmd:
         cmd.append("-v")
 
     print(f"Exec: {' '.join(cmd)}")
-    proc = subprocess.Popen(
-        cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
-    )
-
-    total_steps = None
-    start_step = None
-    dt_ps = None
-    node_name = os.environ.get("SLURMD_NODENAME", "local")
-
-    for line in proc.stdout:
-        sys.stdout.write(line)
-        sys.stdout.flush()
-
-        m_tot = re.search(r"(?:number of steps|nsteps)\s*[=:]\s*(\d+)", line, re.I)
-        if m_tot:
-            total_steps = int(m_tot.group(1))
-
-        m_dt = re.search(r"dt\s*=\s*([\d.]+)", line, re.I)
-        if m_dt:
-            dt_ps = float(m_dt.group(1))
-
-        m_step = re.search(r"(?:step|Step=)\s*(\d+)", line, re.I)
-        if m_step:
-            current_step = int(m_step.group(1))
-            if start_step is None:
-                start_step = current_step
-
-            send_telemetry(
-                {
-                    "task": task_name,
-                    "event": "progress",
-                    "step": current_step,
-                    "start": start_step,
-                    "total": total_steps,
-                    "dt_ps": dt_ps,
-                    "node": node_name,
-                }
-            )
-
-    proc.wait()
-    send_telemetry({"task": task_name, "event": "exit", "node": node_name})
-    if proc.returncode != 0:
-        print(f"FATAL: mdrun failed with exit code {proc.returncode}", file=sys.stderr)
-        sys.exit(proc.returncode)
+    res = subprocess.run(cmd, check=False)
+    if res.returncode != 0:
+        print(f"FATAL: mdrun failed with exit code {res.returncode}", file=sys.stderr)
+        sys.exit(res.returncode)
 
 
 def run_gmx(cmd, input_str=None):

@@ -16,12 +16,12 @@ workflow DYNAMICS_WF {
         def jsonSlurper = new groovy.json.JsonSlurper()
         def planData = jsonSlurper.parseText(planFile.text)
 
+        // Invariant system metadata (independent of replicate IDs to ensure 100% cache hits)
         ch_targets = Channel.fromList(planData).map { target ->
             def meta = [
                 id: target.id,
                 project: params.project_name,
-                native_ligand: target.lig_name ?: "",
-                replicates: target.reps_to_run ?: [1]
+                native_ligand: target.lig_name ?: ""
             ]
             def lig_f = target.lig_path ? file(target.lig_path).toAbsolutePath() : []
             [ meta, file(target.rec_path).toAbsolutePath(), lig_f, target.cofactors ?: [] ]
@@ -91,9 +91,21 @@ workflow DYNAMICS_WF {
 
     ch_md_protocol = Channel.fromPath("${params.md_protocol}/*", checkIfExists: true).collect()
 
-    // 2. Equilibration & Production using Protocol Playlist
+    // 2. Attach replicate IDs strictly after system build completion
+    ch_plan_reps = Channel.fromList(planData).map { target ->
+        [ target.id, target.reps_to_run ?: [1] ]
+    }
+
+    ch_systems_to_simulate = SETUP_MD_SYSTEM.out.system_ready.map { meta, gro, topol, ndx, posre_files ->
+        [ meta.id, meta, gro, topol, ndx, posre_files ]
+    }.join(ch_plan_reps, by: 0).map { id, meta, gro, topol, ndx, posre_files, reps_to_run ->
+        def meta_with_reps = meta + [replicates: reps_to_run]
+        [ meta_with_reps, gro, topol, ndx, posre_files ]
+    }
+
+    // 3. Equilibration & Production using Protocol Playlist
     RUN_CHUNKED_MD(
-        SETUP_MD_SYSTEM.out.system_ready,
+        ch_systems_to_simulate,
         ch_md_protocol,
         params.md_total_ns,
         params.md_chunk_ns,

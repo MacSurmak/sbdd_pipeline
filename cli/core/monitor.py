@@ -167,9 +167,12 @@ def run_monitor(port: int = 8089):
 
                     last_seen[task_name] = now
 
-                    # Normalize task description without losing stage semantic tags (EQ, MD)
+                    # Clean task description and normalize container wrapper task tags
                     clean_name = task_name.strip()
-                    if ":" in clean_name and not clean_name.startswith(("EQ:", "MD:", "SWISH:")):
+                    m_chunk_wrap = re.match(r"^RUN_MD_CHUNK_\d+_(.+?)\s+(\(#\d+\))\s*\([^)]*\)$", clean_name)
+                    if m_chunk_wrap:
+                        clean_name = f"MD: {m_chunk_wrap.group(1)} {m_chunk_wrap.group(2)}"
+                    elif ":" in clean_name and not clean_name.startswith(("EQ:", "MD:", "SWISH:")):
                         clean_name = clean_name.split(":")[-1].strip()
 
                     node_name = msg.get("node", "local")
