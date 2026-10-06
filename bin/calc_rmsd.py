@@ -165,9 +165,13 @@ def main():
         else ("InSitu_RMSD_GNINA_A" if args.engine == "gnina" else "InSitu_RMSD_A")
     )
 
+    final_title = matched_title or args.title
+    if not final_title:
+        raise ValueError("FATAL: Ligand title could not be resolved from file properties or CLI arguments.")
+
     row = {
         "Receptor": args.receptor,
-        "Title": matched_title or args.title or "LIG",
+        "Title": final_title,
         engine_col: val,
         "InSitu_RMSD_A": val,
         "RMSD_Heavy": val,

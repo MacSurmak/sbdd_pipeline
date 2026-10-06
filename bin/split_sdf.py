@@ -17,7 +17,7 @@ def main():
         "--chunk_size",
         dest="batch_size",
         type=int,
-        default=15,
+        required=True,
         help="Molecules per chunk",
     )
     parser.add_argument("--outdir", default=".", help="Output directory for chunks")

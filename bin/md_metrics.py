@@ -103,9 +103,9 @@ def compute_contacts(
     struct_path: str,
     xtc_path: str,
     ligand_resname: str,
-    c_heavy=3.5,
-    c_hyd=4.0,
-    c_pol=3.4,
+    c_heavy: float,
+    c_hyd: float,
+    c_pol: float,
 ):
     u = mda.Universe(struct_path, xtc_path)
     prot = u.select_atoms("protein")

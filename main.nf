@@ -26,7 +26,7 @@ def helpMessage() {
       --project_name     Project name for isolated /shared/work scratch
       --receptor         Path to input receptor structure (.cif or .pdb)
       --library          Path to ligand library (.sdf)
-      --native_ligand    3-letter residue name of native reference ligand (default: PKA)
+      --native_ligand    3-letter residue name of native reference ligand
       --dock_engine      Docking engine: 'gnina' or 'glide' (default: gnina)
       --membrane         Enable PPM 3.0 membrane immersion & lipid bilayer (default: true)
       --run_md           Enable downstream MD simulations (default: false)

@@ -33,8 +33,11 @@ def add_pocket_group(ndx_path: Path, pdb_path: Path, ligand_name: str):
     """Selects protein residues within 5.0 A of ligand plus ligand itself."""
     import MDAnalysis as mda
 
+    if not ligand_name:
+        raise ValueError("FATAL: ligand_name must be explicitly provided to generate the Pocket group.")
+
     u = mda.Universe(str(pdb_path))
-    lig_res = (ligand_name or "KVR").strip().upper()
+    lig_res = ligand_name.strip().upper()
     lig_atoms = u.select_atoms(f"resname {lig_res}")
     if len(lig_atoms) == 0:
         pocket = u.select_atoms("protein")
@@ -212,7 +215,7 @@ if __name__ == "__main__":
     parser.add_argument("--ndx", required=True)
     parser.add_argument("--top", required=False)
     parser.add_argument("--pdb", required=False)
-    parser.add_argument("--ligand", default="KVR")
+    parser.add_argument("--ligand", default="")
     parser.add_argument(
         "--action",
         choices=["add_groups", "generate_posre", "ensure_complex", "add_pocket"],
