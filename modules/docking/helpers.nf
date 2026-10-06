@@ -11,7 +11,7 @@ process GENERATE_DOCKING_BOX {
     val(autobox_add)
 
     output:
-    tuple val(meta), path("docking_box.pml"), emit: box_pml
+    tuple val(meta), path("${meta.id}_docking_box.pml"), emit: box_pml
 
     script:
     """
@@ -21,7 +21,7 @@ process GENERATE_DOCKING_BOX {
         --inner_box "${inner_box}" \\
         --outer_box "${outer_box}" \\
         --autobox_add ${autobox_add} \\
-        --output "docking_box.pml"
+        --output "${meta.id}_docking_box.pml"
     """
 }
 

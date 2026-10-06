@@ -46,7 +46,6 @@ workflow DOCK_LIBRARY {
         outer_box,
         autobox_add
     )
-    ch_summary_files = ch_summary_files.mix(GENERATE_DOCKING_BOX.out.box_pml.map { meta, pml -> pml })
 
     // 1. GLIDE DOCKING & GNINA RESCORE
     if (dock_engine in ["glide", "both"]) {
@@ -136,7 +135,6 @@ workflow DOCK_LIBRARY {
             .mix(MERGE_GLIDE_CHUNKS.out.poses_sdf.map { meta, sdf -> sdf })
             .mix(MERGE_RESC_CHUNKS.out.rescored_sdf.map { meta, sdf -> sdf })
             .mix(CALC_RMSD_GLIDE.out.rmsd_csv.map { meta, csv -> csv })
-            .mix(ch_ref_lig_sdf.map { meta, sdf -> sdf })
 
         ch_primary_poses = MERGE_GLIDE_CHUNKS.out.poses_sdf
     }
