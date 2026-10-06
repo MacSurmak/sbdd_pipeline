@@ -93,7 +93,7 @@ workflow SCREEN_WF {
     // 3. Parallel Docking
     DOCK_LIBRARY(
         ch_rec_pdb,
-        ch_ref_lig_sdf,
+        ch_ref_sdf,
         ch_chunks_sdf,
         ch_rec_mae,
         ch_ref_mae,
