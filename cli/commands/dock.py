@@ -281,13 +281,6 @@ def cmd_dock(args):
     nf_args = build_nextflow_args(configs, cwd, entrypoint="screen")
     nf_args.extend(["--dock_plan", str(plan_file.resolve())])
 
-    if getattr(args, "engine", None):
-        if "--dock_engine" in nf_args:
-            idx = nf_args.index("--dock_engine")
-            nf_args[idx + 1] = args.engine
-        else:
-            nf_args.extend(["--dock_engine", args.engine])
-
     if getattr(args, "urgent", False):
         nf_args.extend(["--queue", "urgent"])
 

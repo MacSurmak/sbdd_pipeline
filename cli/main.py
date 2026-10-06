@@ -119,15 +119,7 @@ def run_workflow(entrypoint: str, args):
     configs = load_project_configs(cwd)
     nf_args = build_nextflow_args(configs, cwd, entrypoint=entrypoint)
 
-    # CLI flag overrides
-    if getattr(args, "receptor", None):
-        nf_args.extend(["--receptor", str(Path(args.receptor).resolve())])
-    if getattr(args, "library", None):
-        nf_args.extend(["--library", str(Path(args.library).resolve())])
-    if getattr(args, "engine", None):
-        nf_args.extend(["--dock_engine", args.engine])
-    if getattr(args, "hits", None):
-        nf_args.extend(["--md_hits", args.hits])
+    # Explicit CLI file inputs for manual overrides (Strictly structural, not physical parameters)
     if getattr(args, "traj", None):
         nf_args.extend(["--traj", str(Path(args.traj).resolve())])
     if getattr(args, "tpr", None):
@@ -271,7 +263,7 @@ def main():
         "--force", action="store_true", help="Overwrite existing templates"
     )
 
-    # Common options for workflows
+    # Common options for orchestration
     def add_common_wf_args(p):
         p.add_argument("--local", action="store_true", help="Run locally without Slurm")
         p.add_argument(
@@ -331,12 +323,6 @@ def main():
         help="Run 1-to-1 self-docking (redocking) of each receptor with its own native ligand without cross-docking matrix",
     )
     p_dock.add_argument("--name", help="Name for the output PoseSet in DB")
-    p_dock.add_argument(
-        "--engine",
-        choices=["gnina", "glide", "both"],
-        default=None,
-        help="Docking engine choice (default: from configs)",
-    )
     add_common_wf_args(p_dock)
 
     # 3.1 select-hits
@@ -381,16 +367,6 @@ def main():
     )
     p_dyn.add_argument(
         "--system", help="Name of the physical System to simulate (from 'sbdd tree')"
-    )
-    p_dyn.add_argument(
-        "--replicates",
-        type=int,
-        help="Number of independent replicates (default: from config)",
-    )
-    p_dyn.add_argument(
-        "--total_ns",
-        type=float,
-        help="Total simulation duration in ns (default: from config)",
     )
     add_common_wf_args(p_dyn)
 

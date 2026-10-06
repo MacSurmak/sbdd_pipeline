@@ -126,21 +126,21 @@ def execute_nextflow(
     reports_dir.mkdir(parents=True, exist_ok=True)
     log_file = reports_dir / f"nextflow_{entrypoint}.log"
 
-    # Pre-generate unrolled DAG pipeline snapshot
-    total_ns = 60.0
-    chunk_ns = 10.0
-    if configs:
-        prod_cfg = configs.get("md_simulation", {}).get("production", {})
-        total_ns = float(prod_cfg.get("total_time_ns", 60.0))
-        chunk_ns = float(prod_cfg.get("chunk_size_ns", 10.0))
-
-    for i, arg in enumerate(extra_args):
-        if arg == "--md_total_ns" and i + 1 < len(extra_args):
-            total_ns = float(extra_args[i + 1])
-        elif arg == "--md_chunk_ns" and i + 1 < len(extra_args):
-            chunk_ns = float(extra_args[i + 1])
-
-    total_c = max(1, int(round(total_ns / chunk_ns)))
+    # Pre-generate unrolled DAG pipeline snapshot with strict Fail-Fast config reading
+    total_ns = None
+    chunk_ns = None
+    if configs and "md_simulation" in configs and "production" in configs["md_simulation"]:
+        try:
+            total_ns = float(configs["md_simulation"]["production"]["total_time_ns"])
+            chunk_ns = float(configs["md_simulation"]["production"]["chunk_size_ns"])
+        except KeyError as e:
+            raise ValueError(f"FATAL: Missing required parameter {e} in md.yaml")
+    
+    if total_ns is None or chunk_ns is None:
+        # Fallback only if we are absolutely not running MD
+        total_c = 1
+    else:
+        total_c = max(1, int(round(total_ns / chunk_ns)))
 
     pipeline_code_dir = scratch_base / ".pipeline_code"
     pipeline_code_dir.mkdir(parents=True, exist_ok=True)

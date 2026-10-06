@@ -21,11 +21,13 @@ def cmd_dynamics(args):
     configs = load_project_configs(cwd)
 
     # 1. Resolve Systems needing simulation and calculate required top-up replicates
-    reps_target = int(
-        configs.get("md_simulation", {}).get("production", {}).get("replicates", 1)
-    )
-    if getattr(args, "replicates", None):
-        reps_target = int(args.replicates)
+    # Strict Fail-Fast on missing parameters
+    try:
+        reps_target = int(configs["md_simulation"]["production"]["replicates"])
+        total_duration_ns = float(configs["md_simulation"]["production"]["total_time_ns"])
+    except KeyError as e:
+        console.print(f"[bold red]FATAL: Missing required MD configuration parameter in md.yaml: {e}[/bold red]")
+        sys.exit(1)
 
     query = session.query(System).filter_by(state="ready")
     if getattr(args, "system", None):
@@ -120,18 +122,12 @@ def cmd_dynamics(args):
     nf_args = build_nextflow_args(configs, cwd, entrypoint="dynamics")
     nf_args.extend(["--md_plan", str(plan_file.resolve())])
 
+    # Enforce dynamic maximum replicates needed for this specific batch execution
     if "--md_replicates" in nf_args:
         idx = nf_args.index("--md_replicates")
         nf_args[idx + 1] = str(max_reps_dispatch)
     else:
         nf_args.extend(["--md_replicates", str(max_reps_dispatch)])
-
-    if getattr(args, "total_ns", None):
-        if "--md_total_ns" in nf_args:
-            idx = nf_args.index("--md_total_ns")
-            nf_args[idx + 1] = str(args.total_ns)
-        else:
-            nf_args.extend(["--md_total_ns", str(args.total_ns)])
 
     if getattr(args, "urgent", False):
         nf_args.extend(["--queue", "urgent"])
@@ -148,12 +144,6 @@ def cmd_dynamics(args):
         sys.exit(ret_code)
 
     # 4. Atomic Registration of Trajectories with Incremental Replicate Indexing
-    total_duration_ns = float(
-        configs.get("md_simulation", {}).get("production", {}).get("total_time_ns", 0.0)
-    )
-    if getattr(args, "total_ns", None):
-        total_duration_ns = float(args.total_ns)
-
     registered_trajs = 0
     for sys_obj, needed_reps in systems_to_run:
         # Find highest existing replicate index

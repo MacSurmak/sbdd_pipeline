@@ -45,19 +45,14 @@ def build_nextflow_args(
         )
     args.extend(["--project_name", str(proj_cfg["name"])])
 
-    # Global PrepWizard defaults (can be customized via config in the future)
-    args.extend(
-        [
-            "--cap_termini",
-            "true",
-            "--target_ph",
-            "7.4",
-            "--ph_tolerance",
-            "1.0",
-            "--minimize_rmsd",
-            "0.3",
-        ]
-    )
+    # PrepWizard strict parsing
+    prep_cfg = config.get("preparation", {})
+    if prep_cfg:
+        for key, flag in [("target_ph", "--target_ph"), ("ph_tolerance", "--ph_tolerance"), ("minimize_rmsd", "--minimize_rmsd")]:
+            if key in prep_cfg:
+                args.extend([flag, str(prep_cfg[key])])
+        if "cap_termini" in prep_cfg:
+            args.extend(["--cap_termini", "true" if prep_cfg["cap_termini"] else "false"])
 
     # 3. Membrane
     mem_cfg = config.get("membrane", {})
