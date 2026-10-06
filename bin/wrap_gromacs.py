@@ -57,32 +57,91 @@ def cmd_trjconv(args):
 
 def cmd_equilibration(args):
     if not Path("protocol.txt").exists():
-        print("FATAL: protocol.txt playlist not found")
+        print("FATAL: protocol.txt playlist not found!", file=sys.stderr)
         sys.exit(1)
-        
+
     prev_gro = args.input_gro
-    prev_cpt = ""
+    prev_cpt = None
+    last_stage = None
+
     with open("protocol.txt", "r") as f:
         for line in f:
             mdp = line.strip()
-            if not mdp: continue
+            if not mdp:
+                continue
             stage = Path(mdp).stem
-            cmd = ["gmx", "grompp", "-f", mdp, "-o", f"{stage}.tpr", "-c", prev_gro, "-r", prev_gro, "-p", args.topol, "-n", args.ndx, "-maxwarn", "2"]
-            if prev_cpt and "em" not in stage and "minim" not in stage:
+            last_stage = stage
+
+            cmd = [
+                "gmx",
+                "grompp",
+                "-f",
+                mdp,
+                "-o",
+                f"{stage}.tpr",
+                "-c",
+                prev_gro,
+                "-r",
+                prev_gro,
+                "-p",
+                args.topol,
+                "-n",
+                args.ndx,
+                "-maxwarn",
+                "2",
+            ]
+
+            # Checkpoint file (-t) is passed strictly if it physically exists from a prior dynamical step
+            if prev_cpt and Path(prev_cpt).exists() and "em" not in stage and "minim" not in stage:
                 cmd.extend(["-t", prev_cpt])
+
             run_gmx(cmd)
-            
-            run_cmd = ["gmx", "mdrun", "-deffnm", stage, "-nb", "gpu", "-ntmpi", "1", "-ntomp", str(args.cpus)]
+
+            run_cmd = [
+                "gmx",
+                "mdrun",
+                "-deffnm",
+                stage,
+                "-nb",
+                "gpu",
+                "-ntmpi",
+                "1",
+                "-ntomp",
+                str(args.cpus),
+            ]
             if "em" not in stage and "minim" not in stage:
                 run_cmd.extend(["-pme", "gpu"])
+
             run_gmx(run_cmd)
-            
-            prev_gro = f"{stage}.gro"
-            prev_cpt = f"{stage}.cpt"
-            
+
+            out_gro = Path(f"{stage}.gro")
+            if not out_gro.exists():
+                print(f"FATAL: Stage '{stage}' failed to produce coordinate file {out_gro}!", file=sys.stderr)
+                sys.exit(1)
+            prev_gro = str(out_gro)
+
+            out_cpt = Path(f"{stage}.cpt")
+            if out_cpt.exists():
+                prev_cpt = str(out_cpt)
+            else:
+                prev_cpt = None
+
+    if not last_stage:
+        print("FATAL: protocol.txt is empty!", file=sys.stderr)
+        sys.exit(1)
+
     shutil.copy2(prev_gro, "eq_final.gro")
-    shutil.copy2(prev_cpt, "eq_final.cpt")
-    shutil.copy2(f"{stage}.tpr", "eq_final.tpr")
+    if prev_cpt and Path(prev_cpt).exists():
+        shutil.copy2(prev_cpt, "eq_final.cpt")
+    else:
+        print(
+            "FATAL: Multi-stage equilibration finished without generating a velocity checkpoint (.cpt) file! "
+            "Production MD cannot be launched without velocities.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    shutil.copy2(f"{last_stage}.tpr", "eq_final.tpr")
 
 def cmd_run_chunk(args):
     for p in args.posre_files:
