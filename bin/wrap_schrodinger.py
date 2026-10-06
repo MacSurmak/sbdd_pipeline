@@ -77,7 +77,8 @@ def cmd_gridgen(args):
 
 
 def cmd_glide_dock(args):
-    os.environ["SCHRODINGER_JOBDB"] = f"/tmp/schrodinger_jobdb_{os.getpid()}"
+    tmp_dir = os.environ.get("SLURM_TMPDIR", "/tmp")
+    os.environ["SCHRODINGER_JOBDB"] = f"{tmp_dir}/schrodinger_jobdb_{os.getpid()}"
     Path(os.environ["SCHRODINGER_JOBDB"]).mkdir(parents=True, exist_ok=True)
     with open("dock.in", "w") as f:
         f.write(f"GRIDFILE {args.grid_zip}\n")
@@ -112,42 +113,9 @@ def cmd_glide_dock(args):
 
 
 def cmd_prime_mmgbsa(args):
-    libs = [
-        "libtirpc.so.3",
-        "libkeyutils.so.1",
-        "libgssapi_krb5.so.2",
-        "libkrb5.so.3",
-        "libk5crypto.so.3",
-        "libcom_err.so.2",
-        "libkrb5support.so.0",
-    ]
-    binds = []
-    for lib in libs:
-        for loc in [
-            "/lib64",
-            "/usr/lib64",
-            "/lib/x86_64-linux-gnu",
-            "/usr/lib/x86_64-linux-gnu",
-            "/usr/lib",
-        ]:
-            p = Path(loc) / lib
-            if p.exists():
-                binds.extend(
-                    [
-                        f"{p}:/usr/lib/x86_64-linux-gnu/{lib}",
-                        f"{p}:/lib/x86_64-linux-gnu/{lib}",
-                        f"{p}:/usr/lib64/{lib}",
-                    ]
-                )
-                break
     env = os.environ.copy()
-    if binds:
-        new_binds = ",".join(binds)
-        for var in ["APPTAINER_BINDPATH", "SINGULARITY_BINDPATH"]:
-            ext = env.get(var, "")
-            env[var] = f"{new_binds},{ext}" if ext else new_binds
-
-    env["SCHRODINGER_JOBDB"] = f"/tmp/schrodinger_jobdb_{os.getpid()}"
+    tmp_dir = os.environ.get("SLURM_TMPDIR", "/tmp")
+    env["SCHRODINGER_JOBDB"] = f"{tmp_dir}/schrodinger_jobdb_{os.getpid()}"
     Path(env["SCHRODINGER_JOBDB"]).mkdir(parents=True, exist_ok=True)
 
     cmd = get_tool("prime_mmgbsa") + [

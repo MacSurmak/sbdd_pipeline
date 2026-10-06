@@ -71,19 +71,26 @@ def cmd_clean_traj(args):
     plan_list = []
     for t in trajs:
         raw_dir = Path(t.raw_dir).resolve()
-        chunks = sorted(
-            raw_dir.glob("md_*.xtc"),
-            key=lambda p: int("".join(filter(str.isdigit, p.stem)) or 0),
-        )
+        
+        chunks = []
+        chunk_idx = 1
+        while True:
+            chunk_file = raw_dir / f"md_{chunk_idx}.xtc"
+            if chunk_file.exists():
+                chunks.append(chunk_file)
+                chunk_idx += 1
+            else:
+                break
+                
         if not chunks:
-            # Fallback if raw directory contains single xtc
-            chunks = list(raw_dir.glob("*.xtc"))
-
-        if not chunks:
-            console.print(
-                f"[bold red]FATAL: No raw trajectory chunks found in {raw_dir}[/bold red]"
-            )
-            sys.exit(1)
+            single_file = raw_dir / f"{t.name}.xtc"
+            if single_file.exists():
+                chunks.append(single_file)
+            else:
+                console.print(
+                    f"[bold red]FATAL: No expected deterministic trajectory chunks found in {raw_dir}[/bold red]"
+                )
+                sys.exit(1)
 
         clean_dir = raw_dir.parent / "clean"
         plan_list.append(
@@ -385,15 +392,16 @@ def cmd_cluster(args):
         sys.exit(ret_code)
 
     prepared_dir = (cwd / "prepared").resolve()
-    receipt_files = sorted(prepared_dir.glob("*_cluster_receipt.tsv"))
-    if not receipt_files:
-        legacy = cwd / "cluster_receipt.tsv"
-        if legacy.exists():
-            receipt_files = [legacy]
-
+    receipt_files = []
+    
+    for task_id in sys_map.keys():
+        expected_receipt = prepared_dir / f"{task_id}_cluster_receipt.tsv"
+        if expected_receipt.exists():
+            receipt_files.append(expected_receipt)
+            
     if not receipt_files:
         console.print(
-            f"[bold red]FATAL: No cluster receipt files found in {prepared_dir}![/bold red]"
+            f"[bold red]FATAL: Expected cluster receipt files not found in {prepared_dir}![/bold red]"
         )
         sys.exit(1)
 

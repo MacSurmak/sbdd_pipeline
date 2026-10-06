@@ -15,18 +15,22 @@ def load_project_configs(project_dir: Path) -> Dict[str, Any]:
     search_dirs = [config_dir] if config_dir.exists() else [project_dir]
 
     merged: Dict[str, Any] = {}
-    yaml_files = []
-    for sdir in search_dirs:
-        yaml_files.extend(list(sdir.glob("*.yaml")) + list(sdir.glob("*.yml")))
+    expected_configs = [
+        "project.yaml", "glide.yaml", "gnina.yaml", "md.yaml", 
+        "membrane.yaml", "mmpbsa.yaml", "manifest.yaml"
+    ]
 
-    for yf in sorted(yaml_files):
-        try:
-            with open(yf, "r", encoding="utf-8") as f:
-                data = yaml.safe_load(f)
-                if isinstance(data, dict):
-                    merged.update(data)
-        except Exception as e:
-            raise ValueError(f"Failed to parse YAML file {yf.name}: {e}")
+    for sdir in search_dirs:
+        for cfg_name in expected_configs:
+            yf = sdir / cfg_name
+            if yf.exists():
+                try:
+                    with open(yf, "r", encoding="utf-8") as f:
+                        data = yaml.safe_load(f)
+                        if isinstance(data, dict):
+                            merged.update(data)
+                except Exception as e:
+                    raise ValueError(f"FATAL: Failed to parse required YAML file {yf.name}: {e}")
 
     return merged
 

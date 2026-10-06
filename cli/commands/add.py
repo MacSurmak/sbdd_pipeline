@@ -95,36 +95,12 @@ def _extract_ligand_atoms(rec_path: Path, lig_resname: str, out_sdf: Path) -> No
         else [schrod_bin, "python3", "-c"]
     )
 
-    py_code = """
-import sys
-from schrodinger import structure
-from schrodinger.structutils import assignbondorders
+    script_path = Path(__file__).parent.parent.parent / "bin" / "utils" / "extract_ligand_bonds.py"
+    if not script_path.exists():
+        raise FileNotFoundError(f"FATAL: Extraction script not found at {script_path}")
 
-rec_file = sys.argv[1]
-lig_name = sys.argv[2].strip().upper()
-out_file = sys.argv[3]
-
-st = structure.StructureReader.read(rec_file)
-lig_atoms = [a.index for a in st.atom if a.pdbres.strip().upper() == lig_name]
-
-if not lig_atoms:
-    avail = sorted(list(set(a.pdbres.strip().upper() for a in st.atom)))
-    print(f"RESIDUE_NOT_FOUND: {avail}", file=sys.stderr)
-    sys.exit(2)
-
-lig_st = st.extract(lig_atoms)
-lig_st.title = lig_name
-
-# Assign correct chemical bond orders and formal charges from 3D geometry
-try:
-    assignbondorders.assign_st(lig_st)
-except Exception as e:
-    sys.stderr.write(f"Warning: assignbondorders note: {e}\\n")
-
-lig_st.write(out_file)
-"""
     cmd = schrod_cmd + [
-        py_code,
+        str(script_path.resolve()),
         str(rec_path.resolve()),
         lig_clean,
         str(out_sdf.resolve()),
