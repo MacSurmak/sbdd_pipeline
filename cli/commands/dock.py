@@ -140,7 +140,11 @@ def cmd_dock(args):
             unique_lig_name = f"{r.name}_{native_lig.name}"
 
             # Strict validation: Candidate ligand MUST be in state 'ready' (processed via LigPrep)
-            if native_lig.state != "ready" or not native_lig.path_mae or not native_lig.path_sdf:
+            if (
+                native_lig.state != "ready"
+                or not native_lig.path_mae
+                or not native_lig.path_sdf
+            ):
                 console.print(
                     f"[bold red]FATAL: Chemical Ligand '{native_lig.name}' is in state '{native_lig.state}'! "
                     f"Run 'sbdd prep' first so LigPrep generates canonical 3D states.[/bold red]"

@@ -79,9 +79,7 @@ def main():
         c = c.replace("{GEN_VEL}", gen_vel)
         (out_dir / f"{name}.mdp").write_text(c)
 
-    build_nvt(
-        "nvt_short", args.nvt_short_ps, "-DPOSRES -DPOSRES_LIG", "no", "yes"
-    )
+    build_nvt("nvt_short", args.nvt_short_ps, "-DPOSRES -DPOSRES_LIG", "no", "yes")
     build_nvt(
         "nvt_long",
         args.nvt_long_ps,

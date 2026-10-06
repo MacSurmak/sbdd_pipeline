@@ -57,6 +57,7 @@ def cmd_prep(args):
         try:
             from rdkit import Chem
             from rdkit.Chem import AllChem
+
             m = Chem.MolFromSmiles(lig.smiles)
             if m:
                 m = Chem.AddHs(m)
@@ -69,11 +70,13 @@ def cmd_prep(args):
             pass
 
         if lig_raw_sdf.exists() and lig_raw_sdf.stat().st_size > 0:
-            lig_plan.append({
-                "name": lig.name,
-                "path": str(lig_raw_sdf.resolve()),
-                "status": "unprepared"
-            })
+            lig_plan.append(
+                {
+                    "name": lig.name,
+                    "path": str(lig_raw_sdf.resolve()),
+                    "status": "unprepared",
+                }
+            )
 
     if not raw_frames and not lig_plan:
         console.print(
@@ -104,10 +107,7 @@ def cmd_prep(args):
             }
         )
 
-    plan_data = {
-        "receptors": rec_plan,
-        "ligands": lig_plan
-    }
+    plan_data = {"receptors": rec_plan, "ligands": lig_plan}
 
     plan_file = cwd / "prep_plan.json"
     with open(plan_file, "w") as f:
@@ -179,6 +179,7 @@ def cmd_prep(args):
                     # Calculate actual formal charge from the prepared in-situ ligand
                     try:
                         from rdkit import Chem
+
                         suppl = Chem.SDMolSupplier(str(prep_sdf_path), removeHs=False)
                         mol = next((m for m in suppl if m is not None), None)
                         if mol:

@@ -21,7 +21,9 @@ def cmd_rescore(args):
 
     dock_dir = cwd / "docking"
     if not dock_dir.exists():
-        console.print("[bold red]FATAL: No 'docking/' directory found. Run 'sbdd dock' first![/bold red]")
+        console.print(
+            "[bold red]FATAL: No 'docking/' directory found. Run 'sbdd dock' first![/bold red]"
+        )
         sys.exit(1)
 
     pv_files = sorted(dock_dir.glob("*/*_dock_pv.maegz"))
@@ -29,29 +31,35 @@ def cmd_rescore(args):
         pv_files = sorted(dock_dir.glob("*_dock_pv.maegz"))
 
     if not pv_files:
-        console.print("[bold red]FATAL: No Glide Pose Viewer (*_dock_pv.maegz) files found to rescore.[/bold red]")
+        console.print(
+            "[bold red]FATAL: No Glide Pose Viewer (*_dock_pv.maegz) files found to rescore.[/bold red]"
+        )
         sys.exit(1)
 
     tasks = []
     for pv in pv_files:
         frame_name = pv.stem.replace("_dock_pv", "")
-        tasks.append({
-            "name": frame_name,
-            "pv_path": str(pv.resolve()),
-            "frame": frame_name
-        })
+        tasks.append(
+            {"name": frame_name, "pv_path": str(pv.resolve()), "frame": frame_name}
+        )
 
     plan = {
         "use_whitelist": getattr(args, "use_whitelist", False),
-        "whitelist_path": str((cwd / "funnel_whitelist.csv").resolve()) if (cwd / "funnel_whitelist.csv").exists() else "",
-        "tasks": tasks
+        "whitelist_path": (
+            str((cwd / "funnel_whitelist.csv").resolve())
+            if (cwd / "funnel_whitelist.csv").exists()
+            else ""
+        ),
+        "tasks": tasks,
     }
 
     plan_file = cwd / "rescore_plan.json"
     with open(plan_file, "w") as f:
         json.dump(plan, f, indent=2)
 
-    console.print(f"[bold cyan]Dispatching standalone Prime MM-GBSA rescoring for {len(tasks)} receptor frame(s)...[/bold cyan]")
+    console.print(
+        f"[bold cyan]Dispatching standalone Prime MM-GBSA rescoring for {len(tasks)} receptor frame(s)...[/bold cyan]"
+    )
 
     configs = load_project_configs(cwd)
     nf_args = build_nextflow_args(configs, cwd, entrypoint="rescore")
@@ -71,5 +79,7 @@ def cmd_rescore(args):
         console.print("[bold red]Nextflow MM-GBSA rescoring failed.[/bold red]")
         sys.exit(ret_code)
 
-    console.print("\n[bold green]✓ Prime MM-GBSA rescoring completed! Master ranking updated in reports/ranking.csv.[/bold green]\n")
+    console.print(
+        "\n[bold green]✓ Prime MM-GBSA rescoring completed! Master ranking updated in reports/ranking.csv.[/bold green]\n"
+    )
     session.close()
