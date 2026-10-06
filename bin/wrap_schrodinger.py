@@ -5,6 +5,40 @@ import subprocess
 import os
 from pathlib import Path
 
+def get_tool(tool_name: str) -> list:
+    if "SCHRODINGER" not in os.environ:
+        print(
+            "FATAL: Environment variable $SCHRODINGER is not defined! "
+            "Process must be executed within the isolated Schrödinger Apptainer/host runtime.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    schrod_dir = Path(os.environ["SCHRODINGER"]).resolve()
+    if not schrod_dir.exists():
+        print(
+            f"FATAL: Directory $SCHRODINGER={schrod_dir} does not exist on this node.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    bin_path = schrod_dir / tool_name
+    if bin_path.exists() and os.access(bin_path, os.X_OK):
+        return [str(bin_path)]
+
+    util_path = schrod_dir / "utilities" / tool_name
+    if util_path.exists() and os.access(util_path, os.X_OK):
+        return [str(util_path)]
+
+    print(
+        f"FATAL: Schrödinger binary '{tool_name}' was not found at canonical paths:\n"
+        f"  - {bin_path}\n"
+        f"  - {util_path}\n"
+        f"Execution aborted by Fail-Fast law.",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
 def run_cmd(cmd, env=None):
     print(f"Exec: {' '.join(cmd)}")
     res = subprocess.run(cmd, check=False, env=env)
@@ -16,7 +50,7 @@ def cmd_gridgen(args):
     from schrodinger import structure
     st = structure.StructureReader.read(args.ref_lig_mae)
     if st.atom_total == 0:
-        print("FATAL: Empty reference ligand")
+        print("FATAL: Empty reference ligand", file=sys.stderr)
         sys.exit(1)
     cx = sum(a.x for a in st.atom) / st.atom_total
     cy = sum(a.y for a in st.atom) / st.atom_total
@@ -33,7 +67,7 @@ def cmd_gridgen(args):
         f.write(f"RECEP_VSCALE {args.recep_vscale}\n")
         f.write("RECEP_CCUT 0.25\n")
         
-    run_cmd(["schrodinger", "glide", "gridgen.in", "-OVERWRITE", "-WAIT", "-HOST", "localhost"])
+    run_cmd(get_tool("glide") + ["gridgen.in", "-OVERWRITE", "-WAIT", "-HOST", "localhost"])
 
 def cmd_glide_dock(args):
     os.environ["SCHRODINGER_JOBDB"] = f"/tmp/schrodinger_jobdb_{os.getpid()}"
@@ -46,14 +80,14 @@ def cmd_glide_dock(args):
         f.write("POSTDOCK yes\nEPIK_PENALTIES yes\nSAMPLE_RINGS yes\nWRITE_CSV yes\n")
         f.write(f"FORCEFIELD {args.forcefield}\n")
         f.write(f"LIG_VSCALE {args.lig_vscale}\nLIG_CCUT 0.15\n")
-    run_cmd(["schrodinger", "glide", "dock.in", "-OVERWRITE", "-WAIT", "-HOST", "localhost"])
+    run_cmd(get_tool("glide") + ["dock.in", "-OVERWRITE", "-WAIT", "-HOST", "localhost"])
     
     if Path("dock_pv.maegz").exists():
         Path("dock_pv.maegz").rename(args.out_pv)
     if Path("dock.csv").exists():
         Path("dock.csv").rename(args.out_csv)
         
-    run_cmd(["schrodinger", "run", f"{Path(__file__).parent}/pv_to_sdf.py", "--pv", args.out_pv, "--sdf", args.out_sdf, "--max_poses", args.poses_per_lig])
+    run_cmd(get_tool("run") + ["python3", f"{Path(__file__).parent}/pv_to_sdf.py", "--pv", args.out_pv, "--sdf", args.out_sdf, "--max_poses", args.poses_per_lig])
 
 def cmd_prime_mmgbsa(args):
     libs = ["libtirpc.so.3", "libkeyutils.so.1", "libgssapi_krb5.so.2", "libkrb5.so.3", "libk5crypto.so.3", "libcom_err.so.2", "libkrb5support.so.0"]
@@ -74,7 +108,7 @@ def cmd_prime_mmgbsa(args):
     env["SCHRODINGER_JOBDB"] = f"/tmp/schrodinger_jobdb_{os.getpid()}"
     Path(env["SCHRODINGER_JOBDB"]).mkdir(parents=True, exist_ok=True)
     
-    cmd = ["schrodinger", "prime_mmgbsa", "-job_type", args.job_type, "-csv_output", "yes", "-out_type", "PV", "-jobname", f"{args.job_id}_mmgbsa", "-HOST", "localhost", "-NJOBS", "1", "-OVERWRITE", "-WAIT"]
+    cmd = get_tool("prime_mmgbsa") + ["-job_type", args.job_type, "-csv_output", "yes", "-out_type", "PV", "-jobname", f"{args.job_id}_mmgbsa", "-HOST", "localhost", "-NJOBS", "1", "-OVERWRITE", "-WAIT"]
     if args.membrane:
         cmd.append("-membrane")
     cmd.append(args.pv_maegz)
@@ -88,11 +122,11 @@ def cmd_prime_mmgbsa(args):
     if mae_in.exists() and not mae_out.exists(): mae_in.rename(mae_out)
         
     if not csv_out.exists() or not mae_out.exists():
-        print("FATAL: Prime outputs not found")
+        print("FATAL: Prime outputs not found", file=sys.stderr)
         sys.exit(1)
 
 def cmd_light_prep(args):
-    run_cmd(["schrodinger", "structconvert", args.input_pdb, args.out_mae])
+    run_cmd(get_tool("structconvert") + [args.input_pdb, args.out_mae])
     if args.native_ligand:
         from schrodinger import structure
         st = structure.StructureReader.read(args.out_mae)
@@ -101,15 +135,15 @@ def cmd_light_prep(args):
         if lig_atoms:
             st.deleteAtoms(lig_atoms)
             st.write(args.out_mae)
-    run_cmd(["schrodinger", "structconvert", args.out_mae, args.out_pdb])
+    run_cmd(get_tool("structconvert") + [args.out_mae, args.out_pdb])
 
 def cmd_ligprep(args):
     in_flag = "-imae" if args.ligand_file.endswith(".mae") or args.ligand_file.endswith(".maegz") else "-isd"
-    run_cmd(["schrodinger", "ligprep", in_flag, args.ligand_file, "-omae", args.out_maegz, "-epik", "-ph", args.target_ph, "-pht", args.ph_tolerance, "-s", args.max_states, "-bff", args.ff_version, "-WAIT"])
+    run_cmd(get_tool("ligprep") + [in_flag, args.ligand_file, "-omae", args.out_maegz, "-epik", "-ph", args.target_ph, "-pht", args.ph_tolerance, "-s", args.max_states, "-bff", args.ff_version, "-WAIT"])
     if not Path(args.out_maegz).exists():
-        print("FATAL: Ligprep output missing")
+        print(f"FATAL: Ligprep output missing: {args.out_maegz}", file=sys.stderr)
         sys.exit(1)
-    run_cmd(["schrodinger", "structconvert", args.out_maegz, args.out_sdf])
+    run_cmd(get_tool("structconvert") + [args.out_maegz, args.out_sdf])
 
 def cmd_convert_ligand(args):
     from schrodinger import structure
