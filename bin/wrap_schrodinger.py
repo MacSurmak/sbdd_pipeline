@@ -140,34 +140,85 @@ def cmd_prime_mmgbsa(args):
 
     run_cmd(cmd, env=env)
 
-    csv_in, csv_out = Path(f"{args.job_id}_mmgbsa.csv"), Path(
-        f"{args.job_id}_mmgbsa-out.csv"
-    )
-    if csv_in.exists():
-        csv_in.rename(csv_out)
+    job_name = f"{args.job_id}_mmgbsa"
+    canonical_csv = Path(f"{args.job_id}_mmgbsa-out.csv")
+    canonical_mae = Path(f"{args.job_id}_mmgbsa-out.maegz")
 
-    mae_in, mae_out = Path(f"{args.job_id}_mmgbsa.maegz"), Path(
-        f"{args.job_id}_mmgbsa-out.maegz"
-    )
-    if mae_in.exists() and not mae_out.exists():
-        mae_in.rename(mae_out)
+    # Deterministic mapping for Prime output naming conventions
+    gen_csv_1 = Path(f"{job_name}-out.csv")
+    gen_csv_2 = Path(f"{job_name}.csv")
+    if not canonical_csv.exists():
+        if gen_csv_1.exists():
+            gen_csv_1.rename(canonical_csv)
+        elif gen_csv_2.exists():
+            gen_csv_2.rename(canonical_csv)
 
-    if not csv_out.exists() or not mae_out.exists():
-        print("FATAL: Prime outputs not found", file=sys.stderr)
+    gen_mae_1 = Path(f"{job_name}-out.maegz")
+    gen_mae_2 = Path(f"{job_name}.maegz")
+    if not canonical_mae.exists():
+        if gen_mae_1.exists():
+            gen_mae_1.rename(canonical_mae)
+        elif gen_mae_2.exists():
+            gen_mae_2.rename(canonical_mae)
+
+    # Fail-Fast inspection: dump Prime diagnostic log on missing artifacts
+    if not canonical_csv.exists() or not canonical_mae.exists():
+        prime_log = Path(f"{job_name}.Prime.log")
+        general_log = Path(f"{job_name}.log")
+        diag_output = []
+
+        if prime_log.exists():
+            diag_output.append(f"=== {prime_log.name} ===\n" + prime_log.read_text(errors="ignore"))
+        if general_log.exists():
+            diag_output.append(f"=== {general_log.name} ===\n" + general_log.read_text(errors="ignore"))
+
+        log_content = "\n\n".join(diag_output) if diag_output else "No Schrödinger diagnostic logs found."
+        print(
+            f"FATAL: Prime MM-GBSA failed to generate deliverables for task '{args.job_id}'!\n"
+            f"Expected: {canonical_csv.name} and {canonical_mae.name}\n"
+            f"Schrödinger Diagnostic Log:\n{log_content}",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
 
 def cmd_light_prep(args):
-    run_cmd(get_tool("structconvert") + [args.input_pdb, args.out_mae])
-    if args.native_ligand:
-        from schrodinger import structure
+    raw_mae = "raw_cluster.mae"
+    run_cmd(get_tool("structconvert") + [args.input_pdb, raw_mae])
 
-        st = structure.StructureReader.read(args.out_mae)
+    from schrodinger import structure
+    st = structure.StructureReader.read(raw_mae)
+
+    if args.native_ligand:
         lig_res = args.native_ligand.split("_")[-1].strip().upper()
         lig_atoms = [a.index for a in st.atom if a.pdbres.strip().upper() == lig_res]
         if lig_atoms:
             st.deleteAtoms(lig_atoms)
-            st.write(args.out_mae)
+
+    # Standardize AMBER residue codes to standard PDB names
+    res_translation = {
+        "HIE": "HIS", "HID": "HIS", "HIP": "HIS",
+        "CYX": "CYS", "CYM": "CYS",
+        "ASH": "ASP", "GLH": "GLU", "LYN": "LYS"
+    }
+    for res in st.residue:
+        r_name = res.pdbres.strip().upper()
+        if r_name in res_translation:
+            res.pdbres = res_translation[r_name]
+    st.write(raw_mae)
+
+    # Standardize atom types and bond orders via PrepWizard with strict 0.0 RMSD (zero heavy atom movement)
+    prep_cmd = get_tool("prepwizard") + [
+        "-fix",
+        "-noprotassign",
+        "-noepik",
+        "-rmsd", "0.0",
+        "-preserve_st_titles",
+        "-WAIT",
+        raw_mae,
+        args.out_mae,
+    ]
+    run_cmd(prep_cmd)
     run_cmd(get_tool("structconvert") + [args.out_mae, args.out_pdb])
 
 

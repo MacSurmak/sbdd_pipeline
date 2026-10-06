@@ -49,12 +49,10 @@ def main():
             try:
                 reader = structure.StructureReader(str(pv_path))
                 for idx, st in enumerate(reader):
-                    is_receptor = (idx == 0) and (
-                        st.property.get("b_glide_receptor", 0) == 1
-                        or st.atom_total > 500
-                    )
+                    is_receptor = (idx == 0)
                     if is_receptor:
                         if not receptor_written:
+                            st.property["b_glide_receptor"] = 1
                             writer.append(st)
                             receptor_written = True
                         continue
