@@ -82,9 +82,11 @@ workflow RESCORE_WF {
         ch_mmgbsa_maes = PRIME_MMGBSA.out.out_maegz
     }
 
-    // Generate execution receipt for atomic database synchronization
+    // Generate execution receipt for atomic database synchronization targeting published deliverables
     ch_receipt_entries = ch_mmgbsa_csvs.join(ch_mmgbsa_maes, by: 0).map { meta, csv, mae ->
-        "${meta.id}\t${csv.toAbsolutePath()}\t${mae.toAbsolutePath()}"
+        def frame_id = meta.frame_id ?: meta.id
+        def target_dir = meta.ligand_title ? "${params.outdir}/docking/${frame_id}/${meta.ligand_title}" : "${params.outdir}/docking/${frame_id}"
+        "${meta.id}\t${target_dir}/${csv.name}\t${target_dir}/${mae.name}"
     }
     ch_receipt_entries.collectFile(name: 'rescore_receipt.tsv', storeDir: params.outdir, newLine: true)
 

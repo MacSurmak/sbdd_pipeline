@@ -181,19 +181,19 @@ workflow DOCK_LIBRARY {
 
     ch_all_summary_files = ch_summary_files.collect()
 
-    // Deterministic Plan & Receipt generation
+    // Deterministic Plan & Receipt generation targeting permanent published deliverables
     ch_receipts = Channel.empty()
     if (dock_engine in ["glide", "both"]) {
         ch_receipts = ch_receipts.mix(
             MERGE_GLIDE_CHUNKS.out.poses_sdf.map { meta, sdf ->
-                "${meta.id}\tglide\t${sdf.toAbsolutePath()}"
+                "${meta.id}\tglide\t${params.outdir}/docking/${meta.id}/${sdf.name}"
             }
         )
     }
     if (dock_engine in ["gnina", "both"]) {
         ch_receipts = ch_receipts.mix(
             MERGE_DOCK_CHUNKS.out.merged_sdf.map { meta, sdf ->
-                "${meta.id}\tgnina\t${sdf.toAbsolutePath()}"
+                "${meta.id}\tgnina\t${params.outdir}/docking/${meta.id}/${sdf.name}"
             }
         )
     }
