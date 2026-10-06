@@ -423,7 +423,7 @@ def cmd_cluster(args):
         )
         pose_filename = (
             Path(parts[3]).name
-            if len(parts) > 3 and parts[3].strip() != "NO_POSE"
+            if len(parts) > 3 and parts[3].strip()
             else None
         )
 

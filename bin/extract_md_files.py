@@ -79,10 +79,10 @@ def extract_via_schrodinger(args):
     rec_st.write(str(rec_out))
 
     # 2. Extract Ligand preserving canonical residue name strictly
-    if not args.lig_name:
-        raise ValueError("FATAL: --lig_name must be explicitly provided.")
-    lig_code = args.lig_name.strip()[:4].upper()
-    if args.lig_file and args.lig_file.lower() != "none":
+    if args.lig_file:
+        if not args.lig_name:
+            raise ValueError("FATAL: --lig_name must be explicitly provided when ligand file is present.")
+        lig_code = args.lig_name.strip()[:4].upper()
         if not Path(args.lig_file).exists():
             raise FileNotFoundError(f"FATAL: Ligand file {args.lig_file} not found!")
         with structure.StructureReader(args.lig_file) as reader:
@@ -108,83 +108,6 @@ def extract_via_schrodinger(args):
     print(f"Extracted dry receptor and {len(organics)} organic molecule(s).")
 
 
-def extract_via_rdkit(args):
-    from rdkit import Chem
-    import json
-
-    out_dir = Path(args.out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    org_dir = out_dir / "org_files"
-    org_dir.mkdir(parents=True, exist_ok=True)
-
-    # 1. Receptor copy (simplistic, RDKit doesn't easily split cofactors without heavy processing)
-    rec_path = Path(args.rec_file)
-    if rec_path.suffix.lower() == ".pdb":
-        import shutil
-
-        shutil.copy(rec_path, out_dir / "receptor_dry.pdb")
-
-    organics = []
-
-    # 2. Extract Ligand if provided
-    if args.lig_file and args.lig_file.lower() != "none":
-        if not Path(args.lig_file).exists():
-            raise FileNotFoundError(f"FATAL: Ligand file {args.lig_file} not found!")
-        suppl = Chem.SDMolSupplier(str(args.lig_file), removeHs=False)
-        target_mol = next((m for m in suppl if m is not None), None)
-
-        if target_mol is None:
-            raise ValueError(f"FATAL: No valid ligand found in {args.lig_file}")
-
-        charge = Chem.GetFormalCharge(target_mol)
-
-        lig_code = (args.lig_name or "LIG").strip()[:4].upper()
-        sdf_out = org_dir / f"{lig_code}.sdf"
-        writer = Chem.SDWriter(str(sdf_out))
-        writer.write(target_mol)
-        writer.close()
-
-        import subprocess
-        import shutil
-
-        antechamber_bin = shutil.which("antechamber") or str(
-            Path(sys.prefix) / "bin" / "antechamber"
-        )
-        cmd = [
-            antechamber_bin,
-            "-i",
-            f"{lig_code}.sdf",
-            "-fi",
-            "sdf",
-            "-o",
-            f"{lig_code}.mol2",
-            "-fo",
-            "mol2",
-            "-rn",
-            lig_code,
-        ]
-        subprocess.run(cmd, check=True, cwd=str(org_dir))
-
-        for tmp in org_dir.glob("ANTECHAMBER*"):
-            tmp.unlink(missing_ok=True)
-        for tmp in org_dir.glob("ATOMTYPE*"):
-            tmp.unlink(missing_ok=True)
-
-        (org_dir / f"{lig_code}_charge.txt").write_text(str(charge))
-        organics.append(
-            {
-                "name": lig_code,
-                "mol2": f"{lig_code}.mol2",
-                "charge": f"{lig_code}_charge.txt",
-            }
-        )
-
-    with open(out_dir / "organics.json", "w") as f:
-        json.dump(organics, f)
-
-    print(f"Extracted dry receptor and {len(organics)} organic molecule(s) via RDKit.")
-
-
 def main():
     parser = argparse.ArgumentParser(
         description="Extracts receptor and ligand files for MD"
@@ -193,7 +116,7 @@ def main():
         "--rec_file", required=True, help="Input prepared receptor file (.mae or .pdb)"
     )
     parser.add_argument(
-        "--lig_file", default="none", help="Input docked pose file (.sdf or .mae)"
+        "--lig_file", default=None, help="Input docked pose file (.sdf or .mae)"
     )
     parser.add_argument(
         "--lig_name", default="", help="Canonical 3-letter residue name for ligand"
@@ -204,10 +127,11 @@ def main():
 
     try:
         extract_via_schrodinger(args)
-    except ImportError:
-        extract_via_rdkit(args)
+    except ImportError as e:
+        print(f"FATAL: Schrödinger API not found. extract_md_files.py must be run within a container providing schrodinger environment. Error: {e}", file=sys.stderr)
+        sys.exit(1)
     except Exception as e:
-        print(f"Error in extract_md_files: {e}", file=sys.stderr)
+        print(f"FATAL: Error in extract_md_files: {e}", file=sys.stderr)
         sys.exit(1)
 
 

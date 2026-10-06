@@ -22,7 +22,7 @@ workflow DYNAMICS_WF {
                 project: params.project_name,
                 native_ligand: target.lig_name ?: ""
             ]
-            def lig_f = target.lig_path != "NO_LIGAND" ? file(target.lig_path).toAbsolutePath() : file("NO_LIGAND")
+            def lig_f = target.lig_path ? file(target.lig_path).toAbsolutePath() : []
             [ meta, file(target.rec_path).toAbsolutePath(), lig_f, target.cofactors ?: [] ]
         }
     } else if (params.manifest) {
@@ -46,7 +46,7 @@ workflow DYNAMICS_WF {
             } else {
                 lig_path = file("${params.outdir}/prepared/${target_id}_ref_native_prepared.sdf")
                 if (!lig_path.exists()) lig_path = file("${params.outdir}/prepared/${target_id}_ref_native.sdf")
-                if (!lig_path.exists()) lig_path = file("NO_LIGAND")
+                if (!lig_path.exists()) lig_path = null
             }
             
             def meta = [
@@ -54,7 +54,8 @@ workflow DYNAMICS_WF {
                 project: params.project_name
             ]
             
-            [ meta, rec_path.toAbsolutePath(), lig_path.toAbsolutePath(), target.cofactors ?: [] ]
+            def lig_f = lig_path ? lig_path.toAbsolutePath() : []
+            [ meta, rec_path.toAbsolutePath(), lig_f, target.cofactors ?: [] ]
         }
     } else {
         error "FATAL: Either --md_plan or --manifest must be provided for dynamics."

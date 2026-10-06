@@ -16,7 +16,7 @@ process EXTRACT_MD_SYSTEM {
     label 'process_single'
 
     input:
-    tuple val(meta), path(rec_file), val(lig_file_path), val(cofactors)
+    tuple val(meta), path(rec_file), path(lig_file, optional: true), val(cofactors)
 
     output:
     tuple val(meta), path("receptor_dry.pdb"), path("organics.json"), path("org_files/*"), emit: extracted
@@ -25,18 +25,11 @@ process EXTRACT_MD_SYSTEM {
     def cof_list = cofactors instanceof List ? cofactors.join(' ') : cofactors
     def cof_arg = cof_list ? "--cofactors ${cof_list}" : ""
     def lig_arg = ""
-    def staging_cmd = ""
-    if (lig_file_path.toString() != "NO_LIGAND") {
-        if (!file(lig_file_path).exists()) {
-            error "FATAL: Ligand file missing for MD setup: ${lig_file_path}"
-        }
+    if (lig_file) {
         def lig_name = meta.native_ligand ?: "LIG"
-        def ext = file(lig_file_path).extension
-        lig_arg = "--lig_file ./staged_ligand.${ext} --lig_name ${lig_name}"
-        staging_cmd = "cp ${lig_file_path} ./staged_ligand.${ext}"
+        lig_arg = "--lig_file ${lig_file} --lig_name ${lig_name}"
     }
     """
-    ${staging_cmd}
     schrodinger run ${projectDir}/bin/extract_md_files.py \\
         --rec_file ${rec_file} \\
         ${lig_arg} \\

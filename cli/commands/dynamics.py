@@ -67,7 +67,7 @@ def cmd_dynamics(args):
         frame = s.receptor_frame
         rec_path = Path(frame.path).resolve()
 
-        lig_path = "NO_LIGAND"
+        lig_path = None
         lig_name = ""
         if s.pose and Path(s.pose.path).exists():
             lig_path = str(Path(s.pose.path).resolve())
