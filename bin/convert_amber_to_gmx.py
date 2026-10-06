@@ -35,12 +35,22 @@ def main():
     # Fail-Fast Validation: Ensure terminal caps are covalently integrated and did not fragment
     topol_text = Path("topol.top").read_text(encoding="utf-8", errors="ignore")
     isolated_caps = []
-    for match in re.finditer(
-        r"\[\s*moleculetype\s*\]\s*\n\s*;[^\n]*\n\s*(\S+)", topol_text
-    ):
-        mname = match.group(1).strip()
-        if mname in ["NME", "NMA", "ACE"]:
-            isolated_caps.append(mname)
+    in_moleculetype = False
+
+    for raw_line in topol_text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if line.startswith("["):
+            in_moleculetype = "moleculetype" in line.lower()
+            continue
+        if in_moleculetype:
+            if line.startswith(";") or line.startswith("#"):
+                continue
+            mname = line.split()[0].strip()
+            if mname in ["NME", "NMA", "ACE"]:
+                isolated_caps.append(mname)
+            in_moleculetype = False
 
     if isolated_caps:
         print(
