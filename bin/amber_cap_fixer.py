@@ -213,34 +213,34 @@ def main():
             else:
                 r["res_name"] = "HIE"
 
-        # C-terminal Cap (NMA/NME -> AMBER NME: N, H, CH3, HH31, HH32, HH33)
+        # C-terminal Cap (NMA/NME -> AMBER NME template: N, H, C, H1, H2, H3)
         elif res_name in ["NMA", "NME"]:
             r["res_name"] = "NME"
             for a in r["atoms"]:
                 an = a["atom_name"].strip()
                 if an in ["CA", "CH3", "C"]:
-                    a["atom_name"] = "CH3"
+                    a["atom_name"] = "C"
                 elif an in ["HN", "H"]:
                     a["atom_name"] = "H"
                 elif an in ["1HA", "1H", "HH31", "HA1", "H1"]:
-                    a["atom_name"] = "HH31"
+                    a["atom_name"] = "H1"
                 elif an in ["2HA", "2H", "HH32", "HA2", "H2"]:
-                    a["atom_name"] = "HH32"
+                    a["atom_name"] = "H2"
                 elif an in ["3HA", "3H", "HH33", "HA3", "H3"]:
-                    a["atom_name"] = "HH33"
+                    a["atom_name"] = "H3"
 
-        # N-terminal Cap (ACE -> AMBER ACE: CH3, HH31, HH32, HH33, C, O)
+        # N-terminal Cap (ACE -> AMBER ACE template: CH3, C, O, H1, H2, H3)
         elif res_name == "ACE":
             for a in r["atoms"]:
                 an = a["atom_name"].strip()
                 if an in ["CA", "CH3"]:
                     a["atom_name"] = "CH3"
                 elif an in ["1HA", "1H", "HH31", "HA1", "H1"]:
-                    a["atom_name"] = "HH31"
+                    a["atom_name"] = "H1"
                 elif an in ["2HA", "2H", "HH32", "HA2", "H2"]:
-                    a["atom_name"] = "HH32"
+                    a["atom_name"] = "H2"
                 elif an in ["3HA", "3H", "HH33", "HA3", "H3"]:
-                    a["atom_name"] = "HH33"
+                    a["atom_name"] = "H3"
 
         # Standard backbone amide hydrogen fix strictly isolated to protein residues
         elif res_name in STANDARD_PROTEIN_RESIDUES and res_name != "PRO":
