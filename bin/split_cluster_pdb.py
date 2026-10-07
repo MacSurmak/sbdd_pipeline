@@ -13,11 +13,38 @@ from schrodinger import structure
 
 
 STANDARD_PROTEIN = {
-    "ALA", "ARG", "ASN", "ASP", "CYS", "CYX", "GLN", "GLU", "GLY",
-    "HIS", "HID", "HIE", "HIP", "ILE", "LEU", "LYS", "LYN", "MET",
-    "PHE", "PRO", "SER", "THR", "TRP", "TYR", "VAL", "ASH", "GLH",
-    "ACE", "NME", "NMA"
+    "ALA",
+    "ARG",
+    "ASN",
+    "ASP",
+    "CYS",
+    "CYX",
+    "GLN",
+    "GLU",
+    "GLY",
+    "HIS",
+    "HID",
+    "HIE",
+    "HIP",
+    "ILE",
+    "LEU",
+    "LYS",
+    "LYN",
+    "MET",
+    "PHE",
+    "PRO",
+    "SER",
+    "THR",
+    "TRP",
+    "TYR",
+    "VAL",
+    "ASH",
+    "GLH",
+    "ACE",
+    "NME",
+    "NMA",
 }
+
 
 def normalize_gmx_cluster_pdb(raw_pdb_path: Path, lig_name: str) -> list[Path]:
     """
@@ -70,7 +97,9 @@ def normalize_gmx_cluster_pdb(raw_pdb_path: Path, lig_name: str) -> list[Path]:
 
             # Chain transition detection rules
             is_lig = (res_name == lig_name) or (res_name not in STANDARD_PROTEIN)
-            prev_is_lig = (prev_res_name == lig_name) or (prev_res_name not in STANDARD_PROTEIN if prev_res_name else False)
+            prev_is_lig = (prev_res_name == lig_name) or (
+                prev_res_name not in STANDARD_PROTEIN if prev_res_name else False
+            )
 
             is_chain_break = False
             if prev_res_seq is not None:
@@ -85,7 +114,9 @@ def normalize_gmx_cluster_pdb(raw_pdb_path: Path, lig_name: str) -> list[Path]:
                     is_chain_break = True
 
             if is_chain_break:
-                clean_lines.append(f"TER   {global_atom_serial:5d}      {prev_res_name:>3s} {curr_chain}{prev_res_seq:4d}")
+                clean_lines.append(
+                    f"TER   {global_atom_serial:5d}      {prev_res_name:>3s} {curr_chain}{prev_res_seq:4d}"
+                )
                 global_atom_serial += 1
                 if is_lig:
                     curr_chain = "Z"
@@ -93,7 +124,9 @@ def normalize_gmx_cluster_pdb(raw_pdb_path: Path, lig_name: str) -> list[Path]:
                     chain_idx += 1
                     curr_chain = chain_chars[chain_idx % len(chain_chars)]
 
-            atom_field = f"{atom_name:<4s}" if len(atom_name) == 4 else f" {atom_name:<3s}"
+            atom_field = (
+                f"{atom_name:<4s}" if len(atom_name) == 4 else f" {atom_name:<3s}"
+            )
             coords_and_rest = line[30:54]
             element = atom_name[:1] if not atom_name[:1].isdigit() else atom_name[1:2]
 
@@ -108,7 +141,9 @@ def normalize_gmx_cluster_pdb(raw_pdb_path: Path, lig_name: str) -> list[Path]:
             prev_res_name = res_name
 
         if clean_lines:
-            clean_lines.append(f"TER   {global_atom_serial:5d}      {prev_res_name:>3s} {curr_chain}{prev_res_seq:4d}")
+            clean_lines.append(
+                f"TER   {global_atom_serial:5d}      {prev_res_name:>3s} {curr_chain}{prev_res_seq:4d}"
+            )
             clean_lines.append("END")
             out_file = raw_pdb_path.parent / f"norm_model_{m_idx}.pdb"
             out_file.write_text("\n".join(clean_lines) + "\n")
@@ -124,8 +159,12 @@ def main():
     parser.add_argument("--input", required=True, help="Input clusters_multi.pdb")
     parser.add_argument("--sys_name", required=True, help="Parent system name")
     parser.add_argument("--ligand", default="", help="Ligand residue name (e.g. MK1)")
-    parser.add_argument("--max_clusters", type=int, default=0, help="Max clusters to extract")
-    parser.add_argument("--out_receipt", default="cluster_receipt.tsv", help="Output receipt TSV")
+    parser.add_argument(
+        "--max_clusters", type=int, default=0, help="Max clusters to extract"
+    )
+    parser.add_argument(
+        "--out_receipt", default="cluster_receipt.tsv", help="Output receipt TSV"
+    )
     args = parser.parse_args()
 
     in_path = Path(args.input)
@@ -151,7 +190,8 @@ def main():
         # 2. Extract Ligand from Chain Z with full bond order & formal charge perception
         if lig_name:
             lig_atoms = [
-                a.index for a in st.atom
+                a.index
+                for a in st.atom
                 if a.chain == "Z" or a.pdbres.strip().upper() == lig_name
             ]
             if lig_atoms:
@@ -163,7 +203,9 @@ def main():
                 try:
                     assignbondorders.assign_st(lig_st)
                 except Exception as e:
-                    sys.stderr.write(f"Warning: assignbondorders note for pose {i}: {e}\n")
+                    sys.stderr.write(
+                        f"Warning: assignbondorders note for pose {i}: {e}\n"
+                    )
 
                 sdf_out = f"pose_{i}.sdf"
                 mae_out = f"pose_{i}.mae"
@@ -174,9 +216,14 @@ def main():
 
         # 3. Clean AMBER residue translations for receptor
         res_translation = {
-            "HIE": "HIS", "HID": "HIS", "HIP": "HIS",
-            "CYX": "CYS", "CYM": "CYS",
-            "ASH": "ASP", "GLH": "GLU", "LYN": "LYS"
+            "HIE": "HIS",
+            "HID": "HIS",
+            "HIP": "HIS",
+            "CYX": "CYS",
+            "CYM": "CYS",
+            "ASH": "ASP",
+            "GLH": "GLU",
+            "LYN": "LYS",
         }
         for res in st.residue:
             r_clean = res.pdbres.strip().upper()

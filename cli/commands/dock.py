@@ -108,9 +108,13 @@ def cmd_dock(args):
             path_pdb = Path(r.path_pdb).resolve()
 
             if not path_mae.exists():
-                raise FileNotFoundError(f"FATAL: Registered receptor MAE does not exist: {path_mae}")
+                raise FileNotFoundError(
+                    f"FATAL: Registered receptor MAE does not exist: {path_mae}"
+                )
             if not path_pdb.exists():
-                raise FileNotFoundError(f"FATAL: Registered receptor PDB does not exist: {path_pdb}")
+                raise FileNotFoundError(
+                    f"FATAL: Registered receptor PDB does not exist: {path_pdb}"
+                )
 
             if not native_pose.path_sdf or not native_pose.path_mae:
                 raise ValueError(
@@ -122,9 +126,13 @@ def cmd_dock(args):
             pose_mae = Path(native_pose.path_mae).resolve()
 
             if not pose_sdf.exists():
-                raise FileNotFoundError(f"FATAL: Registered pose SDF does not exist: {pose_sdf}")
+                raise FileNotFoundError(
+                    f"FATAL: Registered pose SDF does not exist: {pose_sdf}"
+                )
             if not pose_mae.exists():
-                raise FileNotFoundError(f"FATAL: Registered pose MAE does not exist: {pose_mae}")
+                raise FileNotFoundError(
+                    f"FATAL: Registered pose MAE does not exist: {pose_mae}"
+                )
 
             plan["receptors"].append(
                 {
@@ -224,7 +232,9 @@ def cmd_dock(args):
             path_pdb = Path(r.path_pdb).resolve()
 
             if not path_mae.exists() or not path_pdb.exists():
-                raise FileNotFoundError(f"FATAL: Receptor deliverables missing for '{r.name}' on disk")
+                raise FileNotFoundError(
+                    f"FATAL: Receptor deliverables missing for '{r.name}' on disk"
+                )
 
             if not pose_obj.path_sdf or not pose_obj.path_mae:
                 raise ValueError(
@@ -235,7 +245,9 @@ def cmd_dock(args):
             ref_mae = Path(pose_obj.path_mae).resolve()
 
             if not ref_sdf.exists() or not ref_mae.exists():
-                raise FileNotFoundError(f"FATAL: Reference pose deliverables missing for '{r.name}' on disk")
+                raise FileNotFoundError(
+                    f"FATAL: Reference pose deliverables missing for '{r.name}' on disk"
+                )
 
             plan["receptors"].append(
                 {

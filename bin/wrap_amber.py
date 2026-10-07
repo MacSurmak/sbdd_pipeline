@@ -116,7 +116,9 @@ def cmd_tleap(args):
     salt_pairs = 0
     salt_conc = float(args.salt_conc) if getattr(args, "salt_conc", None) else 0.0
     if not args.membrane and salt_conc > 0.0 and Path("complex_solv.pdb").exists():
-        water_residues = {w.strip().upper() for w in args.water_names.split(",") if w.strip()}
+        water_residues = {
+            w.strip().upper() for w in args.water_names.split(",") if w.strip()
+        }
         wat_count = 0
         current_res_key = None
         for line in Path("complex_solv.pdb").read_text(errors="ignore").splitlines():
@@ -128,7 +130,9 @@ def cmd_tleap(args):
                     wat_count += 1
         # N_pairs = round(N_water * [salt] / 55.5)
         salt_pairs = int(round(wat_count * (salt_conc / 55.5)))
-        print(f"Adding physiological salt: {salt_conc} M ({salt_pairs} K+/Cl- pairs for {wat_count} water molecules).")
+        print(
+            f"Adding physiological salt: {salt_conc} M ({salt_pairs} K+/Cl- pairs for {wat_count} water molecules)."
+        )
 
     # 3. Final production tLEaP topology generation with neutralization + physiological salt
     with open("tleap.in", "w") as f:

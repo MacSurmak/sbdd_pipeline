@@ -397,7 +397,9 @@ def cmd_cluster(args):
 
     # Strict Fail-Fast verification of task receipts at canonical namespace locations
     for task_id in sys_map.keys():
-        task_receipt = (prepared_dir / task_id / f"{task_id}_cluster_receipt.tsv").resolve()
+        task_receipt = (
+            prepared_dir / task_id / f"{task_id}_cluster_receipt.tsv"
+        ).resolve()
         if not task_receipt.exists():
             console.print(
                 f"[bold red]FATAL: Canonical cluster receipt not found at expected location: {task_receipt}[/bold red]"
@@ -420,15 +422,21 @@ def cmd_cluster(args):
         centroid_title = parts[0].strip()
         pdb_name = parts[1].strip()
         mae_name = parts[2].strip()
-        pose_sdf_name = parts[3].strip() if len(parts) > 3 and parts[3].strip() else None
-        pose_mae_name = parts[4].strip() if len(parts) > 4 and parts[4].strip() else None
+        pose_sdf_name = (
+            parts[3].strip() if len(parts) > 3 and parts[3].strip() else None
+        )
+        pose_mae_name = (
+            parts[4].strip() if len(parts) > 4 and parts[4].strip() else None
+        )
 
         parent_sys_key = (
             centroid_title.replace("_cluster", "").split("_centroid_")[0] + "_cluster"
         )
         mapped_item = sys_map.get(parent_sys_key)
         if not mapped_item:
-            raise KeyError(f"FATAL: System mapping missing for receipt key '{parent_sys_key}'")
+            raise KeyError(
+                f"FATAL: System mapping missing for receipt key '{parent_sys_key}'"
+            )
         parent_sys, active_traj_names, cluster_sig = mapped_item
 
         # Absolute, deterministic path resolution directly from task namespace
@@ -437,17 +445,29 @@ def cmd_cluster(args):
         mae_file = (task_dir / mae_name).resolve()
 
         if not pdb_file.exists():
-            raise FileNotFoundError(f"FATAL: Centroid PDB deliverable missing: {pdb_file}")
+            raise FileNotFoundError(
+                f"FATAL: Centroid PDB deliverable missing: {pdb_file}"
+            )
         if not mae_file.exists():
-            raise FileNotFoundError(f"FATAL: Centroid MAE deliverable missing: {mae_file}")
+            raise FileNotFoundError(
+                f"FATAL: Centroid MAE deliverable missing: {mae_file}"
+            )
 
         pose_sdf_file = (task_dir / pose_sdf_name).resolve() if pose_sdf_name else None
         pose_mae_file = (task_dir / pose_mae_name).resolve() if pose_mae_name else None
 
-        if pose_sdf_file and (not pose_sdf_file.exists() or pose_sdf_file.stat().st_size == 0):
-            raise FileNotFoundError(f"FATAL: Centroid pose SDF missing: {pose_sdf_file}")
-        if pose_mae_file and (not pose_mae_file.exists() or pose_mae_file.stat().st_size == 0):
-            raise FileNotFoundError(f"FATAL: Centroid pose MAE missing: {pose_mae_file}")
+        if pose_sdf_file and (
+            not pose_sdf_file.exists() or pose_sdf_file.stat().st_size == 0
+        ):
+            raise FileNotFoundError(
+                f"FATAL: Centroid pose SDF missing: {pose_sdf_file}"
+            )
+        if pose_mae_file and (
+            not pose_mae_file.exists() or pose_mae_file.stat().st_size == 0
+        ):
+            raise FileNotFoundError(
+                f"FATAL: Centroid pose MAE missing: {pose_mae_file}"
+            )
 
         # Record clustering signature on parent system
         env = parent_sys.environment_dict

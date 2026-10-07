@@ -76,8 +76,12 @@ class ReceptorFrame(Base):
         Integer, ForeignKey("receptor_frames.id", ondelete="SET NULL"), nullable=True
     )
     path = Column(String, nullable=False)  # Canonical primary path
-    path_mae = Column(String, nullable=True)  # Validated MAE deliverable for Glide/Prime
-    path_pdb = Column(String, nullable=True)  # Validated PDB deliverable for GNINA/tLEaP
+    path_mae = Column(
+        String, nullable=True
+    )  # Validated MAE deliverable for Glide/Prime
+    path_pdb = Column(
+        String, nullable=True
+    )  # Validated PDB deliverable for GNINA/tLEaP
     cofactors = Column(Text, default="[]", nullable=False)  # JSON list of cofactors
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
