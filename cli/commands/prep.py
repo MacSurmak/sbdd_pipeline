@@ -162,6 +162,7 @@ def cmd_prep(args):
             if not prep_pdb_path.exists():
                 raise FileNotFoundError(f"FATAL: Prepared receptor PDB missing: {prep_pdb_path}")
 
+            # Preserve immutable original raw structure pointer in frame.path
             frame.path_mae = str(prep_mae_path)
             frame.path_pdb = str(prep_pdb_path)
             frame.state = "ready"
