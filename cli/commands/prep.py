@@ -162,7 +162,6 @@ def cmd_prep(args):
             if not prep_pdb_path.exists():
                 raise FileNotFoundError(f"FATAL: Prepared receptor PDB missing: {prep_pdb_path}")
 
-            frame.path = str(prep_mae_path)
             frame.path_mae = str(prep_mae_path)
             frame.path_pdb = str(prep_pdb_path)
             frame.state = "ready"
@@ -174,7 +173,6 @@ def cmd_prep(args):
                 prep_mae_pose = (cwd / "prepared" / orig_frame_name / "native.mae").resolve()
 
                 if prep_sdf_path.exists() and prep_sdf_path.stat().st_size > 0:
-                    system.pose.path = str(prep_sdf_path)
                     system.pose.path_sdf = str(prep_sdf_path)
                     system.pose.path_mae = str(prep_mae_pose) if prep_mae_pose.exists() else None
                     system.pose.state = "ready"

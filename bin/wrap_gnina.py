@@ -63,12 +63,24 @@ def main():
 
     cmd.extend(["-o", args.out_sdf])
 
+    print(f"Exec: {' '.join(cmd)}")
     with open(args.out_log, "w") as f:
-        print(f"Exec: {' '.join(cmd)}")
         res = subprocess.run(cmd, stdout=f, stderr=subprocess.STDOUT)
-        if res.returncode != 0:
-            print(f"FATAL: GNINA failed. See {args.out_log}")
-            sys.exit(1)
+
+    if res.returncode != 0:
+        log_content = ""
+        if Path(args.out_log).exists():
+            log_content = Path(args.out_log).read_text(errors="ignore")
+        print(
+            f"FATAL: GNINA failed with exit code {res.returncode}!\n"
+            f"Command: {' '.join(cmd)}\n"
+            f"==================== GNINA LOG ({args.out_log}) ====================\n"
+            f"{log_content}\n"
+            f"====================================================================",
+            file=sys.stderr,
+            flush=True,
+        )
+        sys.exit(res.returncode)
 
 
 if __name__ == "__main__":

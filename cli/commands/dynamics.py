@@ -76,12 +76,32 @@ def cmd_dynamics(args):
             continue
 
         frame = s.receptor_frame
-        rec_path = Path(frame.path).resolve()
+        # Strict 3NF Fail-Fast: Dynamics requires fully prepared, protonated and capped receptor
+        if not frame.path_mae:
+            raise ValueError(
+                f"FATAL: ReceptorFrame '{frame.name}' does not have path_mae registered in 3NF database! "
+                f"Entity must be prepared cleanly via 'sbdd prep' before launching dynamics."
+            )
+        rec_path = Path(frame.path_mae).resolve()
+        if not rec_path.exists():
+            raise FileNotFoundError(
+                f"FATAL: Prepared receptor deliverable does not exist on disk for '{frame.name}': {rec_path}"
+            )
 
         lig_path = None
         lig_name = ""
-        if s.pose and Path(s.pose.path).exists():
-            lig_path = str(Path(s.pose.path).resolve())
+        if s.pose:
+            pose_sdf = s.pose.path_sdf or s.pose.path
+            if not pose_sdf:
+                raise ValueError(
+                    f"FATAL: Native Pose '{s.pose.name}' does not have path_sdf registered in 3NF database!"
+                )
+            p_sdf_path = Path(pose_sdf).resolve()
+            if not p_sdf_path.exists():
+                raise FileNotFoundError(
+                    f"FATAL: Prepared ligand deliverable does not exist on disk for '{s.pose.name}': {p_sdf_path}"
+                )
+            lig_path = str(p_sdf_path)
             lig_name = s.pose.ligand.name[:4].upper()
 
         systems_to_run.append((s, missing_reps))
