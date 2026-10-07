@@ -14,7 +14,7 @@ import math
 import sys
 from pathlib import Path
 from rdkit import Chem
-from rdkit.Chem import rdFMCS
+from rdkit.Chem import AllChem
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
@@ -23,12 +23,13 @@ def read_heavy_atoms_mol(path: Path) -> list:
     """Reads 3D structures from SDF/PDB and returns list of heavy-atom molecules."""
     raw_mols = []
     if path.suffix.lower() == ".sdf":
-        suppl = Chem.SDMolSupplier(str(path), sanitize=False, removeHs=False)
+        # Strict reading: sanitization MUST be enabled to ensure proper valences for template assignment
+        suppl = Chem.SDMolSupplier(str(path), sanitize=True, removeHs=True)
         for m in suppl:
             if m is not None:
                 raw_mols.append(m)
     elif path.suffix.lower() == ".pdb":
-        m = Chem.MolFromPDBFile(str(path), sanitize=False, removeHs=False)
+        m = Chem.MolFromPDBFile(str(path), sanitize=True, removeHs=True)
         if m is not None:
             raw_mols.append(m)
     else:
@@ -39,10 +40,8 @@ def read_heavy_atoms_mol(path: Path) -> list:
         # Ignore protein or solvent residue artifacts
         if m.GetNumAtoms() > 200:
             continue
-        # Remove hydrogens deterministically without requiring valence perception
-        m_heavy = Chem.RemoveHs(m, sanitize=False)
-        if m_heavy.GetNumAtoms() > 0:
-            clean_mols.append(m_heavy)
+        if m.GetNumAtoms() > 0:
+            clean_mols.append(m)
 
     return clean_mols
 
@@ -50,7 +49,8 @@ def read_heavy_atoms_mol(path: Path) -> list:
 def calculate_pair_rmsd(m_ref, m_dock) -> float:
     """
     Computes exact in-situ Cartesian RMSD across all symmetry automorphisms.
-    Matches molecular topology purely by elements and connectivity.
+    Assigns reference bond orders to the docked pose to mathematically bypass 
+    docking engine valence/aromaticity corruption, eliminating combinatoric explosion.
     """
     n_atoms = m_ref.GetNumAtoms()
     if n_atoms != m_dock.GetNumAtoms():
@@ -58,43 +58,29 @@ def calculate_pair_rmsd(m_ref, m_dock) -> float:
             f"Atom count mismatch: reference has {n_atoms} heavy atoms, docked pose has {m_dock.GetNumAtoms()}"
         )
 
-    # Topological matching by elements and connectivity, bond-type agnostic
-    mcs = rdFMCS.FindMCS(
-        [m_ref, m_dock],
-        atomCompare=rdFMCS.AtomCompare.CompareElements,
-        bondCompare=rdFMCS.BondCompare.CompareAny,
-        ringMatchesRingOnly=False,
-        completeRingsOnly=False,
-        matchValences=False,
-        timeout=10,
-    )
+    try:
+        m_dock_fixed = AllChem.AssignBondOrdersFromTemplate(m_ref, m_dock)
+    except Exception as e:
+        raise ValueError(f"Topological mismatch: unable to assign reference bonds to dock pose. {e}")
 
-    if mcs.numAtoms != n_atoms:
-        raise ValueError(
-            f"Topological mismatch: MCS matched {mcs.numAtoms} of {n_atoms} heavy atoms."
-        )
-
-    query = Chem.MolFromSmarts(mcs.smartsString)
-    ref_match = m_ref.GetSubstructMatch(query)
-    dock_matches = m_dock.GetSubstructMatches(query, uniquify=False)
-
-    if not ref_match or not dock_matches:
+    matches = m_dock_fixed.GetSubstructMatches(m_ref, uniquify=False)
+    if not matches:
         raise ValueError("Failed to obtain substructure isomorphism matches.")
 
-    conf_ref = m_ref.GetConformer()
-    conf_dock = m_dock.GetConformer()
-
-    # Find minimum Cartesian distance across all symmetry automorphisms
     best_sq_dist = float("inf")
-    for d_match in dock_matches:
+    conf_ref = m_ref.GetConformer()
+    conf_dock = m_dock_fixed.GetConformer()
+
+    for match in matches:
         sq_dist = 0.0
-        for r_idx, d_idx in zip(ref_match, d_match):
-            p_ref = conf_ref.GetAtomPosition(r_idx)
-            p_dock = conf_dock.GetAtomPosition(d_idx)
+        for i in range(n_atoms):
+            p_ref = conf_ref.GetAtomPosition(i)
+            p_dock = conf_dock.GetAtomPosition(match[i])
             dx = p_ref.x - p_dock.x
             dy = p_ref.y - p_dock.y
             dz = p_ref.z - p_dock.z
             sq_dist += dx * dx + dy * dy + dz * dz
+        
         if sq_dist < best_sq_dist:
             best_sq_dist = sq_dist
 
@@ -146,16 +132,14 @@ def main():
         if not matched_title and m_dock.HasProp("_Name"):
             matched_title = m_dock.GetProp("_Name").strip()
 
-        try:
-            rmsd_val = calculate_pair_rmsd(m_ref, m_dock)
-            if rmsd_val < best_rmsd:
-                best_rmsd = rmsd_val
-        except ValueError as err:
-            logging.debug(f"Pose {idx} skipped: {err}")
+        # Strict Fail-Fast: Any topological deviation or missing atom MUST crash the process
+        rmsd_val = calculate_pair_rmsd(m_ref, m_dock)
+        if rmsd_val < best_rmsd:
+            best_rmsd = rmsd_val
 
     if math.isinf(best_rmsd):
         raise ValueError(
-            f"FATAL: None of the {len(docked_mols)} poses in {poses_path.name} matched the reference topology {ref_path.name}"
+            f"FATAL: No poses could be evaluated in {poses_path.name} against {ref_path.name}"
         )
 
     val = round(best_rmsd, 3)
