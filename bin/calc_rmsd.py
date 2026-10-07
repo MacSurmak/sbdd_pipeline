@@ -25,13 +25,15 @@ def read_heavy_atoms_mol(path: Path) -> list:
     if path.suffix.lower() == ".sdf":
         # Strict reading: sanitization MUST be enabled to ensure proper valences for template assignment
         suppl = Chem.SDMolSupplier(str(path), sanitize=True, removeHs=True)
-        for m in suppl:
-            if m is not None:
-                raw_mols.append(m)
+        for idx, m in enumerate(suppl, start=1):
+            if m is None:
+                raise ValueError(f"FATAL: Molecule at index {idx} in {path.name} failed RDKit sanitization (broken valence/coordinates).")
+            raw_mols.append(m)
     elif path.suffix.lower() == ".pdb":
         m = Chem.MolFromPDBFile(str(path), sanitize=True, removeHs=True)
-        if m is not None:
-            raw_mols.append(m)
+        if m is None:
+            raise ValueError(f"FATAL: Failed to parse and sanitize PDB molecule from {path.name}")
+        raw_mols.append(m)
     else:
         raise ValueError(f"Unsupported molecule format: {path.suffix}")
 
