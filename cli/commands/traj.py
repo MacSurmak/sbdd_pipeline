@@ -415,15 +415,10 @@ def cmd_cluster(args):
             continue
         parts = line.split("\t")
         centroid_title = parts[0]
-        pdb_filename = Path(parts[1]).name
-        mae_filename = (
-            Path(parts[2]).name
-            if len(parts) > 2 and parts[2].strip()
-            else f"{centroid_title}.mae"
-        )
-        pose_filename = (
-            Path(parts[3]).name if len(parts) > 3 and parts[3].strip() else None
-        )
+        rel_pdb = parts[1].strip()
+        rel_mae = parts[2].strip()
+        rel_sdf_pose = parts[3].strip() if len(parts) > 3 and parts[3].strip() else None
+        rel_mae_pose = parts[4].strip() if len(parts) > 4 and parts[4].strip() else None
 
         parent_sys_key = (
             centroid_title.replace("_cluster", "").split("_centroid_")[0] + "_cluster"
@@ -433,35 +428,35 @@ def cmd_cluster(args):
             continue
         parent_sys, active_traj_names, cluster_sig = mapped_item
 
-        # Strictly enforce permanent project prepared/ directory resolution
-        prepared_dir = (cwd / "prepared").resolve()
-        mae_file = (prepared_dir / mae_filename).resolve()
-        pdb_file = (prepared_dir / pdb_filename).resolve()
+        # Deterministic namespace resolution via receipt: prepared/<task_id>/<file>
+        task_prepared_dir = (cwd / "prepared" / parent_sys_key).resolve()
+        pdb_file = (task_prepared_dir / rel_pdb).resolve()
+        mae_file = (task_prepared_dir / rel_mae).resolve()
 
-        if not mae_file.exists():
-            raise FileNotFoundError(
-                f"FATAL: Published centroid MAE not found at canonical location: {mae_file}"
-            )
         if not pdb_file.exists():
             raise FileNotFoundError(
                 f"FATAL: Published centroid PDB not found at canonical location: {pdb_file}"
             )
+        if not mae_file.exists():
+            raise FileNotFoundError(
+                f"FATAL: Published centroid MAE not found at canonical location: {mae_file}"
+            )
 
-        pose_sdf_file = None
-        if pose_filename:
-            pose_sdf_file = (prepared_dir / pose_filename).resolve()
-            if not pose_sdf_file.exists() or pose_sdf_file.stat().st_size == 0:
-                raise FileNotFoundError(
-                    f"FATAL: Published centroid pose SDF not found at canonical location: {pose_sdf_file}"
-                )
+        pose_sdf_file = (task_prepared_dir / rel_sdf_pose).resolve() if rel_sdf_pose else None
+        pose_mae_file = (task_prepared_dir / rel_mae_pose).resolve() if rel_mae_pose else None
 
-        # Record full clustering signature on parent system to prevent redundant re-clustering
+        if pose_sdf_file and (not pose_sdf_file.exists() or pose_sdf_file.stat().st_size == 0):
+            raise FileNotFoundError(f"FATAL: Published pose SDF missing: {pose_sdf_file}")
+        if pose_mae_file and (not pose_mae_file.exists() or pose_mae_file.stat().st_size == 0):
+            raise FileNotFoundError(f"FATAL: Published pose MAE missing: {pose_mae_file}")
+
+        # Record clustering signature on parent system
         env = parent_sys.environment_dict
         env["cluster_active_trajs"] = active_traj_names
         env["cluster_params_sig"] = cluster_sig
         parent_sys.environment_dict = env
 
-        # A. Register Centroid as a peer ReceptorFrame in Target (MAE is primary)
+        # A. Register Centroid in SQLite with explicit MAE and PDB file locations
         centroid_frame_name = centroid_title.replace("_cluster", "")
         ex_frame = (
             session.query(ReceptorFrame).filter_by(name=centroid_frame_name).first()
@@ -474,6 +469,8 @@ def cmd_cluster(args):
                 state="ready",
                 parent_frame_id=parent_sys.receptor_frame_id,
                 path=str(mae_file),
+                path_mae=str(mae_file),
+                path_pdb=str(pdb_file),
             )
             new_frame.cofactors_list = parent_sys.receptor_frame.cofactors_list
             session.add(new_frame)
@@ -481,9 +478,11 @@ def cmd_cluster(args):
             frame_obj = new_frame
         else:
             ex_frame.path = str(mae_file)
+            ex_frame.path_mae = str(mae_file)
+            ex_frame.path_pdb = str(pdb_file)
             frame_obj = ex_frame
 
-        # B. Register in-situ Pose if extracted from cluster (SDF is primary)
+        # B. Register in-situ Pose with explicit SDF and MAE deliverables
         pose_obj = None
         if pose_sdf_file and parent_sys.pose:
             cluster_pose_name = f"{centroid_frame_name}_pose"
@@ -496,12 +495,16 @@ def cmd_cluster(args):
                     origin="md_cluster",
                     state="ready",
                     path=str(pose_sdf_file),
+                    path_sdf=str(pose_sdf_file),
+                    path_mae=str(pose_mae_file) if pose_mae_file else None,
                 )
                 session.add(new_pose)
                 session.flush()
                 pose_obj = new_pose
             else:
                 ex_pose.path = str(pose_sdf_file)
+                ex_pose.path_sdf = str(pose_sdf_file)
+                ex_pose.path_mae = str(pose_mae_file) if pose_mae_file else None
                 ex_pose.state = "ready"
                 pose_obj = ex_pose
 

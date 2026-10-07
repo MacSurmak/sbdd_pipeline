@@ -158,18 +158,25 @@ def cmd_prep(args):
                     f"FATAL: Prepared receptor MAE not found at canonical location: {prep_mae_path}"
                 )
 
+            prep_pdb_path = (cwd / "prepared" / orig_frame_name / "receptor.pdb").resolve()
+            if not prep_pdb_path.exists():
+                raise FileNotFoundError(f"FATAL: Prepared receptor PDB missing: {prep_pdb_path}")
+
             frame.path = str(prep_mae_path)
+            frame.path_mae = str(prep_mae_path)
+            frame.path_pdb = str(prep_pdb_path)
             frame.state = "ready"
 
             # In-situ reference pose from PrepWizard
             system = session.query(System).filter_by(receptor_frame_id=frame.id).first()
             if system and system.pose:
-                prep_sdf_path = (
-                    cwd / "prepared" / orig_frame_name / "native.sdf"
-                ).resolve()
+                prep_sdf_path = (cwd / "prepared" / orig_frame_name / "native.sdf").resolve()
+                prep_mae_pose = (cwd / "prepared" / orig_frame_name / "native.mae").resolve()
 
                 if prep_sdf_path.exists() and prep_sdf_path.stat().st_size > 0:
                     system.pose.path = str(prep_sdf_path)
+                    system.pose.path_sdf = str(prep_sdf_path)
+                    system.pose.path_mae = str(prep_mae_pose) if prep_mae_pose.exists() else None
                     system.pose.state = "ready"
 
                     # Calculate actual formal charge from the prepared in-situ ligand

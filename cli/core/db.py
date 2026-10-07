@@ -58,6 +58,7 @@ class ReceptorFrame(Base):
     """
     Specific 3D structure of a Target (crystal model, NMR model, MD centroid, AlphaFold).
     All frames are peer entities under their parent Target.
+    Stores explicit, validated paths to both Maestro MAE and PDB deliverables.
     """
 
     __tablename__ = "receptor_frames"
@@ -74,7 +75,9 @@ class ReceptorFrame(Base):
     parent_frame_id = Column(
         Integer, ForeignKey("receptor_frames.id", ondelete="SET NULL"), nullable=True
     )
-    path = Column(String, nullable=False)
+    path = Column(String, nullable=False)  # Canonical primary path
+    path_mae = Column(String, nullable=True)  # Validated MAE deliverable for Glide/Prime
+    path_pdb = Column(String, nullable=True)  # Validated PDB deliverable for GNINA/tLEaP
     cofactors = Column(Text, default="[]", nullable=False)  # JSON list of cofactors
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
@@ -127,7 +130,7 @@ class Ligand(Base):
 class Pose(Base):
     """
     Atomic 3D conformation of a Ligand positioned in a ReceptorFrame pocket.
-    1 Pose = 1 File on disk (.sdf or .mae).
+    Stores explicit paths to both SDF and MAE formats.
     """
 
     __tablename__ = "poses"
@@ -147,7 +150,9 @@ class Pose(Base):
     parent_pose_id = Column(
         Integer, ForeignKey("poses.id", ondelete="SET NULL"), nullable=True
     )
-    path = Column(String, nullable=False)
+    path = Column(String, nullable=False)  # Canonical primary path
+    path_sdf = Column(String, nullable=True)  # Validated SDF deliverable for GNINA
+    path_mae = Column(String, nullable=True)  # Validated MAE deliverable for Glide
     scores = Column(Text, default="{}", nullable=False)  # JSON dict of scoring metrics
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
@@ -260,13 +265,30 @@ def forbid_scratch_in_pose_path(target, value, oldvalue, initiator):
 
 def init_db(db_path: Path = None):
     """
-    Initializes SQLite connection and creates all 3NF tables if not existing.
+    Initializes SQLite connection, ensures schema migrations for multi-format asset columns,
+    and returns an active ORM session.
     """
     if db_path is None:
         db_path = Path.cwd() / "sbdd_state.db"
 
     engine = create_engine(f"sqlite:///{db_path}")
     Base.metadata.create_all(engine)
+
+    # Seamless live schema migration for existing SQLite projects
+    with engine.connect() as conn:
+        rf_cols = [row[1] for row in conn.exec_driver_sql("PRAGMA table_info(receptor_frames)").fetchall()]
+        if "path_mae" not in rf_cols:
+            conn.exec_driver_sql("ALTER TABLE receptor_frames ADD COLUMN path_mae TEXT")
+        if "path_pdb" not in rf_cols:
+            conn.exec_driver_sql("ALTER TABLE receptor_frames ADD COLUMN path_pdb TEXT")
+
+        pose_cols = [row[1] for row in conn.exec_driver_sql("PRAGMA table_info(poses)").fetchall()]
+        if "path_sdf" not in pose_cols:
+            conn.exec_driver_sql("ALTER TABLE poses ADD COLUMN path_sdf TEXT")
+        if "path_mae" not in pose_cols:
+            conn.exec_driver_sql("ALTER TABLE poses ADD COLUMN path_mae TEXT")
+        conn.commit()
+
     SessionLocal = sessionmaker(
         autocommit=False, autoflush=False, expire_on_commit=False, bind=engine
     )

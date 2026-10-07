@@ -97,56 +97,29 @@ def cmd_dock(args):
             return
 
         for r, native_pose, native_lig in active_frames:
-            # Reconcile any existing corrupted scratch paths strictly with the permanent prepared/ folder
-            frame_p = Path(r.path).resolve()
-            if "/work/" in str(frame_p) or not frame_p.exists():
-                canonical_mae = (cwd / "prepared" / frame_p.name).resolve()
-                if canonical_mae.exists():
-                    frame_p = canonical_mae
-                    r.path = str(canonical_mae)
-                    session.add(r)
-                else:
-                    raise FileNotFoundError(
-                        f"FATAL: Receptor frame '{r.name}' references invalid path: {r.path}. "
-                        f"File not found at canonical location: {canonical_mae}"
-                    )
-
-            path_mae = frame_p.with_suffix(".mae")
-            path_pdb = frame_p.with_suffix(".pdb")
+            # Deterministic asset resolution directly from 3NF database schema (Zero with_suffix guessing)
+            path_mae = Path(r.path_mae or r.path).resolve()
+            path_pdb = Path(r.path_pdb).resolve() if r.path_pdb else path_mae.with_suffix(".pdb")
 
             if not path_mae.exists():
                 raise FileNotFoundError(
-                    f"FATAL: Receptor MAE not found for frame '{r.name}': {path_mae}"
+                    f"FATAL: Receptor MAE registered in database does not exist on disk for '{r.name}': {path_mae}"
                 )
             if not path_pdb.exists():
                 raise FileNotFoundError(
-                    f"FATAL: Receptor PDB not found for frame '{r.name}': {path_pdb}"
+                    f"FATAL: Receptor PDB registered in database does not exist on disk for '{r.name}': {path_pdb}"
                 )
 
-            # Reconcile pose scratch paths strictly with the permanent prepared/ folder
-            pose_p = Path(native_pose.path).resolve()
-            if "/work/" in str(pose_p) or not pose_p.exists():
-                canonical_sdf = (cwd / "prepared" / pose_p.name).resolve()
-                if canonical_sdf.exists():
-                    pose_p = canonical_sdf
-                    native_pose.path = str(canonical_sdf)
-                    session.add(native_pose)
-                else:
-                    raise FileNotFoundError(
-                        f"FATAL: Pose '{native_pose.name}' references invalid path: {native_pose.path}. "
-                        f"File not found at canonical location: {canonical_sdf}"
-                    )
-
-            pose_sdf = pose_p.with_suffix(".sdf")
-            pose_mae = pose_p.with_suffix(".mae")
+            pose_sdf = Path(native_pose.path_sdf or native_pose.path).resolve()
+            pose_mae = Path(native_pose.path_mae).resolve() if native_pose.path_mae else pose_sdf.with_suffix(".mae")
 
             if not pose_sdf.exists():
                 raise FileNotFoundError(
-                    f"FATAL: Reference pose SDF not found for frame '{r.name}': {pose_sdf}"
+                    f"FATAL: Reference pose SDF registered in database does not exist for '{r.name}': {pose_sdf}"
                 )
             if not pose_mae.exists():
                 raise FileNotFoundError(
-                    f"FATAL: Reference pose MAE not found for frame '{r.name}': {pose_mae}"
+                    f"FATAL: Reference pose MAE registered in database does not exist for '{r.name}': {pose_mae}"
                 )
 
             plan["receptors"].append(
@@ -238,15 +211,16 @@ def cmd_dock(args):
                 )
                 sys.exit(1)
 
-            frame_p = Path(r.path).resolve()
-            path_mae = frame_p.with_suffix(".mae")
-            path_pdb = frame_p.with_suffix(".pdb")
+            path_mae = Path(r.path_mae or r.path).resolve()
+            path_pdb = Path(r.path_pdb).resolve() if r.path_pdb else path_mae.with_suffix(".pdb")
 
             if not path_mae.exists() or not path_pdb.exists():
-                console.print(
-                    f"[bold red]FATAL: Receptor files missing for '{r.name}'. Need both .pdb and .mae![/bold red]"
+                raise FileNotFoundError(
+                    f"FATAL: Receptor assets missing for '{r.name}': {path_mae} or {path_pdb}"
                 )
-                sys.exit(1)
+
+            ref_sdf = Path(pose_obj.path_sdf or pose_obj.path).resolve()
+            ref_mae = Path(pose_obj.path_mae).resolve() if pose_obj.path_mae else ref_sdf.with_suffix(".mae")
 
             plan["receptors"].append(
                 {

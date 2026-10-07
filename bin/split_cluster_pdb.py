@@ -98,16 +98,11 @@ def main():
             st.write(pdb_out)
             st.write(mae_out)
 
-            p_name = Path(pdb_out).name
-            m_name = Path(mae_out).name
-            s_name = Path(pose_path).name if pose_path != "NO_POSE" else ""
+            s_name = f"pose_{i}.sdf" if pose_path != "NO_POSE" else ""
+            m_pose_name = f"pose_{i}.mae" if pose_path != "NO_POSE" else ""
 
-            # Use relative paths for database resolution
-            row = (
-                f"{c_title}\t{args.sys_name}/{p_name}\t{args.sys_name}/{m_name}\t"
-                + (f"{args.sys_name}/{s_name}" if s_name else "")
-                + "\n"
-            )
+            # Structured 5-column receipt: title \t rel_pdb \t rel_mae \t rel_pose_sdf \t rel_pose_mae
+            row = f"{c_title}\t{pdb_out}\t{mae_out}\t{s_name}\t{m_pose_name}\n"
             receipt_lines.append(row)
 
     with open(args.out_receipt, "w", encoding="utf-8") as rf:
