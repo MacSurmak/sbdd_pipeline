@@ -395,23 +395,15 @@ def cmd_cluster(args):
     prepared_dir = (cwd / "prepared").resolve()
     receipt_files = []
 
+    # Strict Fail-Fast verification of task receipts at canonical namespace locations
     for task_id in sys_map.keys():
-        cand_sub = (prepared_dir / task_id / f"{task_id}_cluster_receipt.tsv").resolve()
-        cand_root = (prepared_dir / f"{task_id}_cluster_receipt.tsv").resolve()
-        cand_gen = (prepared_dir / task_id / "cluster_receipt.tsv").resolve()
-
-        if cand_sub.exists():
-            receipt_files.append(cand_sub)
-        elif cand_root.exists():
-            receipt_files.append(cand_root)
-        elif cand_gen.exists():
-            receipt_files.append(cand_gen)
-
-    if not receipt_files:
-        console.print(
-            f"[bold red]FATAL: Expected cluster receipt files not found in {prepared_dir} or task subdirectories![/bold red]"
-        )
-        sys.exit(1)
+        task_receipt = (prepared_dir / task_id / f"{task_id}_cluster_receipt.tsv").resolve()
+        if not task_receipt.exists():
+            console.print(
+                f"[bold red]FATAL: Canonical cluster receipt not found at expected location: {task_receipt}[/bold red]"
+            )
+            sys.exit(1)
+        receipt_files.append(task_receipt)
 
     registered_frames = 0
     lines = []
@@ -422,42 +414,40 @@ def cmd_cluster(args):
         if not line.strip():
             continue
         parts = line.split("\t")
-        centroid_title = parts[0]
-        # Defensively strip any leading directory stutter to prevent duplicate task path joins
-        rel_pdb = Path(parts[1].strip()).name
-        rel_mae = Path(parts[2].strip()).name
-        rel_sdf_pose = Path(parts[3].strip()).name if len(parts) > 3 and parts[3].strip() else None
-        rel_mae_pose = Path(parts[4].strip()).name if len(parts) > 4 and parts[4].strip() else None
+        if len(parts) < 3:
+            raise ValueError(f"FATAL: Malformed cluster receipt row: {line}")
+
+        centroid_title = parts[0].strip()
+        pdb_name = parts[1].strip()
+        mae_name = parts[2].strip()
+        pose_sdf_name = parts[3].strip() if len(parts) > 3 and parts[3].strip() else None
+        pose_mae_name = parts[4].strip() if len(parts) > 4 and parts[4].strip() else None
 
         parent_sys_key = (
             centroid_title.replace("_cluster", "").split("_centroid_")[0] + "_cluster"
         )
         mapped_item = sys_map.get(parent_sys_key)
         if not mapped_item:
-            continue
+            raise KeyError(f"FATAL: System mapping missing for receipt key '{parent_sys_key}'")
         parent_sys, active_traj_names, cluster_sig = mapped_item
 
-        # Deterministic namespace resolution via receipt: prepared/<task_id>/<file>
-        task_prepared_dir = (cwd / "prepared" / parent_sys_key).resolve()
-        pdb_file = (task_prepared_dir / rel_pdb).resolve()
-        mae_file = (task_prepared_dir / rel_mae).resolve()
+        # Absolute, deterministic path resolution directly from task namespace
+        task_dir = (cwd / "prepared" / parent_sys_key).resolve()
+        pdb_file = (task_dir / pdb_name).resolve()
+        mae_file = (task_dir / mae_name).resolve()
 
         if not pdb_file.exists():
-            raise FileNotFoundError(
-                f"FATAL: Published centroid PDB not found at canonical location: {pdb_file}"
-            )
+            raise FileNotFoundError(f"FATAL: Centroid PDB deliverable missing: {pdb_file}")
         if not mae_file.exists():
-            raise FileNotFoundError(
-                f"FATAL: Published centroid MAE not found at canonical location: {mae_file}"
-            )
+            raise FileNotFoundError(f"FATAL: Centroid MAE deliverable missing: {mae_file}")
 
-        pose_sdf_file = (task_prepared_dir / rel_sdf_pose).resolve() if rel_sdf_pose else None
-        pose_mae_file = (task_prepared_dir / rel_mae_pose).resolve() if rel_mae_pose else None
+        pose_sdf_file = (task_dir / pose_sdf_name).resolve() if pose_sdf_name else None
+        pose_mae_file = (task_dir / pose_mae_name).resolve() if pose_mae_name else None
 
         if pose_sdf_file and (not pose_sdf_file.exists() or pose_sdf_file.stat().st_size == 0):
-            raise FileNotFoundError(f"FATAL: Published pose SDF missing: {pose_sdf_file}")
+            raise FileNotFoundError(f"FATAL: Centroid pose SDF missing: {pose_sdf_file}")
         if pose_mae_file and (not pose_mae_file.exists() or pose_mae_file.stat().st_size == 0):
-            raise FileNotFoundError(f"FATAL: Published pose MAE missing: {pose_mae_file}")
+            raise FileNotFoundError(f"FATAL: Centroid pose MAE missing: {pose_mae_file}")
 
         # Record clustering signature on parent system
         env = parent_sys.environment_dict

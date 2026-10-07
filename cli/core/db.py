@@ -265,29 +265,14 @@ def forbid_scratch_in_pose_path(target, value, oldvalue, initiator):
 
 def init_db(db_path: Path = None):
     """
-    Initializes SQLite connection, ensures schema migrations for multi-format asset columns,
-    and returns an active ORM session.
+    Initializes SQLite connection, declaratively builds the pristine 3NF schema,
+    and returns an active ORM session. Zero runtime migrations or defensive fallbacks.
     """
     if db_path is None:
         db_path = Path.cwd() / "sbdd_state.db"
 
     engine = create_engine(f"sqlite:///{db_path}")
     Base.metadata.create_all(engine)
-
-    # Seamless live schema migration for existing SQLite projects
-    with engine.connect() as conn:
-        rf_cols = [row[1] for row in conn.exec_driver_sql("PRAGMA table_info(receptor_frames)").fetchall()]
-        if "path_mae" not in rf_cols:
-            conn.exec_driver_sql("ALTER TABLE receptor_frames ADD COLUMN path_mae TEXT")
-        if "path_pdb" not in rf_cols:
-            conn.exec_driver_sql("ALTER TABLE receptor_frames ADD COLUMN path_pdb TEXT")
-
-        pose_cols = [row[1] for row in conn.exec_driver_sql("PRAGMA table_info(poses)").fetchall()]
-        if "path_sdf" not in pose_cols:
-            conn.exec_driver_sql("ALTER TABLE poses ADD COLUMN path_sdf TEXT")
-        if "path_mae" not in pose_cols:
-            conn.exec_driver_sql("ALTER TABLE poses ADD COLUMN path_mae TEXT")
-        conn.commit()
 
     SessionLocal = sessionmaker(
         autocommit=False, autoflush=False, expire_on_commit=False, bind=engine

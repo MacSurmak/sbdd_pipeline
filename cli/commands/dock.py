@@ -97,30 +97,34 @@ def cmd_dock(args):
             return
 
         for r, native_pose, native_lig in active_frames:
-            # Deterministic asset resolution directly from 3NF database schema (Zero with_suffix guessing)
-            path_mae = Path(r.path_mae or r.path).resolve()
-            path_pdb = Path(r.path_pdb).resolve() if r.path_pdb else path_mae.with_suffix(".pdb")
+            # Pure 3NF Asset Resolution: zero heuristics, zero with_suffix()
+            if not r.path_mae or not r.path_pdb:
+                raise ValueError(
+                    f"FATAL: ReceptorFrame '{r.name}' does not have both path_mae and path_pdb "
+                    f"registered in the 3NF database! Entity must be prepared cleanly."
+                )
+
+            path_mae = Path(r.path_mae).resolve()
+            path_pdb = Path(r.path_pdb).resolve()
 
             if not path_mae.exists():
-                raise FileNotFoundError(
-                    f"FATAL: Receptor MAE registered in database does not exist on disk for '{r.name}': {path_mae}"
-                )
+                raise FileNotFoundError(f"FATAL: Registered receptor MAE does not exist: {path_mae}")
             if not path_pdb.exists():
-                raise FileNotFoundError(
-                    f"FATAL: Receptor PDB registered in database does not exist on disk for '{r.name}': {path_pdb}"
+                raise FileNotFoundError(f"FATAL: Registered receptor PDB does not exist: {path_pdb}")
+
+            if not native_pose.path_sdf or not native_pose.path_mae:
+                raise ValueError(
+                    f"FATAL: Native Pose for '{r.name}' does not have both path_sdf and path_mae "
+                    f"registered in the 3NF database!"
                 )
 
-            pose_sdf = Path(native_pose.path_sdf or native_pose.path).resolve()
-            pose_mae = Path(native_pose.path_mae).resolve() if native_pose.path_mae else pose_sdf.with_suffix(".mae")
+            pose_sdf = Path(native_pose.path_sdf).resolve()
+            pose_mae = Path(native_pose.path_mae).resolve()
 
             if not pose_sdf.exists():
-                raise FileNotFoundError(
-                    f"FATAL: Reference pose SDF registered in database does not exist for '{r.name}': {pose_sdf}"
-                )
+                raise FileNotFoundError(f"FATAL: Registered pose SDF does not exist: {pose_sdf}")
             if not pose_mae.exists():
-                raise FileNotFoundError(
-                    f"FATAL: Reference pose MAE registered in database does not exist for '{r.name}': {pose_mae}"
-                )
+                raise FileNotFoundError(f"FATAL: Registered pose MAE does not exist: {pose_mae}")
 
             plan["receptors"].append(
                 {
@@ -211,16 +215,27 @@ def cmd_dock(args):
                 )
                 sys.exit(1)
 
-            path_mae = Path(r.path_mae or r.path).resolve()
-            path_pdb = Path(r.path_pdb).resolve() if r.path_pdb else path_mae.with_suffix(".pdb")
-
-            if not path_mae.exists() or not path_pdb.exists():
-                raise FileNotFoundError(
-                    f"FATAL: Receptor assets missing for '{r.name}': {path_mae} or {path_pdb}"
+            if not r.path_mae or not r.path_pdb:
+                raise ValueError(
+                    f"FATAL: ReceptorFrame '{r.name}' does not have both path_mae and path_pdb registered!"
                 )
 
-            ref_sdf = Path(pose_obj.path_sdf or pose_obj.path).resolve()
-            ref_mae = Path(pose_obj.path_mae).resolve() if pose_obj.path_mae else ref_sdf.with_suffix(".mae")
+            path_mae = Path(r.path_mae).resolve()
+            path_pdb = Path(r.path_pdb).resolve()
+
+            if not path_mae.exists() or not path_pdb.exists():
+                raise FileNotFoundError(f"FATAL: Receptor deliverables missing for '{r.name}' on disk")
+
+            if not pose_obj.path_sdf or not pose_obj.path_mae:
+                raise ValueError(
+                    f"FATAL: Reference Pose '{pose_obj.name}' missing path_sdf or path_mae registration!"
+                )
+
+            ref_sdf = Path(pose_obj.path_sdf).resolve()
+            ref_mae = Path(pose_obj.path_mae).resolve()
+
+            if not ref_sdf.exists() or not ref_mae.exists():
+                raise FileNotFoundError(f"FATAL: Reference pose deliverables missing for '{r.name}' on disk")
 
             plan["receptors"].append(
                 {

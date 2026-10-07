@@ -93,16 +93,17 @@ def main():
             c_title = f"{args.sys_name}_centroid_{i}"
             st.title = c_title
             st.property["s_m_title"] = c_title
-            pdb_out = f"centroid_{i}.pdb"
-            mae_out = f"centroid_{i}.mae"
-            st.write(pdb_out)
-            st.write(mae_out)
+            pdb_name = f"centroid_{i}.pdb"
+            mae_name = f"centroid_{i}.mae"
+            st.write(pdb_name)
+            st.write(mae_name)
 
-            s_name = f"pose_{i}.sdf" if pose_path != "NO_POSE" else ""
-            m_pose_name = f"pose_{i}.mae" if pose_path != "NO_POSE" else ""
+            sdf_pose_name = f"pose_{i}.sdf" if pose_path != "NO_POSE" else ""
+            mae_pose_name = f"pose_{i}.mae" if pose_path != "NO_POSE" else ""
 
-            # Structured 5-column receipt: title \t rel_pdb \t rel_mae \t rel_pose_sdf \t rel_pose_mae
-            row = f"{c_title}\t{pdb_out}\t{mae_out}\t{s_name}\t{m_pose_name}\n"
+            # Deterministic 5-column receipt contract:
+            # centroid_id \t pdb_file \t mae_file \t pose_sdf \t pose_mae
+            row = f"{c_title}\t{pdb_name}\t{mae_name}\t{sdf_pose_name}\t{mae_pose_name}\n"
             receipt_lines.append(row)
 
     with open(args.out_receipt, "w", encoding="utf-8") as rf:
