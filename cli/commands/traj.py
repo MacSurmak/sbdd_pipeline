@@ -382,7 +382,8 @@ def cmd_cluster(args):
     nf_args.extend(["--cluster_plan", str(plan_file.resolve())])
 
     profile = "local" if getattr(args, "local", False) else "slurm"
-    resume = not getattr(args, "no_resume", False)
+    # When --force is explicitly provided, invalidate Nextflow cache to force genuine recalculation
+    resume = not (getattr(args, "no_resume", False) or getattr(args, "force", False))
 
     ret_code = execute_nextflow(
         "md-analyze", nf_args, cwd, profile=profile, resume=resume, configs=configs
@@ -395,13 +396,20 @@ def cmd_cluster(args):
     receipt_files = []
 
     for task_id in sys_map.keys():
-        expected_receipt = prepared_dir / f"{task_id}_cluster_receipt.tsv"
-        if expected_receipt.exists():
-            receipt_files.append(expected_receipt)
+        cand_sub = (prepared_dir / task_id / f"{task_id}_cluster_receipt.tsv").resolve()
+        cand_root = (prepared_dir / f"{task_id}_cluster_receipt.tsv").resolve()
+        cand_gen = (prepared_dir / task_id / "cluster_receipt.tsv").resolve()
+
+        if cand_sub.exists():
+            receipt_files.append(cand_sub)
+        elif cand_root.exists():
+            receipt_files.append(cand_root)
+        elif cand_gen.exists():
+            receipt_files.append(cand_gen)
 
     if not receipt_files:
         console.print(
-            f"[bold red]FATAL: Expected cluster receipt files not found in {prepared_dir}![/bold red]"
+            f"[bold red]FATAL: Expected cluster receipt files not found in {prepared_dir} or task subdirectories![/bold red]"
         )
         sys.exit(1)
 
@@ -415,10 +423,11 @@ def cmd_cluster(args):
             continue
         parts = line.split("\t")
         centroid_title = parts[0]
-        rel_pdb = parts[1].strip()
-        rel_mae = parts[2].strip()
-        rel_sdf_pose = parts[3].strip() if len(parts) > 3 and parts[3].strip() else None
-        rel_mae_pose = parts[4].strip() if len(parts) > 4 and parts[4].strip() else None
+        # Defensively strip any leading directory stutter to prevent duplicate task path joins
+        rel_pdb = Path(parts[1].strip()).name
+        rel_mae = Path(parts[2].strip()).name
+        rel_sdf_pose = Path(parts[3].strip()).name if len(parts) > 3 and parts[3].strip() else None
+        rel_mae_pose = Path(parts[4].strip()).name if len(parts) > 4 and parts[4].strip() else None
 
         parent_sys_key = (
             centroid_title.replace("_cluster", "").split("_centroid_")[0] + "_cluster"
