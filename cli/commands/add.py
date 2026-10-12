@@ -194,27 +194,39 @@ def add_receptor(args):
         frames = _count_and_split_models(struct_path, frames_dir, base_name)
 
         for frame_name, frame_file in frames:
+            has_gaps = _detect_gaps(frame_file)
+            initial_state = "broken" if has_gaps else "raw"
+
             ex_frame = session.query(ReceptorFrame).filter_by(name=frame_name).first()
             if ex_frame:
                 ex_frame.path = str(frame_file.resolve())
                 ex_frame.cofactors_list = cofactors
+                ex_frame.state = initial_state
                 frame_obj = ex_frame
                 console.print(
-                    f"[yellow]Updated Frame '{frame_name}' in Target '{target_name}'[/yellow]"
+                    f"[yellow]Updated Frame '{frame_name}' in Target '{target_name}' (state: {initial_state})[/yellow]"
                 )
             else:
                 frame_obj = ReceptorFrame(
                     target_id=target.id,
                     name=frame_name,
                     source_type=source_type,
-                    state="raw",
+                    state=initial_state,
                     path=str(frame_file.resolve()),
                 )
                 frame_obj.cofactors_list = cofactors
                 session.add(frame_obj)
                 session.flush()
+
+                status_color = "red" if has_gaps else "green"
                 console.print(
-                    f"[bold green]✓ Added Frame '{frame_name}'[/bold green] [dim](raw, {source_type})[/dim]"
+                    f"[bold green]✓ Added Frame '{frame_name}'[/bold green] [dim]([{status_color}]{initial_state}[/{status_color}], {source_type})[/dim]"
+                )
+
+            if has_gaps:
+                console.print(
+                    f"[!] [bold yellow]Warning: Internal missing loops detected in '{frame_name}'.[/bold yellow]\n"
+                    f"    It cannot be processed by 'sbdd prep'. Provide FASTA and run 'sbdd heal' to physically repair it."
                 )
 
             # Ligand & Pose Handling
