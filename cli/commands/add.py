@@ -16,12 +16,18 @@ console = Console()
 
 import math
 
+
 def _detect_gaps(struct_path: Path) -> bool:
     """Rigorous gap detection supporting both PDB and mmCIF via Bio.PDB and MDAnalysis."""
     try:
         from Bio.PDB import PDBParser, MMCIFParser, is_aa
+
         suffix = struct_path.suffix.lower()
-        parser = MMCIFParser(QUIET=True) if suffix in [".cif", ".mmcif"] else PDBParser(QUIET=True)
+        parser = (
+            MMCIFParser(QUIET=True)
+            if suffix in [".cif", ".mmcif"]
+            else PDBParser(QUIET=True)
+        )
         st = parser.get_structure("struct", str(struct_path))
 
         for model in st:
@@ -49,13 +55,18 @@ def _detect_gaps(struct_path: Path) -> bool:
         import MDAnalysis as mda
         import numpy as np
         import warnings
+
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             u = mda.Universe(str(struct_path))
 
         ca = u.select_atoms("protein and name CA")
         if len(ca) >= 2:
-            chains = np.unique(ca.segids) if len(ca.segids) > 0 and ca.segids[0] != "" else [None]
+            chains = (
+                np.unique(ca.segids)
+                if len(ca.segids) > 0 and ca.segids[0] != ""
+                else [None]
+            )
             for c in chains:
                 c_ca = ca.select_atoms(f"segid {c}") if c else ca
                 if len(c_ca) >= 2:
@@ -70,6 +81,7 @@ def _detect_gaps(struct_path: Path) -> bool:
         pass
 
     return False
+
 
 def _count_and_split_models(
     struct_path: Path, dest_dir: Path, base_name: str
@@ -351,7 +363,7 @@ def add_fasta(args):
     """Imports FASTA reference sequences for Targets."""
     session = init_db()
     fasta_path = Path(args.path).resolve()
-    
+
     if not fasta_path.exists():
         console.print(f"[bold red]FATAL: FASTA file not found: {fasta_path}[/bold red]")
         sys.exit(1)
@@ -360,7 +372,7 @@ def add_fasta(args):
     with open(fasta_path, "r", encoding="utf-8", errors="ignore") as f:
         current_target = None
         seq_lines = []
-        
+
         def save_current():
             nonlocal updated
             if current_target and seq_lines:
@@ -369,7 +381,9 @@ def add_fasta(args):
                     t.reference_sequence = "".join(seq_lines).replace(" ", "").upper()
                     updated += 1
                 else:
-                    console.print(f"[yellow]Warning: Target '{current_target}' not found in DB, skipping sequence.[/yellow]")
+                    console.print(
+                        f"[yellow]Warning: Target '{current_target}' not found in DB, skipping sequence.[/yellow]"
+                    )
 
         for line in f:
             line = line.strip()
@@ -386,7 +400,10 @@ def add_fasta(args):
 
     session.commit()
     session.close()
-    console.print(f"[bold green]✓ Updated reference sequences for {updated} target(s).[/bold green]")
+    console.print(
+        f"[bold green]✓ Updated reference sequences for {updated} target(s).[/bold green]"
+    )
+
 
 def add_ligand(args):
     """

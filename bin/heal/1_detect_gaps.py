@@ -6,28 +6,32 @@ from Bio import Align
 from Bio.PDB import PDBParser, PDBIO, Select, is_aa
 from Bio.PDB.Polypeptide import protein_letters_3to1
 
+
 class ProteinOnlySelect(Select):
     def accept_residue(self, res):
-        return 1 if is_aa(res) and res.get_id()[0] == ' ' else 0
+        return 1 if is_aa(res) and res.get_id()[0] == " " else 0
+
 
 def get_pdb_sequence(chain):
     seq = []
     res_ids = []
     for res in chain:
-        if is_aa(res) and 'CA' in res:
+        if is_aa(res) and "CA" in res:
             resname = res.get_resname()
-            char = protein_letters_3to1.get(resname, 'X')
+            char = protein_letters_3to1.get(resname, "X")
             seq.append(char)
             res_ids.append(res.get_id())
     return "".join(seq), res_ids
 
+
 def read_fasta(fasta_file):
-    with open(fasta_file, 'r') as f:
+    with open(fasta_file, "r") as f:
         seq = []
         for line in f:
             if not line.startswith(">"):
                 seq.append(line.strip().upper())
     return "".join(seq)
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -39,7 +43,7 @@ def main():
 
     parser_pdb = PDBParser(QUIET=True)
     st = parser_pdb.get_structure("struct", args.crystal)
-    
+
     # Auto-detect longest chain
     best_chain = None
     best_len = 0
@@ -62,7 +66,7 @@ def main():
     pdb_seq, pdb_res_ids = get_pdb_sequence(best_chain)
 
     aligner = Align.PairwiseAligner()
-    aligner.mode = 'global'
+    aligner.mode = "global"
     aligner.match_score = 2
     aligner.mismatch_score = -1
     aligner.open_gap_score = -5
@@ -82,11 +86,13 @@ def main():
             f_idx = f_start + offset + 1
             p_idx = p_start + offset
             pid = pdb_res_ids[p_idx]
-            superposition_pairs.append({
-                "af2_resSeq": int(f_idx),
-                "crystal_seq": int(pid[1]),
-                "crystal_icode": str(pid[2])
-            })
+            superposition_pairs.append(
+                {
+                    "af2_resSeq": int(f_idx),
+                    "crystal_seq": int(pid[1]),
+                    "crystal_icode": str(pid[2]),
+                }
+            )
 
     aligned_f_indices = set(p["af2_resSeq"] for p in superposition_pairs)
     in_gap = False
@@ -99,32 +105,37 @@ def main():
                 gap_start = i
         else:
             if in_gap:
-                is_n_term = (gap_start == 1)
-                internal_gaps.append({
-                    "af2_start": int(gap_start),
-                    "af2_end": int(i - 1),
-                    "is_terminal": is_n_term,
-                    "sequence": str(fasta_seq[gap_start-1 : i-1])
-                })
+                is_n_term = gap_start == 1
+                internal_gaps.append(
+                    {
+                        "af2_start": int(gap_start),
+                        "af2_end": int(i - 1),
+                        "is_terminal": is_n_term,
+                        "sequence": str(fasta_seq[gap_start - 1 : i - 1]),
+                    }
+                )
                 in_gap = False
 
     if in_gap:
-        internal_gaps.append({
-            "af2_start": int(gap_start),
-            "af2_end": int(len(fasta_seq)),
-            "is_terminal": True,
-            "sequence": str(fasta_seq[gap_start-1 : len(fasta_seq)])
-        })
+        internal_gaps.append(
+            {
+                "af2_start": int(gap_start),
+                "af2_end": int(len(fasta_seq)),
+                "is_terminal": True,
+                "sequence": str(fasta_seq[gap_start - 1 : len(fasta_seq)]),
+            }
+        )
 
     output_data = {
         "fasta_length": len(fasta_seq),
         "chain_id": best_chain.id,
         "internal_gaps": internal_gaps,
-        "superposition_pairs": superposition_pairs
+        "superposition_pairs": superposition_pairs,
     }
 
-    with open(args.out_gaps, 'w') as f:
+    with open(args.out_gaps, "w") as f:
         json.dump(output_data, f, indent=2)
+
 
 if __name__ == "__main__":
     main()

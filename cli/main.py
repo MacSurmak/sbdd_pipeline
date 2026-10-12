@@ -604,6 +604,7 @@ def main():
         cmd_init(args)
     elif subcmd == "heal":
         from cli.commands.heal import cmd_heal
+
         cmd_heal(args)
     elif subcmd == "md-init":
         cmd_md_init(args)
