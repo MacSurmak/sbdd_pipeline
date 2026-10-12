@@ -20,43 +20,46 @@ process HEAL_STRUCTURE {
     echo ">target" > sequence.fasta
     echo "${meta.fasta_seq}" >> sequence.fasta
 
-    # 1. Detect Gaps and extract pure protein
+    # 1. Detect Gaps, clamp construct boundaries and isolate standard PDB components
     colabfold_python ${projectDir}/bin/heal/1_detect_gaps.py \\
         --fasta sequence.fasta \\
         --crystal ${raw_pdb} \\
         --out_gaps gaps.json \\
-        --out_protein protein_only.pdb
+        --out_protein protein_only.pdb \\
+        --out_hetatm hetatm_only.pdb \\
+        --out_clamped_fasta clamped_sequence.fasta
 
-    # 2. Prep ColabFold Template (blank HETATM and correct numbering)
+    # 2. Prep ColabFold Template from clamped construct
     colabfold_python ${projectDir}/bin/heal/2_prep_cf.py \\
         --protein protein_only.pdb \\
-        --fasta sequence.fasta
+        --fasta clamped_sequence.fasta
 
-    # 3. Predict Loops via ColabFold
+    # 3. Predict Loops via ColabFold (100% Offline: single_sequence)
     colabfold_batch \\
         --templates \\
         --custom-template-path custom_templates \\
+        --msa-mode single_sequence \\
         --num-models 1 \\
         --num-recycle 3 \\
         query.fasta af2_output
 
-    # 4. Surgical Graft
+    # 4. Surgical Graft strictly on internal loops
     colabfold_python ${projectDir}/bin/heal/3_graft_loops.py \\
         --crystal protein_only.pdb \\
         --af2_model af2_output/*rank_001*.pdb \\
         --map gaps.json \\
         --out stitched.pdb > healing_report.txt
 
-    # 5. OpenMM Physical Seam Healing
+    # 5. OpenMM Physical Seam Healing strictly on CUDA GPU
     colabfold_python ${projectDir}/bin/heal/4_heal_seams.py \\
         --stitched stitched.pdb \\
         --map gaps.json \\
         --out healed_protein.pdb >> healing_report.txt
 
-    # 6. Restore Complex (Re-inject HETATM)
+    # 6. Clean PDB Complex Assembly
     colabfold_python ${projectDir}/bin/heal/5_restore_complex.py \\
         --healed healed_protein.pdb \\
-        --original ${raw_pdb} \\
+        --hetatm hetatm_only.pdb \\
         --out final_complex.pdb
     """
 
