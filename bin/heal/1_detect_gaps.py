@@ -35,7 +35,11 @@ def read_fasta(fasta_file):
 
 class HetatmSelect(Select):
     def accept_residue(self, res):
-        return 1 if (not is_aa(res) or res.get_id()[0] != " ") and res.get_resname().strip().upper() not in ["HOH", "WAT", "TIP3", "SOL", "OPC"] else 0
+        from Bio.PDB import is_aa
+
+        # The input structure is already 100% sanitized upon import.
+        # Retain any non-protein residue (explicitly whitelisted ligand/cofactors).
+        return 1 if not (is_aa(res) and res.get_id()[0] == " ") else 0
 
 
 def main():

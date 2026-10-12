@@ -47,55 +47,116 @@ def _detect_gaps(struct_path: Path) -> bool:
     return False
 
 
-def _count_and_split_models(
-    struct_path: Path, dest_dir: Path, base_name: str
+STANDARD_PROTEIN_RESIDUES = {
+    "ALA", "ARG", "ASN", "ASP", "CYS", "CYX", "GLN", "GLU", "GLY",
+    "HIS", "HID", "HIE", "HIP", "ILE", "LEU", "LYS", "LYN", "MET",
+    "PHE", "PRO", "SER", "THR", "TRP", "TYR", "VAL", "ASH", "GLH",
+    "ACE", "NME", "NMA", "MSE", "CSE"
+}
+
+
+class CleanStructureSelect:
+    """Strict whitelist filter: retains ONLY standard protein residues plus explicitly authorized ligand and cofactors."""
+
+    def __init__(self, allowed_ligand: str | None, allowed_cofactors: list[str]):
+        self.allowed_ligand = allowed_ligand.upper() if allowed_ligand else None
+        self.allowed_cofactors = set(c.upper() for c in allowed_cofactors) if allowed_cofactors else set()
+
+    def accept_model(self, model):
+        return 1
+
+    def accept_chain(self, chain):
+        return 1
+
+    def accept_atom(self, atom):
+        return 1
+
+    def accept_residue(self, res):
+        from Bio.PDB import is_aa
+
+        r_name = res.get_resname().strip().upper()
+        # 1. Retain standard protein residues
+        if r_name in STANDARD_PROTEIN_RESIDUES or (is_aa(res) and res.get_id()[0] == " "):
+            return 1
+        # 2. Retain explicit ligand
+        if self.allowed_ligand and r_name == self.allowed_ligand:
+            return 1
+        # 3. Retain explicit cofactors
+        if r_name in self.allowed_cofactors:
+            return 1
+        # 4. Strictly purge everything else (water, buffers, unrequested ions and ligands)
+        return 0
+
+
+def _sanitize_and_split_models(
+    struct_path: Path,
+    dest_dir: Path,
+    base_name: str,
+    allowed_ligand: str | None,
+    allowed_cofactors: list[str],
 ) -> list[tuple[str, Path]]:
     """
-    Checks for NMR/multi-model structures in PDB/CIF.
-    Splits transparently into individual files if multiple models exist.
-    Returns a list of (frame_name, file_path).
+    Parses PDB or mmCIF, verifies explicit existence of requested ligand/cofactors (Fail-Fast),
+    purges all water and unauthorized molecules immediately, and writes clean standardized PDB files.
     """
+    from Bio.PDB import PDBParser, MMCIFParser, PDBIO
+
     dest_dir.mkdir(parents=True, exist_ok=True)
     suffix = struct_path.suffix.lower()
 
-    if suffix not in [".pdb", ".cif", ".mmcif"]:
-        out_f = dest_dir / f"{base_name}{suffix}"
-        shutil.copy2(struct_path, out_f)
-        return [(base_name, out_f)]
-
-    # Detect models via simple fast scan
-    models_content = []
-    current_model = []
-    in_model = False
-
-    with open(struct_path, "r", encoding="utf-8", errors="ignore") as f:
-        for line in f:
-            if line.startswith("MODEL"):
-                in_model = True
-                current_model = [line]
-            elif line.startswith("ENDMDL"):
-                current_model.append(line)
-                models_content.append("".join(current_model))
-                current_model = []
-                in_model = False
-            elif in_model:
-                current_model.append(line)
-
-    if len(models_content) > 1:
-        console.print(
-            f"[cyan]Detected {len(models_content)} models in NMR ensemble. Splitting transparently...[/cyan]"
-        )
-        results = []
-        for idx, m_text in enumerate(models_content, start=1):
-            f_name = f"{base_name}_m{idx}"
-            out_file = dest_dir / f"{f_name}.pdb"
-            out_file.write_text(m_text)
-            results.append((f_name, out_file))
-        return results
+    if suffix in [".cif", ".mmcif"]:
+        parser = MMCIFParser(QUIET=True)
+    elif suffix == ".pdb":
+        parser = PDBParser(QUIET=True)
     else:
         out_f = dest_dir / f"{base_name}{suffix}"
         shutil.copy2(struct_path, out_f)
         return [(base_name, out_f)]
+
+    st = parser.get_structure("struct", str(struct_path))
+
+    # Strict Fail-Fast verification of explicitly requested molecules
+    all_resnames = set()
+    for model in st:
+        for chain in model:
+            for res in chain:
+                all_resnames.add(res.get_resname().strip().upper())
+
+    if allowed_ligand and allowed_ligand.upper() not in all_resnames:
+        raise ValueError(
+            f"FATAL: Specified ligand '{allowed_ligand}' was not found in {struct_path.name}! "
+            f"Available residues: {sorted(list(all_resnames))}"
+        )
+
+    for cof in allowed_cofactors:
+        if cof.upper() not in all_resnames:
+            raise ValueError(
+                f"FATAL: Specified cofactor '{cof}' was not found in {struct_path.name}! "
+                f"Available residues: {sorted(list(all_resnames))}"
+            )
+
+    selector = CleanStructureSelect(allowed_ligand, allowed_cofactors)
+    io = PDBIO()
+
+    models = list(st.get_models())
+    if len(models) > 1:
+        console.print(
+            f"[cyan]Detected {len(models)} models in ensemble. Sanitizing and splitting transparently...[/cyan]"
+        )
+        results = []
+        for idx, model in enumerate(models, start=1):
+            f_name = f"{base_name}_m{idx}"
+            out_file = dest_dir / f"{f_name}.pdb"
+            io.set_structure(model)
+            io.save(str(out_file), selector)
+            results.append((f_name, out_file))
+        return results
+    else:
+        f_name = base_name
+        out_file = dest_dir / f"{f_name}.pdb"
+        io.set_structure(st[0])
+        io.save(str(out_file), selector)
+        return [(f_name, out_file)]
 
 
 def _extract_ligand_atoms(rec_path: Path, lig_resname: str, out_sdf: Path) -> None:
@@ -198,7 +259,9 @@ def add_receptor(args):
         source_type = "crystal"
 
         frames_dir = cwd / "structures" / target_name
-        frames = _count_and_split_models(struct_path, frames_dir, base_name)
+        frames = _sanitize_and_split_models(
+            struct_path, frames_dir, base_name, lig_code, cofactors
+        )
 
         for frame_name, frame_file in frames:
             has_gaps = _detect_gaps(frame_file)
