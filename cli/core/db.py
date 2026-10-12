@@ -43,6 +43,7 @@ class Target(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String, unique=True, index=True, nullable=False)
+    reference_sequence = Column(Text, nullable=True)  # SSOT Target FASTA sequence
     description = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
@@ -70,8 +71,8 @@ class ReceptorFrame(Base):
     name = Column(String, unique=True, index=True, nullable=False)
     source_type = Column(
         String, default="crystal", nullable=False
-    )  # crystal, nmr, md_centroid, af3, docking_receptor
-    state = Column(String, default="raw", nullable=False)  # raw, ready
+    )  # crystal, nmr, md_centroid, docking_receptor, crystal_healed
+    state = Column(String, default="raw", nullable=False)  # broken, raw, ready
     parent_frame_id = Column(
         Integer, ForeignKey("receptor_frames.id", ondelete="SET NULL"), nullable=True
     )

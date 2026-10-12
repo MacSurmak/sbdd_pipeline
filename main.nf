@@ -12,6 +12,7 @@ include { SCREEN_WF   } from './workflows/screen'
 include { RESCORE_WF  } from './workflows/rescore'
 include { DYNAMICS_WF } from './workflows/dynamics'
 include { ANALYZE_WF  } from './workflows/analyze'
+include { HEAL_WF     } from './workflows/heal'
 
 def helpMessage() {
     log.info """
@@ -22,7 +23,7 @@ def helpMessage() {
       nextflow run ${projectDir}/main.nf -profile slurm [options]
 
     Primary Parameters:
-      --entry            Target subworkflow: 'prepare', 'screen', 'dynamics', 'all' (default: 'all')
+      --entry            Target subworkflow: 'heal', 'prepare', 'screen', 'rescore', 'dynamics'
       --project_name     Project name for isolated /shared/work scratch
       --receptor         Path to input receptor structure (.cif or .pdb)
       --library          Path to ligand library (.sdf)
@@ -43,7 +44,9 @@ workflow {
     }
 
     def entrypoint = params.entry ? params.entry.toLowerCase() : "all"
-    if (entrypoint == "prepare") {
+    if (entrypoint == "heal") {
+        HEAL_WF()
+    } else if (entrypoint == "prepare") {
         PREPARE_WF()
     } else if (entrypoint == "screen" || entrypoint == "dock") {
         SCREEN_WF()

@@ -14,6 +14,32 @@ from cli.core.chem import get_mol_identity
 console = Console()
 
 
+import math
+
+def _detect_gaps(pdb_path: Path) -> bool:
+    """Fast mathematical detection of C-alpha chain breaks or missing residues."""
+    prev_ca = None
+    prev_res = None
+    try:
+        with open(pdb_path, "r", encoding="utf-8", errors="ignore") as f:
+            for line in f:
+                if line.startswith("ATOM") and line[12:16].strip() == "CA":
+                    try:
+                        res_seq = int(line[22:26].strip())
+                        x, y, z = float(line[30:38]), float(line[38:46]), float(line[46:54])
+                        if prev_ca is not None:
+                            d2 = (x-prev_ca[0])**2 + (y-prev_ca[1])**2 + (z-prev_ca[2])**2
+                            # If numbering jumps OR spatial distance between CA is > 4.5 Angstroms
+                            if (res_seq - prev_res > 1) or d2 > 20.25:
+                                return True
+                        prev_ca = (x, y, z)
+                        prev_res = res_seq
+                    except ValueError:
+                        continue
+    except Exception:
+        pass
+    return False
+
 def _count_and_split_models(
     struct_path: Path, dest_dir: Path, base_name: str
 ) -> list[tuple[str, Path]]:
@@ -277,6 +303,47 @@ def add_receptor(args):
     session.commit()
     session.close()
 
+
+def add_fasta(args):
+    """Imports FASTA reference sequences for Targets."""
+    session = init_db()
+    fasta_path = Path(args.path).resolve()
+    
+    if not fasta_path.exists():
+        console.print(f"[bold red]FATAL: FASTA file not found: {fasta_path}[/bold red]")
+        sys.exit(1)
+
+    updated = 0
+    with open(fasta_path, "r", encoding="utf-8", errors="ignore") as f:
+        current_target = None
+        seq_lines = []
+        
+        def save_current():
+            nonlocal updated
+            if current_target and seq_lines:
+                t = session.query(Target).filter_by(name=current_target).first()
+                if t:
+                    t.reference_sequence = "".join(seq_lines).replace(" ", "").upper()
+                    updated += 1
+                else:
+                    console.print(f"[yellow]Warning: Target '{current_target}' not found in DB, skipping sequence.[/yellow]")
+
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            if line.startswith(">"):
+                save_current()
+                # Parse target name from fasta header (e.g. >EGFR_human)
+                current_target = line[1:].split()[0].strip()
+                seq_lines = []
+            else:
+                seq_lines.append(line)
+        save_current()
+
+    session.commit()
+    session.close()
+    console.print(f"[bold green]✓ Updated reference sequences for {updated} target(s).[/bold green]")
 
 def add_ligand(args):
     """

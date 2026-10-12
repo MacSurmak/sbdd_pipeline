@@ -227,7 +227,13 @@ def main():
         "--ligand", help="Native ligand residue name inside structure (e.g. KVR, BTN)"
     )
 
-    # 0.2 add ligand
+    # 0.2 add fasta
+    p_add_fasta = add_subs.add_parser(
+        "fasta", help="Import reference FASTA sequence for a Target"
+    )
+    p_add_fasta.add_argument("path", help="Path to the .fasta file")
+
+    # 0.3 add ligand
     p_add_lig = add_subs.add_parser(
         "ligand", help="Register a ligand library or individual molecule"
     )
@@ -239,7 +245,7 @@ def main():
         "--force", action="store_true", help="Overwrite if name exists"
     )
 
-    # 0.3 add traj
+    # 0.4 add traj
     p_add_traj = add_subs.add_parser(
         "traj", help="Register an existing MD trajectory replicate linked to a System"
     )
@@ -297,6 +303,25 @@ def main():
 
     # 1. init
     p_init = subparsers.add_parser("init", help="Initialize new project workspace")
+    p_init.add_argument(
+        "directory",
+        nargs="?",
+        default=".",
+        help="Target project directory (default: current)",
+    )
+    p_init.add_argument(
+        "--name", help="Explicit project name (default: auto-generated random name)"
+    )
+    p_init.add_argument(
+        "--force", action="store_true", help="Overwrite existing templates"
+    )
+
+    # 1.5 heal
+    p_heal = subparsers.add_parser(
+        "heal", help="Physically repair missing loops in broken crystal frames via AI"
+    )
+    p_heal.add_argument("--target", help="Limit healing to specific Target")
+    add_common_wf_args(p_heal)
     p_init.add_argument(
         "directory",
         nargs="?",
@@ -569,10 +594,12 @@ def main():
         init_db()
 
     if subcmd == "add":
-        from cli.commands.add import add_receptor, add_ligand, add_traj
+        from cli.commands.add import add_receptor, add_ligand, add_traj, add_fasta
 
         if args.add_type in ["structure", "receptor", "complex"]:
             add_receptor(args)
+        elif args.add_type == "fasta":
+            add_fasta(args)
         elif args.add_type == "ligand":
             add_ligand(args)
         elif args.add_type == "traj":
@@ -587,6 +614,9 @@ def main():
         cmd_rm(args)
     elif subcmd == "init":
         cmd_init(args)
+    elif subcmd == "heal":
+        from cli.commands.heal import cmd_heal
+        cmd_heal(args)
     elif subcmd == "md-init":
         cmd_md_init(args)
     elif subcmd == "status":
