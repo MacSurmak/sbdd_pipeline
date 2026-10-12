@@ -44,16 +44,11 @@ def get_coords_schrodinger(path: Path) -> List[Tuple[float, float, float]]:
     return [(float(a.x), float(a.y), float(a.z)) for a in st.atom]
 
 
-def parse_box_dims(
-    val: str, default: Tuple[float, float, float]
-) -> Tuple[float, float, float]:
-    try:
-        parts = [float(x.strip()) for x in val.replace(",", " ").split() if x.strip()]
-        if len(parts) == 3:
-            return (parts[0], parts[1], parts[2])
-    except Exception:
-        pass
-    return default
+def parse_box_dims(val: str) -> Tuple[float, float, float]:
+    parts = [float(x.strip()) for x in val.replace(",", " ").split() if x.strip()]
+    if len(parts) == 3:
+        return (parts[0], parts[1], parts[2])
+    raise ValueError(f"FATAL: Invalid box dimensions string: {val}")
 
 
 def cgo_box_lines(
@@ -110,23 +105,13 @@ def main():
 
     ref_p = Path(args.reference).resolve()
     coords = []
-    try:
+    
+    if ref_p.suffix.lower() in [".sdf", ".pdb"]:
         coords = get_coords_rdkit(ref_p)
-    except Exception:
-        try:
-            coords = get_coords_schrodinger(ref_p)
-        except Exception as e:
-            print(
-                f"FATAL: Could not read reference coordinates from {ref_p}: {e}",
-                file=sys.stderr,
-            )
-            sys.exit(1)
-
-    if not coords:
-        try:
-            coords = get_coords_schrodinger(ref_p)
-        except Exception:
-            pass
+    elif ref_p.suffix.lower() in [".mae", ".maegz"]:
+        coords = get_coords_schrodinger(ref_p)
+    else:
+        raise ValueError(f"FATAL: Unsupported reference format for docking box: {ref_p.suffix}")
 
     if not coords:
         print(f"FATAL: No atoms found in reference ligand {ref_p}", file=sys.stderr)
@@ -142,8 +127,8 @@ def main():
     cz = sum(zs) / len(zs)
 
     # 2. Dimensions
-    inner_w, inner_h, inner_d = parse_box_dims(args.inner_box, (10.0, 10.0, 10.0))
-    outer_w, outer_h, outer_d = parse_box_dims(args.outer_box, (26.0, 26.0, 26.0))
+    inner_w, inner_h, inner_d = parse_box_dims(args.inner_box)
+    outer_w, outer_h, outer_d = parse_box_dims(args.outer_box)
     auto_pad = float(args.autobox_add)
 
     # Glide Outer box

@@ -52,20 +52,20 @@ def main():
     p = Path(args.input)
     count = 1
 
-    try:
+    if p.suffix.lower() in [".mae", ".maegz"]:
         from schrodinger.structure import count_structures
-
         count = count_structures(str(p.resolve()))
-    except Exception:
-        if p.suffix.lower() in [".cif", ".mmcif"]:
-            count = count_cif_models(p)
-        elif p.suffix.lower() == ".pdb":
-            models = 0
-            with open(p, "r", errors="ignore") as f:
-                for line in f:
-                    if line.startswith("MODEL"):
-                        models += 1
-            count = max(1, models)
+    elif p.suffix.lower() in [".cif", ".mmcif"]:
+        count = count_cif_models(p)
+    elif p.suffix.lower() == ".pdb":
+        models = 0
+        with open(p, "r", errors="ignore") as f:
+            for line in f:
+                if line.startswith("MODEL"):
+                    models += 1
+        count = max(1, models)
+    else:
+        raise ValueError(f"FATAL: Unsupported structure format for counting: {p.suffix}")
 
     print(count)
     with open(args.output, "w") as out:

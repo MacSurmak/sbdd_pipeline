@@ -25,22 +25,23 @@ def main():
     )
     args = parser.parse_args()
 
-    data = {"thickness": 28.0, "tilt": 0.0, "dg": 0.0}
+    data = {}
     datapar_path = Path(args.datapar)
 
-    if datapar_path.exists():
-        with open(datapar_path, "r") as f:
-            parts = [p.strip() for p in f.readline().split(";")]
-            data["thickness"] = float(parts[1])
-            data["tilt"] = float(parts[3])
-            data["dg"] = float(parts[5])
-        logging.info(
-            f"Parsed PPM 3.0: thickness={data['thickness']}, tilt={data['tilt']}, dG={data['dg']}"
-        )
-    else:
+    if not datapar_path.exists():
         raise FileNotFoundError(
-            f"FATAL: PPM 3.0 output {datapar_path} not found. Immersion failed."
+            f"FATAL: PPM 3.0 output {datapar_path} not found. Immersion calculation failed without generating output."
         )
+
+    with open(datapar_path, "r") as f:
+        parts = [p.strip() for p in f.readline().split(";")]
+        data["thickness"] = float(parts[1])
+        data["tilt"] = float(parts[3])
+        data["dg"] = float(parts[5])
+        
+    logging.info(
+        f"Parsed PPM 3.0: thickness={data['thickness']}, tilt={data['tilt']}, dG={data['dg']}"
+    )
 
     with open(args.out_json, "w") as f_json:
         json.dump(data, f_json, indent=2)

@@ -32,65 +32,6 @@ def clean_shared_scratch(workdir: str, verbose: bool = True):
             console.print(f"[dim]No scratch directory found at {scratch_dir}[/dim]")
 
 
-def build_unrolled_md_dag(total_chunks: int) -> str:
-    includes = [
-        "include { GMX_EQUILIBRATION } from '../modules/gromacs/equilibration'",
-        "include { TRJCAT            } from '../modules/gromacs/trjcat'",
-    ]
-    for i in range(1, total_chunks + 1):
-        includes.append(
-            f"include {{ RUN_MD_CHUNK as RUN_MD_CHUNK_{i} }} from '../modules/gromacs/run_chunk'"
-        )
-
-    includes_str = "\n".join(includes)
-
-    code = f"""/* Dynamically generated unrolled DAG for chunked MD */
-{includes_str}
-
-workflow RUN_CHUNKED_MD {{
-    take:
-    ch_system
-    ch_md_protocol
-    total_ns
-    chunk_ns
-    replicates
-
-    main:
-    GMX_EQUILIBRATION(ch_system, ch_md_protocol)
-    
-    def num_reps = replicates as int
-    ch_state_0 = GMX_EQUILIBRATION.out.equilibrated_state
-        .join(ch_system.map{{ m, gro, top, ndx, pos -> [m, top, ndx, pos] }}, by: 0)
-        .flatMap {{ meta, eq_gro, eq_cpt, eq_tpr, topol, ndx, posre_files ->
-            def rep_ids = meta.replicates ?: (1..num_reps).toList()
-            rep_ids.collect {{ rep_id ->
-                def rep_meta = meta + [rep: rep_id]
-                [ rep_meta, eq_gro, eq_cpt, eq_tpr, topol, ndx, posre_files ]
-            }}
-        }}
-
-    ch_all_xtcs = Channel.empty()
-"""
-    for i in range(1, total_chunks + 1):
-        code += f"""
-    step_{i} = RUN_MD_CHUNK_{i}(ch_state_{i-1}, ch_md_protocol, chunk_ns, {i})
-    ch_state_{i} = step_{i}.state.map {{ meta, out_gro, out_cpt, out_tpr, top, ndx, pos -> [meta, out_gro, out_cpt, out_tpr, top, ndx, pos] }}
-    ch_all_xtcs = ch_all_xtcs.mix(step_{i}.xtc)
-"""
-    code += f"""
-    sys_files = step_1.sys_files
-
-    ch_grouped_xtcs = ch_all_xtcs.groupTuple(by: 0, size: {total_chunks}, sort: true)
-    TRJCAT(ch_grouped_xtcs)
-
-    emit:
-    raw_trajectory = TRJCAT.out.concat_xtc
-    sys_files = sys_files
-}}
-"""
-    return code
-
-
 def execute_nextflow(
     entrypoint: str,
     extra_args: list,
@@ -100,10 +41,10 @@ def execute_nextflow(
     auto_clean: bool = False,
     configs: dict = None,
 ) -> int:
-    """Invokes Nextflow orchestrator with complete isolation from project directory."""
+    """Invokes Nextflow orchestrator directly from the pristine /shared/sbdd_pipeline source tree."""
     import os
 
-    main_nf = FRAMEWORK_DIR / "main.nf"
+    target_main = FRAMEWORK_DIR / "main.nf"
 
     project_name = project_dir.name
     if "--project_name" in extra_args:
@@ -127,60 +68,10 @@ def execute_nextflow(
     reports_dir.mkdir(parents=True, exist_ok=True)
     log_file = reports_dir / f"nextflow_{entrypoint}.log"
 
-    # Pre-generate unrolled DAG pipeline snapshot with strict Fail-Fast config reading
-    total_ns = None
-    chunk_ns = None
-    if (
-        configs
-        and "md_simulation" in configs
-        and "production" in configs["md_simulation"]
-    ):
-        try:
-            total_ns = float(configs["md_simulation"]["production"]["total_time_ns"])
-            chunk_ns = float(configs["md_simulation"]["production"]["chunk_size_ns"])
-        except KeyError as e:
-            raise ValueError(f"FATAL: Missing required parameter {e} in md.yaml")
-
-    if total_ns is None or chunk_ns is None:
-        # Fallback only if we are absolutely not running MD
-        total_c = 1
-    else:
-        total_c = max(1, int(round(total_ns / chunk_ns)))
-
-    pipeline_code_dir = scratch_base / ".pipeline_code"
-    pipeline_code_dir.mkdir(parents=True, exist_ok=True)
-
-    for d in ["workflows", "subworkflows", "modules", "assets", "conf", "bin"]:
-        src = FRAMEWORK_DIR / d
-        if src.exists():
-            shutil.copytree(
-                src,
-                pipeline_code_dir / d,
-                dirs_exist_ok=True,
-                copy_function=shutil.copy2,
-            )
-    for f in ["main.nf", "nextflow.config"]:
-        src = FRAMEWORK_DIR / f
-        if src.exists():
-            shutil.copy2(src, pipeline_code_dir / f)
-
-    unrolled_code = build_unrolled_md_dag(total_c)
-    unrolled_nf = pipeline_code_dir / "subworkflows" / "run_chunked_md.nf"
-    unrolled_nf.write_text(unrolled_code)
-
-    # Synchronize repository copy so standalone calls without CLI also reflect configured DAG
-    (FRAMEWORK_DIR / "subworkflows" / "run_chunked_md.nf").write_text(unrolled_code)
-
-    for script_file in (pipeline_code_dir / "bin").glob("*.py"):
-        try:
-            script_file.chmod(0o755)
-        except Exception:
-            pass
     env = os.environ.copy()
     env["NXF_HOME"] = str(scratch_nxf_home.resolve())
     env["NXF_WORK"] = str(scratch_work.resolve())
 
-    target_main = pipeline_code_dir / "main.nf"
     cmd = [
         "nextflow",
         "-log",

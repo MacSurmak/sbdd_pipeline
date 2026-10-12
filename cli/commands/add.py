@@ -18,68 +18,32 @@ import math
 
 
 def _detect_gaps(struct_path: Path) -> bool:
-    """Rigorous gap detection supporting both PDB and mmCIF via Bio.PDB and MDAnalysis."""
-    try:
-        from Bio.PDB import PDBParser, MMCIFParser, is_aa
+    """Rigorous gap detection supporting both PDB and mmCIF via Bio.PDB. Strictly forbids silent fallbacks."""
+    from Bio.PDB import PDBParser, MMCIFParser, is_aa
 
-        suffix = struct_path.suffix.lower()
-        parser = (
-            MMCIFParser(QUIET=True)
-            if suffix in [".cif", ".mmcif"]
-            else PDBParser(QUIET=True)
-        )
-        st = parser.get_structure("struct", str(struct_path))
+    suffix = struct_path.suffix.lower()
+    parser = (
+        MMCIFParser(QUIET=True)
+        if suffix in [".cif", ".mmcif"]
+        else PDBParser(QUIET=True)
+    )
+    st = parser.get_structure("struct", str(struct_path))
 
-        for model in st:
-            for chain in model:
-                prev_ca = None
-                prev_res = None
-                for res in chain:
-                    if is_aa(res) and "CA" in res:
-                        res_id = res.get_id()
-                        res_seq = res_id[1]
-                        coord = res["CA"].get_coord()
-                        if prev_ca is not None and prev_res is not None:
-                            d2 = sum((coord[k] - prev_ca[k]) ** 2 for k in range(3))
-                            # Chain break if numbering jumps (>1) OR CA-CA distance > 4.5 Angstroms
-                            if (res_seq - prev_res > 1) or d2 > 20.25:
-                                return True
-                        prev_ca = coord
-                        prev_res = res_seq
-        return False
-    except Exception:
-        pass
-
-    # Fallback to MDAnalysis if Bio.PDB encountered an issue
-    try:
-        import MDAnalysis as mda
-        import numpy as np
-        import warnings
-
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            u = mda.Universe(str(struct_path))
-
-        ca = u.select_atoms("protein and name CA")
-        if len(ca) >= 2:
-            chains = (
-                np.unique(ca.segids)
-                if len(ca.segids) > 0 and ca.segids[0] != ""
-                else [None]
-            )
-            for c in chains:
-                c_ca = ca.select_atoms(f"segid {c}") if c else ca
-                if len(c_ca) >= 2:
-                    resids = c_ca.resids
-                    if np.any(np.diff(resids) > 1):
-                        return True
-                    pos = c_ca.positions
-                    dists = np.linalg.norm(pos[1:] - pos[:-1], axis=1)
-                    if np.any(dists > 4.5):
-                        return True
-    except Exception:
-        pass
-
+    for model in st:
+        for chain in model:
+            prev_ca = None
+            prev_res = None
+            for res in chain:
+                if is_aa(res) and "CA" in res:
+                    res_id = res.get_id()
+                    res_seq = res_id[1]
+                    coord = res["CA"].get_coord()
+                    if prev_ca is not None and prev_res is not None:
+                        d2 = sum((coord[k] - prev_ca[k]) ** 2 for k in range(3))
+                        if (res_seq - prev_res > 1) or d2 > 20.25:
+                            return True
+                    prev_ca = coord
+                    prev_res = res_seq
     return False
 
 
@@ -335,7 +299,7 @@ def add_receptor(args):
                     )
 
             # System creation
-            sys_name = f"{frame_name}_holo" if pose_obj else f"{frame_name}_apo"
+            sys_name = f"{frame_name}_{lig_entity.name}" if pose_obj else frame_name
             ex_sys = session.query(System).filter_by(name=sys_name).first()
             if ex_sys:
                 ex_sys.pose_id = pose_obj.id if pose_obj else None
@@ -456,8 +420,9 @@ def add_ligand(args):
             imported += 1
             if imported % 500 == 0:
                 session.commit()
-        except Exception:
-            continue
+        except Exception as e:
+            console.print(f"[bold red]FATAL: Ligand parsing failed at index {idx}: {e}[/bold red]")
+            sys.exit(1)
 
     session.commit()
     session.close()

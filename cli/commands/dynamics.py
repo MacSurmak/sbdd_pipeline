@@ -184,12 +184,12 @@ def cmd_dynamics(args):
         for rep_idx in missing_reps:
             raw_dir = cwd / "md" / sys_obj.name / f"rep_{rep_idx}" / "raw"
             tpr_path = raw_dir / "sys_ref.tpr"
-            chunks = list(raw_dir.glob("md_*.xtc"))
+            first_chunk = raw_dir / "md_1.xtc"
 
-            if not chunks or not tpr_path.exists():
+            if not first_chunk.exists() or not tpr_path.exists():
                 session.close()
                 raise FileNotFoundError(
-                    f"FATAL: Missing trajectory artifacts for {sys_obj.name} replicate {rep_idx} in {raw_dir}. "
+                    f"FATAL: Deterministic trajectory artifacts (md_1.xtc or sys_ref.tpr) missing for {sys_obj.name} replicate {rep_idx} in {raw_dir}. "
                     "Nextflow finished without generating expected deliverables."
                 )
 
