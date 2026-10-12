@@ -25,16 +25,16 @@ def parse_glide_csv(csv_path: Path) -> Dict[str, Dict[str, float]]:
                     try:
                         score = float(row[k])
                         break
-                    except ValueError:
-                        pass
+                    except ValueError as e:
+                        raise ValueError(f"FATAL: Unparseable GlideScore '{row[k]}' for ligand '{title}': {e}")
             if score is None:
                 for k in ["r_i_glide_gscore", "gscore"]:
                     if k in row and row[k]:
                         try:
                             score = float(row[k])
                             break
-                        except ValueError:
-                            pass
+                        except ValueError as e:
+                            raise ValueError(f"FATAL: Unparseable GScore '{row[k]}' for ligand '{title}': {e}")
             if score is not None:
                 data[title] = {"GlideScore": score}
     return data
