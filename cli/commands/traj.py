@@ -527,14 +527,14 @@ def cmd_cluster(args):
                 ex_pose.state = "ready"
                 pose_obj = ex_pose
 
-        # C. Register Ready System for this Centroid (Upgrade any legacy Apo to Holo)
+        # C. Register Ready System for this Centroid
         cluster_sys_name = (
-            f"{centroid_frame_name}_holo" if pose_obj else f"{centroid_frame_name}_apo"
+            f"{centroid_frame_name}_{parent_sys.pose.ligand.name}" if pose_obj else centroid_frame_name
         )
         if pose_obj:
             legacy_apo = (
                 session.query(System)
-                .filter_by(name=f"{centroid_frame_name}_apo")
+                .filter_by(name=centroid_frame_name)
                 .first()
             )
             if legacy_apo:

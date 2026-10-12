@@ -33,18 +33,32 @@ def read_fasta(fasta_file):
     return "".join(seq)
 
 
+class HetatmSelect(Select):
+    def accept_residue(self, res):
+        return 1 if (not is_aa(res) or res.get_id()[0] != " ") and res.get_resname().strip().upper() not in ["HOH", "WAT", "TIP3", "SOL", "OPC"] else 0
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--fasta", required=True)
     parser.add_argument("--crystal", required=True)
     parser.add_argument("--out_gaps", default="gaps.json")
     parser.add_argument("--out_protein", default="protein_only.pdb")
+    parser.add_argument("--out_hetatm", default="hetatm_only.pdb")
+    parser.add_argument("--out_clamped_fasta", default="clamped_sequence.fasta")
     args = parser.parse_args()
 
-    parser_pdb = PDBParser(QUIET=True)
-    st = parser_pdb.get_structure("struct", args.crystal)
+    cryst_path = str(args.crystal).lower()
+    if cryst_path.endswith((".cif", ".mmcif")):
+        from Bio.PDB import MMCIFParser
+        parser_struct = MMCIFParser(QUIET=True)
+    else:
+        from Bio.PDB import PDBParser
+        parser_struct = PDBParser(QUIET=True)
 
-    # Auto-detect longest chain
+    st = parser_struct.get_structure("struct", args.crystal)
+
+    # Auto-detect longest protein chain
     best_chain = None
     best_len = 0
     for chain in st[0]:
@@ -54,13 +68,17 @@ def main():
             best_chain = chain
 
     if not best_chain:
-        print("FATAL: No amino acids found in PDB.", file=sys.stderr)
+        print("FATAL: No amino acids found in crystal structure.", file=sys.stderr)
         sys.exit(1)
 
-    # Write pure protein PDB to isolate from HETATM
+    # Write clean standard PDBs
     io = PDBIO()
     io.set_structure(best_chain.get_parent())
     io.save(args.out_protein, ProteinOnlySelect())
+
+    # Isolate HETATMs into clean standard PDB format
+    io.set_structure(st[0])
+    io.save(args.out_hetatm, HetatmSelect())
 
     fasta_seq = read_fasta(args.fasta)
     pdb_seq, pdb_res_ids = get_pdb_sequence(best_chain)
@@ -78,63 +96,76 @@ def main():
     blocks_fasta = best_alignment.aligned[0]
     blocks_pdb = best_alignment.aligned[1]
 
-    internal_gaps = []
-    superposition_pairs = []
-
+    raw_pairs = []
     for (f_start, f_end), (p_start, p_end) in zip(blocks_fasta, blocks_pdb):
         for offset in range(f_end - f_start):
-            f_idx = f_start + offset + 1
+            f_idx = f_start + offset + 1  # 1-based original FASTA index
             p_idx = p_start + offset
             pid = pdb_res_ids[p_idx]
-            superposition_pairs.append(
+            raw_pairs.append(
                 {
-                    "af2_resSeq": int(f_idx),
+                    "fasta_resSeq": int(f_idx),
                     "crystal_seq": int(pid[1]),
                     "crystal_icode": str(pid[2]),
                 }
             )
 
-    aligned_f_indices = set(p["af2_resSeq"] for p in superposition_pairs)
+    aligned_indices = sorted([p["fasta_resSeq"] for p in raw_pairs])
+    first_resolved = aligned_indices[0]
+    last_resolved = aligned_indices[-1]
+
+    # Strictly clamp sequence to resolved construct (discard floppy terminal overhangs)
+    clamped_seq = fasta_seq[first_resolved - 1 : last_resolved]
+    clamped_offset = first_resolved - 1
+
+    aligned_set = set(aligned_indices)
+    internal_gaps = []
     in_gap = False
     gap_start = None
 
-    for i in range(1, len(fasta_seq) + 1):
-        if i not in aligned_f_indices:
+    # Detect strictly internal missing loops
+    for i in range(first_resolved, last_resolved + 1):
+        if i not in aligned_set:
             if not in_gap:
                 in_gap = True
                 gap_start = i
         else:
             if in_gap:
-                is_n_term = gap_start == 1
                 internal_gaps.append(
                     {
-                        "af2_start": int(gap_start),
-                        "af2_end": int(i - 1),
-                        "is_terminal": is_n_term,
+                        "af2_start": int(gap_start - clamped_offset),
+                        "af2_end": int((i - 1) - clamped_offset),
+                        "orig_start": int(gap_start),
+                        "orig_end": int(i - 1),
                         "sequence": str(fasta_seq[gap_start - 1 : i - 1]),
                     }
                 )
                 in_gap = False
 
-    if in_gap:
-        internal_gaps.append(
+    clamped_superposition_pairs = []
+    for p in raw_pairs:
+        clamped_superposition_pairs.append(
             {
-                "af2_start": int(gap_start),
-                "af2_end": int(len(fasta_seq)),
-                "is_terminal": True,
-                "sequence": str(fasta_seq[gap_start - 1 : len(fasta_seq)]),
+                "af2_resSeq": int(p["fasta_resSeq"] - clamped_offset),
+                "crystal_seq": int(p["crystal_seq"]),
+                "crystal_icode": str(p["crystal_icode"]),
             }
         )
 
     output_data = {
-        "fasta_length": len(fasta_seq),
+        "fasta_length": len(clamped_seq),
         "chain_id": best_chain.id,
+        "first_resolved": first_resolved,
+        "last_resolved": last_resolved,
         "internal_gaps": internal_gaps,
-        "superposition_pairs": superposition_pairs,
+        "superposition_pairs": clamped_superposition_pairs,
     }
 
-    with open(args.out_gaps, "w") as f:
+    with open(args.out_gaps, "w", encoding="utf-8") as f:
         json.dump(output_data, f, indent=2)
+
+    with open(args.out_clamped_fasta, "w", encoding="utf-8") as f:
+        f.write(f">clamped\n{clamped_seq}\n")
 
 
 if __name__ == "__main__":
