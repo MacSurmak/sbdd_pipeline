@@ -16,28 +16,59 @@ console = Console()
 
 import math
 
-def _detect_gaps(pdb_path: Path) -> bool:
-    """Fast mathematical detection of C-alpha chain breaks or missing residues."""
-    prev_ca = None
-    prev_res = None
+def _detect_gaps(struct_path: Path) -> bool:
+    """Rigorous gap detection supporting both PDB and mmCIF via Bio.PDB and MDAnalysis."""
     try:
-        with open(pdb_path, "r", encoding="utf-8", errors="ignore") as f:
-            for line in f:
-                if line.startswith("ATOM") and line[12:16].strip() == "CA":
-                    try:
-                        res_seq = int(line[22:26].strip())
-                        x, y, z = float(line[30:38]), float(line[38:46]), float(line[46:54])
-                        if prev_ca is not None:
-                            d2 = (x-prev_ca[0])**2 + (y-prev_ca[1])**2 + (z-prev_ca[2])**2
-                            # If numbering jumps OR spatial distance between CA is > 4.5 Angstroms
+        from Bio.PDB import PDBParser, MMCIFParser, is_aa
+        suffix = struct_path.suffix.lower()
+        parser = MMCIFParser(QUIET=True) if suffix in [".cif", ".mmcif"] else PDBParser(QUIET=True)
+        st = parser.get_structure("struct", str(struct_path))
+
+        for model in st:
+            for chain in model:
+                prev_ca = None
+                prev_res = None
+                for res in chain:
+                    if is_aa(res) and "CA" in res:
+                        res_id = res.get_id()
+                        res_seq = res_id[1]
+                        coord = res["CA"].get_coord()
+                        if prev_ca is not None and prev_res is not None:
+                            d2 = sum((coord[k] - prev_ca[k]) ** 2 for k in range(3))
+                            # Chain break if numbering jumps (>1) OR CA-CA distance > 4.5 Angstroms
                             if (res_seq - prev_res > 1) or d2 > 20.25:
                                 return True
-                        prev_ca = (x, y, z)
+                        prev_ca = coord
                         prev_res = res_seq
-                    except ValueError:
-                        continue
+        return False
     except Exception:
         pass
+
+    # Fallback to MDAnalysis if Bio.PDB encountered an issue
+    try:
+        import MDAnalysis as mda
+        import numpy as np
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            u = mda.Universe(str(struct_path))
+
+        ca = u.select_atoms("protein and name CA")
+        if len(ca) >= 2:
+            chains = np.unique(ca.segids) if len(ca.segids) > 0 and ca.segids[0] != "" else [None]
+            for c in chains:
+                c_ca = ca.select_atoms(f"segid {c}") if c else ca
+                if len(c_ca) >= 2:
+                    resids = c_ca.resids
+                    if np.any(np.diff(resids) > 1):
+                        return True
+                    pos = c_ca.positions
+                    dists = np.linalg.norm(pos[1:] - pos[:-1], axis=1)
+                    if np.any(dists > 4.5):
+                        return True
+    except Exception:
+        pass
+
     return False
 
 def _count_and_split_models(
