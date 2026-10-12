@@ -301,6 +301,25 @@ def main():
     p_rm = subparsers.add_parser("rm", help="Remove an item from the database by name")
     p_rm.add_argument("target", help="Name of the item to remove")
 
+    # Common options for orchestration
+    def add_common_wf_args(p):
+        p.add_argument("--local", action="store_true", help="Run locally without Slurm")
+        p.add_argument(
+            "--no-resume",
+            action="store_true",
+            help="Start from scratch without -resume",
+        )
+        p.add_argument(
+            "--clean-scratch",
+            action="store_true",
+            help="Delete /shared/work upon completion (default: False)",
+        )
+        p.add_argument(
+            "--urgent",
+            action="store_true",
+            help="Route tasks to urgent Slurm partition",
+        )
+
     # 1. init
     p_init = subparsers.add_parser("init", help="Initialize new project workspace")
     p_init.add_argument(
@@ -322,37 +341,6 @@ def main():
     )
     p_heal.add_argument("--target", help="Limit healing to specific Target")
     add_common_wf_args(p_heal)
-    p_init.add_argument(
-        "directory",
-        nargs="?",
-        default=".",
-        help="Target project directory (default: current)",
-    )
-    p_init.add_argument(
-        "--name", help="Explicit project name (default: auto-generated random name)"
-    )
-    p_init.add_argument(
-        "--force", action="store_true", help="Overwrite existing templates"
-    )
-
-    # Common options for orchestration
-    def add_common_wf_args(p):
-        p.add_argument("--local", action="store_true", help="Run locally without Slurm")
-        p.add_argument(
-            "--no-resume",
-            action="store_true",
-            help="Start from scratch without -resume",
-        )
-        p.add_argument(
-            "--clean-scratch",
-            action="store_true",
-            help="Delete /shared/work upon completion (default: False)",
-        )
-        p.add_argument(
-            "--urgent",
-            action="store_true",
-            help="Route tasks to urgent Slurm partition",
-        )
 
     # 2. prep / prepare
     p_prep = subparsers.add_parser(
