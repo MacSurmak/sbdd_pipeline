@@ -27,12 +27,16 @@ def read_heavy_atoms_mol(path: Path) -> list:
         suppl = Chem.SDMolSupplier(str(path), sanitize=True, removeHs=True)
         for idx, m in enumerate(suppl, start=1):
             if m is None:
-                raise ValueError(f"FATAL: Molecule at index {idx} in {path.name} failed RDKit sanitization (broken valence/coordinates).")
+                raise ValueError(
+                    f"FATAL: Molecule at index {idx} in {path.name} failed RDKit sanitization (broken valence/coordinates)."
+                )
             raw_mols.append(m)
     elif path.suffix.lower() == ".pdb":
         m = Chem.MolFromPDBFile(str(path), sanitize=True, removeHs=True)
         if m is None:
-            raise ValueError(f"FATAL: Failed to parse and sanitize PDB molecule from {path.name}")
+            raise ValueError(
+                f"FATAL: Failed to parse and sanitize PDB molecule from {path.name}"
+            )
         raw_mols.append(m)
     else:
         raise ValueError(f"Unsupported molecule format: {path.suffix}")
@@ -51,7 +55,7 @@ def read_heavy_atoms_mol(path: Path) -> list:
 def calculate_pair_rmsd(m_ref, m_dock) -> float:
     """
     Computes exact in-situ Cartesian RMSD across all symmetry automorphisms.
-    Assigns reference bond orders to the docked pose to mathematically bypass 
+    Assigns reference bond orders to the docked pose to mathematically bypass
     docking engine valence/aromaticity corruption, eliminating combinatoric explosion.
     """
     n_atoms = m_ref.GetNumAtoms()
@@ -63,7 +67,9 @@ def calculate_pair_rmsd(m_ref, m_dock) -> float:
     try:
         m_dock_fixed = AllChem.AssignBondOrdersFromTemplate(m_ref, m_dock)
     except Exception as e:
-        raise ValueError(f"Topological mismatch: unable to assign reference bonds to dock pose. {e}")
+        raise ValueError(
+            f"Topological mismatch: unable to assign reference bonds to dock pose. {e}"
+        )
 
     matches = m_dock_fixed.GetSubstructMatches(m_ref, uniquify=False)
     if not matches:
@@ -82,7 +88,7 @@ def calculate_pair_rmsd(m_ref, m_dock) -> float:
             dy = p_ref.y - p_dock.y
             dz = p_ref.z - p_dock.z
             sq_dist += dx * dx + dy * dy + dz * dz
-        
+
         if sq_dist < best_sq_dist:
             best_sq_dist = sq_dist
 
