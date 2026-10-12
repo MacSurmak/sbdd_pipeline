@@ -54,29 +54,28 @@ def cmd_prep(args):
     for lig in query_ligands:
         lig_raw_sdf = raw_lig_dir / f"{lig.name}.sdf"
         # Always export 2D/3D seed SDF from canonical SMILES for un-biased LigPrep
-        try:
-            from rdkit import Chem
-            from rdkit.Chem import AllChem
+        from rdkit import Chem
+        from rdkit.Chem import AllChem
 
-            m = Chem.MolFromSmiles(lig.smiles)
-            if m:
-                m = Chem.AddHs(m)
-                AllChem.EmbedMolecule(m, randomSeed=42)
-                m.SetProp("_Name", lig.name)
-                w = Chem.SDWriter(str(lig_raw_sdf))
-                w.write(m)
-                w.close()
-        except Exception:
-            pass
+        m = Chem.MolFromSmiles(lig.smiles)
+        if not m:
+            raise ValueError(f"FATAL: RDKit failed to parse SMILES for ligand '{lig.name}': {lig.smiles}")
+            
+        m = Chem.AddHs(m)
+        if AllChem.EmbedMolecule(m, randomSeed=42) != 0:
+            raise RuntimeError(f"FATAL: RDKit failed to generate 3D coordinates for ligand '{lig.name}'")
+            
+        m.SetProp("_Name", lig.name)
+        with Chem.SDWriter(str(lig_raw_sdf)) as w:
+            w.write(m)
 
-        if lig_raw_sdf.exists() and lig_raw_sdf.stat().st_size > 0:
-            lig_plan.append(
-                {
-                    "name": lig.name,
-                    "path": str(lig_raw_sdf.resolve()),
-                    "status": "unprepared",
-                }
-            )
+        lig_plan.append(
+            {
+                "name": lig.name,
+                "path": str(lig_raw_sdf.resolve()),
+                "status": "unprepared",
+            }
+        )
 
     if not raw_frames and not lig_plan:
         console.print(
@@ -189,16 +188,15 @@ def cmd_prep(args):
                     system.pose.state = "ready"
 
                     # Calculate actual formal charge from the prepared in-situ ligand
-                    try:
-                        from rdkit import Chem
+                    from rdkit import Chem
 
-                        suppl = Chem.SDMolSupplier(str(prep_sdf_path), removeHs=False)
-                        mol = next((m for m in suppl if m is not None), None)
-                        if mol:
-                            ch = Chem.GetFormalCharge(mol)
-                            system.pose.scores_dict = {"formal_charge": ch}
-                    except Exception:
-                        pass
+                    suppl = Chem.SDMolSupplier(str(prep_sdf_path), removeHs=False, sanitize=True)
+                    mol = next((m for m in suppl if m is not None), None)
+                    if not mol:
+                        raise ValueError(f"FATAL: RDKit could not parse prepared ligand SDF: {prep_sdf_path}")
+                    
+                    ch = Chem.GetFormalCharge(mol)
+                    system.pose.scores_dict = {"formal_charge": ch}
 
             if system:
                 system.state = "ready"

@@ -33,13 +33,20 @@ def cmd_rescore(args):
     dock_summary_files = set()
 
     for frame in ready_frames:
-        frame_dir = cwd / "docking" / frame.name
-        pv_file = frame_dir / f"{frame.name}_dock_pv.maegz"
-        if not pv_file.exists() or pv_file.stat().st_size == 0:
+        # Strict SSOT: Only process frames that have actual docking poses registered in the DB
+        docked_poses = session.query(Pose).filter(
+            Pose.receptor_frame_id == frame.id,
+            Pose.origin.like("docking_%")
+        ).all()
+        
+        if not docked_poses:
             continue
 
+        frame_dir = (cwd / "docking" / frame.name).resolve()
+        pv_file = frame_dir / f"{frame.name}_dock_pv.maegz"
+
         tasks.append(
-            {"name": frame.name, "pv_path": str(pv_file.resolve()), "frame": frame.name}
+            {"name": frame.name, "pv_path": str(pv_file), "frame": frame.name}
         )
 
         expected_artifacts = [
@@ -51,8 +58,7 @@ def cmd_rescore(args):
             frame_dir / f"{frame.name}_gnina_rmsd.csv",
         ]
         for art in expected_artifacts:
-            if art.exists() and art.stat().st_size > 0:
-                dock_summary_files.add(str(art.resolve()))
+            dock_summary_files.add(str(art))
 
     if not tasks:
         console.print(

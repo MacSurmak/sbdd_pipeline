@@ -22,7 +22,6 @@ def main():
 
     try:
         st = structure.StructureReader.read(args.input)
-        thickness = 28.0
 
         info_path = Path(args.info)
         if not info_path.exists():
@@ -31,12 +30,18 @@ def main():
             )
 
         content = info_path.read_text().strip()
+        if not content:
+            raise ValueError(f"FATAL: Membrane info file {args.info} is empty.")
+
         if content.startswith("{"):
             import json
-
-            thickness = float(json.loads(content).get("thickness"))
+            parsed = json.loads(content)
+            if "thickness" not in parsed:
+                raise KeyError(f"FATAL: 'thickness' key missing in membrane JSON {args.info}")
+            thickness = float(parsed["thickness"])
         else:
             thickness = float(content)
+            
         print(f"Applying membrane thickness: {thickness:.2f} Å", flush=True)
 
         half_t = thickness / 2.0

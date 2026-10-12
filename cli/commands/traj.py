@@ -57,8 +57,10 @@ def cmd_clean_traj(args):
     Streams chunks into worker scratch without duplicating raw files on storage.
     Automatically skips already cleaned trajectories.
     """
+    import math
     cwd = Path.cwd()
     session = init_db()
+    configs = load_project_configs(cwd)
     trajs = _query_trajectories(session, args, target_status="raw")
 
     if not trajs:
@@ -68,29 +70,18 @@ def cmd_clean_traj(args):
         session.close()
         return
 
+    try:
+        chunk_ns = float(configs["md_simulation"]["production"]["chunk_size_ns"])
+    except KeyError:
+        console.print("[bold red]FATAL: 'chunk_size_ns' missing in md.yaml configuration.[/bold red]")
+        sys.exit(1)
+
     plan_list = []
     for t in trajs:
         raw_dir = Path(t.raw_dir).resolve()
 
-        chunks = []
-        chunk_idx = 1
-        while True:
-            chunk_file = raw_dir / f"md_{chunk_idx}.xtc"
-            if chunk_file.exists():
-                chunks.append(chunk_file)
-                chunk_idx += 1
-            else:
-                break
-
-        if not chunks:
-            single_file = raw_dir / f"{t.name}.xtc"
-            if single_file.exists():
-                chunks.append(single_file)
-            else:
-                console.print(
-                    f"[bold red]FATAL: No expected deterministic trajectory chunks found in {raw_dir}[/bold red]"
-                )
-                sys.exit(1)
+        expected_chunks = max(1, int(math.ceil(t.length_ns / chunk_ns)))
+        chunks = [raw_dir / f"md_{i}.xtc" for i in range(1, expected_chunks + 1)]
 
         clean_dir = raw_dir.parent / "clean"
         plan_list.append(
@@ -111,8 +102,6 @@ def cmd_clean_traj(args):
     console.print(
         f"[bold cyan]Cleaning {len(trajs)} trajectory(ies) (Stream merge in worker scratch -> Fit -> Strip)...[/bold cyan]"
     )
-
-    configs = load_project_configs(cwd)
     nf_args = build_nextflow_args(configs, cwd, entrypoint="md-analyze")
     nf_args.extend(["--clean_plan", str(plan_file.resolve())])
 
@@ -416,26 +405,25 @@ def cmd_cluster(args):
         if not line.strip():
             continue
         parts = line.split("\t")
-        if len(parts) < 3:
-            raise ValueError(f"FATAL: Malformed cluster receipt row: {line}")
+        if len(parts) < 4:
+            raise ValueError(f"FATAL: Malformed cluster receipt row (expected 6 columns): {line}")
 
-        centroid_title = parts[0].strip()
-        pdb_name = parts[1].strip()
-        mae_name = parts[2].strip()
+        sys_id_val = parts[0].strip()
+        centroid_title = parts[1].strip()
+        pdb_name = parts[2].strip()
+        mae_name = parts[3].strip()
         pose_sdf_name = (
-            parts[3].strip() if len(parts) > 3 and parts[3].strip() else None
-        )
-        pose_mae_name = (
             parts[4].strip() if len(parts) > 4 and parts[4].strip() else None
         )
-
-        parent_sys_key = (
-            centroid_title.replace("_cluster", "").split("_centroid_")[0] + "_cluster"
+        pose_mae_name = (
+            parts[5].strip() if len(parts) > 5 and parts[5].strip() else None
         )
+
+        parent_sys_key = f"{sys_id_val}_cluster"
         mapped_item = sys_map.get(parent_sys_key)
         if not mapped_item:
             raise KeyError(
-                f"FATAL: System mapping missing for receipt key '{parent_sys_key}'"
+                f"FATAL: System mapping missing for explicit SSOT key '{sys_id_val}'"
             )
         parent_sys, active_traj_names, cluster_sig = mapped_item
 
@@ -624,19 +612,10 @@ def cmd_mmpbsa(args):
             continue
 
         raw_dir = Path(t.raw_dir)
-        topol_path = raw_dir / "topol.top"
-        if not topol_path.exists():
-            topol_path = raw_dir.parent / "topol.top"
-
-        ndx_path = raw_dir / "index.ndx"
-        if not ndx_path.exists():
-            ndx_path = raw_dir.parent / "index.ndx"
-
-        if not topol_path.exists() or not ndx_path.exists():
-            console.print(
-                f"[yellow]Warning: topol.top or index.ndx missing for {t.name}, skipping MM-PBSA.[/yellow]"
-            )
-            continue
+        # Topologies are deterministically placed at the system root md/{system_name}/
+        sys_dir = raw_dir.parent.parent
+        topol_path = sys_dir / "topol.top"
+        ndx_path = sys_dir / "index.ndx"
 
         plan_list.append(
             {

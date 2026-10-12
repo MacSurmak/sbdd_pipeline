@@ -241,8 +241,8 @@ def main():
         sdf_pose_name = f"pose_{i}.sdf" if pose_path != "NO_POSE" else ""
         mae_pose_name = f"pose_{i}.mae" if pose_path != "NO_POSE" else ""
 
-        # Deterministic 5-column receipt contract
-        row = f"{c_title}\t{pdb_name}\t{mae_name}\t{sdf_pose_name}\t{mae_pose_name}\n"
+        # Deterministic 6-column receipt contract mapping to explicit System SSOT
+        row = f"{args.sys_name}\t{c_title}\t{pdb_name}\t{mae_name}\t{sdf_pose_name}\t{mae_pose_name}\n"
         receipt_lines.append(row)
 
         # Cleanup temporary normalized model PDB
