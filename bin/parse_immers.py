@@ -38,7 +38,7 @@ def main():
         data["thickness"] = float(parts[1])
         data["tilt"] = float(parts[3])
         data["dg"] = float(parts[5])
-        
+
     logging.info(
         f"Parsed PPM 3.0: thickness={data['thickness']}, tilt={data['tilt']}, dG={data['dg']}"
     )

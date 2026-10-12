@@ -48,10 +48,38 @@ def _detect_gaps(struct_path: Path) -> bool:
 
 
 STANDARD_PROTEIN_RESIDUES = {
-    "ALA", "ARG", "ASN", "ASP", "CYS", "CYX", "GLN", "GLU", "GLY",
-    "HIS", "HID", "HIE", "HIP", "ILE", "LEU", "LYS", "LYN", "MET",
-    "PHE", "PRO", "SER", "THR", "TRP", "TYR", "VAL", "ASH", "GLH",
-    "ACE", "NME", "NMA", "MSE", "CSE"
+    "ALA",
+    "ARG",
+    "ASN",
+    "ASP",
+    "CYS",
+    "CYX",
+    "GLN",
+    "GLU",
+    "GLY",
+    "HIS",
+    "HID",
+    "HIE",
+    "HIP",
+    "ILE",
+    "LEU",
+    "LYS",
+    "LYN",
+    "MET",
+    "PHE",
+    "PRO",
+    "SER",
+    "THR",
+    "TRP",
+    "TYR",
+    "VAL",
+    "ASH",
+    "GLH",
+    "ACE",
+    "NME",
+    "NMA",
+    "MSE",
+    "CSE",
 }
 
 
@@ -60,7 +88,9 @@ class CleanStructureSelect:
 
     def __init__(self, allowed_ligand: str | None, allowed_cofactors: list[str]):
         self.allowed_ligand = allowed_ligand.upper() if allowed_ligand else None
-        self.allowed_cofactors = set(c.upper() for c in allowed_cofactors) if allowed_cofactors else set()
+        self.allowed_cofactors = (
+            set(c.upper() for c in allowed_cofactors) if allowed_cofactors else set()
+        )
 
     def accept_model(self, model):
         return 1
@@ -76,7 +106,9 @@ class CleanStructureSelect:
 
         r_name = res.get_resname().strip().upper()
         # 1. Retain standard protein residues
-        if r_name in STANDARD_PROTEIN_RESIDUES or (is_aa(res) and res.get_id()[0] == " "):
+        if r_name in STANDARD_PROTEIN_RESIDUES or (
+            is_aa(res) and res.get_id()[0] == " "
+        ):
             return 1
         # 2. Retain explicit ligand
         if self.allowed_ligand and r_name == self.allowed_ligand:
@@ -484,7 +516,9 @@ def add_ligand(args):
             if imported % 500 == 0:
                 session.commit()
         except Exception as e:
-            console.print(f"[bold red]FATAL: Ligand parsing failed at index {idx}: {e}[/bold red]")
+            console.print(
+                f"[bold red]FATAL: Ligand parsing failed at index {idx}: {e}[/bold red]"
+            )
             sys.exit(1)
 
     session.commit()

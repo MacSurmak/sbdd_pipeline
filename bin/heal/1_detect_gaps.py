@@ -55,9 +55,11 @@ def main():
     cryst_path = str(args.crystal).lower()
     if cryst_path.endswith((".cif", ".mmcif")):
         from Bio.PDB import MMCIFParser
+
         parser_struct = MMCIFParser(QUIET=True)
     else:
         from Bio.PDB import PDBParser
+
         parser_struct = PDBParser(QUIET=True)
 
     st = parser_struct.get_structure("struct", args.crystal)

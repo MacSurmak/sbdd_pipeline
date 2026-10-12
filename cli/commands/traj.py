@@ -529,13 +529,13 @@ def cmd_cluster(args):
 
         # C. Register Ready System for this Centroid
         cluster_sys_name = (
-            f"{centroid_frame_name}_{parent_sys.pose.ligand.name}" if pose_obj else centroid_frame_name
+            f"{centroid_frame_name}_{parent_sys.pose.ligand.name}"
+            if pose_obj
+            else centroid_frame_name
         )
         if pose_obj:
             legacy_apo = (
-                session.query(System)
-                .filter_by(name=centroid_frame_name)
-                .first()
+                session.query(System).filter_by(name=centroid_frame_name).first()
             )
             if legacy_apo:
                 session.delete(legacy_apo)

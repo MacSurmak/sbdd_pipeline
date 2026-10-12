@@ -105,13 +105,15 @@ def main():
 
     ref_p = Path(args.reference).resolve()
     coords = []
-    
+
     if ref_p.suffix.lower() in [".sdf", ".pdb"]:
         coords = get_coords_rdkit(ref_p)
     elif ref_p.suffix.lower() in [".mae", ".maegz"]:
         coords = get_coords_schrodinger(ref_p)
     else:
-        raise ValueError(f"FATAL: Unsupported reference format for docking box: {ref_p.suffix}")
+        raise ValueError(
+            f"FATAL: Unsupported reference format for docking box: {ref_p.suffix}"
+        )
 
     if not coords:
         print(f"FATAL: No atoms found in reference ligand {ref_p}", file=sys.stderr)
