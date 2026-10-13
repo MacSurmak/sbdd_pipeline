@@ -252,6 +252,9 @@ def main():
     p_dyn.add_argument(
         "--system", help="Name of the physical System to simulate (from 'sbdd tree')"
     )
+    p_dyn.add_argument(
+        "--target", help="Simulate all ready Systems belonging to a specific Target"
+    )
     add_common_wf_args(p_dyn)
 
     # 7. traj-mmpbsa
