@@ -9,7 +9,7 @@ process MD_METRICS {
     label "process_medium"
 
     input:
-    tuple val(meta), path(clean_xtc), path(ref_gro)
+    tuple val(meta), path(clean_xtc), path(ref_pdb)
     val(c_heavy)
     val(c_hyd)
     val(c_pol)
@@ -25,7 +25,7 @@ process MD_METRICS {
     def cof_arg = cof_list ? "--cofactors ${cof_list}" : ""
     """
     python3 ${projectDir}/bin/md_metrics.py \\
-        --gro ${ref_gro} \\
+        --struct ${ref_pdb} \\
         --xtc ${clean_xtc} \\
         ${lig_arg} \\
         ${cof_arg} \\

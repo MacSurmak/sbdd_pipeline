@@ -16,7 +16,7 @@ process TRJCONV {
     val(lipid_names)
 
     output:
-    tuple val(meta), path("trajectory_clean.xtc"), path("complex_ref.gro"), emit: clean_traj
+    tuple val(meta), path("trajectory_clean.xtc"), path("complex_ref.pdb"), emit: clean_traj
 
     script:
     """
@@ -26,7 +26,7 @@ process TRJCONV {
         --pbc_center ${pbc_center} \\
         --pbc_extract ${pbc_extract} \\
         --out_xtc trajectory_clean.xtc \\
-        --out_gro complex_ref.gro \\
+        --out_pdb complex_ref.pdb \\
         --water_names "${water_names}" \\
         --ion_names "${ion_names}" \\
         --lipid_names "${lipid_names}"
@@ -35,7 +35,7 @@ process TRJCONV {
     stub:
     """
     touch trajectory_clean.xtc
-    touch complex_ref.gro
+    touch complex_ref.pdb
     """
 }
 
