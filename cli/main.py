@@ -603,9 +603,14 @@ def main():
     elif subcmd == "init":
         cmd_init(args)
     elif subcmd == "heal":
-        from cli.commands.heal import cmd_heal
+        from cli.commands.heal import run_heal
 
-        cmd_heal(args)
+        run_heal(
+            target=args.target,
+            urgent=args.urgent,
+            local=args.local,
+            resume=not args.no_resume,
+        )
     elif subcmd == "md-init":
         cmd_md_init(args)
     elif subcmd == "status":
@@ -613,9 +618,15 @@ def main():
     elif subcmd == "clean":
         cmd_clean(args)
     elif subcmd in ["prep", "prepare"]:
-        from cli.commands.prep import cmd_prep
+        from cli.commands.prep import run_prep
 
-        cmd_prep(args)
+        run_prep(
+            target=args.target,
+            frames=[f.strip() for f in args.frames.split(",") if f.strip()] if args.frames else None,
+            urgent=args.urgent,
+            local=args.local,
+            resume=not args.no_resume,
+        )
     elif subcmd in ["dock", "screen"]:
         from cli.commands.dock import cmd_dock
 

@@ -15,16 +15,22 @@ from cli.core.config_loader import load_project_configs, build_nextflow_args
 console = Console()
 
 
-def cmd_heal(args):
+def run_heal(
+    target: str | None = None,
+    urgent: bool = False,
+    local: bool = False,
+    resume: bool = True
+) -> None:
+    """Resolves broken crystal structures using physical AI inpainting."""
     cwd = Path.cwd()
     session = init_db()
 
     query = session.query(ReceptorFrame).filter_by(state="broken")
-    if getattr(args, "target", None):
-        t = session.query(Target).filter_by(name=args.target).first()
+    if target:
+        t = session.query(Target).filter_by(name=target).first()
         if not t:
             console.print(
-                f"[bold red]FATAL: Target '{args.target}' not found.[/bold red]"
+                f"[bold red]FATAL: Target '{target}' not found.[/bold red]"
             )
             sys.exit(1)
         query = query.filter_by(target_id=t.id)
@@ -93,14 +99,13 @@ def cmd_heal(args):
     nf_args = build_nextflow_args(configs, cwd, entrypoint="heal")
     nf_args.extend(["--heal_plan", str(plan_file.resolve())])
 
-    if getattr(args, "urgent", False):
+    if urgent:
         nf_args.extend(["--queue", "urgent"])
 
-    profile = "local" if getattr(args, "local", False) else "slurm"
-    resume = not getattr(args, "no_resume", False)
+    profile_name = "local" if local else "slurm"
 
     ret_code = execute_nextflow(
-        "heal", nf_args, cwd, profile=profile, resume=resume, configs=configs
+        "heal", nf_args, cwd, profile=profile_name, resume=resume, configs=configs
     )
 
     if ret_code != 0:
