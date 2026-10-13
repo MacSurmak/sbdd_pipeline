@@ -457,11 +457,11 @@ def run_cluster(
             parts[5].strip() if len(parts) > 5 and parts[5].strip() else None
         )
 
-        parent_sys_key = f"{sys_id_val}_cluster"
+        parent_sys_key = sys_id_val
         mapped_item = sys_map.get(parent_sys_key)
         if not mapped_item:
             raise KeyError(
-                f"FATAL: System mapping missing for explicit SSOT key '{sys_id_val}'"
+                f"FATAL: System mapping missing for explicit SSOT key '{parent_sys_key}'"
             )
         parent_sys, active_traj_names, cluster_sig = mapped_item
 
