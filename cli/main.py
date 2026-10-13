@@ -11,183 +11,7 @@ from pathlib import Path
 from rich.console import Console
 from rich.table import Table
 
-from cli.core.config_loader import load_project_configs, build_nextflow_args
-from cli.core.runner import execute_nextflow, clean_shared_scratch, FRAMEWORK_DIR
-
 console = Console()
-
-
-def cmd_init(args):
-    """Initializes a new project workspace with atomic YAML configs."""
-    import random
-    import string
-
-    target_dir = Path(args.directory).resolve()
-    target_dir.mkdir(parents=True, exist_ok=True)
-
-    config_dir = target_dir / "configs"
-    config_dir.mkdir(parents=True, exist_ok=True)
-
-    project_name = args.name
-    if not project_name:
-        suffix = "".join(random.choices(string.ascii_lowercase + string.digits, k=6))
-        project_name = f"SBDD_{suffix}"
-
-    src_configs = FRAMEWORK_DIR / "assets" / "configs"
-    if src_configs.exists():
-        for f in src_configs.glob("*.yaml"):
-            dest = config_dir / f.name
-            if not dest.exists() or args.force:
-                if f.name == "project.yaml":
-                    content = f.read_text(encoding="utf-8")
-                    content = content.replace(
-                        'name: "SBDD_Project"', f'name: "{project_name}"'
-                    )
-                    dest.write_text(content, encoding="utf-8")
-                else:
-                    shutil.copy(f, dest)
-
-    console.print(
-        f"[bold green]✓ Project '{project_name}' initialized at: {target_dir}[/bold green]"
-    )
-    console.print(f"[cyan]Configurations created in:[/cyan] {config_dir}")
-    console.print("\n[bold]Next steps:[/bold]")
-    console.print(
-        "  1. Copy your structures (.cif or .pdb) into the project directory."
-    )
-    console.print("  2. Edit configs/manifest.yaml to describe your targets.")
-    console.print("  3. Review configurations (e.g., md.yaml, gnina.yaml).")
-    console.print(
-        "  4. Run [bold cyan]sbdd prep[/bold cyan] to standardize the structures!\n"
-    )
-
-
-def cmd_status(args):
-    """Inspects active Slurm jobs and Nextflow status."""
-    console.rule("[bold cyan]Cluster & Slurm Status[/bold cyan]")
-    try:
-        res = subprocess.run(
-            ["squeue", "-o", "%.10i %.10P %.20j %.10u %.2t %.10M %.6D %R"],
-            capture_output=True,
-            text=True,
-        )
-        console.print(res.stdout)
-    except Exception as e:
-        console.print(f"[red]Could not query Slurm squeue: {e}[/red]")
-
-    # Check Nextflow log in cwd
-    log_f = Path.cwd() / ".nextflow.log"
-    if log_f.exists():
-        console.rule("[bold cyan]Recent Nextflow Activity[/bold cyan]")
-        tail = subprocess.run(
-            ["tail", "-n", "15", str(log_f)], capture_output=True, text=True
-        )
-        console.print(tail.stdout)
-
-
-def cmd_md_init(args):
-    """Initializes editable MD protocol playlist and MDP files from assets/mdp templates."""
-    cwd = Path.cwd()
-    configs = load_project_configs(cwd)
-    md_dir = cwd / "configs" / "md_protocol"
-    md_dir.mkdir(parents=True, exist_ok=True)
-
-    is_mem = "true" if configs.get("membrane", {}).get("enabled", False) else "false"
-    tpl_dir = FRAMEWORK_DIR / "assets" / "mdp"
-    script = FRAMEWORK_DIR / "bin" / "generate_mdp.py"
-
-    temp = configs.get("md_simulation", {}).get("production", {}).get(
-        "temperature"
-    ) or configs.get("mmpbsa", {}).get("temperature")
-    if not temp:
-        console.print(
-            "[bold red]FATAL: Missing simulation temperature in configs (md.yaml or mmpbsa.yaml)![/bold red]"
-        )
-        sys.exit(1)
-
-    prod = configs.get("md_simulation", {}).get("production", {})
-    chunk_ns = prod.get("chunk_size_ns")
-    if not chunk_ns:
-        console.print(
-            "[bold red]FATAL: Missing 'md_simulation.production.chunk_size_ns' in configs/md.yaml![/bold red]"
-        )
-        sys.exit(1)
-
-    cmd = [
-        sys.executable,
-        str(script),
-        "--templates_dir",
-        str(tpl_dir),
-        "--outdir",
-        str(md_dir),
-        "--is_membrane",
-        is_mem,
-        "--temperature",
-        str(temp),
-        "--chunk_ns",
-        str(chunk_ns),
-        "--dt_ps",
-        str(prod.get("dt_ps", "0.002")),
-        "--compressibility",
-        str(prod.get("compressibility", "4.5e-5")),
-        "--tau_p",
-        str(prod.get("tau_p", "5.0")),
-    ]
-    res = subprocess.run(cmd, capture_output=True, text=True)
-    if res.returncode != 0:
-        console.print(
-            f"[bold red]Failed to generate MD protocol: {res.stderr}[/bold red]"
-        )
-        sys.exit(1)
-
-    console.print(
-        f"[bold green]✓ MD Protocol initialized from assets/mdp into {md_dir}[/bold green]"
-    )
-    console.print(
-        "[dim]You can now edit the generated .mdp files or reorder protocol.txt before running MD.[/dim]"
-    )
-
-
-def cmd_clean(args):
-    """Cleans the project's scratch directory."""
-    cwd = Path.cwd()
-    configs = load_project_configs(cwd)
-    proj_name = configs.get("project", {}).get("name", cwd.name)
-    workdir = configs.get("project", {}).get("workdir", f"/shared/work/{proj_name}")
-    clean_shared_scratch(workdir, verbose=True)
-
-
-def run_workflow(entrypoint: str, args):
-    """Generic dispatcher from CLI flags and configs to Nextflow execution."""
-    cwd = Path.cwd()
-    configs = load_project_configs(cwd)
-    nf_args = build_nextflow_args(configs, cwd, entrypoint=entrypoint)
-
-    # Explicit CLI file inputs for manual overrides (Strictly structural, not physical parameters)
-    if getattr(args, "traj", None):
-        nf_args.extend(["--traj", str(Path(args.traj).resolve())])
-    if getattr(args, "tpr", None):
-        nf_args.extend(["--tpr", str(Path(args.tpr).resolve())])
-    if getattr(args, "topol", None):
-        nf_args.extend(["--topol", str(Path(args.topol).resolve())])
-    if getattr(args, "ndx", None):
-        nf_args.extend(["--ndx", str(Path(args.ndx).resolve())])
-    if getattr(args, "urgent", False):
-        nf_args.extend(["--queue", "urgent"])
-
-    profile = "local" if getattr(args, "local", False) else "slurm"
-    resume = not getattr(args, "no_resume", False)
-    auto_clean = getattr(args, "clean_scratch", False)
-
-    return execute_nextflow(
-        entrypoint,
-        nf_args,
-        cwd,
-        profile=profile,
-        resume=resume,
-        auto_clean=auto_clean,
-        configs=configs,
-    )
 
 
 def main():
@@ -583,14 +407,13 @@ def main():
 
     if subcmd == "add":
         from cli.commands.add import add_receptor, add_ligand, add_traj, add_fasta
-
         if args.add_type in ["structure", "receptor", "complex"]:
             add_receptor(
                 paths=args.path if isinstance(args.path, list) else [args.path],
-                target=getattr(args, "target", None),
-                name=getattr(args, "name", None),
-                cofactors=getattr(args, "cofactors", None),
-                ligand=getattr(args, "ligand", None)
+                target=args.target,
+                name=args.name,
+                cofactors=args.cofactors,
+                ligand=args.ligand
             )
         elif args.add_type == "fasta":
             add_fasta(path=args.path)
@@ -600,27 +423,29 @@ def main():
             add_traj(
                 system=args.system,
                 tpr=args.tpr,
-                xtc=getattr(args, "xtc", None),
-                raw_dir=getattr(args, "raw_dir", None),
-                replicate=getattr(args, "replicate", 1),
-                name=getattr(args, "name", None),
-                length_ns=getattr(args, "length_ns", 0.0),
-                clean_xtc=getattr(args, "clean_xtc", None),
-                ref_pdb=getattr(args, "ref_pdb", None)
+                xtc=args.xtc,
+                raw_dir=args.raw_dir,
+                replicate=args.replicate,
+                name=args.name,
+                length_ns=args.length_ns,
+                clean_xtc=args.clean_xtc,
+                ref_pdb=args.ref_pdb
             )
     elif subcmd in ["tree", "ls"]:
         from cli.commands.tree import print_tree
-
         print_tree()
     elif subcmd == "rm":
         from cli.commands.rm import remove_entity
-
         remove_entity(name=args.target)
     elif subcmd == "init":
-        cmd_init(args)
+        from cli.commands.project import run_init
+        run_init(
+            directory=args.directory,
+            name=args.name,
+            force=args.force
+        )
     elif subcmd == "heal":
         from cli.commands.heal import run_heal
-
         run_heal(
             target=args.target,
             urgent=args.urgent,
@@ -628,14 +453,16 @@ def main():
             resume=not args.no_resume,
         )
     elif subcmd == "md-init":
-        cmd_md_init(args)
+        from cli.commands.project import run_md_init
+        run_md_init()
     elif subcmd == "status":
-        cmd_status(args)
+        from cli.commands.project import run_status
+        run_status()
     elif subcmd == "clean":
-        cmd_clean(args)
+        from cli.commands.project import run_clean
+        run_clean()
     elif subcmd in ["prep", "prepare"]:
         from cli.commands.prep import run_prep
-
         run_prep(
             target=args.target,
             frames=[f.strip() for f in args.frames.split(",") if f.strip()] if args.frames else None,
@@ -645,33 +472,30 @@ def main():
         )
     elif subcmd in ["dock", "screen"]:
         from cli.commands.dock import run_dock
-
         run_dock(
             target=args.target,
-            frame_names=[f.strip() for f in args.frames.split(",") if f.strip()] if getattr(args, "frames", None) else None,
-            ligand_names=[n.strip() for n in args.ligands.split(",")] if getattr(args, "ligands", None) else None,
-            self_dock=getattr(args, "self_dock", False),
-            name=getattr(args, "name", None),
-            urgent=getattr(args, "urgent", False),
-            local=getattr(args, "local", False),
-            resume=not getattr(args, "no_resume", False),
+            frame_names=[f.strip() for f in args.frames.split(",") if f.strip()] if args.frames else None,
+            ligand_names=[n.strip() for n in args.ligands.split(",")] if args.ligands else None,
+            self_dock=args.self_dock,
+            name=args.name,
+            urgent=args.urgent,
+            local=args.local,
+            resume=not args.no_resume,
         )
     elif subcmd == "rescore":
         from cli.commands.rescore import run_rescore
-
         run_rescore(
-            use_whitelist=getattr(args, "use_whitelist", False),
-            urgent=getattr(args, "urgent", False),
-            local=getattr(args, "local", False),
-            resume=not getattr(args, "no_resume", False),
+            use_whitelist=args.use_whitelist,
+            urgent=args.urgent,
+            local=args.local,
+            resume=not args.no_resume,
         )
     elif subcmd == "select-hits":
         from cli.commands.select_hits import run_select_hits
-
         run_select_hits(
-            poses_name=getattr(args, "poses", None),
-            top_n=getattr(args, "top", 5),
-            system_prefix=getattr(args, "system_prefix", "hit"),
+            poses_name=args.poses,
+            top_n=args.top,
+            system_prefix=args.system_prefix,
         )
     elif subcmd in ["dynamics", "md", "md-run", "md-setup"]:
         from cli.commands.dynamics import run_dynamics
@@ -683,7 +507,17 @@ def main():
             resume=not args.no_resume,
         )
     elif subcmd == "md-analyze":
-        sys.exit(run_workflow("dynamics", args))
+        from cli.commands.traj import run_md_analyze
+        run_md_analyze(
+            traj=args.traj,
+            tpr=args.tpr,
+            topol=args.topol,
+            ndx=args.ndx,
+            urgent=args.urgent,
+            local=args.local,
+            resume=not args.no_resume,
+            clean_scratch=args.clean_scratch
+        )
     elif subcmd == "traj-flag":
         from cli.commands.traj import run_flag_traj
         run_flag_traj(
@@ -695,9 +529,9 @@ def main():
     elif subcmd == "traj-clean":
         from cli.commands.traj import run_clean_traj
         run_clean_traj(
-            systems=[s.strip() for s in args.systems.split(",") if s.strip()] if getattr(args, "systems", None) else None,
+            systems=[s.strip() for s in args.systems.split(",") if s.strip()] if args.systems else None,
             target=args.target,
-            traj_names=[t.strip() for t in args.traj.split(",") if t.strip()] if getattr(args, "traj", None) else None,
+            traj_names=[t.strip() for t in args.traj.split(",") if t.strip()] if args.traj else None,
             urgent=args.urgent,
             local=args.local,
             resume=not args.no_resume,
@@ -705,9 +539,9 @@ def main():
     elif subcmd == "traj-mmpbsa":
         from cli.commands.traj import run_mmpbsa
         run_mmpbsa(
-            systems=[s.strip() for s in args.systems.split(",") if s.strip()] if getattr(args, "systems", None) else None,
+            systems=[s.strip() for s in args.systems.split(",") if s.strip()] if args.systems else None,
             target=args.target,
-            traj_names=[t.strip() for t in args.traj.split(",") if t.strip()] if getattr(args, "traj", None) else None,
+            traj_names=[t.strip() for t in args.traj.split(",") if t.strip()] if args.traj else None,
             urgent=args.urgent,
             local=args.local,
             resume=not args.no_resume,
@@ -715,9 +549,9 @@ def main():
     elif subcmd == "traj-metrics":
         from cli.commands.traj import run_metrics
         run_metrics(
-            systems=[s.strip() for s in args.systems.split(",") if s.strip()] if getattr(args, "systems", None) else None,
+            systems=[s.strip() for s in args.systems.split(",") if s.strip()] if args.systems else None,
             target=args.target,
-            traj_names=[t.strip() for t in args.traj.split(",") if t.strip()] if getattr(args, "traj", None) else None,
+            traj_names=[t.strip() for t in args.traj.split(",") if t.strip()] if args.traj else None,
             urgent=args.urgent,
             local=args.local,
             resume=not args.no_resume,
@@ -725,9 +559,9 @@ def main():
     elif subcmd == "traj-cluster":
         from cli.commands.traj import run_cluster
         run_cluster(
-            systems=[s.strip() for s in args.systems.split(",") if s.strip()] if getattr(args, "systems", None) else None,
+            systems=[s.strip() for s in args.systems.split(",") if s.strip()] if args.systems else None,
             target=args.target,
-            traj_names=[t.strip() for t in args.traj.split(",") if t.strip()] if getattr(args, "traj", None) else None,
+            traj_names=[t.strip() for t in args.traj.split(",") if t.strip()] if args.traj else None,
             cutoff=args.cutoff,
             dt=args.dt,
             group=args.group,
@@ -740,7 +574,6 @@ def main():
         )
     elif subcmd in ["watch", "progress", "top"]:
         from cli.core.monitor import run_monitor
-
         run_monitor(port=args.port)
 
 

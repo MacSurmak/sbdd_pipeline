@@ -635,6 +635,42 @@ def run_flag_traj(
         )
 
 
+def run_md_analyze(
+    traj: str | None = None,
+    tpr: str | None = None,
+    topol: str | None = None,
+    ndx: str | None = None,
+    urgent: bool = False,
+    local: bool = False,
+    resume: bool = True,
+    clean_scratch: bool = False
+) -> None:
+    """Run trajectory PBC fix, metrics, and MM-PBSA standalone."""
+    cwd = Path.cwd()
+    configs = load_project_configs(cwd)
+    nf_args = build_nextflow_args(configs, cwd, entrypoint="md-analyze")
+
+    if traj:
+        nf_args.extend(["--traj", str(Path(traj).resolve())])
+    if tpr:
+        nf_args.extend(["--tpr", str(Path(tpr).resolve())])
+    if topol:
+        nf_args.extend(["--topol", str(Path(topol).resolve())])
+    if ndx:
+        nf_args.extend(["--ndx", str(Path(ndx).resolve())])
+    if urgent:
+        nf_args.extend(["--queue", "urgent"])
+
+    profile_name = "local" if local else "slurm"
+
+    ret_code = execute_nextflow(
+        "md-analyze", nf_args, cwd, profile=profile_name, resume=resume, auto_clean=clean_scratch, configs=configs
+    )
+    if ret_code != 0:
+        console.print("[bold red]Nextflow md-analyze failed.[/bold red]")
+        sys.exit(ret_code)
+
+
 def run_mmpbsa(
     systems: list[str] | None = None,
     target: str | None = None,
