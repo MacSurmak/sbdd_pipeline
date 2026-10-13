@@ -302,6 +302,15 @@ def _build_dynamics_args(config: Dict[str, Any], project_dir: Path) -> list:
             raise ValueError(f"FATAL: 'md_simulation.production.{yaml_k}' is required!")
         args.extend([f"--{nf_k}", str(prod_cfg[yaml_k])])
 
+    if "restraints_fc" in prod_cfg and int(float(prod_cfg["restraints_fc"])) > 0:
+        args.extend(["--prod_restraints_fc", str(int(float(prod_cfg["restraints_fc"])))])
+        args.extend(
+            [
+                "--prod_restraints_group",
+                str(prod_cfg.get("restraints_group", "C-alpha")),
+            ]
+        )
+
     protocol_dir = project_dir / "configs" / "md_protocol"
     if not protocol_dir.exists():
         raise FileNotFoundError(
