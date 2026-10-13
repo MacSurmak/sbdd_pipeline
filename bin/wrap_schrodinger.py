@@ -3,6 +3,7 @@ import argparse
 import sys
 import subprocess
 import os
+import re
 from pathlib import Path
 
 
@@ -41,12 +42,43 @@ def get_tool(tool_name: str) -> list:
     sys.exit(1)
 
 
-def run_cmd(cmd, env=None):
+def distill_schrodinger_errors(job_name: str, raw_stderr: str = "") -> str:
+    critical_markers = [
+        r"(lib.*\.so\..*?: cannot open shared object file: No such file or directory)",
+        r"(Segmentation fault.*)",
+        r"(License error.*)",
+        r"(FlexLM Error.*)",
+        r"(FATAL:.*)",
+        r"(Error:.*)"
+    ]
+    logs_to_check = [raw_stderr]
+    if job_name:
+        prime_log = Path(f"{job_name}.Prime.log")
+        gen_log = Path(f"{job_name}.log")
+        if prime_log.exists():
+            logs_to_check.append(prime_log.read_text(errors="ignore"))
+        if gen_log.exists():
+            logs_to_check.append(gen_log.read_text(errors="ignore"))
+            
+    for log_text in logs_to_check:
+        if not log_text:
+            continue
+        for marker in critical_markers:
+            matches = re.findall(marker, log_text, re.IGNORECASE)
+            if matches:
+                return matches[0].strip()
+    return "Unknown internal Schrödinger error. See raw diagnostic logs."
+
+
+def run_cmd(cmd, env=None, job_name=None):
     print(f"Exec: {' '.join(cmd)}")
-    res = subprocess.run(cmd, check=False, env=env)
+    # Жесткий перехват потоков. Мусор больше не льется напрямую в Nextflow.
+    res = subprocess.run(cmd, capture_output=True, text=True, env=env)
     if res.returncode != 0:
-        print(f"FATAL: Command failed with exit code {res.returncode}", file=sys.stderr)
+        distilled = distill_schrodinger_errors(job_name, res.stderr)
+        print(f"FATAL: Schrödinger process failed! Exit Code {res.returncode}\nRoot Cause: {distilled}", file=sys.stderr)
         sys.exit(res.returncode)
+    return res
 
 
 def cmd_gridgen(args):
@@ -138,9 +170,9 @@ def cmd_prime_mmgbsa(args):
         cmd.append("-membrane")
     cmd.append(args.pv_maegz)
 
-    run_cmd(cmd, env=env)
-
     job_name = f"{args.job_id}_mmgbsa"
+    run_cmd(cmd, env=env, job_name=job_name)
+
     canonical_csv = Path(f"{args.job_id}_mmgbsa-out.csv")
     canonical_mae = Path(f"{args.job_id}_mmgbsa-out.maegz")
 
@@ -163,28 +195,11 @@ def cmd_prime_mmgbsa(args):
 
     # Fail-Fast inspection: dump Prime diagnostic log on missing artifacts
     if not canonical_csv.exists() or not canonical_mae.exists():
-        prime_log = Path(f"{job_name}.Prime.log")
-        general_log = Path(f"{job_name}.log")
-        diag_output = []
-
-        if prime_log.exists():
-            diag_output.append(
-                f"=== {prime_log.name} ===\n" + prime_log.read_text(errors="ignore")
-            )
-        if general_log.exists():
-            diag_output.append(
-                f"=== {general_log.name} ===\n" + general_log.read_text(errors="ignore")
-            )
-
-        log_content = (
-            "\n\n".join(diag_output)
-            if diag_output
-            else "No Schrödinger diagnostic logs found."
-        )
+        distilled = distill_schrodinger_errors(job_name, "")
         print(
-            f"FATAL: Prime MM-GBSA failed to generate deliverables for task '{args.job_id}'!\n"
+            f"FATAL: Prime MM-GBSA failed to generate deliverables for task '{args.job_id}' despite exit code 0!\n"
             f"Expected: {canonical_csv.name} and {canonical_mae.name}\n"
-            f"Schrödinger Diagnostic Log:\n{log_content}",
+            f"Root Cause: {distilled}",
             file=sys.stderr,
         )
         sys.exit(1)
