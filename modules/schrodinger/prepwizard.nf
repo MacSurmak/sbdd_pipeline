@@ -18,19 +18,15 @@ process PREPWIZARD {
     tuple val(meta), path("receptor.mae"), emit: prepared_mae
 
     script:
-    def cap_flag = cap_termini ? "-captermini" : ""
+    def cap_flag = cap_termini ? "--cap_termini" : ""
     """
-    schrodinger prepwizard \\
-        -fix -fillsidechains \\
-        -propka_pH ${target_ph} \\
-        -epik_pH ${target_ph} \\
-        -epik_pHt ${ph_tolerance} \\
-        -rmsd ${min_rmsd} \\
-        -preserve_st_titles \\
-        ${cap_flag} \\
-        -WAIT \\
-        ${complex_mae} \\
-        receptor.mae
+    python3 ${projectDir}/bin/wrap_schrodinger.py prepwizard \\
+        --complex_mae ${complex_mae} \\
+        --out_mae receptor.mae \\
+        --target_ph ${target_ph} \\
+        --ph_tolerance ${ph_tolerance} \\
+        --min_rmsd ${min_rmsd} \\
+        ${cap_flag}
     """
 
     stub:

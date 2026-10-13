@@ -290,6 +290,88 @@ def cmd_convert_ligand(args):
     st.write(args.out_sdf)
 
 
+def cmd_prepwizard(args):
+    complex_path = Path(args.complex_mae).resolve()
+    out_path = Path(args.out_mae).resolve()
+    target_ph = float(args.target_ph)
+    ph_tolerance = float(args.ph_tolerance)
+    min_rmsd = float(args.min_rmsd)
+    cap_termini = args.cap_termini
+
+    from schrodinger import structure
+    from schrodinger.structutils import analyze
+
+    st = structure.StructureReader.read(str(complex_path))
+
+    # Strict chemical fractionation: partition complex into scaffold and organic hetero molecules
+    # ASL: "not (protein or water or ions)" identifies organic ligands and organic cofactors
+    hetero_indices = analyze.evaluate_asl(st, "not (protein or water or ions)")
+
+    working_complex = complex_path
+
+    if hetero_indices:
+        print(f"Chemical Fractionation: Detected {len(hetero_indices)} hetero atom(s) (ligand / organic cofactors).")
+        hetero_set = set(hetero_indices)
+        st_hetero = st.extract(hetero_indices, copy_props=True)
+        st_scaffold = st.extract([a.index for a in st.atom if a.index not in hetero_set], copy_props=True)
+
+        raw_hetero_file = "raw_hetero.mae"
+        st_hetero.write(raw_hetero_file)
+
+        # Run isolated Epik in aqueous bulk solvent mode (guarantees aqueous pKa without rigid pocket penalty)
+        # Coordinates of heavy atoms are strictly preserved by Epik
+        epik_out_file = "epik_hetero.mae"
+        epik_cmd = get_tool("epik") + [
+            "-imae", raw_hetero_file,
+            "-omae", epik_out_file,
+            "-ph", str(target_ph),
+            "-pht", str(ph_tolerance),
+            "-ms", "1",
+            "-WAIT",
+        ]
+        run_cmd(epik_cmd, job_name="epik_hetero")
+
+        if not Path(epik_out_file).exists() or Path(epik_out_file).stat().st_size == 0:
+            print(f"FATAL: Epik failed to generate aqueous protonated states: {epik_out_file}", file=sys.stderr)
+            sys.exit(1)
+
+        # Re-integrate aqueous-protonated ligand and cofactors into the scaffold (protein + ions)
+        for h_st in structure.StructureReader(epik_out_file):
+            st_scaffold.extend(h_st)
+
+        fractionated_complex = "complex_epik_aqueous.mae"
+        st_scaffold.write(fractionated_complex)
+        working_complex = Path(fractionated_complex).resolve()
+        print("✓ Successfully integrated aqueous-protonated molecules into complex with native coordinates preserved.")
+
+    # Execute PrepWizard:
+    # If hetero atoms were pre-protonated via aqueous Epik, we strictly forbid prepwizard
+    # from altering ligand/cofactor charges (-noepik).
+    # PROPKA will optimize the protein H-bond network around these correctly charged groups.
+    prep_cmd = get_tool("prepwizard") + [
+        "-fix",
+        "-fillsidechains",
+        "-propka_pH", str(target_ph),
+        "-rmsd", str(min_rmsd),
+        "-preserve_st_titles",
+        "-WAIT",
+    ]
+    if hetero_indices:
+        prep_cmd.append("-noepik")
+    else:
+        prep_cmd.extend(["-epik_pH", str(target_ph), "-epik_pHt", str(ph_tolerance)])
+
+    if cap_termini:
+        prep_cmd.append("-captermini")
+
+    prep_cmd.extend([str(working_complex), str(out_path)])
+    run_cmd(prep_cmd, job_name="prepwizard")
+
+    if not out_path.exists() or out_path.stat().st_size == 0:
+        print(f"FATAL: PrepWizard output deliverable missing: {out_path}", file=sys.stderr)
+        sys.exit(1)
+
+
 def main():
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(dest="subcommand", required=True)
@@ -343,6 +425,14 @@ def main():
     p_conv.add_argument("--out_sdf", required=True)
     p_conv.add_argument("--title", required=True)
 
+    p_prep = subparsers.add_parser("prepwizard")
+    p_prep.add_argument("--complex_mae", required=True)
+    p_prep.add_argument("--out_mae", required=True)
+    p_prep.add_argument("--target_ph", required=True)
+    p_prep.add_argument("--ph_tolerance", required=True)
+    p_prep.add_argument("--min_rmsd", required=True)
+    p_prep.add_argument("--cap_termini", action="store_true")
+
     args = parser.parse_args()
     if args.subcommand == "gridgen":
         cmd_gridgen(args)
@@ -356,6 +446,8 @@ def main():
         cmd_ligprep(args)
     elif args.subcommand == "convert_ligand":
         cmd_convert_ligand(args)
+    elif args.subcommand == "prepwizard":
+        cmd_prepwizard(args)
 
 
 if __name__ == "__main__":
