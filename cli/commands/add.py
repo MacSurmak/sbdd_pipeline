@@ -253,7 +253,13 @@ def _extract_ligand_atoms(rec_path: Path, lig_resname: str, out_sdf: Path) -> No
         )
 
 
-def add_receptor(args):
+def add_receptor(
+    paths: list[str],
+    target: str | None = None,
+    name: str | None = None,
+    cofactors: list[str] | None = None,
+    ligand: str | None = None
+) -> None:
     """
     Imports macromolecular structure(s) (PDB/CIF/MAE) into a Target.
     Supports single files, multiple paths, or shell globs.
@@ -261,7 +267,7 @@ def add_receptor(args):
     session = init_db()
     cwd = Path.cwd()
 
-    raw_inputs = args.path if isinstance(args.path, list) else [args.path]
+    raw_inputs = paths if isinstance(paths, list) else [paths]
     struct_paths = [Path(p).resolve() for p in raw_inputs]
 
     for struct_path in struct_paths:
@@ -271,7 +277,7 @@ def add_receptor(args):
             )
             sys.exit(1)
 
-        target_name = args.target if getattr(args, "target", None) else struct_path.stem
+        target_name = target if target else struct_path.stem
         target = session.query(Target).filter_by(name=target_name).first()
         if not target:
             target = Target(name=target_name, description=f"Target {target_name}")
@@ -280,19 +286,17 @@ def add_receptor(args):
             console.print(f"[bold green]✓ Created Target '{target_name}'[/bold green]")
 
         base_name = (
-            args.name
-            if (len(struct_paths) == 1 and getattr(args, "name", None))
+            name
+            if (len(struct_paths) == 1 and name)
             else struct_path.stem
         )
-        cofactors = args.cofactors if getattr(args, "cofactors", None) else []
-        lig_code = (
-            args.ligand.strip().upper() if getattr(args, "ligand", None) else None
-        )
+        safe_cofactors = cofactors if cofactors else []
+        lig_code = ligand.strip().upper() if ligand else None
         source_type = "crystal"
 
         frames_dir = cwd / "structures" / target_name
         frames = _sanitize_and_split_models(
-            struct_path, frames_dir, base_name, lig_code, cofactors
+            struct_path, frames_dir, base_name, lig_code, safe_cofactors
         )
 
         for frame_name, frame_file in frames:
@@ -302,7 +306,7 @@ def add_receptor(args):
             ex_frame = session.query(ReceptorFrame).filter_by(name=frame_name).first()
             if ex_frame:
                 ex_frame.path = str(frame_file.resolve())
-                ex_frame.cofactors_list = cofactors
+                ex_frame.cofactors_list = safe_cofactors
                 ex_frame.state = initial_state
                 frame_obj = ex_frame
                 console.print(
@@ -316,7 +320,7 @@ def add_receptor(args):
                     state=initial_state,
                     path=str(frame_file.resolve()),
                 )
-                frame_obj.cofactors_list = cofactors
+                frame_obj.cofactors_list = safe_cofactors
                 session.add(frame_obj)
                 session.flush()
 
@@ -418,10 +422,10 @@ def add_receptor(args):
     session.close()
 
 
-def add_fasta(args):
+def add_fasta(path: str) -> None:
     """Imports FASTA reference sequences for Targets."""
     session = init_db()
-    fasta_path = Path(args.path).resolve()
+    fasta_path = Path(path).resolve()
 
     if not fasta_path.exists():
         console.print(f"[bold red]FATAL: FASTA file not found: {fasta_path}[/bold red]")
@@ -464,13 +468,13 @@ def add_fasta(args):
     )
 
 
-def add_ligand(args):
+def add_ligand(path: str) -> None:
     """
     Imports chemical substances (SDF/SMILES) into the Ligand table.
     Performs topological deduplication via Standard InChIKey.
     """
     session = init_db()
-    target_path = Path(args.path).resolve()
+    target_path = Path(path).resolve()
     if not target_path.exists():
         console.print(f"[bold red]FATAL: File does not exist: {target_path}[/bold red]")
         sys.exit(1)
@@ -528,67 +532,81 @@ def add_ligand(args):
     )
 
 
-def add_traj(args):
+def add_traj(
+    system: str,
+    tpr: str,
+    xtc: str | None = None,
+    raw_dir: str | None = None,
+    replicate: int = 1,
+    name: str | None = None,
+    length_ns: float = 0.0,
+    clean_xtc: str | None = None,
+    ref_pdb: str | None = None
+) -> None:
     """
     Registers an MD simulation replicate linked to a physical System.
     """
     session = init_db()
 
-    target_sys = args.system
-    sys_obj = session.query(System).filter_by(name=target_sys).first()
+    sys_obj = session.query(System).filter_by(name=system).first()
     if not sys_obj:
         console.print(
-            f"[bold red]FATAL: Target System '{target_sys}' not found in DB![/bold red]"
+            f"[bold red]FATAL: Target System '{system}' not found in DB![/bold red]"
         )
         sys.exit(1)
 
-    raw_dir_path = Path(
-        args.raw_dir if getattr(args, "raw_dir", None) else Path(args.xtc).parent
-    ).resolve()
-    tpr_path = Path(args.tpr).resolve()
+    if raw_dir:
+        raw_dir_path = Path(raw_dir).resolve()
+    elif xtc:
+        raw_dir_path = Path(xtc).resolve().parent
+    else:
+        console.print("[bold red]FATAL: Either raw_dir or xtc must be provided.[/bold red]")
+        sys.exit(1)
+        
+    tpr_path = Path(tpr).resolve()
 
     if not tpr_path.exists():
         console.print(f"[bold red]FATAL: TPR file not found: {tpr_path}[/bold red]")
         sys.exit(1)
 
-    rep_idx = getattr(args, "replicate", 1) or 1
-    name = args.name or f"{sys_obj.name}_rep{rep_idx}"
+    rep_idx = replicate or 1
+    traj_name = name or f"{sys_obj.name}_rep{rep_idx}"
 
-    clean_xtc_path = (
-        str(Path(args.clean_xtc).resolve())
-        if getattr(args, "clean_xtc", None)
+    clean_xtc_path_resolved = (
+        str(Path(clean_xtc).resolve())
+        if clean_xtc
         else None
     )
-    ref_pdb_path = (
-        str(Path(args.ref_pdb).resolve()) if getattr(args, "ref_pdb", None) else None
+    ref_pdb_path_resolved = (
+        str(Path(ref_pdb).resolve()) if ref_pdb else None
     )
-    status = "cleaned" if clean_xtc_path and ref_pdb_path else "raw"
+    status = "cleaned" if clean_xtc_path_resolved and ref_pdb_path_resolved else "raw"
 
-    ex = session.query(Trajectory).filter_by(name=name).first()
+    ex = session.query(Trajectory).filter_by(name=traj_name).first()
     if ex:
         ex.system_id = sys_obj.id
         ex.replicate = rep_idx
         ex.raw_dir = str(raw_dir_path)
         ex.path_tpr = str(tpr_path)
-        ex.path_clean_xtc = clean_xtc_path
-        ex.path_ref_pdb = ref_pdb_path
+        ex.path_clean_xtc = clean_xtc_path_resolved
+        ex.path_ref_pdb = ref_pdb_path_resolved
         ex.status = status
-        console.print(f"[yellow]Updated Trajectory '{name}' ({status})[/yellow]")
+        console.print(f"[yellow]Updated Trajectory '{traj_name}' ({status})[/yellow]")
     else:
         new_traj = Trajectory(
             system_id=sys_obj.id,
-            name=name,
+            name=traj_name,
             replicate=rep_idx,
-            length_ns=float(getattr(args, "length_ns", 0.0) or 0.0),
+            length_ns=float(length_ns or 0.0),
             raw_dir=str(raw_dir_path),
             path_tpr=str(tpr_path),
-            path_clean_xtc=clean_xtc_path,
-            path_ref_pdb=ref_pdb_path,
+            path_clean_xtc=clean_xtc_path_resolved,
+            path_ref_pdb=ref_pdb_path_resolved,
             status=status,
         )
         session.add(new_traj)
         console.print(
-            f"[bold green]✓ Registered Trajectory '{name}' ({status}) linked to System '{sys_obj.name}'[/bold green]"
+            f"[bold green]✓ Registered Trajectory '{traj_name}' ({status}) linked to System '{sys_obj.name}'[/bold green]"
         )
 
     session.commit()

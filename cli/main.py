@@ -585,21 +585,37 @@ def main():
         from cli.commands.add import add_receptor, add_ligand, add_traj, add_fasta
 
         if args.add_type in ["structure", "receptor", "complex"]:
-            add_receptor(args)
+            add_receptor(
+                paths=args.path if isinstance(args.path, list) else [args.path],
+                target=getattr(args, "target", None),
+                name=getattr(args, "name", None),
+                cofactors=getattr(args, "cofactors", None),
+                ligand=getattr(args, "ligand", None)
+            )
         elif args.add_type == "fasta":
-            add_fasta(args)
+            add_fasta(path=args.path)
         elif args.add_type == "ligand":
-            add_ligand(args)
+            add_ligand(path=args.path)
         elif args.add_type == "traj":
-            add_traj(args)
+            add_traj(
+                system=args.system,
+                tpr=args.tpr,
+                xtc=getattr(args, "xtc", None),
+                raw_dir=getattr(args, "raw_dir", None),
+                replicate=getattr(args, "replicate", 1),
+                name=getattr(args, "name", None),
+                length_ns=getattr(args, "length_ns", 0.0),
+                clean_xtc=getattr(args, "clean_xtc", None),
+                ref_pdb=getattr(args, "ref_pdb", None)
+            )
     elif subcmd in ["tree", "ls"]:
-        from cli.commands.tree import cmd_tree
+        from cli.commands.tree import print_tree
 
-        cmd_tree(args)
+        print_tree()
     elif subcmd == "rm":
-        from cli.commands.rm import cmd_rm
+        from cli.commands.rm import remove_entity
 
-        cmd_rm(args)
+        remove_entity(name=args.target)
     elif subcmd == "init":
         cmd_init(args)
     elif subcmd == "heal":

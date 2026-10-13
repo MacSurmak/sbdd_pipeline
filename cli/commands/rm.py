@@ -9,9 +9,8 @@ from cli.core.db import init_db, Target, ReceptorFrame, Ligand, Pose, System, Tr
 console = Console()
 
 
-def cmd_rm(args):
+def remove_entity(name: str) -> None:
     session = init_db()
-    name = args.target
     deleted = False
 
     # Check across models in hierarchical order

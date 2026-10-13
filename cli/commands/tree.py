@@ -11,7 +11,7 @@ from cli.core.db import init_db, Target, ReceptorFrame, Ligand, Pose, System, Tr
 console = Console()
 
 
-def cmd_tree(args):
+def print_tree() -> None:
     session = init_db()
     root_tree = Tree("[bold blue]SBDD Project Relational Database (3NF)[/bold blue]")
 
