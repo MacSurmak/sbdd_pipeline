@@ -20,7 +20,7 @@ process PREPWIZARD {
     script:
     def cap_flag = cap_termini ? "--cap_termini" : ""
     """
-    python3 ${projectDir}/bin/wrap_schrodinger.py prepwizard \\
+    schrodinger run python3 ${projectDir}/bin/wrap_schrodinger.py prepwizard \\
         --complex_mae ${complex_mae} \\
         --out_mae receptor.mae \\
         --target_ph ${target_ph} \\

@@ -316,7 +316,10 @@ def cmd_prepwizard(args):
         st_scaffold = st.extract([a.index for a in st.atom if a.index not in hetero_set], copy_props=True)
 
         raw_hetero_file = "raw_hetero.mae"
-        st_hetero.write(raw_hetero_file)
+        # Write each hetero molecule as an independent structure so Epik processes them cleanly
+        with structure.StructureWriter(raw_hetero_file) as writer:
+            for mol in st_hetero.molecule:
+                writer.append(mol.extractStructure(copy_props=True))
 
         # Run isolated Epik in aqueous bulk solvent mode (guarantees aqueous pKa without rigid pocket penalty)
         # Coordinates of heavy atoms are strictly preserved by Epik
