@@ -28,6 +28,8 @@ md_simulation:
     dt_ps: 0.002
     compressibility: "4.5e-5"
     tau_p: 5.0
+    restraints_group: "C-alpha"
+    restraints_fc: 50
   metrics:
     heavy_cutoff: 3.5
     hyd_cutoff: 4.0

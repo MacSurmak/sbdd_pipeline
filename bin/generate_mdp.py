@@ -36,6 +36,11 @@ def main():
     parser.add_argument("--dt_ps", required=True)
     parser.add_argument("--compressibility", required=True)
     parser.add_argument("--tau_p", required=True)
+    parser.add_argument(
+        "--prod_restraints_fc",
+        default="",
+        help="Optional force constant for production restraints (e.g. 50)",
+    )
     args = parser.parse_args()
 
     tpl_dir = Path(args.templates_dir)
@@ -134,7 +139,12 @@ def main():
     nstxout = max(1, min(5000, prod_steps // 10))
     nstenergy = max(1, min(1000, prod_steps // 10))
 
-    prod_content = prod_tpl.replace("{NSTEPS}", str(prod_steps))
+    prod_define = ""
+    if args.prod_restraints_fc and float(args.prod_restraints_fc) > 0:
+        prod_define = f"define                   = -DPOSRES_PROD_{int(float(args.prod_restraints_fc))}"
+
+    prod_content = prod_tpl.replace("{DEFINE}", prod_define)
+    prod_content = prod_content.replace("{NSTEPS}", str(prod_steps))
     prod_content = prod_content.replace("{NSTXOUT}", str(nstxout))
     prod_content = prod_content.replace("{NSTENERGY}", str(nstenergy))
     prod_content = prod_content.replace("{TC_GRPS}", "PROT_LIG SOL_ION")

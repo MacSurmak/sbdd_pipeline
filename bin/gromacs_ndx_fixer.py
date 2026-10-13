@@ -8,6 +8,7 @@ import os
 import sys
 import shutil
 import logging
+import subprocess
 from pathlib import Path
 from typing import Dict, List, Set
 
@@ -102,7 +103,74 @@ def add_thermostat_groups_by_name(ndx_path: Path, water_names: str, ion_names: s
         write_ndx_group(f, "SOL_ION", sorted(list(water_and_ion_atoms)))
 
 
-def generate_posre(top_file: Path, forces_str: str, water_names: str, ion_names: str):
+def generate_native_posre_from_ndx(
+    ndx_path: Path,
+    pdb_path: Path,
+    group_name: str,
+    fc: int,
+    out_itp: Path,
+):
+    """
+    Natively generates GROMACS position restraints using `gmx genrestr` directly from an index group.
+    Zero manual atom name parsing.
+    """
+    ndx_groups = parse_ndx(ndx_path)
+    matched_group = group_name
+    if group_name not in ndx_groups:
+        aliases = {
+            "CA": "C-alpha",
+            "C-alpha": "CA",
+            "C_alpha": "C-alpha",
+            "Backbone": "MainChain",
+        }
+        cand = aliases.get(group_name)
+        if cand and cand in ndx_groups:
+            matched_group = cand
+        else:
+            raise KeyError(
+                f"FATAL: Restraint group '{group_name}' not found in {ndx_path}! Available groups: {list(ndx_groups.keys())}"
+            )
+
+    gmx = get_gmx_binary()
+    cmd = [
+        gmx,
+        "genrestr",
+        "-f",
+        str(pdb_path),
+        "-n",
+        str(ndx_path),
+        "-fc",
+        str(fc),
+        str(fc),
+        str(fc),
+        "-o",
+        str(out_itp),
+    ]
+    res = subprocess.run(
+        cmd,
+        input=f"{matched_group}\n",
+        capture_output=True,
+        text=True,
+    )
+    if res.returncode != 0:
+        raise RuntimeError(
+            f"FATAL: Native 'gmx genrestr' failed for group '{matched_group}':\n{res.stderr}\n{res.stdout}"
+        )
+    logging.info(
+        f"Natively generated GROMACS position restraints for '{matched_group}' (fc={fc}) -> {out_itp}"
+    )
+
+
+def generate_posre(
+    top_file: Path,
+    forces_str: str,
+    water_names: str,
+    ion_names: str,
+    ndx_path: Path = None,
+    pdb_path: Path = None,
+    prod_group: str = "",
+    prod_fc: int = 0,
+):
     """Parses topology and dynamically generates position restraints strictly based on user configuration."""
     if not forces_str or not forces_str.strip():
         raise ValueError(
@@ -179,6 +247,11 @@ def generate_posre(top_file: Path, forces_str: str, water_names: str, ion_names:
                         f'#ifdef {macro}\n#include "posre_{current_mol}_{fc}.itp"\n#endif'
                     )
 
+                if is_protein and prod_fc > 0:
+                    out_lines.append(
+                        f'#ifdef POSRES_PROD_{prod_fc}\n#include "posre_prod_{prod_fc}.itp"\n#endif'
+                    )
+
             state = "MOL_START" if stripped.startswith("[ moleculetype ]") else "SYSTEM"
             current_mol = None
 
@@ -209,6 +282,17 @@ def generate_posre(top_file: Path, forces_str: str, water_names: str, ion_names:
             f"Dynamically generated restraints for {mol} ({len(heavy_atoms)} atoms) with forces: {sorted_forces}"
         )
 
+    # Natively generate production restraints from index group if requested
+    if prod_fc > 0 and ndx_path and pdb_path and pdb_path.exists():
+        target_group = prod_group if prod_group else "C-alpha"
+        generate_native_posre_from_ndx(
+            ndx_path=ndx_path,
+            pdb_path=pdb_path,
+            group_name=target_group,
+            fc=prod_fc,
+            out_itp=Path(f"posre_prod_{prod_fc}.itp"),
+        )
+
 
 if __name__ == "__main__":
     import argparse
@@ -230,6 +314,17 @@ if __name__ == "__main__":
     parser.add_argument("--water_names", default="")
     parser.add_argument("--ion_names", default="")
     parser.add_argument("--lipid_names", default="")
+    parser.add_argument(
+        "--prod_group",
+        default="C-alpha",
+        help="Index group to generate native production position restraints for (e.g. C-alpha)",
+    )
+    parser.add_argument(
+        "--prod_fc",
+        type=int,
+        default=0,
+        help="Force constant for production restraints (e.g. 50)",
+    )
     args = parser.parse_args()
 
     if args.action == "add_groups":
@@ -237,7 +332,17 @@ if __name__ == "__main__":
     elif args.action == "generate_posre":
         if not args.top:
             raise ValueError("FATAL: --top is required for generate_posre")
-        generate_posre(Path(args.top), args.forces, args.water_names, args.ion_names)
+        pdb_p = Path(args.pdb).resolve() if args.pdb else None
+        generate_posre(
+            Path(args.top),
+            args.forces,
+            args.water_names,
+            args.ion_names,
+            ndx_path=Path(args.ndx).resolve() if args.ndx else None,
+            pdb_path=pdb_p,
+            prod_group=args.prod_group,
+            prod_fc=args.prod_fc,
+        )
     elif args.action == "ensure_complex":
         ensure_complex_ndx_group(
             Path(args.ndx), args.water_names, args.ion_names, args.lipid_names
