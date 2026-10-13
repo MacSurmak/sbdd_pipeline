@@ -16,31 +16,35 @@ from cli.core.config_loader import load_project_configs, build_nextflow_args
 console = Console()
 
 
-def _query_trajectories(session, args, target_status: str = "raw") -> list[Trajectory]:
+def _query_trajectories(
+    session,
+    systems: list[str] | None = None,
+    target: str | None = None,
+    traj_names: list[str] | None = None,
+    target_status: str = "raw"
+) -> list[Trajectory]:
     """
     Queries trajectories needing action based on DB status.
     By default queries all trajectories with status == target_status across all systems.
-    Allows optional scope restriction via --systems, --target, or --traj.
+    Allows optional scope restriction via systems, target, or traj_names.
     """
     query = session.query(Trajectory)
 
-    if getattr(args, "systems", None):
-        sys_names = [s.strip() for s in args.systems.split(",") if s.strip()]
-        systems = session.query(System).filter(System.name.in_(sys_names)).all()
-        sys_ids = [s.id for s in systems]
+    if systems:
+        sys_objs = session.query(System).filter(System.name.in_(systems)).all()
+        sys_ids = [s.id for s in sys_objs]
         query = query.filter(Trajectory.system_id.in_(sys_ids))
-    elif getattr(args, "target", None):
-        target_obj = session.query(Target).filter_by(name=args.target).first()
+    elif target:
+        target_obj = session.query(Target).filter_by(name=target).first()
         if not target_obj:
             console.print(
-                f"[bold red]FATAL: Target '{args.target}' not found.[/bold red]"
+                f"[bold red]FATAL: Target '{target}' not found.[/bold red]"
             )
             sys.exit(1)
-        systems = session.query(System).filter_by(target_id=target_obj.id).all()
-        sys_ids = [s.id for s in systems]
+        sys_objs = session.query(System).filter_by(target_id=target_obj.id).all()
+        sys_ids = [s.id for s in sys_objs]
         query = query.filter(Trajectory.system_id.in_(sys_ids))
-    elif getattr(args, "traj", None):
-        traj_names = [t.strip() for t in args.traj.split(",") if t.strip()]
+    elif traj_names:
         query = query.filter(Trajectory.name.in_(traj_names))
 
     # Strict state filter: process only trajectories that actually need it
@@ -51,7 +55,14 @@ def _query_trajectories(session, args, target_status: str = "raw") -> list[Traje
     return trajs
 
 
-def cmd_clean_traj(args):
+def run_clean_traj(
+    systems: list[str] | None = None,
+    target: str | None = None,
+    traj_names: list[str] | None = None,
+    urgent: bool = False,
+    local: bool = False,
+    resume: bool = True
+) -> None:
     """
     Cleans raw trajectories (PBC correction, fit, solvent strip).
     Streams chunks into worker scratch without duplicating raw files on storage.
@@ -62,7 +73,7 @@ def cmd_clean_traj(args):
     cwd = Path.cwd()
     session = init_db()
     configs = load_project_configs(cwd)
-    trajs = _query_trajectories(session, args, target_status="raw")
+    trajs = _query_trajectories(session, systems, target, traj_names, target_status="raw")
 
     if not trajs:
         console.print(
@@ -108,14 +119,13 @@ def cmd_clean_traj(args):
     nf_args = build_nextflow_args(configs, cwd, entrypoint="md-analyze")
     nf_args.extend(["--clean_plan", str(plan_file.resolve())])
 
-    if getattr(args, "urgent", False):
+    if urgent:
         nf_args.extend(["--queue", "urgent"])
 
-    profile = "local" if getattr(args, "local", False) else "slurm"
-    resume = not getattr(args, "no_resume", False)
+    profile_name = "local" if local else "slurm"
 
     ret_code = execute_nextflow(
-        "md-analyze", nf_args, cwd, profile=profile, resume=resume, configs=configs
+        "md-analyze", nf_args, cwd, profile=profile_name, resume=resume, configs=configs
     )
     if ret_code != 0:
         console.print("[bold red]Nextflow trajectory cleaning failed.[/bold red]")
@@ -147,11 +157,18 @@ def cmd_clean_traj(args):
     )
 
 
-def cmd_metrics(args):
+def run_metrics(
+    systems: list[str] | None = None,
+    target: str | None = None,
+    traj_names: list[str] | None = None,
+    urgent: bool = False,
+    local: bool = False,
+    resume: bool = True
+) -> None:
     """Calculates RMSD (Protein, Ligand, and Cofactors), RMSF, and Contacts on cleaned trajectories."""
     cwd = Path.cwd()
     session = init_db()
-    trajs = _query_trajectories(session, args, target_status="cleaned")
+    trajs = _query_trajectories(session, systems, target, traj_names, target_status="cleaned")
 
     if not trajs:
         console.print(
@@ -205,11 +222,13 @@ def cmd_metrics(args):
     nf_args = build_nextflow_args(configs, cwd, entrypoint="md-analyze")
     nf_args.extend(["--metrics_plan", str(plan_file.resolve())])
 
-    profile = "local" if getattr(args, "local", False) else "slurm"
-    resume = not getattr(args, "no_resume", False)
+    if urgent:
+        nf_args.extend(["--queue", "urgent"])
+
+    profile_name = "local" if local else "slurm"
 
     ret_code = execute_nextflow(
-        "md-analyze", nf_args, cwd, profile=profile, resume=resume, configs=configs
+        "md-analyze", nf_args, cwd, profile=profile_name, resume=resume, configs=configs
     )
     if ret_code != 0:
         console.print("[bold red]Nextflow metrics calculation failed.[/bold red]")
@@ -255,7 +274,20 @@ def cmd_metrics(args):
     session.close()
 
 
-def cmd_cluster(args):
+def run_cluster(
+    systems: list[str] | None = None,
+    target: str | None = None,
+    traj_names: list[str] | None = None,
+    cutoff: float = 0.15,
+    dt: int = 100,
+    group: str = "COMPLEX",
+    method: str = "gromos",
+    max_clusters: int = 5,
+    force: bool = False,
+    urgent: bool = False,
+    local: bool = False,
+    resume: bool = True
+) -> None:
     """
     Clusters clean trajectory ensembles and registers each centroid as a
     peer ReceptorFrame (state='ready') in the parent Target.
@@ -263,7 +295,7 @@ def cmd_cluster(args):
     """
     cwd = Path.cwd()
     session = init_db()
-    trajs = _query_trajectories(session, args, target_status="cleaned")
+    trajs = _query_trajectories(session, systems, target, traj_names, target_status="cleaned")
 
     if not trajs:
         console.print(
@@ -304,11 +336,11 @@ def cmd_cluster(args):
         active_traj_names = sorted([t.name for t in t_list])
         current_cluster_sig = {
             "trajs": active_traj_names,
-            "cutoff": float(args.cutoff),
-            "max_clusters": int(getattr(args, "max_clusters", 5)),
-            "group": str(args.group),
-            "method": str(args.method),
-            "dt": int(args.dt),
+            "cutoff": float(cutoff),
+            "max_clusters": int(max_clusters),
+            "group": str(group),
+            "method": str(method),
+            "dt": int(dt),
         }
 
         # If centroids already exist, verify if trajectory set or clustering parameters have changed
@@ -319,9 +351,9 @@ def cmd_cluster(args):
                     "trajs": sys_obj.environment_dict.get("cluster_active_trajs", [])
                 }
 
-            if stored_sig == current_cluster_sig and not getattr(args, "force", False):
+            if stored_sig == current_cluster_sig and not force:
                 console.print(
-                    f"[dim]System '{sys_obj.name}' already has up-to-date centroids matching parameters (cutoff={args.cutoff}, {active_traj_names}). Skipping.[/dim]"
+                    f"[dim]System '{sys_obj.name}' already has up-to-date centroids matching parameters (cutoff={cutoff}, {active_traj_names}). Skipping.[/dim]"
                 )
                 continue
             else:
@@ -346,11 +378,11 @@ def cmd_cluster(args):
                 "clean_xtcs": clean_xtcs,
                 "ref_pdb": ref_pdb,
                 "ligand": lig_code,
-                "cutoff": args.cutoff,
-                "method": args.method,
-                "dt": args.dt,
-                "group": args.group,
-                "max_clusters": getattr(args, "max_clusters", 5),
+                "cutoff": cutoff,
+                "method": method,
+                "dt": dt,
+                "group": group,
+                "max_clusters": max_clusters,
             }
         )
 
@@ -373,12 +405,15 @@ def cmd_cluster(args):
     nf_args = build_nextflow_args(configs, cwd, entrypoint="md-analyze")
     nf_args.extend(["--cluster_plan", str(plan_file.resolve())])
 
-    profile = "local" if getattr(args, "local", False) else "slurm"
-    # When --force is explicitly provided, invalidate Nextflow cache to force genuine recalculation
-    resume = not (getattr(args, "no_resume", False) or getattr(args, "force", False))
+    if urgent:
+        nf_args.extend(["--queue", "urgent"])
+
+    profile_name = "local" if local else "slurm"
+    # When force is explicitly provided, invalidate Nextflow cache to force genuine recalculation
+    resume_flag = resume and not force
 
     ret_code = execute_nextflow(
-        "md-analyze", nf_args, cwd, profile=profile, resume=resume, configs=configs
+        "md-analyze", nf_args, cwd, profile=profile_name, resume=resume_flag, configs=configs
     )
     if ret_code != 0:
         console.print("[bold red]Nextflow clustering failed.[/bold red]")
@@ -562,10 +597,15 @@ def cmd_cluster(args):
     )
 
 
-def cmd_flag_traj(args):
+def run_flag_traj(
+    trajectory: str,
+    status: str = "drifted",
+    disable: bool = False,
+    enable: bool = False
+) -> None:
     """Marks a trajectory as drifted, disabled, or cleaned to control inclusion in downstream analysis."""
     session = init_db()
-    traj_name = args.trajectory
+    traj_name = trajectory
     t_obj = session.query(Trajectory).filter_by(name=traj_name).first()
 
     if not t_obj:
@@ -575,10 +615,10 @@ def cmd_flag_traj(args):
         session.close()
         sys.exit(1)
 
-    new_status = args.status
-    if getattr(args, "disable", False):
+    new_status = status
+    if disable:
         new_status = "disabled"
-    elif getattr(args, "enable", False):
+    elif enable:
         new_status = "cleaned" if t_obj.path_clean_xtc else "raw"
 
     old_status = t_obj.status
@@ -595,14 +635,21 @@ def cmd_flag_traj(args):
         )
 
 
-def cmd_mmpbsa(args):
+def run_mmpbsa(
+    systems: list[str] | None = None,
+    target: str | None = None,
+    traj_names: list[str] | None = None,
+    urgent: bool = False,
+    local: bool = False,
+    resume: bool = True
+) -> None:
     """
     CLI handler for 'sbdd traj-mmpbsa': standalone free energy calculations.
     Automatically queries all cleaned trajectories.
     """
     cwd = Path.cwd()
     session = init_db()
-    trajs = _query_trajectories(session, args, target_status="cleaned")
+    trajs = _query_trajectories(session, systems, target, traj_names, target_status="cleaned")
 
     if not trajs:
         console.print(
@@ -653,11 +700,13 @@ def cmd_mmpbsa(args):
     nf_args = build_nextflow_args(configs, cwd, entrypoint="md-analyze")
     nf_args.extend(["--mmpbsa_plan", str(plan_file.resolve())])
 
-    profile = "local" if getattr(args, "local", False) else "slurm"
-    resume = not getattr(args, "no_resume", False)
+    if urgent:
+        nf_args.extend(["--queue", "urgent"])
+
+    profile_name = "local" if local else "slurm"
 
     ret_code = execute_nextflow(
-        "md-analyze", nf_args, cwd, profile=profile, resume=resume, configs=configs
+        "md-analyze", nf_args, cwd, profile=profile_name, resume=resume, configs=configs
     )
     if ret_code != 0:
         console.print("[bold red]Nextflow MM-PBSA failed.[/bold red]")

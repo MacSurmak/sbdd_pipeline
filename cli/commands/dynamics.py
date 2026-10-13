@@ -15,7 +15,14 @@ from cli.core.config_loader import load_project_configs, build_nextflow_args
 console = Console()
 
 
-def cmd_dynamics(args):
+def run_dynamics(
+    system: str | None = None,
+    target: str | None = None,
+    urgent: bool = False,
+    local: bool = False,
+    resume: bool = True
+) -> None:
+    """Executes chunked MD and guarantees atomic registration of Trajectory records."""
     cwd = Path.cwd()
     session = init_db()
     configs = load_project_configs(cwd)
@@ -34,13 +41,13 @@ def cmd_dynamics(args):
         sys.exit(1)
 
     query = session.query(System).filter_by(state="ready")
-    if getattr(args, "system", None):
-        query = query.filter_by(name=args.system)
-    elif getattr(args, "target", None):
-        target_obj = session.query(Target).filter_by(name=args.target).first()
+    if system:
+        query = query.filter_by(name=system)
+    elif target:
+        target_obj = session.query(Target).filter_by(name=target).first()
         if not target_obj:
             console.print(
-                f"[bold red]FATAL: Target '{args.target}' not found.[/bold red]"
+                f"[bold red]FATAL: Target '{target}' not found.[/bold red]"
             )
             sys.exit(1)
         query = query.filter_by(target_id=target_obj.id)
@@ -164,14 +171,13 @@ def cmd_dynamics(args):
     else:
         nf_args.extend(["--md_replicates", str(max_reps_dispatch)])
 
-    if getattr(args, "urgent", False):
+    if urgent:
         nf_args.extend(["--queue", "urgent"])
 
-    profile = "local" if getattr(args, "local", False) else "slurm"
-    resume = not getattr(args, "no_resume", False)
+    profile_name = "local" if local else "slurm"
 
     ret_code = execute_nextflow(
-        "dynamics", nf_args, cwd, profile=profile, resume=resume, configs=configs
+        "dynamics", nf_args, cwd, profile=profile_name, resume=resume, configs=configs
     )
 
     if ret_code != 0:

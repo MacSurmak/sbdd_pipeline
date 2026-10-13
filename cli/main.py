@@ -658,31 +658,70 @@ def main():
             system_prefix=getattr(args, "system_prefix", "hit"),
         )
     elif subcmd in ["dynamics", "md", "md-run", "md-setup"]:
-        from cli.commands.dynamics import cmd_dynamics
-
-        cmd_dynamics(args)
+        from cli.commands.dynamics import run_dynamics
+        run_dynamics(
+            system=args.system,
+            target=args.target,
+            urgent=args.urgent,
+            local=args.local,
+            resume=not args.no_resume,
+        )
     elif subcmd == "md-analyze":
         sys.exit(run_workflow("dynamics", args))
     elif subcmd == "traj-flag":
-        from cli.commands.traj import cmd_flag_traj
-
-        cmd_flag_traj(args)
+        from cli.commands.traj import run_flag_traj
+        run_flag_traj(
+            trajectory=args.trajectory,
+            status=args.status,
+            disable=args.disable,
+            enable=args.enable,
+        )
     elif subcmd == "traj-clean":
-        from cli.commands.traj import cmd_clean_traj
-
-        cmd_clean_traj(args)
+        from cli.commands.traj import run_clean_traj
+        run_clean_traj(
+            systems=[s.strip() for s in args.systems.split(",") if s.strip()] if getattr(args, "systems", None) else None,
+            target=args.target,
+            traj_names=[t.strip() for t in args.traj.split(",") if t.strip()] if getattr(args, "traj", None) else None,
+            urgent=args.urgent,
+            local=args.local,
+            resume=not args.no_resume,
+        )
     elif subcmd == "traj-mmpbsa":
-        from cli.commands.traj import cmd_mmpbsa
-
-        cmd_mmpbsa(args)
+        from cli.commands.traj import run_mmpbsa
+        run_mmpbsa(
+            systems=[s.strip() for s in args.systems.split(",") if s.strip()] if getattr(args, "systems", None) else None,
+            target=args.target,
+            traj_names=[t.strip() for t in args.traj.split(",") if t.strip()] if getattr(args, "traj", None) else None,
+            urgent=args.urgent,
+            local=args.local,
+            resume=not args.no_resume,
+        )
     elif subcmd == "traj-metrics":
-        from cli.commands.traj import cmd_metrics
-
-        cmd_metrics(args)
+        from cli.commands.traj import run_metrics
+        run_metrics(
+            systems=[s.strip() for s in args.systems.split(",") if s.strip()] if getattr(args, "systems", None) else None,
+            target=args.target,
+            traj_names=[t.strip() for t in args.traj.split(",") if t.strip()] if getattr(args, "traj", None) else None,
+            urgent=args.urgent,
+            local=args.local,
+            resume=not args.no_resume,
+        )
     elif subcmd == "traj-cluster":
-        from cli.commands.traj import cmd_cluster
-
-        cmd_cluster(args)
+        from cli.commands.traj import run_cluster
+        run_cluster(
+            systems=[s.strip() for s in args.systems.split(",") if s.strip()] if getattr(args, "systems", None) else None,
+            target=args.target,
+            traj_names=[t.strip() for t in args.traj.split(",") if t.strip()] if getattr(args, "traj", None) else None,
+            cutoff=args.cutoff,
+            dt=args.dt,
+            group=args.group,
+            method=args.method,
+            max_clusters=args.max_clusters,
+            force=args.force,
+            urgent=args.urgent,
+            local=args.local,
+            resume=not args.no_resume,
+        )
     elif subcmd in ["watch", "progress", "top"]:
         from cli.core.monitor import run_monitor
 
