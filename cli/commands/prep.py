@@ -20,7 +20,7 @@ def run_prep(
     frames: list[str] | None = None,
     urgent: bool = False,
     local: bool = False,
-    resume: bool = True
+    resume: bool = True,
 ) -> None:
     """Prepares raw receptor frames and in-situ poses into ready states."""
     cwd = Path.cwd()

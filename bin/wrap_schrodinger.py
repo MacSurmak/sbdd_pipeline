@@ -49,7 +49,7 @@ def distill_schrodinger_errors(job_name: str, raw_stderr: str = "") -> str:
         r"(License error.*)",
         r"(FlexLM Error.*)",
         r"(FATAL:.*)",
-        r"(Error:.*)"
+        r"(Error:.*)",
     ]
     logs_to_check = [raw_stderr]
     if job_name:
@@ -59,7 +59,7 @@ def distill_schrodinger_errors(job_name: str, raw_stderr: str = "") -> str:
             logs_to_check.append(prime_log.read_text(errors="ignore"))
         if gen_log.exists():
             logs_to_check.append(gen_log.read_text(errors="ignore"))
-            
+
     for log_text in logs_to_check:
         if not log_text:
             continue
@@ -76,7 +76,10 @@ def run_cmd(cmd, env=None, job_name=None):
     res = subprocess.run(cmd, capture_output=True, text=True, env=env)
     if res.returncode != 0:
         distilled = distill_schrodinger_errors(job_name, res.stderr)
-        print(f"FATAL: Schrödinger process failed! Exit Code {res.returncode}\nRoot Cause: {distilled}", file=sys.stderr)
+        print(
+            f"FATAL: Schrödinger process failed! Exit Code {res.returncode}\nRoot Cause: {distilled}",
+            file=sys.stderr,
+        )
         sys.exit(res.returncode)
     return res
 

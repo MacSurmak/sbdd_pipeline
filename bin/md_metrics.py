@@ -263,7 +263,9 @@ def main():
         description="Calculate MD metrics (RMSD, RMSF, Contacts)"
     )
     parser.add_argument(
-        "--struct", required=True, help="Clean reference structure in GROMACS PDB/GRO format"
+        "--struct",
+        required=True,
+        help="Clean reference structure in GROMACS PDB/GRO format",
     )
     parser.add_argument("--xtc", required=True, help="Clean Centered Trajectory XTC")
     parser.add_argument("--outdir", required=True, help="Output directory")

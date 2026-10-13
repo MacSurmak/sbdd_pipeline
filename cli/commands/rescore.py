@@ -20,7 +20,7 @@ def run_rescore(
     use_whitelist: bool = False,
     urgent: bool = False,
     local: bool = False,
-    resume: bool = True
+    resume: bool = True,
 ) -> None:
     """Runs standalone Prime MM-GBSA and Consensus rescoring."""
     cwd = Path.cwd()

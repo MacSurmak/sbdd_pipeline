@@ -45,7 +45,7 @@ def run_dock(
     name: str | None = None,
     urgent: bool = False,
     local: bool = False,
-    resume: bool = True
+    resume: bool = True,
 ) -> None:
     """Run distributed docking into ReceptorFrames."""
     cwd = Path.cwd()
@@ -57,9 +57,7 @@ def run_dock(
     if target:
         target_obj = session.query(Target).filter_by(name=target).first()
         if not target_obj:
-            console.print(
-                f"[bold red]FATAL: Target '{target}' not found.[/bold red]"
-            )
+            console.print(f"[bold red]FATAL: Target '{target}' not found.[/bold red]")
             sys.exit(1)
         query = query.filter(ReceptorFrame.target_id == target_obj.id)
     elif frame_names:

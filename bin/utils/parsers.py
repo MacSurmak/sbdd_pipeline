@@ -114,7 +114,12 @@ def parse_gnina_sdf(sdf_path: Path, prefix: str = "") -> Dict[str, Dict[str, flo
                     val_str = lines[i + 1].strip()
                     if tag_clean in ["_name", "s_m_title", "title", "compound_id"]:
                         prop_title = val_str
-                    elif tag_clean in ["cnnscore", "cnnaffinity", "minimizedaffinity", "affinity"]:
+                    elif tag_clean in [
+                        "cnnscore",
+                        "cnnaffinity",
+                        "minimizedaffinity",
+                        "affinity",
+                    ]:
                         try:
                             val = float(val_str)
                             if tag_clean == "cnnscore":

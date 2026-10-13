@@ -258,7 +258,7 @@ def add_receptor(
     target: str | None = None,
     name: str | None = None,
     cofactors: list[str] | None = None,
-    ligand: str | None = None
+    ligand: str | None = None,
 ) -> None:
     """
     Imports macromolecular structure(s) (PDB/CIF/MAE) into a Target.
@@ -285,11 +285,7 @@ def add_receptor(
             session.flush()
             console.print(f"[bold green]✓ Created Target '{target_name}'[/bold green]")
 
-        base_name = (
-            name
-            if (len(struct_paths) == 1 and name)
-            else struct_path.stem
-        )
+        base_name = name if (len(struct_paths) == 1 and name) else struct_path.stem
         safe_cofactors = cofactors if cofactors else []
         lig_code = ligand.strip().upper() if ligand else None
         source_type = "crystal"
@@ -541,7 +537,7 @@ def add_traj(
     name: str | None = None,
     length_ns: float = 0.0,
     clean_xtc: str | None = None,
-    ref_pdb: str | None = None
+    ref_pdb: str | None = None,
 ) -> None:
     """
     Registers an MD simulation replicate linked to a physical System.
@@ -560,9 +556,11 @@ def add_traj(
     elif xtc:
         raw_dir_path = Path(xtc).resolve().parent
     else:
-        console.print("[bold red]FATAL: Either raw_dir or xtc must be provided.[/bold red]")
+        console.print(
+            "[bold red]FATAL: Either raw_dir or xtc must be provided.[/bold red]"
+        )
         sys.exit(1)
-        
+
     tpr_path = Path(tpr).resolve()
 
     if not tpr_path.exists():
@@ -572,14 +570,8 @@ def add_traj(
     rep_idx = replicate or 1
     traj_name = name or f"{sys_obj.name}_rep{rep_idx}"
 
-    clean_xtc_path_resolved = (
-        str(Path(clean_xtc).resolve())
-        if clean_xtc
-        else None
-    )
-    ref_pdb_path_resolved = (
-        str(Path(ref_pdb).resolve()) if ref_pdb else None
-    )
+    clean_xtc_path_resolved = str(Path(clean_xtc).resolve()) if clean_xtc else None
+    ref_pdb_path_resolved = str(Path(ref_pdb).resolve()) if ref_pdb else None
     status = "cleaned" if clean_xtc_path_resolved and ref_pdb_path_resolved else "raw"
 
     ex = session.query(Trajectory).filter_by(name=traj_name).first()

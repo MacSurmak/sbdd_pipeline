@@ -47,39 +47,43 @@ def _build_prep_args(config: Dict[str, Any]) -> list:
     prep_cfg = config.get("preparation")
     if not prep_cfg:
         raise ValueError("FATAL: 'preparation' config section is missing!")
-        
+
     # Explicit mapping: (yaml_key, nextflow_flag)
     prep_mappings = [
         ("target_ph", "target_ph"),
         ("ph_tolerance", "ph_tolerance"),
-        ("minimize_rmsd", "minimize_rmsd")
+        ("minimize_rmsd", "minimize_rmsd"),
     ]
     for yaml_k, nf_k in prep_mappings:
         if yaml_k not in prep_cfg:
             raise ValueError(f"FATAL: 'preparation.{yaml_k}' is required!")
         args.extend([f"--{nf_k}", str(prep_cfg[yaml_k])])
-    
+
     if "cap_termini" in prep_cfg:
         args.extend(["--cap_termini", "true" if prep_cfg["cap_termini"] else "false"])
 
     mem_cfg = config.get("membrane", {})
     if mem_cfg.get("enabled"):
         args.extend(["--membrane", "true"])
-        mem_mappings = [
-            ("type", "membrane_type"),
-            ("topology", "membrane_topo")
-        ]
+        mem_mappings = [("type", "membrane_type"), ("topology", "membrane_topo")]
         for yaml_k, nf_k in mem_mappings:
             if yaml_k not in mem_cfg:
-                raise ValueError(f"FATAL: 'membrane.{yaml_k}' is required when membrane is enabled!")
+                raise ValueError(
+                    f"FATAL: 'membrane.{yaml_k}' is required when membrane is enabled!"
+                )
             args.extend([f"--{nf_k}", str(mem_cfg[yaml_k])])
-            
+
         if "chains" in mem_cfg:
             chains = mem_cfg["chains"]
-            args.extend(["--membrane_chains", ",".join(chains) if isinstance(chains, list) else str(chains)])
+            args.extend(
+                [
+                    "--membrane_chains",
+                    ",".join(chains) if isinstance(chains, list) else str(chains),
+                ]
+            )
     else:
         args.extend(["--membrane", "false"])
-        
+
     return args
 
 
@@ -93,15 +97,24 @@ def _build_screen_args(config: Dict[str, Any], project_dir: Path) -> list:
         if lib_path.exists():
             args.extend(["--library", str(lib_path.resolve())])
 
-    funnel_cfg = screen_cfg.get("funnel", {}) or config.get("analysis", {}).get("funnel", {})
+    funnel_cfg = screen_cfg.get("funnel", {}) or config.get("analysis", {}).get(
+        "funnel", {}
+    )
     if funnel_cfg:
         if "top_frames_per_ligand" in funnel_cfg:
             args.extend(["--top_k_frames", str(funnel_cfg["top_frames_per_ligand"])])
         if "library_percentile_cutoff" in funnel_cfg:
-            args.extend(["--percentile_cutoff", str(funnel_cfg["library_percentile_cutoff"])])
+            args.extend(
+                ["--percentile_cutoff", str(funnel_cfg["library_percentile_cutoff"])]
+            )
         if "benchmark_ligands" in funnel_cfg:
             benches = funnel_cfg["benchmark_ligands"]
-            args.extend(["--benchmark_ligands", " ".join(benches) if isinstance(benches, list) else str(benches)])
+            args.extend(
+                [
+                    "--benchmark_ligands",
+                    " ".join(benches) if isinstance(benches, list) else str(benches),
+                ]
+            )
 
     glide_cfg = config.get("glide", {})
     gnina_cfg = config.get("gnina", {})
@@ -115,20 +128,24 @@ def _build_screen_args(config: Dict[str, Any], project_dir: Path) -> list:
     elif n_en:
         args.extend(["--dock_engine", "gnina"])
     else:
-        raise ValueError("FATAL: At least one docking engine (glide or gnina) must be enabled for screening!")
+        raise ValueError(
+            "FATAL: At least one docking engine (glide or gnina) must be enabled for screening!"
+        )
 
     if n_en:
         gnina_mappings = [
             ("exhaustiveness", "exhaustiveness"),
             ("cnn_scoring", "cnn_scoring"),
             ("num_modes", "num_modes"),
-            ("autobox_add", "autobox_add")
+            ("autobox_add", "autobox_add"),
         ]
         for yaml_k, nf_k in gnina_mappings:
             if yaml_k not in gnina_cfg:
-                raise ValueError(f"FATAL: 'gnina.{yaml_k}' is required when GNINA is enabled!")
+                raise ValueError(
+                    f"FATAL: 'gnina.{yaml_k}' is required when GNINA is enabled!"
+                )
             args.extend([f"--{nf_k}", str(gnina_cfg[yaml_k])])
-            
+
         if "cnn_model" in gnina_cfg:
             args.extend(["--cnn_model", str(gnina_cfg["cnn_model"])])
         if "batch_size" in gnina_cfg:
@@ -142,26 +159,38 @@ def _build_screen_args(config: Dict[str, Any], project_dir: Path) -> list:
             ("recep_vscale", "glide_recep_vscale"),
             ("lig_vscale", "glide_lig_vscale"),
             ("recep_ccut", "glide_recep_ccut"),
-            ("lig_ccut", "glide_lig_ccut")
+            ("lig_ccut", "glide_lig_ccut"),
         ]
         for yaml_k, nf_k in glide_mappings:
             if yaml_k not in glide_cfg:
-                raise ValueError(f"FATAL: 'glide.{yaml_k}' is required when Glide is enabled!")
+                raise ValueError(
+                    f"FATAL: 'glide.{yaml_k}' is required when Glide is enabled!"
+                )
             args.extend([f"--{nf_k}", str(glide_cfg[yaml_k])])
 
         grid_cfg = glide_cfg.get("grid")
         if not grid_cfg:
             raise ValueError("FATAL: 'glide.grid' section is required!")
-            
+
         for yaml_k in ["inner_box", "outer_box"]:
             if yaml_k not in grid_cfg:
                 raise ValueError(f"FATAL: 'glide.grid.{yaml_k}' is required!")
             val = grid_cfg[yaml_k]
-            args.extend([f"--{yaml_k}", ", ".join(map(str, val)) if isinstance(val, list) else str(val)])
-            
+            args.extend(
+                [
+                    f"--{yaml_k}",
+                    ", ".join(map(str, val)) if isinstance(val, list) else str(val),
+                ]
+            )
+
         lp_cfg = glide_cfg.get("ligprep", {})
         if lp_cfg:
-            for yaml_k, nf_k in [("target_ph", "ligand_ph"), ("ph_tolerance", "ligand_ph_tol"), ("force_field", "ligprep_ff"), ("max_states", "max_states")]:
+            for yaml_k, nf_k in [
+                ("target_ph", "ligand_ph"),
+                ("ph_tolerance", "ligand_ph_tol"),
+                ("force_field", "ligprep_ff"),
+                ("max_states", "max_states"),
+            ]:
                 if yaml_k in lp_cfg:
                     args.extend([f"--{nf_k}", str(lp_cfg[yaml_k])])
 
@@ -187,18 +216,20 @@ def _build_dynamics_args(config: Dict[str, Any], project_dir: Path) -> list:
     sys_build = md_cfg.get("system_build")
     if not sys_build:
         raise ValueError("FATAL: 'md_simulation.system_build' is required!")
-        
+
     sys_mappings = [
         ("water_leaprc", "water_leaprc"),
         ("water_box", "water_box"),
         ("box_type", "box_type"),
         ("box_padding", "box_padding"),
         ("ss_cutoff", "ss_cutoff"),
-        ("salt_conc", "md_salt_conc")
+        ("salt_conc", "md_salt_conc"),
     ]
     for yaml_k, nf_k in sys_mappings:
         if yaml_k not in sys_build:
-            raise ValueError(f"FATAL: 'md_simulation.system_build.{yaml_k}' is required!")
+            raise ValueError(
+                f"FATAL: 'md_simulation.system_build.{yaml_k}' is required!"
+            )
         args.extend([f"--{nf_k}", str(sys_build[yaml_k])])
 
     args.extend(["--water_names", ",".join(sys_build.get("water_names", []))])
@@ -210,12 +241,18 @@ def _build_dynamics_args(config: Dict[str, Any], project_dir: Path) -> list:
         lipids = mem_cfg.get("lipids", {})
         upper = lipids.get("upper_leaflet", {})
         lower = lipids.get("lower_leaflet", {})
-        for k, v in [("--upper_lipids", upper.get("composition")), ("--upper_ratio", upper.get("ratio")),
-                     ("--lower_lipids", lower.get("composition")), ("--lower_ratio", lower.get("ratio"))]:
+        for k, v in [
+            ("--upper_lipids", upper.get("composition")),
+            ("--upper_ratio", upper.get("ratio")),
+            ("--lower_lipids", lower.get("composition")),
+            ("--lower_ratio", lower.get("ratio")),
+        ]:
             if not v:
-                raise ValueError(f"FATAL: Membrane is enabled but {k.replace('--','')} is missing in membrane.yaml!")
+                raise ValueError(
+                    f"FATAL: Membrane is enabled but {k.replace('--','')} is missing in membrane.yaml!"
+                )
             args.extend([k, str(v)])
-            
+
         pad_cfg = mem_cfg.get("padding", {})
         if "lipid_padding" in pad_cfg:
             args.extend(["--lipid_padding", str(pad_cfg["lipid_padding"])])
@@ -227,14 +264,14 @@ def _build_dynamics_args(config: Dict[str, Any], project_dir: Path) -> list:
     declash = md_cfg.get("declash")
     if not declash:
         raise ValueError("FATAL: 'md_simulation.declash' is required!")
-        
+
     declash_mappings = [
         ("cutoff", "declash_cutoff"),
         ("niter", "declash_niter"),
         ("damping", "declash_damping"),
         ("max_move", "declash_max_move"),
         ("jitter", "declash_jitter"),
-        ("tolerance", "declash_tol")
+        ("tolerance", "declash_tol"),
     ]
     for yaml_k, nf_k in declash_mappings:
         if yaml_k not in declash:
@@ -243,20 +280,22 @@ def _build_dynamics_args(config: Dict[str, Any], project_dir: Path) -> list:
 
     rf_list = sys_build.get("restraint_forces")
     if not isinstance(rf_list, list) or not rf_list:
-        raise ValueError("FATAL: 'restraint_forces' must be a non-empty list of force constants!")
+        raise ValueError(
+            "FATAL: 'restraint_forces' must be a non-empty list of force constants!"
+        )
     args.extend(["--md_restraints_fc", ",".join(map(str, rf_list))])
 
     prod_cfg = md_cfg.get("production")
     if not prod_cfg:
         raise ValueError("FATAL: 'md_simulation.production' is required!")
-        
+
     prod_mappings = [
         ("total_time_ns", "md_total_ns"),
         ("chunk_size_ns", "md_chunk_ns"),
         ("replicates", "md_replicates"),
         ("dt_ps", "md_dt"),
         ("compressibility", "md_compressibility"),
-        ("tau_p", "md_tau_p")
+        ("tau_p", "md_tau_p"),
     ]
     for yaml_k, nf_k in prod_mappings:
         if yaml_k not in prod_cfg:
@@ -265,7 +304,9 @@ def _build_dynamics_args(config: Dict[str, Any], project_dir: Path) -> list:
 
     protocol_dir = project_dir / "configs" / "md_protocol"
     if not protocol_dir.exists():
-        raise FileNotFoundError(f"FATAL: MD Protocol directory not found: {protocol_dir}. Run 'sbdd md-init' first.")
+        raise FileNotFoundError(
+            f"FATAL: MD Protocol directory not found: {protocol_dir}. Run 'sbdd md-init' first."
+        )
     args.extend(["--md_protocol", str(protocol_dir.resolve())])
 
     return args
@@ -276,7 +317,11 @@ def _build_analyze_args(config: Dict[str, Any]) -> list:
     md_cfg = config.get("md_simulation", {})
     metrics = md_cfg.get("metrics")
     if metrics:
-        for k, flag in [("heavy_cutoff", "--metric_heavy"), ("hyd_cutoff", "--metric_hyd"), ("pol_cutoff", "--metric_pol")]:
+        for k, flag in [
+            ("heavy_cutoff", "--metric_heavy"),
+            ("hyd_cutoff", "--metric_hyd"),
+            ("pol_cutoff", "--metric_pol"),
+        ]:
             if k in metrics:
                 args.extend([flag, str(metrics[k])])
 
@@ -306,20 +351,27 @@ def _build_analyze_args(config: Dict[str, Any]) -> list:
         if "step_frames" in mmpbsa_cfg:
             args.extend(["--mmpbsa_step_frames", str(mmpbsa_cfg["step_frames"])])
         if "per_residue_decomp" in mmpbsa_cfg:
-            args.extend(["--per_residue_decomp", "true" if mmpbsa_cfg["per_residue_decomp"] else "false"])
+            args.extend(
+                [
+                    "--per_residue_decomp",
+                    "true" if mmpbsa_cfg["per_residue_decomp"] else "false",
+                ]
+            )
 
     prod = md_cfg.get("production", {})
     temp = prod.get("temperature") or mmpbsa_cfg.get("temperature")
     salt = sys_build.get("salt_conc") or mmpbsa_cfg.get("salt_conc")
-    if temp: 
+    if temp:
         args.extend(["--md_temperature", str(temp)])
-    if salt: 
+    if salt:
         args.extend(["--md_salt_conc", str(salt)])
 
     return args
 
 
-def build_nextflow_args(config: Dict[str, Any], project_dir: Path, entrypoint: str) -> list:
+def build_nextflow_args(
+    config: Dict[str, Any], project_dir: Path, entrypoint: str
+) -> list:
     """
     Translates dictionary of parameters into Nextflow CLI arguments with strict routing validation.
     Zero cross-contamination between domains.
@@ -330,11 +382,15 @@ def build_nextflow_args(config: Dict[str, Any], project_dir: Path, entrypoint: s
     proj_cfg = config.get("project", {})
     if not proj_cfg.get("name"):
         raise ValueError("FATAL: 'project.name' in project.yaml is required!")
-    
-    args.extend([
-        "--project_name", str(proj_cfg["name"]),
-        "--outdir", str(project_dir.resolve())
-    ])
+
+    args.extend(
+        [
+            "--project_name",
+            str(proj_cfg["name"]),
+            "--outdir",
+            str(project_dir.resolve()),
+        ]
+    )
 
     # 2. Strict Domain Routing
     if entrypoint == "prepare":
@@ -350,6 +406,8 @@ def build_nextflow_args(config: Dict[str, Any], project_dir: Path, entrypoint: s
     elif entrypoint == "heal":
         pass  # Heal only requires the base project params mapped above
     else:
-        raise ValueError(f"FATAL: Unknown routing entrypoint '{entrypoint}'. Cannot build arguments.")
+        raise ValueError(
+            f"FATAL: Unknown routing entrypoint '{entrypoint}'. Cannot build arguments."
+        )
 
     return args

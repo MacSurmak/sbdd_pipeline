@@ -410,13 +410,14 @@ def main():
 
     if subcmd == "add":
         from cli.commands.add import add_receptor, add_ligand, add_traj, add_fasta
+
         if args.add_type in ["structure", "receptor", "complex"]:
             add_receptor(
                 paths=args.path if isinstance(args.path, list) else [args.path],
                 target=args.target,
                 name=args.name,
                 cofactors=args.cofactors,
-                ligand=args.ligand
+                ligand=args.ligand,
             )
         elif args.add_type == "fasta":
             add_fasta(path=args.path)
@@ -432,23 +433,23 @@ def main():
                 name=args.name,
                 length_ns=args.length_ns,
                 clean_xtc=args.clean_xtc,
-                ref_pdb=args.ref_pdb
+                ref_pdb=args.ref_pdb,
             )
     elif subcmd in ["tree", "ls"]:
         from cli.commands.tree import print_tree
+
         print_tree()
     elif subcmd == "rm":
         from cli.commands.rm import remove_entity
+
         remove_entity(name=args.target)
     elif subcmd == "init":
         from cli.commands.project import run_init
-        run_init(
-            directory=args.directory,
-            name=args.name,
-            force=args.force
-        )
+
+        run_init(directory=args.directory, name=args.name, force=args.force)
     elif subcmd == "heal":
         from cli.commands.heal import run_heal
+
         run_heal(
             target=args.target,
             urgent=args.urgent,
@@ -457,28 +458,43 @@ def main():
         )
     elif subcmd == "md-init":
         from cli.commands.project import run_md_init
+
         run_md_init()
     elif subcmd == "status":
         from cli.commands.project import run_status
+
         run_status()
     elif subcmd == "clean":
         from cli.commands.project import run_clean
+
         run_clean()
     elif subcmd in ["prep", "prepare"]:
         from cli.commands.prep import run_prep
+
         run_prep(
             target=args.target,
-            frames=[f.strip() for f in args.frames.split(",") if f.strip()] if args.frames else None,
+            frames=(
+                [f.strip() for f in args.frames.split(",") if f.strip()]
+                if args.frames
+                else None
+            ),
             urgent=args.urgent,
             local=args.local,
             resume=not args.no_resume,
         )
     elif subcmd in ["dock", "screen"]:
         from cli.commands.dock import run_dock
+
         run_dock(
             target=args.target,
-            frame_names=[f.strip() for f in args.frames.split(",") if f.strip()] if args.frames else None,
-            ligand_names=[n.strip() for n in args.ligands.split(",")] if args.ligands else None,
+            frame_names=(
+                [f.strip() for f in args.frames.split(",") if f.strip()]
+                if args.frames
+                else None
+            ),
+            ligand_names=(
+                [n.strip() for n in args.ligands.split(",")] if args.ligands else None
+            ),
             self_dock=args.self_dock,
             name=args.name,
             urgent=args.urgent,
@@ -487,6 +503,7 @@ def main():
         )
     elif subcmd == "rescore":
         from cli.commands.rescore import run_rescore
+
         run_rescore(
             use_whitelist=args.use_whitelist,
             urgent=args.urgent,
@@ -495,6 +512,7 @@ def main():
         )
     elif subcmd == "select-hits":
         from cli.commands.select_hits import run_select_hits
+
         run_select_hits(
             poses_name=args.poses,
             top_n=args.top,
@@ -502,6 +520,7 @@ def main():
         )
     elif subcmd in ["dynamics", "md", "md-run", "md-setup"]:
         from cli.commands.dynamics import run_dynamics
+
         run_dynamics(
             system=args.system,
             target=args.target,
@@ -511,6 +530,7 @@ def main():
         )
     elif subcmd == "md-analyze":
         from cli.commands.traj import run_md_analyze
+
         run_md_analyze(
             traj=args.traj,
             tpr=args.tpr,
@@ -519,10 +539,11 @@ def main():
             urgent=args.urgent,
             local=args.local,
             resume=not args.no_resume,
-            clean_scratch=args.clean_scratch
+            clean_scratch=args.clean_scratch,
         )
     elif subcmd == "traj-flag":
         from cli.commands.traj import run_flag_traj
+
         run_flag_traj(
             trajectory=args.trajectory,
             status=args.status,
@@ -531,40 +552,76 @@ def main():
         )
     elif subcmd == "traj-clean":
         from cli.commands.traj import run_clean_traj
+
         run_clean_traj(
-            systems=[s.strip() for s in args.systems.split(",") if s.strip()] if args.systems else None,
+            systems=(
+                [s.strip() for s in args.systems.split(",") if s.strip()]
+                if args.systems
+                else None
+            ),
             target=args.target,
-            traj_names=[t.strip() for t in args.traj.split(",") if t.strip()] if args.traj else None,
+            traj_names=(
+                [t.strip() for t in args.traj.split(",") if t.strip()]
+                if args.traj
+                else None
+            ),
             urgent=args.urgent,
             local=args.local,
             resume=not args.no_resume,
         )
     elif subcmd == "traj-mmpbsa":
         from cli.commands.traj import run_mmpbsa
+
         run_mmpbsa(
-            systems=[s.strip() for s in args.systems.split(",") if s.strip()] if args.systems else None,
+            systems=(
+                [s.strip() for s in args.systems.split(",") if s.strip()]
+                if args.systems
+                else None
+            ),
             target=args.target,
-            traj_names=[t.strip() for t in args.traj.split(",") if t.strip()] if args.traj else None,
+            traj_names=(
+                [t.strip() for t in args.traj.split(",") if t.strip()]
+                if args.traj
+                else None
+            ),
             urgent=args.urgent,
             local=args.local,
             resume=not args.no_resume,
         )
     elif subcmd == "traj-metrics":
         from cli.commands.traj import run_metrics
+
         run_metrics(
-            systems=[s.strip() for s in args.systems.split(",") if s.strip()] if args.systems else None,
+            systems=(
+                [s.strip() for s in args.systems.split(",") if s.strip()]
+                if args.systems
+                else None
+            ),
             target=args.target,
-            traj_names=[t.strip() for t in args.traj.split(",") if t.strip()] if args.traj else None,
+            traj_names=(
+                [t.strip() for t in args.traj.split(",") if t.strip()]
+                if args.traj
+                else None
+            ),
             urgent=args.urgent,
             local=args.local,
             resume=not args.no_resume,
         )
     elif subcmd == "traj-cluster":
         from cli.commands.traj import run_cluster
+
         run_cluster(
-            systems=[s.strip() for s in args.systems.split(",") if s.strip()] if args.systems else None,
+            systems=(
+                [s.strip() for s in args.systems.split(",") if s.strip()]
+                if args.systems
+                else None
+            ),
             target=args.target,
-            traj_names=[t.strip() for t in args.traj.split(",") if t.strip()] if args.traj else None,
+            traj_names=(
+                [t.strip() for t in args.traj.split(",") if t.strip()]
+                if args.traj
+                else None
+            ),
             cutoff=args.cutoff,
             dt=args.dt,
             group=args.group,
@@ -577,6 +634,7 @@ def main():
         )
     elif subcmd in ["watch", "progress", "top"]:
         from cli.core.monitor import run_monitor
+
         run_monitor(port=args.port)
 
 

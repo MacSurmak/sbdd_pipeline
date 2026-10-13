@@ -19,7 +19,7 @@ def run_heal(
     target: str | None = None,
     urgent: bool = False,
     local: bool = False,
-    resume: bool = True
+    resume: bool = True,
 ) -> None:
     """Resolves broken crystal structures using physical AI inpainting."""
     cwd = Path.cwd()
@@ -29,9 +29,7 @@ def run_heal(
     if target:
         t = session.query(Target).filter_by(name=target).first()
         if not t:
-            console.print(
-                f"[bold red]FATAL: Target '{target}' not found.[/bold red]"
-            )
+            console.print(f"[bold red]FATAL: Target '{target}' not found.[/bold red]")
             sys.exit(1)
         query = query.filter_by(target_id=t.id)
 

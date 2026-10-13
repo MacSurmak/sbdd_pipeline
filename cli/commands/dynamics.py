@@ -20,7 +20,7 @@ def run_dynamics(
     target: str | None = None,
     urgent: bool = False,
     local: bool = False,
-    resume: bool = True
+    resume: bool = True,
 ) -> None:
     """Executes chunked MD and guarantees atomic registration of Trajectory records."""
     cwd = Path.cwd()
@@ -46,9 +46,7 @@ def run_dynamics(
     elif target:
         target_obj = session.query(Target).filter_by(name=target).first()
         if not target_obj:
-            console.print(
-                f"[bold red]FATAL: Target '{target}' not found.[/bold red]"
-            )
+            console.print(f"[bold red]FATAL: Target '{target}' not found.[/bold red]")
             sys.exit(1)
         query = query.filter_by(target_id=target_obj.id)
 

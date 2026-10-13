@@ -14,7 +14,9 @@ from cli.core.runner import clean_shared_scratch, FRAMEWORK_DIR
 console = Console()
 
 
-def run_init(directory: str = ".", name: str | None = None, force: bool = False) -> None:
+def run_init(
+    directory: str = ".", name: str | None = None, force: bool = False
+) -> None:
     import random
     import string
 
@@ -48,10 +50,14 @@ def run_init(directory: str = ".", name: str | None = None, force: bool = False)
     )
     console.print(f"[cyan]Configurations created in:[/cyan] {config_dir}")
     console.print("\n[bold]Next steps:[/bold]")
-    console.print("  1. Copy your structures (.cif or .pdb) into the project directory.")
+    console.print(
+        "  1. Copy your structures (.cif or .pdb) into the project directory."
+    )
     console.print("  2. Edit configs/manifest.yaml to describe your targets.")
     console.print("  3. Review configurations (e.g., md.yaml, gnina.yaml).")
-    console.print("  4. Run [bold cyan]sbdd prep[/bold cyan] to standardize the structures!\n")
+    console.print(
+        "  4. Run [bold cyan]sbdd prep[/bold cyan] to standardize the structures!\n"
+    )
 
 
 def run_status() -> None:

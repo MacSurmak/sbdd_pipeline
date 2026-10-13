@@ -21,7 +21,7 @@ def _query_trajectories(
     systems: list[str] | None = None,
     target: str | None = None,
     traj_names: list[str] | None = None,
-    target_status: str = "raw"
+    target_status: str = "raw",
 ) -> list[Trajectory]:
     """
     Queries trajectories needing action based on DB status.
@@ -37,9 +37,7 @@ def _query_trajectories(
     elif target:
         target_obj = session.query(Target).filter_by(name=target).first()
         if not target_obj:
-            console.print(
-                f"[bold red]FATAL: Target '{target}' not found.[/bold red]"
-            )
+            console.print(f"[bold red]FATAL: Target '{target}' not found.[/bold red]")
             sys.exit(1)
         sys_objs = session.query(System).filter_by(target_id=target_obj.id).all()
         sys_ids = [s.id for s in sys_objs]
@@ -61,7 +59,7 @@ def run_clean_traj(
     traj_names: list[str] | None = None,
     urgent: bool = False,
     local: bool = False,
-    resume: bool = True
+    resume: bool = True,
 ) -> None:
     """
     Cleans raw trajectories (PBC correction, fit, solvent strip).
@@ -73,7 +71,9 @@ def run_clean_traj(
     cwd = Path.cwd()
     session = init_db()
     configs = load_project_configs(cwd)
-    trajs = _query_trajectories(session, systems, target, traj_names, target_status="raw")
+    trajs = _query_trajectories(
+        session, systems, target, traj_names, target_status="raw"
+    )
 
     if not trajs:
         console.print(
@@ -161,12 +161,14 @@ def run_metrics(
     traj_names: list[str] | None = None,
     urgent: bool = False,
     local: bool = False,
-    resume: bool = True
+    resume: bool = True,
 ) -> None:
     """Calculates RMSD (Protein, Ligand, and Cofactors), RMSF, and Contacts on cleaned trajectories."""
     cwd = Path.cwd()
     session = init_db()
-    trajs = _query_trajectories(session, systems, target, traj_names, target_status="cleaned")
+    trajs = _query_trajectories(
+        session, systems, target, traj_names, target_status="cleaned"
+    )
 
     if not trajs:
         console.print(
@@ -284,7 +286,7 @@ def run_cluster(
     force: bool = False,
     urgent: bool = False,
     local: bool = False,
-    resume: bool = True
+    resume: bool = True,
 ) -> None:
     """
     Clusters clean trajectory ensembles and registers each centroid as a
@@ -293,7 +295,9 @@ def run_cluster(
     """
     cwd = Path.cwd()
     session = init_db()
-    trajs = _query_trajectories(session, systems, target, traj_names, target_status="cleaned")
+    trajs = _query_trajectories(
+        session, systems, target, traj_names, target_status="cleaned"
+    )
 
     if not trajs:
         console.print(
@@ -411,7 +415,12 @@ def run_cluster(
     resume_flag = resume and not force
 
     ret_code = execute_nextflow(
-        "md-analyze", nf_args, cwd, profile=profile_name, resume=resume_flag, configs=configs
+        "md-analyze",
+        nf_args,
+        cwd,
+        profile=profile_name,
+        resume=resume_flag,
+        configs=configs,
     )
     if ret_code != 0:
         console.print("[bold red]Nextflow clustering failed.[/bold red]")
@@ -599,7 +608,7 @@ def run_flag_traj(
     trajectory: str,
     status: str = "drifted",
     disable: bool = False,
-    enable: bool = False
+    enable: bool = False,
 ) -> None:
     """Marks a trajectory as drifted, disabled, or cleaned to control inclusion in downstream analysis."""
     session = init_db()
@@ -641,7 +650,7 @@ def run_md_analyze(
     urgent: bool = False,
     local: bool = False,
     resume: bool = True,
-    clean_scratch: bool = False
+    clean_scratch: bool = False,
 ) -> None:
     """Run trajectory PBC fix, metrics, and MM-PBSA standalone."""
     cwd = Path.cwd()
@@ -662,7 +671,13 @@ def run_md_analyze(
     profile_name = "local" if local else "slurm"
 
     ret_code = execute_nextflow(
-        "md-analyze", nf_args, cwd, profile=profile_name, resume=resume, auto_clean=clean_scratch, configs=configs
+        "md-analyze",
+        nf_args,
+        cwd,
+        profile=profile_name,
+        resume=resume,
+        auto_clean=clean_scratch,
+        configs=configs,
     )
     if ret_code != 0:
         console.print("[bold red]Nextflow md-analyze failed.[/bold red]")
@@ -675,7 +690,7 @@ def run_mmpbsa(
     traj_names: list[str] | None = None,
     urgent: bool = False,
     local: bool = False,
-    resume: bool = True
+    resume: bool = True,
 ) -> None:
     """
     CLI handler for 'sbdd traj-mmpbsa': standalone free energy calculations.
@@ -683,7 +698,9 @@ def run_mmpbsa(
     """
     cwd = Path.cwd()
     session = init_db()
-    trajs = _query_trajectories(session, systems, target, traj_names, target_status="cleaned")
+    trajs = _query_trajectories(
+        session, systems, target, traj_names, target_status="cleaned"
+    )
 
     if not trajs:
         console.print(
