@@ -26,7 +26,9 @@ def parse_glide_csv(csv_path: Path) -> Dict[str, Dict[str, float]]:
                         score = float(row[k])
                         break
                     except ValueError as e:
-                        raise ValueError(f"FATAL: Unparseable GlideScore '{row[k]}' for ligand '{title}': {e}")
+                        raise ValueError(
+                            f"FATAL: Unparseable GlideScore '{row[k]}' for ligand '{title}': {e}"
+                        )
             if score is None:
                 for k in ["r_i_glide_gscore", "gscore"]:
                     if k in row and row[k]:
@@ -34,7 +36,9 @@ def parse_glide_csv(csv_path: Path) -> Dict[str, Dict[str, float]]:
                             score = float(row[k])
                             break
                         except ValueError as e:
-                            raise ValueError(f"FATAL: Unparseable GScore '{row[k]}' for ligand '{title}': {e}")
+                            raise ValueError(
+                                f"FATAL: Unparseable GScore '{row[k]}' for ligand '{title}': {e}"
+                            )
             if score is not None:
                 data[title] = {"GlideScore": score}
     return data
@@ -60,7 +64,9 @@ def parse_prime_csv(csv_path: Path) -> Dict[str, Dict[str, float]]:
                         props["MMGBSA"] = float(v)
                         break
                     except ValueError as e:
-                        raise ValueError(f"FATAL: Unparseable MMGBSA score '{v}' for ligand '{title}': {e}")
+                        raise ValueError(
+                            f"FATAL: Unparseable MMGBSA score '{v}' for ligand '{title}': {e}"
+                        )
 
             for k, v in row.items():
                 if not k or not v:
@@ -70,7 +76,9 @@ def parse_prime_csv(csv_path: Path) -> Dict[str, Dict[str, float]]:
                         props["Lig_Strain"] = float(v)
                         break
                     except ValueError as e:
-                        raise ValueError(f"FATAL: Unparseable Lig_Strain score '{v}' for ligand '{title}': {e}")
+                        raise ValueError(
+                            f"FATAL: Unparseable Lig_Strain score '{v}' for ligand '{title}': {e}"
+                        )
 
             if props:
                 data[title] = props
@@ -116,7 +124,9 @@ def parse_gnina_sdf(sdf_path: Path, prefix: str = "") -> Dict[str, Dict[str, flo
                             elif tag_clean in ["minimizedaffinity", "affinity"]:
                                 props[f"{prefix}VinaAff"] = val
                         except ValueError as e:
-                            raise ValueError(f"FATAL: Unparseable GNINA metric '{val_str}' for tag '{tag_clean}': {e}")
+                            raise ValueError(
+                                f"FATAL: Unparseable GNINA metric '{val_str}' for tag '{tag_clean}': {e}"
+                            )
 
         title = prop_title or raw_title
         if not title:

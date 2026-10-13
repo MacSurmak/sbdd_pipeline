@@ -36,7 +36,7 @@ def cmd_antechamber(args):
             "-rn",
             args.mol_id,
             "-ek",
-            "qm_theory='AM1', grms_tol=0.0005, scfconv=1.d-10, ndiis_attempts=700, MINCYC=0"
+            "qm_theory='AM1', grms_tol=0.0005, scfconv=1.d-10, ndiis_attempts=700, MINCYC=0",
         ]
     )
     run_cmd(

@@ -58,6 +58,7 @@ def cmd_clean_traj(args):
     Automatically skips already cleaned trajectories.
     """
     import math
+
     cwd = Path.cwd()
     session = init_db()
     configs = load_project_configs(cwd)
@@ -73,7 +74,9 @@ def cmd_clean_traj(args):
     try:
         chunk_ns = float(configs["md_simulation"]["production"]["chunk_size_ns"])
     except KeyError:
-        console.print("[bold red]FATAL: 'chunk_size_ns' missing in md.yaml configuration.[/bold red]")
+        console.print(
+            "[bold red]FATAL: 'chunk_size_ns' missing in md.yaml configuration.[/bold red]"
+        )
         sys.exit(1)
 
     plan_list = []
@@ -406,7 +409,9 @@ def cmd_cluster(args):
             continue
         parts = line.split("\t")
         if len(parts) < 4:
-            raise ValueError(f"FATAL: Malformed cluster receipt row (expected 6 columns): {line}")
+            raise ValueError(
+                f"FATAL: Malformed cluster receipt row (expected 6 columns): {line}"
+            )
 
         sys_id_val = parts[0].strip()
         centroid_title = parts[1].strip()

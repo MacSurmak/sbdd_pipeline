@@ -35,13 +35,16 @@ def main():
 
         if content.startswith("{"):
             import json
+
             parsed = json.loads(content)
             if "thickness" not in parsed:
-                raise KeyError(f"FATAL: 'thickness' key missing in membrane JSON {args.info}")
+                raise KeyError(
+                    f"FATAL: 'thickness' key missing in membrane JSON {args.info}"
+                )
             thickness = float(parsed["thickness"])
         else:
             thickness = float(content)
-            
+
         print(f"Applying membrane thickness: {thickness:.2f} Å", flush=True)
 
         half_t = thickness / 2.0

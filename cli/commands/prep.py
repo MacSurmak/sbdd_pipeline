@@ -59,12 +59,16 @@ def cmd_prep(args):
 
         m = Chem.MolFromSmiles(lig.smiles)
         if not m:
-            raise ValueError(f"FATAL: RDKit failed to parse SMILES for ligand '{lig.name}': {lig.smiles}")
-            
+            raise ValueError(
+                f"FATAL: RDKit failed to parse SMILES for ligand '{lig.name}': {lig.smiles}"
+            )
+
         m = Chem.AddHs(m)
         if AllChem.EmbedMolecule(m, randomSeed=42) != 0:
-            raise RuntimeError(f"FATAL: RDKit failed to generate 3D coordinates for ligand '{lig.name}'")
-            
+            raise RuntimeError(
+                f"FATAL: RDKit failed to generate 3D coordinates for ligand '{lig.name}'"
+            )
+
         m.SetProp("_Name", lig.name)
         with Chem.SDWriter(str(lig_raw_sdf)) as w:
             w.write(m)
@@ -190,11 +194,15 @@ def cmd_prep(args):
                     # Calculate actual formal charge from the prepared in-situ ligand
                     from rdkit import Chem
 
-                    suppl = Chem.SDMolSupplier(str(prep_sdf_path), removeHs=False, sanitize=True)
+                    suppl = Chem.SDMolSupplier(
+                        str(prep_sdf_path), removeHs=False, sanitize=True
+                    )
                     mol = next((m for m in suppl if m is not None), None)
                     if not mol:
-                        raise ValueError(f"FATAL: RDKit could not parse prepared ligand SDF: {prep_sdf_path}")
-                    
+                        raise ValueError(
+                            f"FATAL: RDKit could not parse prepared ligand SDF: {prep_sdf_path}"
+                        )
+
                     ch = Chem.GetFormalCharge(mol)
                     system.pose.scores_dict = {"formal_charge": ch}
 
