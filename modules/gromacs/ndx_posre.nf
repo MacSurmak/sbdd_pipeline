@@ -18,6 +18,10 @@ process NDX_POSRE {
     tuple val(meta), path("index.ndx"), path("topol.top"), path("posre_*.itp"), emit: restraints
 
     script:
+    def prod_fc = (params.containsKey('prod_restraints_fc') && params.prod_restraints_fc) ? params.prod_restraints_fc : 0
+    def prod_grp = (params.containsKey('prod_restraints_group') && params.prod_restraints_group) ? params.prod_restraints_group : 'C-alpha'
+    def prod_fc_arg = (prod_fc.toString().toInteger() > 0) ? "--prod_fc ${prod_fc}" : ""
+    def prod_grp_arg = (prod_fc.toString().toInteger() > 0) ? "--prod_group \"${prod_grp}\"" : ""
     """
     python3 ${projectDir}/bin/wrap_gromacs.py ndx_posre \\
         --input_gro ${input_gro} \\
@@ -25,7 +29,9 @@ process NDX_POSRE {
         --forces "${restraints_fc}" \\
         --water_names "${water_names}" \\
         --ion_names "${ion_names}" \\
-        --lipid_names "${lipid_names}"
+        --lipid_names "${lipid_names}" \\
+        ${prod_fc_arg} \\
+        ${prod_grp_arg}
     """
 
     stub:

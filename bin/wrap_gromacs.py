@@ -568,25 +568,32 @@ def cmd_ndx_posre(args):
         ],
         check=True,
     )
-    subprocess.run(
-        [
-            sys.executable,
-            f"{Path(__file__).parent}/gromacs_ndx_fixer.py",
-            "--ndx",
-            "index.ndx",
-            "--top",
-            args.topol,
-            "--forces",
-            args.forces,
-            "--action",
-            "generate_posre",
-            "--water_names",
-            args.water_names,
-            "--ion_names",
-            args.ion_names,
-        ],
-        check=True,
-    )
+    cmd_gen = [
+        sys.executable,
+        f"{Path(__file__).parent}/gromacs_ndx_fixer.py",
+        "--ndx",
+        "index.ndx",
+        "--top",
+        args.topol,
+        "--forces",
+        args.forces,
+        "--action",
+        "generate_posre",
+        "--water_names",
+        args.water_names,
+        "--ion_names",
+        args.ion_names,
+    ]
+    if hasattr(args, "prod_fc") and args.prod_fc and int(args.prod_fc) > 0:
+        cmd_gen.extend([
+            "--pdb",
+            args.input_gro,
+            "--prod_fc",
+            str(args.prod_fc),
+            "--prod_group",
+            getattr(args, "prod_group", "C-alpha"),
+        ])
+    subprocess.run(cmd_gen, check=True)
 
 
 def main():
@@ -664,6 +671,8 @@ def main():
     p_ndx.add_argument("--water_names", required=True)
     p_ndx.add_argument("--ion_names", required=True)
     p_ndx.add_argument("--lipid_names", required=True)
+    p_ndx.add_argument("--prod_fc", type=int, default=0)
+    p_ndx.add_argument("--prod_group", default="C-alpha")
 
     args = parser.parse_args()
     if args.subcommand == "cluster":
