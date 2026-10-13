@@ -47,10 +47,17 @@ def _build_prep_args(config: Dict[str, Any]) -> list:
     prep_cfg = config.get("preparation")
     if not prep_cfg:
         raise ValueError("FATAL: 'preparation' config section is missing!")
-    for key in ["target_ph", "ph_tolerance", "minimize_rmsd"]:
-        if key not in prep_cfg:
-            raise ValueError(f"FATAL: 'preparation.{key}' is required!")
-        args.extend([f"--{key}", str(prep_cfg[key])])
+        
+    # Explicit mapping: (yaml_key, nextflow_flag)
+    prep_mappings = [
+        ("target_ph", "target_ph"),
+        ("ph_tolerance", "ph_tolerance"),
+        ("minimize_rmsd", "minimize_rmsd")
+    ]
+    for yaml_k, nf_k in prep_mappings:
+        if yaml_k not in prep_cfg:
+            raise ValueError(f"FATAL: 'preparation.{yaml_k}' is required!")
+        args.extend([f"--{nf_k}", str(prep_cfg[yaml_k])])
     
     if "cap_termini" in prep_cfg:
         args.extend(["--cap_termini", "true" if prep_cfg["cap_termini"] else "false"])
@@ -58,10 +65,15 @@ def _build_prep_args(config: Dict[str, Any]) -> list:
     mem_cfg = config.get("membrane", {})
     if mem_cfg.get("enabled"):
         args.extend(["--membrane", "true"])
-        for key in ["type", "topology"]:
-            if key not in mem_cfg:
-                raise ValueError(f"FATAL: 'membrane.{key}' is required when membrane is enabled!")
-            args.extend([f"--membrane_{key}", str(mem_cfg[key])])
+        mem_mappings = [
+            ("type", "membrane_type"),
+            ("topology", "membrane_topo")
+        ]
+        for yaml_k, nf_k in mem_mappings:
+            if yaml_k not in mem_cfg:
+                raise ValueError(f"FATAL: 'membrane.{yaml_k}' is required when membrane is enabled!")
+            args.extend([f"--{nf_k}", str(mem_cfg[yaml_k])])
+            
         if "chains" in mem_cfg:
             chains = mem_cfg["chains"]
             args.extend(["--membrane_chains", ",".join(chains) if isinstance(chains, list) else str(chains)])
@@ -106,29 +118,46 @@ def _build_screen_args(config: Dict[str, Any], project_dir: Path) -> list:
         raise ValueError("FATAL: At least one docking engine (glide or gnina) must be enabled for screening!")
 
     if n_en:
-        for key in ["exhaustiveness", "cnn_scoring", "num_modes", "autobox_add"]:
-            if key not in gnina_cfg:
-                raise ValueError(f"FATAL: 'gnina.{key}' is required when GNINA is enabled!")
-            args.extend([f"--{key}", str(gnina_cfg[key])])
+        gnina_mappings = [
+            ("exhaustiveness", "exhaustiveness"),
+            ("cnn_scoring", "cnn_scoring"),
+            ("num_modes", "num_modes"),
+            ("autobox_add", "autobox_add")
+        ]
+        for yaml_k, nf_k in gnina_mappings:
+            if yaml_k not in gnina_cfg:
+                raise ValueError(f"FATAL: 'gnina.{yaml_k}' is required when GNINA is enabled!")
+            args.extend([f"--{nf_k}", str(gnina_cfg[yaml_k])])
+            
         if "cnn_model" in gnina_cfg:
             args.extend(["--cnn_model", str(gnina_cfg["cnn_model"])])
         if "batch_size" in gnina_cfg:
             args.extend(["--batch_size", str(gnina_cfg["batch_size"])])
 
     if g_en:
-        for key in ["precision", "poses_per_lig", "forcefield", "recep_vscale", "lig_vscale", "recep_ccut", "lig_ccut"]:
-            if key not in glide_cfg:
-                raise ValueError(f"FATAL: 'glide.{key}' is required when Glide is enabled!")
-            args.extend([f"--glide_{key}", str(glide_cfg[key])])
+        glide_mappings = [
+            ("precision", "glide_precision"),
+            ("poses_per_lig", "poses_per_lig"),
+            ("forcefield", "glide_forcefield"),
+            ("recep_vscale", "glide_recep_vscale"),
+            ("lig_vscale", "glide_lig_vscale"),
+            ("recep_ccut", "glide_recep_ccut"),
+            ("lig_ccut", "glide_lig_ccut")
+        ]
+        for yaml_k, nf_k in glide_mappings:
+            if yaml_k not in glide_cfg:
+                raise ValueError(f"FATAL: 'glide.{yaml_k}' is required when Glide is enabled!")
+            args.extend([f"--{nf_k}", str(glide_cfg[yaml_k])])
 
         grid_cfg = glide_cfg.get("grid")
         if not grid_cfg:
             raise ValueError("FATAL: 'glide.grid' section is required!")
-        for key in ["inner_box", "outer_box"]:
-            if key not in grid_cfg:
-                raise ValueError(f"FATAL: 'glide.grid.{key}' is required!")
-            val = grid_cfg[key]
-            args.extend([f"--{key}", ", ".join(map(str, val)) if isinstance(val, list) else str(val)])
+            
+        for yaml_k in ["inner_box", "outer_box"]:
+            if yaml_k not in grid_cfg:
+                raise ValueError(f"FATAL: 'glide.grid.{yaml_k}' is required!")
+            val = grid_cfg[yaml_k]
+            args.extend([f"--{yaml_k}", ", ".join(map(str, val)) if isinstance(val, list) else str(val)])
             
         lp_cfg = glide_cfg.get("ligprep", {})
         if lp_cfg:
@@ -159,10 +188,18 @@ def _build_dynamics_args(config: Dict[str, Any], project_dir: Path) -> list:
     if not sys_build:
         raise ValueError("FATAL: 'md_simulation.system_build' is required!")
         
-    for key in ["water_leaprc", "water_box", "box_type", "box_padding", "ss_cutoff", "salt_conc"]:
-        if key not in sys_build:
-            raise ValueError(f"FATAL: 'md_simulation.system_build.{key}' is required!")
-        args.extend([f"--{key}" if key != "salt_conc" else "--md_salt_conc", str(sys_build[key])])
+    sys_mappings = [
+        ("water_leaprc", "water_leaprc"),
+        ("water_box", "water_box"),
+        ("box_type", "box_type"),
+        ("box_padding", "box_padding"),
+        ("ss_cutoff", "ss_cutoff"),
+        ("salt_conc", "md_salt_conc")
+    ]
+    for yaml_k, nf_k in sys_mappings:
+        if yaml_k not in sys_build:
+            raise ValueError(f"FATAL: 'md_simulation.system_build.{yaml_k}' is required!")
+        args.extend([f"--{nf_k}", str(sys_build[yaml_k])])
 
     args.extend(["--water_names", ",".join(sys_build.get("water_names", []))])
     args.extend(["--ion_names", ",".join(sys_build.get("ion_names", []))])
@@ -190,10 +227,19 @@ def _build_dynamics_args(config: Dict[str, Any], project_dir: Path) -> list:
     declash = md_cfg.get("declash")
     if not declash:
         raise ValueError("FATAL: 'md_simulation.declash' is required!")
-    for k in ["cutoff", "niter", "damping", "max_move", "jitter", "tolerance"]:
-        if k not in declash:
-            raise ValueError(f"FATAL: 'md_simulation.declash.{k}' is required!")
-        args.extend([f"--declash_{k}", str(declash[k])])
+        
+    declash_mappings = [
+        ("cutoff", "declash_cutoff"),
+        ("niter", "declash_niter"),
+        ("damping", "declash_damping"),
+        ("max_move", "declash_max_move"),
+        ("jitter", "declash_jitter"),
+        ("tolerance", "declash_tol")
+    ]
+    for yaml_k, nf_k in declash_mappings:
+        if yaml_k not in declash:
+            raise ValueError(f"FATAL: 'md_simulation.declash.{yaml_k}' is required!")
+        args.extend([f"--{nf_k}", str(declash[yaml_k])])
 
     rf_list = sys_build.get("restraint_forces")
     if not isinstance(rf_list, list) or not rf_list:
@@ -204,13 +250,18 @@ def _build_dynamics_args(config: Dict[str, Any], project_dir: Path) -> list:
     if not prod_cfg:
         raise ValueError("FATAL: 'md_simulation.production' is required!")
         
-    for key in ["total_time_ns", "chunk_size_ns", "replicates", "dt_ps", "compressibility", "tau_p"]:
-        if key not in prod_cfg:
-            raise ValueError(f"FATAL: 'md_simulation.production.{key}' is required!")
-        flag = f"--md_{key}" if key != "total_time_ns" else "--md_total_ns"
-        flag = "--md_chunk_ns" if key == "chunk_size_ns" else flag
-        flag = "--md_replicates" if key == "replicates" else flag
-        args.extend([flag, str(prod_cfg[key])])
+    prod_mappings = [
+        ("total_time_ns", "md_total_ns"),
+        ("chunk_size_ns", "md_chunk_ns"),
+        ("replicates", "md_replicates"),
+        ("dt_ps", "md_dt"),
+        ("compressibility", "md_compressibility"),
+        ("tau_p", "md_tau_p")
+    ]
+    for yaml_k, nf_k in prod_mappings:
+        if yaml_k not in prod_cfg:
+            raise ValueError(f"FATAL: 'md_simulation.production.{yaml_k}' is required!")
+        args.extend([f"--{nf_k}", str(prod_cfg[yaml_k])])
 
     protocol_dir = project_dir / "configs" / "md_protocol"
     if not protocol_dir.exists():
