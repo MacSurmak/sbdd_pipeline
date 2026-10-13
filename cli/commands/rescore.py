@@ -16,7 +16,13 @@ from cli.core.config_loader import load_project_configs, build_nextflow_args
 console = Console()
 
 
-def cmd_rescore(args):
+def run_rescore(
+    use_whitelist: bool = False,
+    urgent: bool = False,
+    local: bool = False,
+    resume: bool = True
+) -> None:
+    """Runs standalone Prime MM-GBSA and Consensus rescoring."""
     cwd = Path.cwd()
     session = init_db()
 
@@ -79,7 +85,7 @@ def cmd_rescore(args):
 
     whitelist_csv = cwd / "funnel_whitelist.csv"
     plan = {
-        "use_whitelist": getattr(args, "use_whitelist", False),
+        "use_whitelist": use_whitelist,
         "whitelist_path": (
             str(whitelist_csv.resolve()) if whitelist_csv.exists() else ""
         ),
@@ -106,14 +112,13 @@ def cmd_rescore(args):
         else:
             nf_args.extend(["--native_ligand", native_ligand_name])
 
-    if getattr(args, "urgent", False):
+    if urgent:
         nf_args.extend(["--queue", "urgent"])
 
-    profile = "local" if getattr(args, "local", False) else "slurm"
-    resume = not getattr(args, "no_resume", False)
+    profile_name = "local" if local else "slurm"
 
     ret_code = execute_nextflow(
-        "rescore", nf_args, cwd, profile=profile, resume=resume, configs=configs
+        "rescore", nf_args, cwd, profile=profile_name, resume=resume, configs=configs
     )
 
     if ret_code != 0:

@@ -628,17 +628,35 @@ def main():
             resume=not args.no_resume,
         )
     elif subcmd in ["dock", "screen"]:
-        from cli.commands.dock import cmd_dock
+        from cli.commands.dock import run_dock
 
-        cmd_dock(args)
+        run_dock(
+            target=args.target,
+            frame_names=[f.strip() for f in args.frames.split(",") if f.strip()] if getattr(args, "frames", None) else None,
+            ligand_names=[n.strip() for n in args.ligands.split(",")] if getattr(args, "ligands", None) else None,
+            self_dock=getattr(args, "self_dock", False),
+            name=getattr(args, "name", None),
+            urgent=getattr(args, "urgent", False),
+            local=getattr(args, "local", False),
+            resume=not getattr(args, "no_resume", False),
+        )
     elif subcmd == "rescore":
-        from cli.commands.rescore import cmd_rescore
+        from cli.commands.rescore import run_rescore
 
-        cmd_rescore(args)
+        run_rescore(
+            use_whitelist=getattr(args, "use_whitelist", False),
+            urgent=getattr(args, "urgent", False),
+            local=getattr(args, "local", False),
+            resume=not getattr(args, "no_resume", False),
+        )
     elif subcmd == "select-hits":
-        from cli.commands.select_hits import cmd_select_hits
+        from cli.commands.select_hits import run_select_hits
 
-        cmd_select_hits(args)
+        run_select_hits(
+            poses_name=getattr(args, "poses", None),
+            top_n=getattr(args, "top", 5),
+            system_prefix=getattr(args, "system_prefix", "hit"),
+        )
     elif subcmd in ["dynamics", "md", "md-run", "md-setup"]:
         from cli.commands.dynamics import cmd_dynamics
 

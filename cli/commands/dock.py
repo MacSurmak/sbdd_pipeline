@@ -37,25 +37,33 @@ def _color_rmsd(val_str):
         return str(val_str)
 
 
-def cmd_dock(args):
+def run_dock(
+    target: str | None = None,
+    frame_names: list[str] | None = None,
+    ligand_names: list[str] | None = None,
+    self_dock: bool = False,
+    name: str | None = None,
+    urgent: bool = False,
+    local: bool = False,
+    resume: bool = True
+) -> None:
+    """Run distributed docking into ReceptorFrames."""
     cwd = Path.cwd()
     session = init_db()
-    is_self = getattr(args, "self_dock", False)
+    is_self = self_dock
 
     # 1. Fetch requested Ready Frames
     query = session.query(ReceptorFrame).filter_by(state="ready")
-    if getattr(args, "target", None):
-        target_obj = session.query(Target).filter_by(name=args.target).first()
+    if target:
+        target_obj = session.query(Target).filter_by(name=target).first()
         if not target_obj:
             console.print(
-                f"[bold red]FATAL: Target '{args.target}' not found.[/bold red]"
+                f"[bold red]FATAL: Target '{target}' not found.[/bold red]"
             )
             sys.exit(1)
         query = query.filter(ReceptorFrame.target_id == target_obj.id)
-    elif getattr(args, "frames", None) or getattr(args, "receptors", None):
-        req = getattr(args, "frames", None) or getattr(args, "receptors", None)
-        f_names = [f.strip() for f in req.split(",") if f.strip()]
-        query = query.filter(ReceptorFrame.name.in_(f_names))
+    elif frame_names:
+        query = query.filter(ReceptorFrame.name.in_(frame_names))
 
     frames = query.all()
     if not frames:
@@ -186,17 +194,16 @@ def cmd_dock(args):
         )
 
     else:
-        if not getattr(args, "ligands", None):
+        if not ligand_names:
             console.print(
                 "[bold red]FATAL: Parameter --ligands is required for cross-docking matrix mode.[/bold red]"
             )
             sys.exit(1)
 
-        lig_names = [n.strip() for n in args.ligands.split(",")]
-        ligands = session.query(Ligand).filter(Ligand.name.in_(lig_names)).all()
-        if len(ligands) != len(lig_names):
+        ligands = session.query(Ligand).filter(Ligand.name.in_(ligand_names)).all()
+        if len(ligands) != len(ligand_names):
             found = {l.name for l in ligands}
-            missing = set(lig_names) - found
+            missing = set(ligand_names) - found
             console.print(
                 f"[bold red]FATAL: Ligands not found in DB: {missing}[/bold red]"
             )
@@ -305,15 +312,14 @@ def cmd_dock(args):
     nf_args = build_nextflow_args(configs, cwd, entrypoint="screen")
     nf_args.extend(["--dock_plan", str(plan_file.resolve())])
 
-    if getattr(args, "urgent", False):
+    if urgent:
         nf_args.extend(["--queue", "urgent"])
 
-    profile = "local" if getattr(args, "local", False) else "slurm"
-    resume = not getattr(args, "no_resume", False)
+    profile_name = "local" if local else "slurm"
 
     # 5. Run execution
     ret_code = execute_nextflow(
-        "screen", nf_args, cwd, profile=profile, resume=resume, configs=configs
+        "screen", nf_args, cwd, profile=profile_name, resume=resume, configs=configs
     )
 
     if ret_code != 0:
@@ -325,7 +331,7 @@ def cmd_dock(args):
     default_name = (
         f"redock_{len(frames)}" if is_self else f"screen_{len(frames)}x{num_ligs}"
     )
-    poses_name = args.name if getattr(args, "name", None) else default_name
+    poses_name = name if name else default_name
 
     receipt_file = cwd / "dock_receipt.tsv"
     if not receipt_file.exists() or receipt_file.stat().st_size == 0:
