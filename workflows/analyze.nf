@@ -98,6 +98,7 @@ workflow ANALYZE_WF {
                 id: item.name,
                 rec_id: item.rec_id,
                 rep: item.rep,
+                ligand: item.ligand ?: "",
                 project: params.project_name
             ]
             [ meta, file(item.clean_xtc), file(item.ref_pdb), file(item.topol), file(item.ndx) ]
@@ -127,7 +128,7 @@ workflow ANALYZE_WF {
     ch_ndx   = Channel.fromPath(params.ndx, checkIfExists: true)
 
     // Dummy meta block since we operate on single trajectories in standalone mode
-    def meta = [id: params.project_name ?: "md_analysis", rep: 1]
+    def meta = [id: params.project_name ?: "md_analysis", rep: 1, ligand: params.native_ligand ?: ""]
 
     ch_trjconv_in = Channel.value(meta)
         .combine(ch_traj)
