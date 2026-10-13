@@ -127,6 +127,8 @@ def run_md_init() -> None:
         str(prod.get("compressibility", "4.5e-5")),
         "--tau_p",
         str(prod.get("tau_p", "5.0")),
+        "--prod_restraints_fc",
+        str(prod.get("restraints_fc", "")),
     ]
     res = subprocess.run(cmd, capture_output=True, text=True)
     if res.returncode != 0:
