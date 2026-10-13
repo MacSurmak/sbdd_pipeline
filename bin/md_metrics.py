@@ -263,7 +263,7 @@ def main():
         description="Calculate MD metrics (RMSD, RMSF, Contacts)"
     )
     parser.add_argument(
-        "--gro", required=True, help="Clean reference structure in GROMACS GRO format"
+        "--struct", required=True, help="Clean reference structure in GROMACS PDB/GRO format"
     )
     parser.add_argument("--xtc", required=True, help="Clean Centered Trajectory XTC")
     parser.add_argument("--outdir", required=True, help="Output directory")
@@ -286,14 +286,14 @@ def main():
 
     try:
         df_rmsd, df_rmsf = compute_rmsd_rmsf(
-            args.gro, args.xtc, args.ligand, args.cofactors
+            args.struct, args.xtc, args.ligand, args.cofactors
         )
         df_rmsd.to_csv(out_dir / "rmsd.csv", index=False)
         df_rmsf.to_csv(out_dir / "rmsf.csv", index=False)
         generate_rmsd_plot(df_rmsd, out_dir / "rmsd_plot.png")
 
         df_contacts = compute_contacts(
-            args.gro,
+            args.struct,
             args.xtc,
             args.ligand,
             c_heavy=args.heavy_cutoff,

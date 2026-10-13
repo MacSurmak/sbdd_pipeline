@@ -81,7 +81,7 @@ workflow ANALYZE_WF {
                 metrics_dir: item.metrics_dir,
                 project: params.project_name
             ]
-            [ meta, file(item.clean_xtc), file(item.ref_gro) ]
+            [ meta, file(item.clean_xtc), file(item.ref_pdb) ]
         }
 
         MD_METRICS(ch_metrics_in, params.metric_heavy, params.metric_hyd, params.metric_pol)

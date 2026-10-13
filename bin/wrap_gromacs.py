@@ -223,7 +223,7 @@ def cmd_trjconv(args):
             "-n",
             "index.ndx",
             "-o",
-            args.out_gro,
+            args.out_pdb,
             "-dump",
             "0",
         ],
@@ -613,7 +613,7 @@ def main():
     p_trjconv.add_argument("--pbc_center", required=True)
     p_trjconv.add_argument("--pbc_extract", required=True)
     p_trjconv.add_argument("--out_xtc", required=True)
-    p_trjconv.add_argument("--out_gro", required=True)
+    p_trjconv.add_argument("--out_pdb", required=True)
     p_trjconv.add_argument("--water_names", required=True)
     p_trjconv.add_argument("--ion_names", required=True)
     p_trjconv.add_argument("--lipid_names", required=True)

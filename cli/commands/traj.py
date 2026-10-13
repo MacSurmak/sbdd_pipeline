@@ -135,9 +135,7 @@ def run_clean_traj(
     for item in plan_list:
         clean_dir = Path(item["clean_dir"])
         clean_xtc = clean_dir / "trajectory_clean.xtc"
-        ref_struct = clean_dir / "complex_ref.gro"
-        if not ref_struct.exists():
-            ref_struct = clean_dir / "complex_ref.pdb"
+        ref_struct = clean_dir / "complex_ref.pdb"
 
         if clean_xtc.exists() and ref_struct.exists():
             t_obj = session.query(Trajectory).filter_by(name=item["name"]).first()
@@ -184,11 +182,11 @@ def run_metrics(
 
         clean_path = Path(t.path_clean_xtc)
         clean_dir = clean_path.parent
-        ref_gro = clean_dir / "complex_ref.gro"
+        ref_pdb = clean_dir / "complex_ref.pdb"
 
-        if not ref_gro.exists():
+        if not ref_pdb.exists():
             console.print(
-                f"[bold red]FATAL: Required topology {ref_gro} does not exist! Run 'sbdd traj-clean'.[/bold red]"
+                f"[bold red]FATAL: Required topology {ref_pdb} does not exist! Run 'sbdd traj-clean'.[/bold red]"
             )
             sys.exit(1)
 
@@ -203,7 +201,7 @@ def run_metrics(
                 "rec_id": sys_obj.name,
                 "rep": t.replicate,
                 "clean_xtc": str(clean_path.resolve()),
-                "ref_gro": str(ref_gro.resolve()),
+                "ref_pdb": str(ref_pdb.resolve()),
                 "ligand": lig_code,
                 "cofactors": cofactors,
                 "metrics_dir": str(metrics_dir.resolve()),
@@ -705,15 +703,19 @@ def run_mmpbsa(
         topol_path = sys_dir / "topol.top"
         ndx_path = sys_dir / "index.ndx"
 
+        sys_obj = t.system
+        lig_code = sys_obj.pose.ligand.name if sys_obj.pose else ""
+
         plan_list.append(
             {
                 "name": t.name,
-                "rec_id": t.system.name,
+                "rec_id": sys_obj.name,
                 "rep": t.replicate,
                 "clean_xtc": str(Path(t.path_clean_xtc).resolve()),
                 "ref_pdb": str(Path(t.path_ref_pdb).resolve()),
                 "topol": str(topol_path.resolve()),
                 "ndx": str(ndx_path.resolve()),
+                "ligand": lig_code,
             }
         )
 
