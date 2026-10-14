@@ -243,11 +243,19 @@ def main():
         "md-init", help="Initialize editable MD protocol playlist"
     )
 
+    # 5.5 md-setup
+    p_mdsetup = subparsers.add_parser(
+        "md-setup", help="Prepare MD topologies for raw systems (tLEaP/Declash)"
+    )
+    p_mdsetup.add_argument("--system", help="Specific System to setup")
+    p_mdsetup.add_argument("--target", help="Setup all raw systems for a specific Target")
+    add_common_wf_args(p_mdsetup)
+
     # 6. md / dynamics
     p_dyn = subparsers.add_parser(
         "dynamics",
-        aliases=["md", "md-run", "md-setup"],
-        help="Execute chunked MD simulations for a System using protocol.txt playlist",
+        aliases=["md", "md-run"],
+        help="Execute chunked MD simulations for a ready System using protocol.txt playlist",
     )
     p_dyn.add_argument(
         "--system", help="Name of the physical System to simulate (from 'sbdd tree')"
@@ -518,7 +526,17 @@ def main():
             top_n=args.top,
             system_prefix=args.system_prefix,
         )
-    elif subcmd in ["dynamics", "md", "md-run", "md-setup"]:
+    elif subcmd == "md-setup":
+        from cli.commands.md_setup import run_md_setup
+
+        run_md_setup(
+            system=args.system,
+            target=args.target,
+            urgent=args.urgent,
+            local=args.local,
+            resume=not args.no_resume,
+        )
+    elif subcmd in ["dynamics", "md", "md-run"]:
         from cli.commands.dynamics import run_dynamics
 
         run_dynamics(

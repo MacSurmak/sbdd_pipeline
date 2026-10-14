@@ -3,114 +3,32 @@
  * Standalone MD system setup, chunked simulation, and trajectory analysis
  */
 
-include { PREPARE_RECEPTOR } from '../subworkflows/prepare_receptor'
-include { SETUP_MD_SYSTEM  } from '../subworkflows/setup_md_system'
 include { RUN_CHUNKED_MD   } from '../subworkflows/run_chunked_md'
-include { ANALYZE_MD_TRAJ  } from '../subworkflows/analyze_md_traj'
 
 workflow DYNAMICS_WF {
     if (!params.md_protocol) { error "FATAL: Parameter --md_protocol is required. Did you run 'sbdd md-init'?" }
+    if (!params.md_plan) { error "FATAL: Parameter --md_plan must be provided for dynamics." }
 
-    ch_targets = Channel.empty()
-    ch_plan_reps = Channel.empty()
+    def planFile = file(params.md_plan)
+    def planData = new groovy.json.JsonSlurperClassic().parseText(planFile.text)
 
-    if (params.md_plan) {
-        def planFile = file(params.md_plan)
-        def planData = new groovy.json.JsonSlurperClassic().parseText(planFile.text)
+    ch_systems_to_simulate = Channel.fromList(planData).map { target ->
+        def meta = [
+            id: target.id,
+            project: params.project_name,
+            replicates: target.reps_to_run
+        ]
+        def gro = file(target.gro).toAbsolutePath()
+        def top = file(target.top).toAbsolutePath()
+        def ndx = file(target.ndx).toAbsolutePath()
+        def posre_files = file("${target.top_dir}/posre_*.itp").collect { it.toAbsolutePath() }
 
-        // Invariant system metadata (independent of replicate IDs to ensure 100% cache hits)
-        ch_targets = Channel.fromList(planData).map { target ->
-            def meta = [
-                id: target.id,
-                project: params.project_name,
-                native_ligand: target.lig_name ?: ""
-            ]
-            def lig_f = target.lig_path ? file(target.lig_path).toAbsolutePath() : []
-            [ meta, file(target.rec_path).toAbsolutePath(), lig_f, target.cofactors ?: [] ]
-        }
-
-        ch_plan_reps = Channel.fromList(planData).map { target ->
-            def reps = target.reps_to_run ?: (1..(params.md_replicates as int)).toList()
-            [ target.id, reps ]
-        }
-    } else if (params.manifest) {
-        def manifestFile = file(params.manifest)
-        def yaml = new org.yaml.snakeyaml.Yaml()
-        def manifestData = yaml.load(manifestFile.text)
-
-        ch_targets = Channel.fromList(manifestData.targets).map { target ->
-            def target_id = target.id
-            def struct_file = target.structure
-            def lig_file = target.ligand
-            
-            def rec_path = file("${params.outdir}/prepared/${target_id}_prepared.mae")
-            if (!rec_path.exists()) rec_path = file("${params.outdir}/prepared/${target_id}_prepared.pdb")
-            if (!rec_path.exists()) rec_path = file("${manifestFile.parent}/${struct_file}")
-            if (!rec_path.exists()) rec_path = file("${params.outdir}/${struct_file}")
-            
-            def lig_path
-            if (lig_file) {
-                lig_path = file("${params.outdir}/${lig_file}")
-            } else {
-                lig_path = file("${params.outdir}/prepared/${target_id}_ref_native_prepared.sdf")
-                if (!lig_path.exists()) lig_path = file("${params.outdir}/prepared/${target_id}_ref_native.sdf")
-                if (!lig_path.exists()) lig_path = null
-            }
-            
-            def meta = [
-                id: target_id,
-                project: params.project_name
-            ]
-            
-            def lig_f = lig_path ? lig_path.toAbsolutePath() : []
-            [ meta, rec_path.toAbsolutePath(), lig_f, target.cofactors ?: [] ]
-        }
-
-        ch_plan_reps = Channel.fromList(manifestData.targets).map { target ->
-            [ target.id, (1..(params.md_replicates as int)).toList() ]
-        }
-    } else {
-        error "FATAL: Either --md_plan or --manifest must be provided for dynamics."
-    }
-
-    // 1. Omnivorous System Build
-    SETUP_MD_SYSTEM(
-        ch_targets,
-        params.membrane,
-        params.upper_lipids,
-        params.upper_ratio,
-        params.lower_lipids,
-        params.lower_ratio,
-        params.lipid_padding,
-        params.box_padding,
-        params.md_salt_conc,
-        params.water_leaprc,
-        params.water_box,
-        params.box_type,
-        params.ss_cutoff,
-        params.water_names,
-        params.ion_names,
-        params.lipid_names,
-        params.md_restraints_fc,
-        params.declash_cutoff,
-        params.declash_niter,
-        params.declash_damping,
-        params.declash_max_move,
-        params.declash_jitter,
-        params.declash_tol
-    )
-
-    // 2. Attach replicate IDs strictly after system build completion
-    ch_systems_to_simulate = SETUP_MD_SYSTEM.out.system_ready.map { meta, gro, topol, ndx, posre_files ->
-        [ meta.id, meta, gro, topol, ndx, posre_files ]
-    }.join(ch_plan_reps, by: 0).map { id, meta, gro, topol, ndx, posre_files, reps_to_run ->
-        def meta_with_reps = meta + [replicates: reps_to_run]
-        [ meta_with_reps, gro, topol, ndx, posre_files ]
+        [ meta, gro, top, ndx, posre_files ]
     }
 
     ch_md_protocol = Channel.fromPath("${params.md_protocol}/*", checkIfExists: true).collect()
 
-    // 3. Equilibration & Production using Protocol Playlist
+    // Equilibration & Production using Protocol Playlist
     RUN_CHUNKED_MD(
         ch_systems_to_simulate,
         ch_md_protocol,

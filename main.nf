@@ -10,6 +10,7 @@ nextflow.enable.dsl = 2
 include { PREPARE_WF  } from './workflows/prepare'
 include { SCREEN_WF   } from './workflows/screen'
 include { RESCORE_WF  } from './workflows/rescore'
+include { MD_SETUP_WF } from './workflows/md_setup'
 include { DYNAMICS_WF } from './workflows/dynamics'
 include { ANALYZE_WF  } from './workflows/analyze'
 include { HEAL_WF     } from './workflows/heal'
@@ -52,6 +53,8 @@ workflow {
         SCREEN_WF()
     } else if (entrypoint == "rescore") {
         RESCORE_WF()
+    } else if (entrypoint == "md-setup") {
+        MD_SETUP_WF()
     } else if (entrypoint == "dynamics") {
         DYNAMICS_WF()
     } else if (entrypoint == "md-analyze") {

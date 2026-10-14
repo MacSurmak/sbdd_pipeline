@@ -80,43 +80,29 @@ def run_dynamics(
         if not missing_reps:
             continue
 
-        frame = s.receptor_frame
-        # Strict 3NF Fail-Fast: Dynamics requires fully prepared, protonated and capped receptor
-        if not frame.path_mae:
+        # Strict 3NF Fail-Fast: Dynamics requires fully parametrized topology
+        if not s.path_gro or not s.path_top or not s.path_ndx:
             raise ValueError(
-                f"FATAL: ReceptorFrame '{frame.name}' does not have path_mae registered in 3NF database! "
-                f"Entity must be prepared cleanly via 'sbdd prep' before launching dynamics."
-            )
-        rec_path = Path(frame.path_mae).resolve()
-        if not rec_path.exists():
-            raise FileNotFoundError(
-                f"FATAL: Prepared receptor deliverable does not exist on disk for '{frame.name}': {rec_path}"
+                f"FATAL: System '{s.name}' does not have prepared topology paths registered in 3NF database! "
+                f"Entity must be parametrized cleanly via 'sbdd md-setup' before launching dynamics."
             )
 
-        lig_path = None
-        lig_name = ""
-        if s.pose:
-            pose_sdf = s.pose.path_sdf or s.pose.path
-            if not pose_sdf:
-                raise ValueError(
-                    f"FATAL: Native Pose '{s.pose.name}' does not have path_sdf registered in 3NF database!"
-                )
-            p_sdf_path = Path(pose_sdf).resolve()
-            if not p_sdf_path.exists():
-                raise FileNotFoundError(
-                    f"FATAL: Prepared ligand deliverable does not exist on disk for '{s.pose.name}': {p_sdf_path}"
-                )
-            lig_path = str(p_sdf_path)
-            lig_name = s.pose.ligand.name[:4].upper()
+        p_gro = Path(s.path_gro).resolve()
+        p_top = Path(s.path_top).resolve()
+        p_ndx = Path(s.path_ndx).resolve()
+
+        for p in (p_gro, p_top, p_ndx):
+            if not p.exists():
+                raise FileNotFoundError(f"FATAL: Topology file missing on disk: {p}")
 
         systems_to_run.append((s, missing_reps))
         plan_list.append(
             {
                 "id": s.name,
-                "rec_path": str(rec_path),
-                "lig_path": lig_path,
-                "lig_name": lig_name,
-                "cofactors": frame.cofactors_list,
+                "gro": str(p_gro),
+                "top": str(p_top),
+                "ndx": str(p_ndx),
+                "top_dir": str(p_top.parent),
                 "reps_to_run": missing_reps,
             }
         )
