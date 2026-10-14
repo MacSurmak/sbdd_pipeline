@@ -585,14 +585,16 @@ def cmd_ndx_posre(args):
         args.ion_names,
     ]
     if hasattr(args, "prod_fc") and args.prod_fc and int(args.prod_fc) > 0:
-        cmd_gen.extend([
-            "--pdb",
-            args.input_gro,
-            "--prod_fc",
-            str(args.prod_fc),
-            "--prod_group",
-            getattr(args, "prod_group", "C-alpha"),
-        ])
+        cmd_gen.extend(
+            [
+                "--pdb",
+                args.input_gro,
+                "--prod_fc",
+                str(args.prod_fc),
+                "--prod_group",
+                getattr(args, "prod_group", "C-alpha"),
+            ]
+        )
     subprocess.run(cmd_gen, check=True)
 
 

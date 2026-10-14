@@ -303,7 +303,9 @@ def _build_dynamics_args(config: Dict[str, Any], project_dir: Path) -> list:
         args.extend([f"--{nf_k}", str(prod_cfg[yaml_k])])
 
     if "restraints_fc" in prod_cfg and int(float(prod_cfg["restraints_fc"])) > 0:
-        args.extend(["--prod_restraints_fc", str(int(float(prod_cfg["restraints_fc"])))])
+        args.extend(
+            ["--prod_restraints_fc", str(int(float(prod_cfg["restraints_fc"])))]
+        )
         args.extend(
             [
                 "--prod_restraints_group",

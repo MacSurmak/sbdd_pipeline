@@ -310,10 +310,14 @@ def cmd_prepwizard(args):
     working_complex = complex_path
 
     if hetero_indices:
-        print(f"Chemical Fractionation: Detected {len(hetero_indices)} hetero atom(s) (ligand / organic cofactors).")
+        print(
+            f"Chemical Fractionation: Detected {len(hetero_indices)} hetero atom(s) (ligand / organic cofactors)."
+        )
         hetero_set = set(hetero_indices)
         st_hetero = st.extract(hetero_indices, copy_props=True)
-        st_scaffold = st.extract([a.index for a in st.atom if a.index not in hetero_set], copy_props=True)
+        st_scaffold = st.extract(
+            [a.index for a in st.atom if a.index not in hetero_set], copy_props=True
+        )
 
         raw_hetero_file = "raw_hetero.mae"
         # Write each hetero molecule as an independent structure so Epik processes them cleanly
@@ -325,17 +329,25 @@ def cmd_prepwizard(args):
         # Coordinates of heavy atoms are strictly preserved by Epik
         epik_out_file = "epik_hetero.mae"
         epik_cmd = get_tool("epik") + [
-            "-imae", raw_hetero_file,
-            "-omae", epik_out_file,
-            "-ph", str(target_ph),
-            "-pht", str(ph_tolerance),
-            "-ms", "1",
+            "-imae",
+            raw_hetero_file,
+            "-omae",
+            epik_out_file,
+            "-ph",
+            str(target_ph),
+            "-pht",
+            str(ph_tolerance),
+            "-ms",
+            "1",
             "-WAIT",
         ]
         run_cmd(epik_cmd, job_name="epik_hetero")
 
         if not Path(epik_out_file).exists() or Path(epik_out_file).stat().st_size == 0:
-            print(f"FATAL: Epik failed to generate aqueous protonated states: {epik_out_file}", file=sys.stderr)
+            print(
+                f"FATAL: Epik failed to generate aqueous protonated states: {epik_out_file}",
+                file=sys.stderr,
+            )
             sys.exit(1)
 
         # Re-integrate aqueous-protonated ligand and cofactors into the scaffold (protein + ions)
@@ -345,7 +357,9 @@ def cmd_prepwizard(args):
         fractionated_complex = "complex_epik_aqueous.mae"
         st_scaffold.write(fractionated_complex)
         working_complex = Path(fractionated_complex).resolve()
-        print("✓ Successfully integrated aqueous-protonated molecules into complex with native coordinates preserved.")
+        print(
+            "✓ Successfully integrated aqueous-protonated molecules into complex with native coordinates preserved."
+        )
 
     # Execute PrepWizard:
     # If hetero atoms were pre-protonated via aqueous Epik, we strictly forbid prepwizard
@@ -354,8 +368,10 @@ def cmd_prepwizard(args):
     prep_cmd = get_tool("prepwizard") + [
         "-fix",
         "-fillsidechains",
-        "-propka_pH", str(target_ph),
-        "-rmsd", str(min_rmsd),
+        "-propka_pH",
+        str(target_ph),
+        "-rmsd",
+        str(min_rmsd),
         "-preserve_st_titles",
         "-WAIT",
     ]
@@ -371,7 +387,9 @@ def cmd_prepwizard(args):
     run_cmd(prep_cmd, job_name="prepwizard")
 
     if not out_path.exists() or out_path.stat().st_size == 0:
-        print(f"FATAL: PrepWizard output deliverable missing: {out_path}", file=sys.stderr)
+        print(
+            f"FATAL: PrepWizard output deliverable missing: {out_path}", file=sys.stderr
+        )
         sys.exit(1)
 
 
