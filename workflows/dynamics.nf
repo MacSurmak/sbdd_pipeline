@@ -21,7 +21,7 @@ workflow DYNAMICS_WF {
         def gro = file(target.gro).toAbsolutePath()
         def top = file(target.top).toAbsolutePath()
         def ndx = file(target.ndx).toAbsolutePath()
-        def posre_files = file("${target.top_dir}/posre_*.itp").collect { it.toAbsolutePath() }
+        def posre_files = target.posre_files.collect { file(it).toAbsolutePath() }
 
         [ meta, gro, top, ndx, posre_files ]
     }

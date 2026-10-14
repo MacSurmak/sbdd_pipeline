@@ -95,6 +95,12 @@ def run_dynamics(
             if not p.exists():
                 raise FileNotFoundError(f"FATAL: Topology file missing on disk: {p}")
 
+        # Strict Single Source of Truth: resolve all restraint files in Python to bypass Nextflow globbing/NFS cache
+        p_top_dir = p_top.parent
+        posre_files = [str(f.resolve()) for f in p_top_dir.glob("posre_*.itp")]
+        if not posre_files:
+            raise FileNotFoundError(f"FATAL: No position restraint files (posre_*.itp) found in topology directory: {p_top_dir}")
+
         systems_to_run.append((s, missing_reps))
         plan_list.append(
             {
@@ -102,7 +108,7 @@ def run_dynamics(
                 "gro": str(p_gro),
                 "top": str(p_top),
                 "ndx": str(p_ndx),
-                "top_dir": str(p_top.parent),
+                "posre_files": posre_files,
                 "reps_to_run": missing_reps,
             }
         )
