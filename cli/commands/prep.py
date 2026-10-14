@@ -211,8 +211,6 @@ def run_prep(
                     ch = Chem.GetFormalCharge(mol)
                     system.pose.scores_dict = {"formal_charge": ch}
 
-            if system:
-                system.state = "ready"
             prepared_count += 1
 
     # 5. Update prepared Ligands in DB with LigPrep deliverable paths
