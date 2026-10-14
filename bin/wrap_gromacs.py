@@ -246,9 +246,16 @@ def cmd_equilibration(args):
 
     with open("protocol.txt", "r") as f:
         for line in f:
-            mdp = line.strip()
-            if not mdp:
+            line = line.strip()
+            if not line:
                 continue
+            
+            parts = line.split(",")
+            if len(parts) != 2:
+                print(f"FATAL: Invalid protocol.txt line format (expected type,mdp_path): {line}", file=sys.stderr)
+                sys.exit(1)
+            
+            p_type, mdp = parts[0].strip(), parts[1].strip()
             stage = Path(mdp).stem
             last_stage = stage
 
@@ -272,30 +279,17 @@ def cmd_equilibration(args):
             ]
 
             # Checkpoint file (-t) is passed strictly if it physically exists from a prior dynamical step
-            if (
-                prev_cpt
-                and Path(prev_cpt).exists()
-                and "em" not in stage
-                and "minim" not in stage
-            ):
+            if prev_cpt and Path(prev_cpt).exists() and p_type != "minim":
                 cmd.extend(["-t", prev_cpt])
 
             run_gmx(cmd)
 
-            run_cmd = [
-                "gmx",
-                "mdrun",
-                "-deffnm",
-                stage,
-                "-nb",
-                "gpu",
-                "-ntmpi",
-                "1",
-                "-ntomp",
-                str(args.cpus),
-            ]
-            if "em" not in stage and "minim" not in stage:
-                run_cmd.extend(["-pme", "gpu"])
+            # Blindly apply exact hardware execution flags from YAML contract
+            exec_flags = args.minim_flags if p_type == "minim" else args.eq_flags
+            run_cmd = ["gmx", "mdrun", "-deffnm", stage] + exec_flags.split()
+            
+            # CPU threading is managed dynamically by Slurm, we append it explicitly
+            run_cmd.extend(["-ntomp", str(args.cpus)])
 
             run_mdrun(run_cmd, f"EQ: {args.sys_name} [{stage}]")
 
@@ -393,29 +387,9 @@ def cmd_run_chunk(args):
                 "3",
             ]
         )
-        run_mdrun(
-            [
-                "gmx",
-                "mdrun",
-                "-deffnm",
-                f"md_{args.chunk_idx}",
-                "-s",
-                "out.tpr",
-                "-nb",
-                "gpu",
-                "-pme",
-                "gpu",
-                "-bonded",
-                "gpu",
-                "-update",
-                "gpu",
-                "-ntmpi",
-                "1",
-                "-ntomp",
-                str(args.cpus),
-            ],
-            f"MD: {args.sys_name}",
-        )
+        run_cmd = ["gmx", "mdrun", "-deffnm", f"md_{args.chunk_idx}", "-s", "out.tpr"] + args.prod_flags.split()
+        run_cmd.extend(["-ntomp", str(args.cpus)])
+        run_mdrun(run_cmd, f"MD: {args.sys_name}")
         shutil.copy2("out.tpr", "sys_ref.tpr")
     else:
         run_gmx(
@@ -430,32 +404,9 @@ def cmd_run_chunk(args):
                 "out.tpr",
             ]
         )
-        run_mdrun(
-            [
-                "gmx",
-                "mdrun",
-                "-deffnm",
-                f"md_{args.chunk_idx}",
-                "-s",
-                "out.tpr",
-                "-cpi",
-                args.prev_cpt,
-                "-noappend",
-                "-nb",
-                "gpu",
-                "-pme",
-                "gpu",
-                "-bonded",
-                "gpu",
-                "-update",
-                "gpu",
-                "-ntmpi",
-                "1",
-                "-ntomp",
-                str(args.cpus),
-            ],
-            f"MD: {args.sys_name}",
-        )
+        run_cmd = ["gmx", "mdrun", "-deffnm", f"md_{args.chunk_idx}", "-s", "out.tpr", "-cpi", args.prev_cpt, "-noappend"] + args.prod_flags.split()
+        run_cmd.extend(["-ntomp", str(args.cpus)])
+        run_mdrun(run_cmd, f"MD: {args.sys_name}")
         shutil.copy2("out.tpr", "sys_ref.tpr")
 
     for ext in ["gro", "cpt", "xtc"]:
@@ -642,6 +593,8 @@ def main():
     p_eq.add_argument("--cpus", required=True)
     p_eq.add_argument("--posre_files", nargs="+", required=True)
     p_eq.add_argument("--sys_name", required=True)
+    p_eq.add_argument("--minim_flags", required=True)
+    p_eq.add_argument("--eq_flags", required=True)
 
     p_chunk = subparsers.add_parser("run_chunk")
     p_chunk.add_argument("--prev_gro", required=True)
@@ -654,6 +607,7 @@ def main():
     p_chunk.add_argument("--cpus", required=True)
     p_chunk.add_argument("--posre_files", nargs="+", required=True)
     p_chunk.add_argument("--sys_name", required=True)
+    p_chunk.add_argument("--prod_flags", required=True)
 
     p_mmpbsa = subparsers.add_parser("mmpbsa")
     p_mmpbsa.add_argument("--clean_xtc", required=True)

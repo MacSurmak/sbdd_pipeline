@@ -137,6 +137,21 @@ def run_md_init() -> None:
         )
         sys.exit(1)
 
+    # Strictly type the generated protocol.txt
+    protocol_txt = md_dir / "protocol.txt"
+    if protocol_txt.exists():
+        new_lines = []
+        for line in protocol_txt.read_text().splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            if "," not in line:
+                stage_type = "minim" if "em" in line or "minim" in line else "eq"
+                new_lines.append(f"{stage_type},{line}")
+            else:
+                new_lines.append(line)
+        protocol_txt.write_text("\n".join(new_lines) + "\n")
+
     console.print(
         f"[bold green]✓ MD Protocol initialized from assets/mdp into {md_dir}[/bold green]"
     )

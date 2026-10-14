@@ -34,6 +34,9 @@ workflow DYNAMICS_WF {
         ch_md_protocol,
         params.md_total_ns,
         params.md_chunk_ns,
-        params.md_replicates as int
+        params.md_replicates as int,
+        params.minim_flags,
+        params.eq_flags,
+        params.prod_flags
     )
 }

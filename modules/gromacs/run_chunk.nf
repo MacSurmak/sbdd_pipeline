@@ -13,6 +13,7 @@ process RUN_MD_CHUNK {
     path md_protocol
     val(chunk_ns)
     val(chunk_idx)
+    val prod_flags
 
     output:
     tuple val(meta), path("out.gro"), path("out.cpt"), path("out.tpr"), path(topol_top, includeInputs: true), path(index_ndx, includeInputs: true), path("posre_*.itp", includeInputs: true), emit: state
@@ -31,7 +32,8 @@ process RUN_MD_CHUNK {
         --chunk_idx ${chunk_idx} \\
         --cpus ${task.cpus} \\
         --posre_files posre_*.itp \\
-        --sys_name "${meta.id}_R${meta.rep}_C${chunk_idx}"
+        --sys_name "${meta.id}_R${meta.rep}_C${chunk_idx}" \\
+        --prod_flags "${prod_flags}"
     """
 
     stub:
