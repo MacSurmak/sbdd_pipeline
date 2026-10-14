@@ -207,6 +207,99 @@ def _build_rescore_args(config: Dict[str, Any]) -> list:
     return args
 
 
+def _build_md_setup_args(config: Dict[str, Any]) -> list:
+    args = []
+    md_cfg = config.get("md_simulation")
+    if not md_cfg:
+        raise ValueError("FATAL: 'md_simulation' section missing in md.yaml!")
+
+    sys_build = md_cfg.get("system_build")
+    if not sys_build:
+        raise ValueError("FATAL: 'md_simulation.system_build' is required!")
+
+    sys_mappings = [
+        ("water_leaprc", "water_leaprc"),
+        ("water_box", "water_box"),
+        ("box_type", "box_type"),
+        ("box_padding", "box_padding"),
+        ("ss_cutoff", "ss_cutoff"),
+        ("salt_conc", "md_salt_conc"),
+    ]
+    for yaml_k, nf_k in sys_mappings:
+        if yaml_k not in sys_build:
+            raise ValueError(
+                f"FATAL: 'md_simulation.system_build.{yaml_k}' is required!"
+            )
+        args.extend([f"--{nf_k}", str(sys_build[yaml_k])])
+
+    args.extend(["--water_names", ",".join(sys_build.get("water_names", []))])
+    args.extend(["--ion_names", ",".join(sys_build.get("ion_names", []))])
+
+    mem_cfg = config.get("membrane", {})
+    if mem_cfg.get("enabled"):
+        args.extend(["--membrane", "true"])
+        lipids = mem_cfg.get("lipids", {})
+        upper = lipids.get("upper_leaflet", {})
+        lower = lipids.get("lower_leaflet", {})
+        for k, v in [
+            ("--upper_lipids", upper.get("composition")),
+            ("--upper_ratio", upper.get("ratio")),
+            ("--lower_lipids", lower.get("composition")),
+            ("--lower_ratio", lower.get("ratio")),
+        ]:
+            if not v:
+                raise ValueError(
+                    f"FATAL: Membrane is enabled but {k.replace('--','')} is missing in membrane.yaml!"
+                )
+            args.extend([k, str(v)])
+
+        pad_cfg = mem_cfg.get("padding", {})
+        if "lipid_padding" in pad_cfg:
+            args.extend(["--lipid_padding", str(pad_cfg["lipid_padding"])])
+        args.extend(["--lipid_names", ",".join(mem_cfg.get("lipid_names", []))])
+    else:
+        args.extend(["--membrane", "false"])
+        args.extend(["--lipid_names", ""])
+
+    declash = md_cfg.get("declash")
+    if not declash:
+        raise ValueError("FATAL: 'md_simulation.declash' is required!")
+
+    declash_mappings = [
+        ("cutoff", "declash_cutoff"),
+        ("niter", "declash_niter"),
+        ("damping", "declash_damping"),
+        ("max_move", "declash_max_move"),
+        ("jitter", "declash_jitter"),
+        ("tolerance", "declash_tol"),
+    ]
+    for yaml_k, nf_k in declash_mappings:
+        if yaml_k not in declash:
+            raise ValueError(f"FATAL: 'md_simulation.declash.{yaml_k}' is required!")
+        args.extend([f"--{nf_k}", str(declash[yaml_k])])
+
+    rf_list = sys_build.get("restraint_forces")
+    if not isinstance(rf_list, list) or not rf_list:
+        raise ValueError(
+            "FATAL: 'restraint_forces' must be a non-empty list of force constants!"
+        )
+    args.extend(["--md_restraints_fc", ",".join(map(str, rf_list))])
+
+    prod_cfg = md_cfg.get("production")
+    if prod_cfg and "restraints_fc" in prod_cfg and int(float(prod_cfg["restraints_fc"])) > 0:
+        args.extend(
+            ["--prod_restraints_fc", str(int(float(prod_cfg["restraints_fc"])))]
+        )
+        args.extend(
+            [
+                "--prod_restraints_group",
+                str(prod_cfg.get("restraints_group", "C-alpha")),
+            ]
+        )
+
+    return args
+
+
 def _build_dynamics_args(config: Dict[str, Any], project_dir: Path) -> list:
     args = ["--run_md", "true"]
     md_cfg = config.get("md_simulation")
@@ -410,6 +503,8 @@ def build_nextflow_args(
         args.extend(_build_screen_args(config, project_dir))
     elif entrypoint == "rescore":
         args.extend(_build_rescore_args(config))
+    elif entrypoint == "md-setup":
+        args.extend(_build_md_setup_args(config))
     elif entrypoint == "dynamics":
         args.extend(_build_dynamics_args(config, project_dir))
     elif entrypoint == "md-analyze":

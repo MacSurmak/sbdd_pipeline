@@ -204,6 +204,9 @@ class System(Base):
     environment = Column(
         Text, default="{}", nullable=False
     )  # JSON membrane/solvent specs
+    path_gro = Column(String, nullable=True)  # Prepared canonical coordinate file
+    path_top = Column(String, nullable=True)  # Prepared canonical topology file
+    path_ndx = Column(String, nullable=True)  # Prepared canonical index file
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     target = relationship("Target", back_populates="systems")

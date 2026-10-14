@@ -20,6 +20,10 @@ md_simulation:
     max_move: 0.05
     jitter: 0.02
     tolerance: 1e-6
+  execution:
+    minim_flags: "-nb gpu -ntmpi 1"
+    eq_flags: "-nb gpu -pme gpu -ntmpi 1"
+    prod_flags: "-nb gpu -pme gpu -ntmpi 1"
   production:
     temperature: 310.15
     total_time_ns: 100
