@@ -7,7 +7,7 @@ include { SETUP_MD_SYSTEM } from '../subworkflows/setup_md_system'
 
 process PUBLISH_MD_SYSTEM {
     tag "${meta.id}"
-    publishDir "${params.outdir}/md_systems/${meta.id}", mode: 'copy'
+    publishDir path: { "${params.outdir}/md_systems/${meta.id}" }, mode: 'copy'
 
     input:
     tuple val(meta), path(gro), path(top), path(ndx), path(posre)
