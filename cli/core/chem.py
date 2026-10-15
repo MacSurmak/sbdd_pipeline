@@ -62,6 +62,9 @@ def get_mol_identity(source: str | Path) -> Tuple[str, str, str]:
     parent_inchikey = Chem.MolToInchiKey(parent_mol)
     parent_smiles = Chem.MolToSmiles(parent_mol, canonical=True)
     formal_charge = Chem.GetFormalCharge(mol)
+    
+    if not parent_inchikey:
+        raise ValueError("Failed to generate InChIKey. Invalid chemical structure.")
 
     if not mol_name:
         mol_name = parent_inchikey[:14]

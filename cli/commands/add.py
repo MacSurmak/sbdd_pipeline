@@ -8,7 +8,7 @@ from pathlib import Path
 import sys
 import shutil
 from rich.console import Console
-from cli.core.db import init_db, Target, ReceptorFrame, Ligand, Pose, System, Trajectory
+from cli.core.db import init_db, Target, ReceptorFrame, Substance, Pose, System, Trajectory
 from cli.core.chem import get_mol_identity
 
 console = Console()
@@ -302,7 +302,6 @@ def add_receptor(
             ex_frame = session.query(ReceptorFrame).filter_by(name=frame_name).first()
             if ex_frame:
                 ex_frame.path = str(frame_file.resolve())
-                ex_frame.cofactors_list = safe_cofactors
                 ex_frame.state = initial_state
                 frame_obj = ex_frame
                 console.print(
@@ -316,7 +315,6 @@ def add_receptor(
                     state=initial_state,
                     path=str(frame_file.resolve()),
                 )
-                frame_obj.cofactors_list = safe_cofactors
                 session.add(frame_obj)
                 session.flush()
 
@@ -331,87 +329,90 @@ def add_receptor(
                     f"    It cannot be processed by 'sbdd prep'. Provide FASTA and run 'sbdd heal' to physically repair it."
                 )
 
-            # Ligand & Pose Handling
-            pose_obj = None
-            if lig_code:
-                poses_dir = cwd / "poses" / target_name
-                pose_sdf = poses_dir / f"{frame_name}_{lig_code}_crystal.sdf"
+            poses_dir = cwd / "poses" / target_name
+            
+            def _process_heterogen(resname: str, sub_type: str):
+                pose_sdf = poses_dir / f"{frame_name}_{resname}_crystal.sdf"
+                _extract_ligand_atoms(frame_file, resname, pose_sdf)
 
-                # Extract exact coordinates and protonation state
-                _extract_ligand_atoms(frame_file, lig_code, pose_sdf)
+                parent_inchikey, parent_smiles, mol_name, formal_charge = get_mol_identity(pose_sdf)
 
-                # Parent compound InChIKey for deduplication + exact formal charge for physics
-                parent_inchikey, parent_smiles, mol_name, formal_charge = (
-                    get_mol_identity(pose_sdf)
-                )
+                is_single_atom = sum(1 for c in parent_smiles if c.isalpha()) == 1
+                actual_type = "ion" if is_single_atom and sub_type == "cofactor" else sub_type
 
-                # Pure chemical deduplication by Parent Standard InChIKey
-                lig_entity = (
-                    session.query(Ligand).filter_by(inchikey=parent_inchikey).first()
-                )
-                if not lig_entity:
-                    lig_entity = Ligand(
+                sub_entity = session.query(Substance).filter_by(inchikey=parent_inchikey).first()
+                if not sub_entity:
+                    sub_entity = Substance(
                         inchikey=parent_inchikey,
                         smiles=parent_smiles,
-                        name=mol_name or lig_code,
+                        name=mol_name or resname,
+                        substance_type=actual_type,
                         state="raw",
                         batch_id="crystal_extract",
                     )
-                    session.add(lig_entity)
+                    session.add(sub_entity)
                     session.flush()
                     console.print(
-                        f"[bold green]✓ Registered Chemical Ligand '{lig_entity.name}'[/bold green] [dim](raw, {parent_inchikey})[/dim]"
+                        f"[bold green]✓ Registered {actual_type.capitalize()} '{sub_entity.name}'[/bold green] [dim](raw, {parent_inchikey})[/dim]"
                     )
                 else:
                     console.print(
-                        f"[bold green]✓ Matched existing Chemical Ligand '{lig_entity.name}' via Parent InChIKey[/bold green] [dim]({parent_inchikey})[/dim]"
+                        f"[bold green]✓ Matched existing {actual_type.capitalize()} '{sub_entity.name}' via InChIKey[/bold green] [dim]({parent_inchikey})[/dim]"
                     )
 
-                # Create Pose preserving exact physical charge state
-                pose_name = f"{frame_name}_{lig_code}_pose"
-                ex_pose = session.query(Pose).filter_by(name=pose_name).first()
-                if ex_pose:
-                    ex_pose.path = str(pose_sdf.resolve())
-                    ex_pose.scores_dict = {"formal_charge": formal_charge}
-                    pose_obj = ex_pose
+                pose_name = f"{frame_name}_{resname}_pose"
+                p_obj = session.query(Pose).filter_by(name=pose_name).first()
+                if p_obj:
+                    p_obj.path = str(pose_sdf.resolve())
+                    p_obj.scores_dict = {"formal_charge": formal_charge}
                 else:
-                    pose_obj = Pose(
-                        ligand_id=lig_entity.id,
+                    p_obj = Pose(
+                        substance_id=sub_entity.id,
                         receptor_frame_id=frame_obj.id,
                         name=pose_name,
                         origin="crystal",
                         state="raw",
                         path=str(pose_sdf.resolve()),
                     )
-                    pose_obj.scores_dict = {"formal_charge": formal_charge}
-                    session.add(pose_obj)
+                    p_obj.scores_dict = {"formal_charge": formal_charge}
+                    session.add(p_obj)
                     session.flush()
-                    ch_label = (
-                        f"q={formal_charge:+d}" if formal_charge != 0 else "neutral"
-                    )
+                    ch_label = f"q={formal_charge:+d}" if formal_charge != 0 else "neutral"
                     console.print(
                         f"[bold green]✓ Registered Pose '{pose_name}'[/bold green] [dim]({ch_label}) -> {pose_sdf.name}[/dim]"
                     )
+                return p_obj
+
+            main_ligand_pose = None
+            if lig_code:
+                main_ligand_pose = _process_heterogen(lig_code, "ligand")
+
+            cofactor_poses = []
+            for cof in safe_cofactors:
+                c_pose = _process_heterogen(cof, "cofactor")
+                cofactor_poses.append(c_pose)
 
             # System creation
-            sys_name = f"{frame_name}_{lig_entity.name}" if pose_obj else frame_name
+            sys_name = f"{frame_name}_{lig_code}" if main_ligand_pose else frame_name
             ex_sys = session.query(System).filter_by(name=sys_name).first()
             if ex_sys:
-                ex_sys.pose_id = pose_obj.id if pose_obj else None
+                ex_sys.pose_id = main_ligand_pose.id if main_ligand_pose else None
                 ex_sys.state = "raw"
+                ex_sys.cofactors = cofactor_poses
             else:
                 new_sys = System(
                     target_id=target.id,
                     receptor_frame_id=frame_obj.id,
-                    pose_id=pose_obj.id if pose_obj else None,
+                    pose_id=main_ligand_pose.id if main_ligand_pose else None,
                     name=sys_name,
                     state="raw",
                     origin="crystal",
                 )
+                new_sys.cofactors = cofactor_poses
                 session.add(new_sys)
-                sys_type = "Holo" if pose_obj else "Apo"
+                sys_type = "Holo" if main_ligand_pose else "Apo"
                 console.print(
-                    f"[bold green]✓ Created {sys_type} System '{sys_name}'[/bold green]"
+                    f"[bold green]✓ Created {sys_type} System '{sys_name}'[/bold green] [dim]with {len(cofactor_poses)} cofactors[/dim]"
                 )
 
     session.commit()
@@ -466,7 +467,7 @@ def add_fasta(path: str) -> None:
 
 def add_ligand(path: str) -> None:
     """
-    Imports chemical substances (SDF/SMILES) into the Ligand table.
+    Imports chemical substances (SDF/SMILES) into the Substance table.
     Performs topological deduplication via Standard InChIKey.
     """
     session = init_db()
@@ -477,6 +478,7 @@ def add_ligand(path: str) -> None:
 
     try:
         from rdkit import Chem
+        from rdkit.Chem.MolStandardize import rdMolStandardize
     except ImportError:
         console.print(
             "[bold red]FATAL: RDKit is required for ligand import.[/bold red]"
@@ -486,45 +488,53 @@ def add_ligand(path: str) -> None:
     suppl = Chem.ForwardSDMolSupplier(str(target_path), removeHs=False)
     imported = 0
     skipped = 0
+    uncharger = rdMolStandardize.Uncharger()
 
     for idx, mol in enumerate(suppl, start=1):
         if mol is None:
             continue
         try:
-            inchikey = Chem.MolToInchiKey(mol)
-            smiles = Chem.MolToSmiles(Chem.RemoveHs(mol), canonical=True)
+            heavy_mol = Chem.RemoveHs(mol)
+            parent_mol = uncharger.uncharge(heavy_mol)
+
+            inchikey = Chem.MolToInchiKey(parent_mol)
+            if not inchikey:
+                raise ValueError("Could not compute InChIKey")
+                
+            smiles = Chem.MolToSmiles(parent_mol, canonical=True)
             name = (
                 mol.GetProp("_Name").strip()
                 if mol.HasProp("_Name") and mol.GetProp("_Name").strip()
                 else f"MOL_{idx:05d}"
             )
 
-            ex = session.query(Ligand).filter_by(inchikey=inchikey).first()
+            ex = session.query(Substance).filter_by(inchikey=inchikey).first()
             if ex:
                 skipped += 1
                 continue
 
-            new_lig = Ligand(
+            new_sub = Substance(
                 inchikey=inchikey,
                 smiles=smiles,
                 name=name,
+                substance_type="ligand",
                 state="raw",
                 batch_id=target_path.stem,
             )
-            session.add(new_lig)
+            session.add(new_sub)
             imported += 1
             if imported % 500 == 0:
                 session.commit()
         except Exception as e:
             console.print(
-                f"[bold red]FATAL: Ligand parsing failed at index {idx}: {e}[/bold red]"
+                f"[bold red]FATAL: Substance parsing failed at index {idx}: {e}[/bold red]"
             )
             sys.exit(1)
 
     session.commit()
     session.close()
     console.print(
-        f"[bold green]✓ Imported {imported} unique chemical ligand(s)[/bold green] [dim]({skipped} duplicates skipped)[/dim]"
+        f"[bold green]✓ Imported {imported} unique chemical substance(s)[/bold green] [dim]({skipped} duplicates skipped)[/dim]"
     )
 
 

@@ -18,6 +18,7 @@ from sqlalchemy import (
     Text,
     Float,
     DateTime,
+    Table,
 )
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
@@ -32,6 +33,13 @@ def set_sqlite_pragma(dbapi_connection, connection_record):
     cursor.execute("PRAGMA foreign_keys=ON")
     cursor.close()
 
+
+system_cofactors = Table(
+    "system_cofactors",
+    Base.metadata,
+    Column("system_id", Integer, ForeignKey("systems.id", ondelete="CASCADE"), primary_key=True),
+    Column("pose_id", Integer, ForeignKey("poses.id", ondelete="CASCADE"), primary_key=True),
+)
 
 class Target(Base):
     """
@@ -83,7 +91,6 @@ class ReceptorFrame(Base):
     path_pdb = Column(
         String, nullable=True
     )  # Validated PDB deliverable for GNINA/tLEaP
-    cofactors = Column(Text, default="[]", nullable=False)  # JSON list of cofactors
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     target = relationship("Target", back_populates="frames")
@@ -97,39 +104,30 @@ class ReceptorFrame(Base):
         "System", back_populates="receptor_frame", cascade="all, delete-orphan"
     )
 
-    @property
-    def cofactors_list(self) -> list:
-        try:
-            return json.loads(self.cofactors) if self.cofactors else []
-        except Exception:
-            return []
 
-    @cofactors_list.setter
-    def cofactors_list(self, val: list):
-        self.cofactors = json.dumps(val if val is not None else [])
-
-
-class Ligand(Base):
+class Substance(Base):
     """
     Chemical substance (2D topology).
     Deduplicated across the entire database by Standard InChIKey.
+    substance_type: 'ligand', 'cofactor', 'ion'.
     state: 'raw' (imported 2D/3D) -> 'ready' (processed via LigPrep at target pH).
     path_mae/path_sdf: LigPrep-generated canonical 3D states used for screening and docking.
     """
 
-    __tablename__ = "ligands"
+    __tablename__ = "substances"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     inchikey = Column(String(27), unique=True, index=True, nullable=False)
     smiles = Column(Text, nullable=False)
     name = Column(String, nullable=False)
+    substance_type = Column(String, default="ligand", nullable=False)  # 'ligand', 'cofactor', 'ion'
     state = Column(String, default="raw", nullable=False)  # 'raw', 'ready'
     batch_id = Column(String, nullable=True)
-    path_mae = Column(String, nullable=True)  # Prepared .maegz for Glide
-    path_sdf = Column(String, nullable=True)  # Prepared .sdf for GNINA
+    path_mae = Column(String, nullable=True)  # Prepared .maegz for LigPrep
+    path_sdf = Column(String, nullable=True)  # Prepared .sdf 
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
-    poses = relationship("Pose", back_populates="ligand", cascade="all, delete-orphan")
+    poses = relationship("Pose", back_populates="substance", cascade="all, delete-orphan")
 
 
 class Pose(Base):
@@ -141,8 +139,8 @@ class Pose(Base):
     __tablename__ = "poses"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    ligand_id = Column(
-        Integer, ForeignKey("ligands.id", ondelete="CASCADE"), nullable=False
+    substance_id = Column(
+        Integer, ForeignKey("substances.id", ondelete="CASCADE"), nullable=False
     )
     receptor_frame_id = Column(
         Integer, ForeignKey("receptor_frames.id", ondelete="CASCADE"), nullable=False
@@ -156,12 +154,14 @@ class Pose(Base):
         Integer, ForeignKey("poses.id", ondelete="SET NULL"), nullable=True
     )
     path = Column(String, nullable=False)  # Canonical primary path
-    path_sdf = Column(String, nullable=True)  # Validated SDF deliverable for GNINA
-    path_mae = Column(String, nullable=True)  # Validated MAE deliverable for Glide
+    path_sdf = Column(String, nullable=True)  # Validated SDF deliverable
+    path_mae = Column(String, nullable=True)  # Validated MAE deliverable
+    path_mol2 = Column(String, nullable=True) # Antechamber AM1-BCC topology
+    path_frcmod = Column(String, nullable=True) # Antechamber GAFF2 parameters
     scores = Column(Text, default="{}", nullable=False)  # JSON dict of scoring metrics
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
-    ligand = relationship("Ligand", back_populates="poses")
+    substance = relationship("Substance", back_populates="poses")
     receptor_frame = relationship("ReceptorFrame", back_populates="poses")
     parent_pose = relationship("Pose", remote_side=[id], backref="derived_poses")
     systems = relationship("System", back_populates="pose")
@@ -212,6 +212,7 @@ class System(Base):
     target = relationship("Target", back_populates="systems")
     receptor_frame = relationship("ReceptorFrame", back_populates="systems")
     pose = relationship("Pose", back_populates="systems")
+    cofactors = relationship("Pose", secondary=system_cofactors, backref="cofactor_systems")
     trajectories = relationship(
         "Trajectory", back_populates="system", cascade="all, delete-orphan"
     )
