@@ -83,14 +83,8 @@ STANDARD_PROTEIN_RESIDUES = {
 }
 
 
-class CleanStructureSelect:
-    """Strict whitelist filter: retains ONLY standard protein residues plus explicitly authorized ligand and cofactors."""
-
-    def __init__(self, allowed_ligand: str | None, allowed_cofactors: list[str]):
-        self.allowed_ligand = allowed_ligand.upper() if allowed_ligand else None
-        self.allowed_cofactors = (
-            set(c.upper() for c in allowed_cofactors) if allowed_cofactors else set()
-        )
+class CleanProteinSelect:
+    """Strict whitelist filter: retains ONLY standard protein amino acid residues for ReceptorFrame."""
 
     def accept_model(self, model):
         return 1
@@ -105,18 +99,10 @@ class CleanStructureSelect:
         from Bio.PDB import is_aa
 
         r_name = res.get_resname().strip().upper()
-        # 1. Retain standard protein residues
         if r_name in STANDARD_PROTEIN_RESIDUES or (
             is_aa(res) and res.get_id()[0] == " "
         ):
             return 1
-        # 2. Retain explicit ligand
-        if self.allowed_ligand and r_name == self.allowed_ligand:
-            return 1
-        # 3. Retain explicit cofactors
-        if r_name in self.allowed_cofactors:
-            return 1
-        # 4. Strictly purge everything else (water, buffers, unrequested ions and ligands)
         return 0
 
 
@@ -126,10 +112,12 @@ def _sanitize_and_split_models(
     base_name: str,
     allowed_ligand: str | None,
     allowed_cofactors: list[str],
-) -> list[tuple[str, Path]]:
+    allowed_ions: list[str],
+) -> list[tuple[str, Path, Path]]:
     """
-    Parses PDB or mmCIF, verifies explicit existence of requested ligand/cofactors (Fail-Fast),
-    purges all water and unauthorized molecules immediately, and writes clean standardized PDB files.
+    Parses macromolecular structure, executes strict Fail-Fast verification of explicitly
+    requested ligand, cofactors, and ions, and separates pure APO protein from raw model geometry.
+    Returns list of (frame_name, apo_frame_pdb, raw_model_pdb).
     """
     from Bio.PDB import PDBParser, MMCIFParser, PDBIO
 
@@ -141,9 +129,7 @@ def _sanitize_and_split_models(
     elif suffix == ".pdb":
         parser = PDBParser(QUIET=True)
     else:
-        out_f = dest_dir / f"{base_name}{suffix}"
-        shutil.copy2(struct_path, out_f)
-        return [(base_name, out_f)]
+        raise ValueError(f"FATAL: Unsupported structure format '{suffix}'. Expected .pdb or .cif/.mmcif")
 
     st = parser.get_structure("struct", str(struct_path))
 
@@ -156,39 +142,54 @@ def _sanitize_and_split_models(
 
     if allowed_ligand and allowed_ligand.upper() not in all_resnames:
         raise ValueError(
-            f"FATAL: Specified ligand '{allowed_ligand}' was not found in {struct_path.name}! "
+            f"FATAL: Explicitly specified ligand '{allowed_ligand}' was not found in {struct_path.name}! "
             f"Available residues: {sorted(list(all_resnames))}"
         )
 
     for cof in allowed_cofactors:
         if cof.upper() not in all_resnames:
             raise ValueError(
-                f"FATAL: Specified cofactor '{cof}' was not found in {struct_path.name}! "
+                f"FATAL: Explicitly specified cofactor '{cof}' was not found in {struct_path.name}! "
                 f"Available residues: {sorted(list(all_resnames))}"
             )
 
-    selector = CleanStructureSelect(allowed_ligand, allowed_cofactors)
+    for ion in allowed_ions:
+        if ion.upper() not in all_resnames:
+            raise ValueError(
+                f"FATAL: Explicitly specified ion '{ion}' was not found in {struct_path.name}! "
+                f"Available residues: {sorted(list(all_resnames))}"
+            )
+
     io = PDBIO()
+    protein_selector = CleanProteinSelect()
 
     models = list(st.get_models())
+    results = []
+
     if len(models) > 1:
         console.print(
-            f"[cyan]Detected {len(models)} models in ensemble. Sanitizing and splitting transparently...[/cyan]"
+            f"[cyan]Detected {len(models)} models in ensemble. Separating clean apo frames...[/cyan]"
         )
-        results = []
         for idx, model in enumerate(models, start=1):
             f_name = f"{base_name}_m{idx}"
-            out_file = dest_dir / f"{f_name}.pdb"
+            out_apo = dest_dir / f"{f_name}.pdb"
+            out_raw = dest_dir / f"{f_name}_source.pdb"
+            
             io.set_structure(model)
-            io.save(str(out_file), selector)
-            results.append((f_name, out_file))
-        return results
+            io.save(str(out_raw))  # Preserves all atoms for heterogen extraction
+            io.save(str(out_apo), protein_selector)  # Strictly APO protein
+            results.append((f_name, out_apo, out_raw))
     else:
         f_name = base_name
-        out_file = dest_dir / f"{f_name}.pdb"
+        out_apo = dest_dir / f"{f_name}.pdb"
+        out_raw = dest_dir / f"{f_name}_source.pdb"
+
         io.set_structure(st[0])
-        io.save(str(out_file), selector)
-        return [(f_name, out_file)]
+        io.save(str(out_raw))
+        io.save(str(out_apo), protein_selector)
+        results.append((f_name, out_apo, out_raw))
+
+    return results
 
 
 def _extract_ligand_atoms(rec_path: Path, lig_resname: str, out_sdf: Path) -> None:
@@ -258,14 +259,16 @@ def add_receptor(
     target: str | None = None,
     name: str | None = None,
     cofactors: list[str] | None = None,
+    ions: list[str] | None = None,
     ligand: str | None = None,
 ) -> None:
     """
-    Imports macromolecular structure(s) (PDB/CIF/MAE) into a Target.
-    Supports single files, multiple paths, or shell globs.
+    Imports macromolecular structure(s) (PDB/CIF) into a Target.
+    Enforces 100% APO protein frames and extracts explicit heterogens into atomic 3D poses.
     """
     session = init_db()
     cwd = Path.cwd()
+    target_cli_name = target
 
     raw_inputs = paths if isinstance(paths, list) else [paths]
     struct_paths = [Path(p).resolve() for p in raw_inputs]
@@ -277,31 +280,32 @@ def add_receptor(
             )
             sys.exit(1)
 
-        target_name = target if target else struct_path.stem
-        target = session.query(Target).filter_by(name=target_name).first()
-        if not target:
-            target = Target(name=target_name, description=f"Target {target_name}")
-            session.add(target)
+        target_name = target_cli_name if target_cli_name else struct_path.stem
+        target_obj = session.query(Target).filter_by(name=target_name).first()
+        if not target_obj:
+            target_obj = Target(name=target_name, description=f"Target {target_name}")
+            session.add(target_obj)
             session.flush()
             console.print(f"[bold green]✓ Created Target '{target_name}'[/bold green]")
 
         base_name = name if (len(struct_paths) == 1 and name) else struct_path.stem
-        safe_cofactors = cofactors if cofactors else []
+        safe_cofactors = [c.strip().upper() for c in (cofactors or [])]
+        safe_ions = [i.strip().upper() for i in (ions or [])]
         lig_code = ligand.strip().upper() if ligand else None
         source_type = "crystal"
 
         frames_dir = cwd / "structures" / target_name
         frames = _sanitize_and_split_models(
-            struct_path, frames_dir, base_name, lig_code, safe_cofactors
+            struct_path, frames_dir, base_name, lig_code, safe_cofactors, safe_ions
         )
 
-        for frame_name, frame_file in frames:
-            has_gaps = _detect_gaps(frame_file)
+        for frame_name, apo_file, raw_file in frames:
+            has_gaps = _detect_gaps(apo_file)
             initial_state = "broken" if has_gaps else "raw"
 
             ex_frame = session.query(ReceptorFrame).filter_by(name=frame_name).first()
             if ex_frame:
-                ex_frame.path = str(frame_file.resolve())
+                ex_frame.path = str(apo_file.resolve())
                 ex_frame.state = initial_state
                 frame_obj = ex_frame
                 console.print(
@@ -309,11 +313,11 @@ def add_receptor(
                 )
             else:
                 frame_obj = ReceptorFrame(
-                    target_id=target.id,
+                    target_id=target_obj.id,
                     name=frame_name,
                     source_type=source_type,
                     state=initial_state,
-                    path=str(frame_file.resolve()),
+                    path=str(apo_file.resolve()),
                 )
                 session.add(frame_obj)
                 session.flush()
@@ -333,12 +337,9 @@ def add_receptor(
             
             def _process_heterogen(resname: str, sub_type: str):
                 pose_sdf = poses_dir / f"{frame_name}_{resname}_crystal.sdf"
-                _extract_ligand_atoms(frame_file, resname, pose_sdf)
+                _extract_ligand_atoms(raw_file, resname, pose_sdf)
 
                 parent_inchikey, parent_smiles, mol_name, formal_charge = get_mol_identity(pose_sdf)
-
-                is_single_atom = sum(1 for c in parent_smiles if c.isalpha()) == 1
-                actual_type = "ion" if is_single_atom and sub_type == "cofactor" else sub_type
 
                 sub_entity = session.query(Substance).filter_by(inchikey=parent_inchikey).first()
                 if not sub_entity:
@@ -346,25 +347,25 @@ def add_receptor(
                         inchikey=parent_inchikey,
                         smiles=parent_smiles,
                         name=mol_name or resname,
-                        substance_type=actual_type,
+                        substance_type=sub_type,
                         state="raw",
                         batch_id="crystal_extract",
                     )
                     session.add(sub_entity)
                     session.flush()
                     console.print(
-                        f"[bold green]✓ Registered {actual_type.capitalize()} '{sub_entity.name}'[/bold green] [dim](raw, {parent_inchikey})[/dim]"
+                        f"[bold green]✓ Registered {sub_type.capitalize()} '{sub_entity.name}'[/bold green] [dim](raw, {parent_inchikey})[/dim]"
                     )
                 else:
                     console.print(
-                        f"[bold green]✓ Matched existing {actual_type.capitalize()} '{sub_entity.name}' via InChIKey[/bold green] [dim]({parent_inchikey})[/dim]"
+                        f"[bold green]✓ Matched existing {sub_type.capitalize()} '{sub_entity.name}' via InChIKey[/bold green] [dim]({parent_inchikey})[/dim]"
                     )
 
                 pose_name = f"{frame_name}_{resname}_pose"
                 p_obj = session.query(Pose).filter_by(name=pose_name).first()
                 if p_obj:
                     p_obj.path = str(pose_sdf.resolve())
-                    p_obj.scores_dict = {"formal_charge": formal_charge}
+                    p_obj.formal_charge = formal_charge
                 else:
                     p_obj = Pose(
                         substance_id=sub_entity.id,
@@ -372,9 +373,9 @@ def add_receptor(
                         name=pose_name,
                         origin="crystal",
                         state="raw",
+                        formal_charge=formal_charge,
                         path=str(pose_sdf.resolve()),
                     )
-                    p_obj.scores_dict = {"formal_charge": formal_charge}
                     session.add(p_obj)
                     session.flush()
                     ch_label = f"q={formal_charge:+d}" if formal_charge != 0 else "neutral"
@@ -387,10 +388,17 @@ def add_receptor(
             if lig_code:
                 main_ligand_pose = _process_heterogen(lig_code, "ligand")
 
-            cofactor_poses = []
+            hetero_poses = []
             for cof in safe_cofactors:
                 c_pose = _process_heterogen(cof, "cofactor")
-                cofactor_poses.append(c_pose)
+                hetero_poses.append(c_pose)
+
+            for ion in safe_ions:
+                i_pose = _process_heterogen(ion, "ion")
+                hetero_poses.append(i_pose)
+
+            # Purge intermediate extraction raw file to prevent disk clutter
+            raw_file.unlink(missing_ok=True)
 
             # System creation
             sys_name = f"{frame_name}_{lig_code}" if main_ligand_pose else frame_name
@@ -398,21 +406,21 @@ def add_receptor(
             if ex_sys:
                 ex_sys.pose_id = main_ligand_pose.id if main_ligand_pose else None
                 ex_sys.state = "raw"
-                ex_sys.cofactors = cofactor_poses
+                ex_sys.cofactors = hetero_poses
             else:
                 new_sys = System(
-                    target_id=target.id,
+                    target_id=target_obj.id,
                     receptor_frame_id=frame_obj.id,
                     pose_id=main_ligand_pose.id if main_ligand_pose else None,
                     name=sys_name,
                     state="raw",
                     origin="crystal",
                 )
-                new_sys.cofactors = cofactor_poses
+                new_sys.cofactors = hetero_poses
                 session.add(new_sys)
                 sys_type = "Holo" if main_ligand_pose else "Apo"
                 console.print(
-                    f"[bold green]✓ Created {sys_type} System '{sys_name}'[/bold green] [dim]with {len(cofactor_poses)} cofactors[/dim]"
+                    f"[bold green]✓ Created {sys_type} System '{sys_name}'[/bold green] [dim]with {len(hetero_poses)} cofactor(s)/ion(s)[/dim]"
                 )
 
     session.commit()

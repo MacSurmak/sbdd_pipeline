@@ -45,7 +45,13 @@ def main():
         "--cofactors",
         nargs="*",
         default=[],
-        help="Cofactor residue names to retain (e.g. ATP MG)",
+        help="Cofactor residue names to retain (e.g. ATP, NADH, FAD)",
+    )
+    p_add_rec.add_argument(
+        "--ions",
+        nargs="*",
+        default=[],
+        help="Explicit ion residue names to retain (e.g. MG, ZN, CA, CL)",
     )
     p_add_rec.add_argument(
         "--ligand", help="Native ligand residue name inside structure (e.g. KVR, BTN)"
@@ -427,6 +433,7 @@ def main():
                 target=args.target,
                 name=args.name,
                 cofactors=args.cofactors,
+                ions=args.ions,
                 ligand=args.ligand,
             )
         elif args.add_type == "fasta":

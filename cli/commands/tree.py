@@ -116,11 +116,11 @@ def print_tree() -> None:
             )
             for p in poses:
                 p_color = "green" if p.state == "ready" else "yellow"
-                ch = p.scores_dict.get("formal_charge", None)
+                ch = p.formal_charge
                 ch_tag = (
                     f" [cyan](q={ch:+d})[/cyan]"
-                    if ch is not None and ch != 0
-                    else (" [dim](neutral)[/dim]" if ch == 0 else "")
+                    if ch != 0
+                    else " [dim](neutral)[/dim]"
                 )
                 param_status = " [bold green]+GAFF2[/bold green]" if (p.path_mol2 and p.path_frcmod) else ""
                 sub_node.add(
