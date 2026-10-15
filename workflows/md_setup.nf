@@ -32,7 +32,7 @@ workflow MD_SETUP_WF {
     ch_targets = Channel.fromList(planData).map { target ->
         def meta = [
             id: target.id,
-            lig_resname: target.lig_resname ?: "LIG",
+            lig_resname: target.lig_resname ?: "",
             extra_resnames: target.extra_resnames ?: [],
             project: params.project_name
         ]

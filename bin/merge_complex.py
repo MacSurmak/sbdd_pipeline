@@ -15,10 +15,10 @@ def main():
     )
     parser.add_argument("--rec_pdb", required=True, help="Input receptor PDB")
     parser.add_argument(
-        "--lig_sdf", default=None, help="Active ligand SDF file (if holo)"
+        "--lig_sdf", default=None, help="Active ligand SDF file (strictly for holo systems)"
     )
     parser.add_argument(
-        "--lig_resname", default="", help="Strict PDB residue name for ligand (if holo, e.g. KVR)"
+        "--lig_resname", default=None, help="Strict PDB residue name for ligand (strictly for holo systems)"
     )
     parser.add_argument(
         "--extra_sdfs", nargs="*", default=[], help="Additional SDF files (cofactors, ions)"
@@ -28,6 +28,14 @@ def main():
     )
     parser.add_argument("--out_pdb", required=True, help="Output complex PDB")
     args = parser.parse_args()
+
+    # Strict Fail-Fast: mutually conditional validation between ligand coordinates and residue name
+    if args.lig_sdf and not args.lig_resname:
+        print("FATAL: --lig_resname is strictly required when --lig_sdf is provided for a holo system!", file=sys.stderr)
+        sys.exit(1)
+    if not args.lig_sdf and args.lig_resname:
+        print("FATAL: --lig_resname cannot be specified for an apo system without --lig_sdf!", file=sys.stderr)
+        sys.exit(1)
 
     if len(args.extra_sdfs) != len(args.extra_resnames):
         print(

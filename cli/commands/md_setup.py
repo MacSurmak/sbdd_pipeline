@@ -93,7 +93,7 @@ def run_md_setup(
                 mol2_paths.append(str(Path(c.path_mol2).resolve()))
                 frcmod_paths.append(str(Path(c.path_frcmod).resolve()))
 
-        lig_resname = s.pose.res_name if s.pose else "LIG"
+        lig_resname = s.pose.res_name if s.pose else None
         plan_list.append(
             {
                 "id": s.name,
