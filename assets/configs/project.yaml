@@ -7,7 +7,7 @@ project:
 
 preparation:
   target_ph: 7.4
-  ph_tolerance: 1.0
+  ph_tolerance: 2.0
   minimize_rmsd: 0.3
   cap_termini: true
 
