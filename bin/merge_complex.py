@@ -15,10 +15,10 @@ def main():
     )
     parser.add_argument("--rec_pdb", required=True, help="Input receptor PDB")
     parser.add_argument(
-        "--lig_sdf", help="Active ligand SDF file (if holo)"
+        "--lig_sdf", default=None, help="Active ligand SDF file (if holo)"
     )
     parser.add_argument(
-        "--lig_resname", required=True, help="Strict PDB residue name for ligand (e.g. KVR)"
+        "--lig_resname", default="", help="Strict PDB residue name for ligand (if holo, e.g. KVR)"
     )
     parser.add_argument(
         "--extra_sdfs", nargs="*", default=[], help="Additional SDF files (cofactors, ions)"
@@ -119,6 +119,9 @@ def main():
 
     # Append active ligand if present
     if args.lig_sdf:
+        if not args.lig_resname:
+            print("FATAL: --lig_resname must be provided when --lig_sdf is present.", file=sys.stderr)
+            sys.exit(1)
         _append_small_molecule(args.lig_sdf, args.lig_resname)
 
     # Append all cofactors and ions
