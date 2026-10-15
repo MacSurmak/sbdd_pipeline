@@ -505,15 +505,14 @@ def add_receptor(
             def _process_heterogen(resname: str, sub_type: str):
                 import tempfile
                 clean_res_name = resname.strip().upper()
-                
+
                 with tempfile.NamedTemporaryFile(suffix=".sdf", delete=False) as tmp_f:
                     tmp_extract_sdf = Path(tmp_f.name)
-                
-                try:
-                    _extract_ligand_atoms(complex_file, clean_res_name, tmp_extract_sdf)
-                    parent_inchikey, parent_smiles, mol_name, formal_charge = get_mol_identity(tmp_extract_sdf)
-    
-                    sub_dir = cwd / "substances" / parent_inchikey
+
+                _extract_ligand_atoms(complex_file, clean_res_name, tmp_extract_sdf)
+                parent_inchikey, parent_smiles, mol_name, formal_charge = get_mol_identity(tmp_extract_sdf)
+
+                sub_dir = cwd / "substances" / parent_inchikey
                 sub_dir.mkdir(parents=True, exist_ok=True)
 
                 # Canonical Base Template: substances/<inchikey>/<res>_base.sdf
@@ -552,6 +551,9 @@ def add_receptor(
 
                 shutil.move(str(tmp_extract_sdf), str(pose_sdf))
 
+                if tmp_extract_sdf.exists():
+                    tmp_extract_sdf.unlink()
+
                 p_obj = session.query(Pose).filter_by(name=pose_name).first()
                 if p_obj:
                     p_obj.path = str(pose_sdf.resolve())
@@ -576,11 +578,6 @@ def add_receptor(
                     console.print(
                         f"[bold green]✓ Registered Pose '{pose_name}'[/bold green] [dim]({clean_res_name}, {ch_label}) in substance {parent_inchikey}[/dim]"
                     )
-                    
-                finally:
-                    if tmp_extract_sdf.exists():
-                        tmp_extract_sdf.unlink()
-
                 return p_obj
 
             main_ligand_pose = None
