@@ -8,13 +8,13 @@ process MERGE_PDB {
     label 'process_single'
 
     input:
-    tuple val(meta), path(rec_pdb), path(lig_sdf)
+    tuple val(meta), path(rec_pdb), path(lig_sdf, arity: '0..1')
 
     output:
     tuple val(meta), path("complex_dry.pdb"), emit: complex_pdb
 
     script:
-    def lig_arg = lig_sdf ? "--lig_sdf ${lig_sdf}" : ""
+    def lig_arg = (lig_sdf && lig_sdf.name != 'NO_FILE') ? "--lig_sdf ${lig_sdf}" : ""
     """
     python3 ${projectDir}/bin/merge_complex.py \\
         --rec_pdb ${rec_pdb} \\

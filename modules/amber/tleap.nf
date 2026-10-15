@@ -8,7 +8,7 @@ process TLEAP {
     label 'process_single'
 
     input:
-    tuple val(meta), path(complex_pdb), path(mol2s), path(frcmods)
+    tuple val(meta), path(complex_pdb), path(mol2s, arity: '0..*'), path(frcmods, arity: '0..*')
     val(water_leaprc)
     val(water_box)
     val(box_type)
@@ -24,6 +24,8 @@ process TLEAP {
 
     script:
     def mem_arg = (is_membrane.toString() == 'true') ? "--membrane" : ""
+    def mol2_arg = (mol2s && mol2s.size() > 0) ? "--mol2s ${mol2s}" : ""
+    def frcmod_arg = (frcmods && frcmods.size() > 0) ? "--frcmods ${frcmods}" : ""
     """
     python3 ${projectDir}/bin/wrap_amber.py tleap \\
         --complex_pdb ${complex_pdb} \\
@@ -34,8 +36,8 @@ process TLEAP {
         --ss_cutoff ${ss_cutoff} \\
         --water_names "${water_names}" \\
         --salt_conc ${salt_conc} \\
-        --mol2s ${mol2s} \\
-        --frcmods ${frcmods} \\
+        ${mol2_arg} \\
+        ${frcmod_arg} \\
         ${mem_arg}
     """
 

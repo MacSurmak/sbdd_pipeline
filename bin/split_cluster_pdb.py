@@ -171,48 +171,61 @@ def main():
     if not in_path.exists() or in_path.stat().st_size == 0:
         raise FileNotFoundError(f"FATAL: Cluster PDB {in_path} not found or empty.")
 
+    import json
+
     lig_name = args.ligand.strip().upper()
     max_c = args.max_clusters
-    receipt_lines = []
+    receipt_records = []
 
     # 1. Pre-process GROMACS cluster PDB to inject canonical Chain IDs ('A', 'B'..., 'Z') and TER separators
     clean_model_pdbs = normalize_gmx_cluster_pdb(in_path, lig_name)
 
     from schrodinger.structutils import assignbondorders
 
+    water_residues = {"HOH", "WAT", "SOL", "TIP", "TIP3", "TIP4", "W"}
+
     for i, model_pdb in enumerate(clean_model_pdbs, 1):
         if max_c > 0 and i > max_c:
             break
 
         st = structure.StructureReader.read(str(model_pdb))
-        pose_path = "NO_POSE"
+        centroid_poses = {}
 
-        # 2. Extract Ligand from Chain Z with full bond order & formal charge perception
-        if lig_name:
-            lig_atoms = [
+        # 2. Extract ALL non-protein, non-water small molecules (ligand and cofactors)
+        small_mol_resnames = set()
+        for res in st.residue:
+            r_clean = res.pdbres.strip().upper()
+            if r_clean not in STANDARD_PROTEIN and r_clean not in water_residues:
+                small_mol_resnames.add(r_clean)
+
+        for r_code in sorted(list(small_mol_resnames)):
+            mol_atoms = [
                 a.index
                 for a in st.atom
-                if a.chain == "Z" or a.pdbres.strip().upper() == lig_name
+                if a.pdbres.strip().upper() == r_code
             ]
-            if lig_atoms:
-                lig_st = st.extract(lig_atoms)
-                lig_st.title = lig_name
-                lig_st.property["s_m_title"] = lig_name
+            if mol_atoms:
+                mol_st = st.extract(mol_atoms)
+                mol_st.title = r_code
+                mol_st.property["s_m_title"] = r_code
 
                 # Perceive chemistry, double bonds and formal charges from 3D geometry
                 try:
-                    assignbondorders.assign_st(lig_st)
+                    assignbondorders.assign_st(mol_st)
                 except Exception as e:
                     sys.stderr.write(
-                        f"Warning: assignbondorders note for pose {i}: {e}\n"
+                        f"Warning: assignbondorders note for {r_code} in cluster {i}: {e}\n"
                     )
 
-                sdf_out = f"pose_{i}.sdf"
-                mae_out = f"pose_{i}.mae"
-                lig_st.write(sdf_out)
-                lig_st.write(mae_out)
-                st.deleteAtoms(lig_atoms)
-                pose_path = str(Path(sdf_out).resolve())
+                sdf_out = f"pose_{r_code}_{i}.sdf"
+                mae_out = f"pose_{r_code}_{i}.mae"
+                mol_st.write(sdf_out)
+                mol_st.write(mae_out)
+                st.deleteAtoms(mol_atoms)
+                centroid_poses[r_code] = {
+                    "sdf": sdf_out,
+                    "mae": mae_out,
+                }
 
         # 3. Clean AMBER residue translations for receptor
         res_translation = {
@@ -238,20 +251,23 @@ def main():
         st.write(pdb_name)
         st.write(mae_name)
 
-        sdf_pose_name = f"pose_{i}.sdf" if pose_path != "NO_POSE" else ""
-        mae_pose_name = f"pose_{i}.mae" if pose_path != "NO_POSE" else ""
-
-        # Deterministic 6-column receipt contract mapping to explicit System SSOT
-        row = f"{args.sys_name}\t{c_title}\t{pdb_name}\t{mae_name}\t{sdf_pose_name}\t{mae_pose_name}\n"
-        receipt_lines.append(row)
+        receipt_records.append({
+            "sys_name": args.sys_name,
+            "centroid_title": c_title,
+            "pdb": pdb_name,
+            "mae": mae_name,
+            "poses": centroid_poses,
+        })
 
         # Cleanup temporary normalized model PDB
         model_pdb.unlink(missing_ok=True)
 
-    with open(args.out_receipt, "w", encoding="utf-8") as rf:
-        rf.writelines(receipt_lines)
+    # Always write deterministic JSON receipt
+    out_receipt_p = Path(args.out_receipt)
+    json_path = out_receipt_p.with_suffix(".json") if out_receipt_p.suffix.lower() != ".json" else out_receipt_p
+    json_path.write_text(json.dumps(receipt_records, indent=2), encoding="utf-8")
 
-    print(f"Extracted {len(receipt_lines)} cluster centroid(s) -> {args.out_receipt}")
+    print(f"Extracted {len(receipt_records)} cluster centroid(s) -> {json_path}")
 
 
 if __name__ == "__main__":

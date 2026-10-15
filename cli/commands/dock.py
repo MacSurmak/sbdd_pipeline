@@ -473,12 +473,15 @@ def run_dock(
                     session.add(new_p)
                     pose_obj = new_p
 
-                # 3NF System Assembly: Inherit cofactors from parent system
+                # 3NF System Assembly: Inherit cofactors from frame's system or lineage parent
                 parent_sys = session.query(System).filter(
-                    System.receptor_frame_id == r_frame.id,
-                    System.origin == "crystal"
+                    System.receptor_frame_id == r_frame.id
                 ).first()
-                parent_cofactors = parent_sys.cofactors if parent_sys else []
+                if not parent_sys and r_frame.parent_frame_id:
+                    parent_sys = session.query(System).filter(
+                        System.receptor_frame_id == r_frame.parent_frame_id
+                    ).first()
+                parent_cofactors = list(parent_sys.cofactors) if parent_sys else []
 
                 sys_name = f"{frame_name}_{title}_{eng}"
                 ex_sys = session.query(System).filter_by(name=sys_name).first()

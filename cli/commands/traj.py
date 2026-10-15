@@ -429,44 +429,33 @@ def run_cluster(
     prepared_dir = (cwd / "prepared").resolve()
     receipt_files = []
 
-    # Strict Fail-Fast verification of task receipts at canonical namespace locations
+    # Strict Fail-Fast verification of canonical JSON task receipts
     for task_id in sys_map.keys():
         task_receipt = (
-            prepared_dir / task_id / f"{task_id}_cluster_receipt.tsv"
+            prepared_dir / task_id / f"{task_id}_cluster_receipt.json"
         ).resolve()
         if not task_receipt.exists():
             console.print(
-                f"[bold red]FATAL: Canonical cluster receipt not found at expected location: {task_receipt}[/bold red]"
+                f"[bold red]FATAL: Canonical cluster JSON receipt not found at expected location: {task_receipt}[/bold red]"
             )
             sys.exit(1)
         receipt_files.append(task_receipt)
 
     registered_frames = 0
-    lines = []
+    records = []
     for rf in receipt_files:
-        lines.extend(rf.read_text().strip().splitlines())
+        try:
+            records.extend(json.loads(rf.read_text(encoding="utf-8")))
+        except Exception as e:
+            raise ValueError(f"FATAL: Malformed cluster receipt JSON at {rf}: {e}")
 
-    for line in lines:
-        if not line.strip():
-            continue
-        parts = line.split("\t")
-        if len(parts) < 4:
-            raise ValueError(
-                f"FATAL: Malformed cluster receipt row (expected 6 columns): {line}"
-            )
+    for rec in records:
+        parent_sys_key = rec["sys_name"]
+        centroid_title = rec["centroid_title"]
+        pdb_name = rec["pdb"]
+        mae_name = rec["mae"]
+        poses_dict = rec.get("poses", {})
 
-        sys_id_val = parts[0].strip()
-        centroid_title = parts[1].strip()
-        pdb_name = parts[2].strip()
-        mae_name = parts[3].strip()
-        pose_sdf_name = (
-            parts[4].strip() if len(parts) > 4 and parts[4].strip() else None
-        )
-        pose_mae_name = (
-            parts[5].strip() if len(parts) > 5 and parts[5].strip() else None
-        )
-
-        parent_sys_key = sys_id_val
         mapped_item = sys_map.get(parent_sys_key)
         if not mapped_item:
             raise KeyError(
@@ -486,22 +475,6 @@ def run_cluster(
         if not mae_file.exists():
             raise FileNotFoundError(
                 f"FATAL: Centroid MAE deliverable missing: {mae_file}"
-            )
-
-        pose_sdf_file = (task_dir / pose_sdf_name).resolve() if pose_sdf_name else None
-        pose_mae_file = (task_dir / pose_mae_name).resolve() if pose_mae_name else None
-
-        if pose_sdf_file and (
-            not pose_sdf_file.exists() or pose_sdf_file.stat().st_size == 0
-        ):
-            raise FileNotFoundError(
-                f"FATAL: Centroid pose SDF missing: {pose_sdf_file}"
-            )
-        if pose_mae_file and (
-            not pose_mae_file.exists() or pose_mae_file.stat().st_size == 0
-        ):
-            raise FileNotFoundError(
-                f"FATAL: Centroid pose MAE missing: {pose_mae_file}"
             )
 
         # Record clustering signature on parent system
@@ -536,65 +509,100 @@ def run_cluster(
             ex_frame.path_pdb = str(pdb_file)
             frame_obj = ex_frame
 
-        # B. Register in-situ Pose with explicit SDF and MAE deliverables
-        pose_obj = None
-        if pose_sdf_file and parent_sys.pose:
-            cluster_pose_name = f"{centroid_frame_name}_pose"
+        # B. Register in-situ Poses for all extracted molecules (ligand and cofactors)
+        centroid_main_pose = None
+        centroid_cofactors = []
+
+        parent_main_resname = (
+            parent_sys.pose.substance.name.strip().upper()
+            if parent_sys.pose and parent_sys.pose.substance
+            else None
+        )
+
+        for res_name, p_files in poses_dict.items():
+            res_clean = res_name.strip().upper()
+            sdf_name = p_files.get("sdf")
+            mae_name = p_files.get("mae")
+
+            p_sdf_file = (task_dir / sdf_name).resolve() if sdf_name else None
+            p_mae_file = (task_dir / mae_name).resolve() if mae_name else None
+
+            if not p_sdf_file or not p_sdf_file.exists() or p_sdf_file.stat().st_size == 0:
+                raise FileNotFoundError(f"FATAL: Centroid pose SDF missing or empty: {p_sdf_file}")
+
+            # Match with parent pose to preserve substance lineage and charge
+            parent_match = None
+            is_main_lig = False
+
+            if parent_sys.pose and (
+                (parent_main_resname and res_clean == parent_main_resname)
+                or (res_clean in parent_sys.pose.name.upper())
+            ):
+                parent_match = parent_sys.pose
+                is_main_lig = True
+            else:
+                for cof_p in parent_sys.cofactors:
+                    if (cof_p.substance and res_clean == cof_p.substance.name.strip().upper()) or (res_clean in cof_p.name.upper()):
+                        parent_match = cof_p
+                        break
+
+            if not parent_match:
+                raise ValueError(
+                    f"FATAL: Extracted centroid molecule '{res_clean}' has no matching Pose in parent system '{parent_sys.name}'!"
+                )
+
+            cluster_pose_name = f"{centroid_frame_name}_{res_clean}_pose"
             ex_pose = session.query(Pose).filter_by(name=cluster_pose_name).first()
             if not ex_pose:
-                new_pose = Pose(
-                    substance_id=parent_sys.pose.substance_id,
+                new_p = Pose(
+                    substance_id=parent_match.substance_id,
                     receptor_frame_id=frame_obj.id,
                     name=cluster_pose_name,
                     origin="md_cluster",
-                    state="raw",  # Requires antechamber (sbdd prep) due to new geometry
-                    path=str(pose_sdf_file),
-                    path_sdf=str(pose_sdf_file),
-                    path_mae=str(pose_mae_file) if pose_mae_file else None,
+                    state="raw",  # Geometry shifted in MD -> requires sbdd prep Antechamber
+                    path=str(p_sdf_file),
+                    path_sdf=str(p_sdf_file),
+                    path_mae=str(p_mae_file) if p_mae_file and p_mae_file.exists() else None,
                 )
-                # Inherit formal charge
-                new_pose.scores_dict = {"formal_charge": parent_sys.pose.scores_dict.get("formal_charge", 0)}
-                session.add(new_pose)
+                new_p.scores_dict = {"formal_charge": parent_match.scores_dict.get("formal_charge", 0)}
+                session.add(new_p)
                 session.flush()
-                pose_obj = new_pose
+                curr_pose = new_p
             else:
-                ex_pose.path = str(pose_sdf_file)
-                ex_pose.path_sdf = str(pose_sdf_file)
-                ex_pose.path_mae = str(pose_mae_file) if pose_mae_file else None
+                ex_pose.path = str(p_sdf_file)
+                ex_pose.path_sdf = str(p_sdf_file)
+                ex_pose.path_mae = str(p_mae_file) if p_mae_file and p_mae_file.exists() else None
                 ex_pose.state = "raw"
-                pose_obj = ex_pose
+                curr_pose = ex_pose
 
-        # C. Register Ready System for this Centroid and strictly inherit Cofactors
+            if is_main_lig:
+                centroid_main_pose = curr_pose
+            else:
+                centroid_cofactors.append(curr_pose)
+
+        # C. Register System for this Centroid with fresh child cofactors
         cluster_sys_name = (
             f"{centroid_frame_name}_{parent_sys.pose.substance.name}"
-            if pose_obj
+            if centroid_main_pose
             else centroid_frame_name
         )
-        if pose_obj:
-            legacy_apo = (
-                session.query(System).filter_by(name=centroid_frame_name).first()
-            )
-            if legacy_apo:
-                session.delete(legacy_apo)
-                session.flush()
 
         ex_sys = session.query(System).filter_by(name=cluster_sys_name).first()
         if not ex_sys:
             new_sys = System(
                 target_id=parent_sys.target_id,
                 receptor_frame_id=frame_obj.id,
-                pose_id=pose_obj.id if pose_obj else None,
+                pose_id=centroid_main_pose.id if centroid_main_pose else None,
                 name=cluster_sys_name,
                 state="raw",
                 origin="md_cluster",
             )
-            # Inherit exactly the same physical cofactors that were in the parent trajectory
-            new_sys.cofactors = parent_sys.cofactors
+            new_sys.cofactors = centroid_cofactors
             session.add(new_sys)
         else:
-            ex_sys.pose_id = pose_obj.id if pose_obj else None
+            ex_sys.pose_id = centroid_main_pose.id if centroid_main_pose else None
             ex_sys.state = "raw"
-            ex_sys.cofactors = parent_sys.cofactors
+            ex_sys.cofactors = centroid_cofactors
 
         registered_frames += 1
 
