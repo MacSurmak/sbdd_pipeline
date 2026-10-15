@@ -21,10 +21,16 @@ def main():
         "--lig_resname", default=None, help="Strict PDB residue name for ligand (strictly for holo systems)"
     )
     parser.add_argument(
-        "--extra_sdfs", nargs="*", default=[], help="Additional SDF files (cofactors, ions)"
+        "--ion_sdfs", nargs="*", default=[], help="SDF files strictly representing ions (from 3NF DB)"
     )
     parser.add_argument(
-        "--extra_resnames", nargs="*", default=[], help="Residue names corresponding to extra SDFs"
+        "--ion_resnames", nargs="*", default=[], help="Residue names corresponding to ion SDFs"
+    )
+    parser.add_argument(
+        "--cofactor_sdfs", nargs="*", default=[], help="SDF files representing organic cofactors"
+    )
+    parser.add_argument(
+        "--cofactor_resnames", nargs="*", default=[], help="Residue names corresponding to cofactor SDFs"
     )
     parser.add_argument("--out_pdb", required=True, help="Output complex PDB")
     args = parser.parse_args()
@@ -37,9 +43,16 @@ def main():
         print("FATAL: --lig_resname cannot be specified for an apo system without --lig_sdf!", file=sys.stderr)
         sys.exit(1)
 
-    if len(args.extra_sdfs) != len(args.extra_resnames):
+    if len(args.ion_sdfs) != len(args.ion_resnames):
         print(
-            f"FATAL: Mismatch between --extra_sdfs ({len(args.extra_sdfs)}) and --extra_resnames ({len(args.extra_resnames)})!",
+            f"FATAL: Mismatch between --ion_sdfs ({len(args.ion_sdfs)}) and --ion_resnames ({len(args.ion_resnames)})!",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    if len(args.cofactor_sdfs) != len(args.cofactor_resnames):
+        print(
+            f"FATAL: Mismatch between --cofactor_sdfs ({len(args.cofactor_sdfs)}) and --cofactor_resnames ({len(args.cofactor_resnames)})!",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -91,7 +104,7 @@ def main():
     from rdkit import Chem
 
     # 2. Helper to append small molecule residues with unique chains and TER cards
-    def _append_small_molecule(sdf_path_str: str, resname: str):
+    def _append_small_molecule(sdf_path_str: str, resname: str, is_ion: bool = False):
         nonlocal max_res_seq
         p_sdf = Path(sdf_path_str)
         if not p_sdf.exists() or p_sdf.stat().st_size == 0:
@@ -104,7 +117,6 @@ def main():
             print(f"FATAL: RDKit failed to parse molecule from {p_sdf}", file=sys.stderr)
             sys.exit(1)
 
-        pdb_block = Chem.MolToPDBBlock(mol)
         if not available_chains:
             print("FATAL: Exhausted all available chain IDs for small molecules!", file=sys.stderr)
             sys.exit(1)
@@ -116,29 +128,54 @@ def main():
         if len(res_code) < 3:
             res_code = f"{res_code:<3s}"
 
-        for line in pdb_block.splitlines():
-            if line.startswith(("ATOM", "HETATM")):
-                atom_name = line[12:16]
-                coords_and_rest = line[26:] if len(line) >= 26 else ""
-                new_line = f"HETATM{len(out_lines)+1:5d} {atom_name:<4s} {res_code:>3s} {chain_id}{max_res_seq:4d}{coords_and_rest}"
-                out_lines.append(new_line)
+        if is_ion:
+            # Deterministic, non-heuristic branch: entity is strictly an ion from SSOT DB
+            if mol.GetNumAtoms() != 1:
+                print(
+                    f"FATAL: Ion entity '{resname}' in {p_sdf.name} contains {mol.GetNumAtoms()} atoms! "
+                    f"Monoatomic ions in AMBER must contain strictly 1 atom.",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+
+            conf = mol.GetConformer()
+            pos = conf.GetAtomPosition(0)
+            elem = mol.GetAtomWithIdx(0).GetSymbol().upper()
+            clean_atom = res_code.strip()
+            # Standard PDB column 13-16 alignment strictly matching user-declared ion name
+            formatted_atom = f" {clean_atom:<3s}" if len(clean_atom) < 4 else f"{clean_atom:<4s}"
+            new_line = (
+                f"HETATM{len(out_lines)+1:5d} {formatted_atom:4s} {res_code:>3s} "
+                f"{chain_id}{max_res_seq:4d}    {pos.x:8.3f}{pos.y:8.3f}{pos.z:8.3f}  1.00  0.00          {elem:>2s}"
+            )
+            out_lines.append(new_line)
+        else:
+            # Organic ligand or cofactor: preserve RDKit atom names matching Antechamber GAFF2 mol2
+            pdb_block = Chem.MolToPDBBlock(mol)
+            for line in pdb_block.splitlines():
+                if line.startswith(("ATOM", "HETATM")):
+                    atom_name = line[12:16]
+                    coords_and_rest = line[26:] if len(line) >= 26 else ""
+                    new_line = f"HETATM{len(out_lines)+1:5d} {atom_name:<4s} {res_code:>3s} {chain_id}{max_res_seq:4d}{coords_and_rest}"
+                    out_lines.append(new_line)
 
         out_lines.append("TER")
 
-    # Append active ligand if present
+    # Append active ligand if present (strictly organic)
     if args.lig_sdf:
-        if not args.lig_resname:
-            print("FATAL: --lig_resname must be provided when --lig_sdf is present.", file=sys.stderr)
-            sys.exit(1)
-        _append_small_molecule(args.lig_sdf, args.lig_resname)
+        _append_small_molecule(args.lig_sdf, args.lig_resname, is_ion=False)
 
-    # Append all cofactors and ions
-    for e_sdf, e_res in zip(args.extra_sdfs, args.extra_resnames):
-        _append_small_molecule(e_sdf, e_res)
+    # Append ions (strictly typed from DB SSOT)
+    for i_sdf, i_res in zip(args.ion_sdfs, args.ion_resnames):
+        _append_small_molecule(i_sdf, i_res, is_ion=True)
+
+    # Append organic cofactors (strictly typed from DB SSOT)
+    for c_sdf, c_res in zip(args.cofactor_sdfs, args.cofactor_resnames):
+        _append_small_molecule(c_sdf, c_res, is_ion=False)
 
     out_lines.append("END")
     Path(args.out_pdb).write_text("\n".join(out_lines) + "\n")
-    print(f"Successfully assembled {args.out_pdb} with {bool(args.lig_sdf)} ligand and {len(args.extra_sdfs)} cofactor(s)/ion(s).")
+    print(f"Successfully assembled {args.out_pdb} with {bool(args.lig_sdf)} ligand, {len(args.ion_sdfs)} ion(s), and {len(args.cofactor_sdfs)} cofactor(s).")
 
 
 if __name__ == "__main__":

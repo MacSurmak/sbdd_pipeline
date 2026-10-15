@@ -12,7 +12,7 @@ include { NDX_POSRE         } from '../modules/gromacs/ndx_posre'
 
 workflow SETUP_MD_SYSTEM {
     take:
-    ch_targets        // channel: [ meta, rec_pdb, lig_sdf, extra_sdfs, mol2s, frcmods ]
+    ch_targets        // channel: [ meta, rec_pdb, lig_sdf, ion_sdfs, cofactor_sdfs, mol2s, frcmods ]
     is_membrane       // val: true/false
     upper_lipids      // val: "POPC:POPE:CHL1"
     upper_ratio       // val: "5:4:1"
@@ -40,9 +40,9 @@ workflow SETUP_MD_SYSTEM {
     lipid_ff
 
     main:
-    // 1. Clean merge of standardized apo protein with active ligand and cofactors/ions
-    ch_merge_in = ch_targets.map { meta, rec_pdb, lig_sdf, extra_sdfs, mol2s, frcmods ->
-        [ meta, rec_pdb, lig_sdf, extra_sdfs ]
+    // 1. Clean merge of standardized apo protein with strictly typed ligands, ions, and cofactors
+    ch_merge_in = ch_targets.map { meta, rec_pdb, lig_sdf, ion_sdfs, cofactor_sdfs, mol2s, frcmods ->
+        [ meta, rec_pdb, lig_sdf, ion_sdfs, cofactor_sdfs ]
     }
 
     MERGE_PDB(ch_merge_in)
@@ -66,7 +66,7 @@ workflow SETUP_MD_SYSTEM {
 
     // 3. tLEaP topology building
     ch_tleap_in = ch_tleap_pdb
-        .join(ch_targets.map { meta, rec_pdb, lig_sdf, extra_sdfs, mol2s, frcmods -> [meta, mol2s, frcmods] })
+        .join(ch_targets.map { meta, rec_pdb, lig_sdf, ion_sdfs, cofactor_sdfs, mol2s, frcmods -> [meta, mol2s, frcmods] })
         .map { meta, pdb, mol2s, frcmods ->
             [ meta, pdb, mol2s, frcmods ]
         }

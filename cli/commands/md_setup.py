@@ -56,8 +56,11 @@ def run_md_setup(
             raise FileNotFoundError(f"Prepared receptor PDB missing: {rec_pdb}")
 
         lig_sdf = None
-        extra_sdfs = []
-        extra_resnames = []
+        lig_resname = None
+        ion_sdfs = []
+        ion_resnames = []
+        cofactor_sdfs = []
+        cofactor_resnames = []
         mol2_paths = []
         frcmod_paths = []
 
@@ -75,33 +78,39 @@ def run_md_setup(
                 console.print(f"[bold red]FATAL: Pose '{s.pose.name}' missing path_sdf.[/bold red]")
                 sys.exit(1)
             lig_sdf = str(Path(p_sdf).resolve())
+            lig_resname = s.pose.res_name
 
-        # 2. Cofactors and Ions (Separated from pure APO ReceptorFrame)
+        # 2. Strictly separate Ions and Organic Cofactors preserving 3NF entity types
         for c in s.cofactors:
             c_sdf = c.path_sdf or c.path
             if not c_sdf or not Path(c_sdf).exists():
-                console.print(f"[bold red]FATAL: System '{s.name}' cofactor/ion '{c.name}' missing SDF deliverable.[/bold red]")
+                console.print(f"[bold red]FATAL: System '{s.name}' component '{c.name}' missing SDF deliverable.[/bold red]")
                 sys.exit(1)
-            extra_sdfs.append(str(Path(c_sdf).resolve()))
-            c_resname = c.res_name
-            extra_resnames.append(c_resname)
 
-            if c.substance.substance_type != "ion":
+            sdf_path_resolved = str(Path(c_sdf).resolve())
+
+            if c.substance.substance_type == "ion":
+                ion_sdfs.append(sdf_path_resolved)
+                ion_resnames.append(c.res_name)
+            else:
+                cofactor_sdfs.append(sdf_path_resolved)
+                cofactor_resnames.append(c.res_name)
                 if not c.path_mol2 or not c.path_frcmod:
                     console.print(f"[bold red]FATAL: System '{s.name}' contains unparametrized cofactor '{c.name}'. Run 'sbdd prep'![/bold red]")
                     sys.exit(1)
                 mol2_paths.append(str(Path(c.path_mol2).resolve()))
                 frcmod_paths.append(str(Path(c.path_frcmod).resolve()))
 
-        lig_resname = s.pose.res_name if s.pose else None
         plan_list.append(
             {
                 "id": s.name,
                 "rec_pdb": str(rec_pdb),
                 "lig_sdf": lig_sdf,
                 "lig_resname": lig_resname,
-                "extra_sdfs": extra_sdfs,
-                "extra_resnames": extra_resnames,
+                "ion_sdfs": ion_sdfs,
+                "ion_resnames": ion_resnames,
+                "cofactor_sdfs": cofactor_sdfs,
+                "cofactor_resnames": cofactor_resnames,
                 "mol2_paths": mol2_paths,
                 "frcmod_paths": frcmod_paths,
             }
