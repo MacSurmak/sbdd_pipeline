@@ -9,8 +9,8 @@ md_simulation:
     water_leaprc: "leaprc.water.opc3"
     water_box: "OPC3BOX"
     box_type: "oct"
-    box_padding: 15.0
-    ss_cutoff: 2.5
+    box_padding: 12.0
+    ss_cutoff: 3.0
     neutralize: true
     salt_conc: 0.15
     restraint_forces: [1000, 500, 250, 100, 50, 10]
