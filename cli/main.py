@@ -56,6 +56,9 @@ def main():
     p_add_rec.add_argument(
         "--ligand", help="Native ligand residue name inside structure (e.g. KVR, BTN)"
     )
+    p_add_rec.add_argument(
+        "--fasta", help="Explicit path to reference FASTA sequence for the target"
+    )
 
     # 0.2 add fasta
     p_add_fasta = add_subs.add_parser(
@@ -435,6 +438,7 @@ def main():
                 cofactors=args.cofactors,
                 ions=args.ions,
                 ligand=args.ligand,
+                fasta=args.fasta,
             )
         elif args.add_type == "fasta":
             add_fasta(path=args.path)

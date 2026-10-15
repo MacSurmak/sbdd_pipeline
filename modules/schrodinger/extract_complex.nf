@@ -1,15 +1,14 @@
 /*
  * modules/schrodinger/extract_complex.nf
- * Extracts raw protein PDB and native ligand MAE & SDF from complex (.cif / .pdb)
- * Self-contained worker process: zero external script file staging.
+ * Extracts raw protein PDB and native complex MAE from atomic single-frame PDB/CIF.
  */
 
 process EXTRACT_COMPLEX {
-    tag "${meta.id}_f${frame_idx}"
+    tag "${meta.id}"
     label "process_single"
 
     input:
-    tuple val(meta), path(complex_file), val(frame_idx)
+    tuple val(meta), path(complex_file)
     val(membrane_enabled)
 
     output:
@@ -21,13 +20,8 @@ process EXTRACT_COMPLEX {
     """
     schrodinger run ${projectDir}/bin/extract_complex.py \\
         --input ${complex_file} \\
-        --frame_index ${frame_idx} \\
+        --frame_index 1 \\
         ${pure_prot_arg} \\
         --out_complex_mae complex_raw.mae
-    """
-    stub:
-    """
-    touch ${meta.id}_pure_protein.pdb
-    touch ${meta.id}_complex.mae
     """
 }

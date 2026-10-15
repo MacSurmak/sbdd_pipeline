@@ -14,7 +14,6 @@
  *      APPLY_MEMBRANE (Schrodinger Prime): injects implicit membrane slab properties for MM-GBSA.
  */
 
-include { COUNT_MODELS    } from "../modules/common/count_models"
 include { EXTRACT_COMPLEX } from "../modules/schrodinger/extract_complex"
 include { IMMERS          } from "../modules/membrane/immers"
 include { ORIENT_COMPLEX  } from "../modules/schrodinger/orient_complex"
@@ -35,26 +34,8 @@ workflow PREPARE_RECEPTOR {
     cap_termini       // val: true
 
     main:
-    // Raw experimental structures proceed directly through comprehensive PrepWizard
-    COUNT_MODELS(ch_receptor)
-
-    ch_extracted_in = ch_receptor
-        .join(COUNT_MODELS.out.count_file)
-        .flatMap { meta, rec_file, count_txt ->
-            def total = count_txt.text.trim() as int
-            def models = (1..total).toList()
-            models.collect { idx ->
-                def suffix = total > 1 ? "_f${idx}" : ""
-                def frame_meta = meta + [
-                    id: "${meta.id}${suffix}",
-                    frame: idx
-                ]
-                [ frame_meta, rec_file, idx ]
-            }
-        }
-
     EXTRACT_COMPLEX(
-        ch_extracted_in,
+        ch_receptor,
         membrane_enabled
     )
 

@@ -262,6 +262,42 @@ def _extract_ligand_atoms(rec_path: Path, lig_resname: str, out_sdf: Path) -> No
         )
 
 
+def _resolve_target_sequence(target_name: str, fasta_arg: str | None) -> str:
+    """Resolves true reference amino acid sequence via CLI argument or interactive prompt."""
+    if fasta_arg:
+        f_path = Path(fasta_arg).resolve()
+        if not f_path.exists():
+            raise FileNotFoundError(f"FATAL: Specified FASTA file not found: {f_path}")
+        raw_lines = f_path.read_text(encoding="utf-8", errors="ignore").splitlines()
+        seq = "".join(l.strip().upper() for l in raw_lines if not l.startswith(">"))
+        if seq:
+            return seq
+        raise ValueError(f"FATAL: FASTA file {f_path} is empty or contains no sequence data.")
+
+    if sys.stdin.isatty():
+        console.print(
+            f"\n[bold yellow]Target '{target_name}' has no registered reference FASTA sequence.[/bold yellow]\n"
+            "Paste the complete FASTA sequence below. Press [bold]Enter[/bold], then [bold]Ctrl+D[/bold] to submit:"
+        )
+        try:
+            seq_input = sys.stdin.read()
+        except EOFError:
+            seq_input = ""
+
+        clean_seq = "".join(
+            line.strip().upper()
+            for line in seq_input.splitlines()
+            if not line.startswith(">")
+        )
+        if clean_seq:
+            return clean_seq
+
+    raise ValueError(
+        f"FATAL: Reference FASTA sequence is mandatory for Target '{target_name}'. "
+        "Provide it via '--fasta <path>' or interactively during import."
+    )
+
+
 def add_receptor(
     paths: list[str],
     target: str | None = None,
@@ -269,9 +305,10 @@ def add_receptor(
     cofactors: list[str] | None = None,
     ions: list[str] | None = None,
     ligand: str | None = None,
+    fasta: str | None = None,
 ) -> None:
     """
-    Imports macromolecular structure(s) (PDB/CIF) into a Target.
+    Imports macromolecular structure(s) (PDB/CIF) into a Target with mandatory reference sequence.
     Enforces 100% APO protein frames and extracts explicit heterogens into atomic 3D poses.
     """
     session = init_db()
@@ -291,10 +328,20 @@ def add_receptor(
         target_name = target_cli_name if target_cli_name else struct_path.stem
         target_obj = session.query(Target).filter_by(name=target_name).first()
         if not target_obj:
-            target_obj = Target(name=target_name, description=f"Target {target_name}")
+            ref_seq = _resolve_target_sequence(target_name, fasta)
+            target_obj = Target(
+                name=target_name,
+                reference_sequence=ref_seq,
+                description=f"Target {target_name}"
+            )
             session.add(target_obj)
             session.flush()
-            console.print(f"[bold green]✓ Created Target '{target_name}'[/bold green]")
+            console.print(f"[bold green]✓ Created Target '{target_name}'[/bold green] [dim](Sequence: {len(ref_seq)} aa)[/dim]")
+        elif not target_obj.reference_sequence:
+            ref_seq = _resolve_target_sequence(target_name, fasta)
+            target_obj.reference_sequence = ref_seq
+            session.flush()
+            console.print(f"[bold green]✓ Associated FASTA sequence ({len(ref_seq)} aa) with existing Target '{target_name}'[/bold green]")
 
         base_name = name if (len(struct_paths) == 1 and name) else struct_path.stem
         safe_cofactors = [c.strip().upper() for c in (cofactors or [])]
