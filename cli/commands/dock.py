@@ -147,7 +147,7 @@ def run_dock(
                     "path_pdb": str(path_pdb),
                     "ref_sdf": str(pose_sdf),
                     "ref_mae": str(pose_mae),
-                    "native_ligand": native_lig.name,
+                    "native_ligand": native_pose.res_name or native_lig.name,
                 }
             )
 
@@ -445,14 +445,16 @@ def run_dock(
                 pose_counter[key] = pose_counter.get(key, 0) + 1
                 p_idx = pose_counter[key]
 
-                pose_name = f"{frame_name}_{title}_{eng}_pose{p_idx}"
-                sys_name = f"{frame_name}_{title}_{eng}_p{p_idx}"
-                origin_tag = f"docking_{eng}"
+                p_suffix = f"redock_p{p_idx}" if is_self else f"dock_{eng}_p{p_idx}"
+                pose_name = f"{frame_name}_{title}_{p_suffix}"
+                sys_name = f"{frame_name}_{title}_{p_suffix}"
+                origin_tag = f"redock_{eng}" if is_self else f"docking_{eng}"
 
-                # Strict 3NF Domain Placement: systems/<sys_name>/poses/<pose_name>.sdf
-                sys_poses_dir = cwd / "systems" / sys_name / "poses"
-                sys_poses_dir.mkdir(parents=True, exist_ok=True)
-                pose_sdf_file = sys_poses_dir / f"{pose_name}.sdf"
+                # Canonical 3NF Domain Placement: substances/<inchikey>/poses/<pose_name>/<res>_pose.sdf
+                sub_pose_dir = cwd / "substances" / lig.inchikey / "poses" / pose_name
+                sub_pose_dir.mkdir(parents=True, exist_ok=True)
+                clean_res = lig.res_name or title[:4].strip().upper()
+                pose_sdf_file = sub_pose_dir / f"{clean_res}_pose.sdf"
 
                 with Chem.SDWriter(str(pose_sdf_file)) as writer:
                     writer.write(mol_conformation)
@@ -482,6 +484,7 @@ def run_dock(
                 if ex_pose:
                     ex_pose.path = str(pose_sdf_file.resolve())
                     ex_pose.path_sdf = str(pose_sdf_file.resolve())
+                    ex_pose.res_name = clean_res
                     ex_pose.formal_charge = f_charge
                     ex_pose.scores_dict = scores_dict
                     ex_pose.origin = origin_tag
@@ -492,7 +495,7 @@ def run_dock(
                         substance_id=lig.id,
                         receptor_frame_id=r_frame.id,
                         name=pose_name,
-                        res_name=lig.res_name,
+                        res_name=clean_res,
                         origin=origin_tag,
                         state="raw",
                         formal_charge=f_charge,
@@ -504,7 +507,7 @@ def run_dock(
                     session.flush()
                     pose_obj = new_p
 
-                # Deterministic 3NF inheritance: query crystal cofactors registered on this frame or lineage parent
+                # Deterministic 3NF inheritance: query cofactors registered on this frame or lineage parent
                 lookup_frame_id = r_frame.parent_frame_id if r_frame.parent_frame_id else r_frame.id
                 parent_cofactors = (
                     session.query(Pose)
@@ -517,7 +520,6 @@ def run_dock(
                     .all()
                 )
 
-                sys_name = f"{frame_name}_{title}_{eng}_p{p_idx}"
                 ex_sys = session.query(System).filter_by(name=sys_name).first()
                 if ex_sys:
                     ex_sys.pose_id = pose_obj.id
