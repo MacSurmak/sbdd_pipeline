@@ -73,248 +73,144 @@ def main():
     )
     args = parser.parse_args()
 
-    water_residues = {
-        w.strip().upper() for w in args.water_names.split(",") if w.strip()
-    }
-    lines = Path(args.input_pdb).read_text(errors="ignore").splitlines()
+    try:
+        import parmed as pmd
+    except ImportError:
+        print("FATAL: ParmEd is required in current environment.", file=sys.stderr)
+        sys.exit(1)
 
-    # 1. Parse atoms into structured records, grouped by residue
-    residues = []
-    current_key = None
-    current_res = None
+    struct = pmd.load_file(args.input_pdb)
 
-    for line in lines:
-        if line.startswith("TER"):
-            current_key = None
-            current_res = None
-            continue
-        if not (line.startswith("ATOM") or line.startswith("HETATM")):
-            continue
+    # 1. Strip solvent strictly based on configuration SSOT via ParmEd masks
+    water_residues = [w.strip().upper() for w in args.water_names.split(",") if w.strip()]
+    if water_residues:
+        water_mask = ":" + ",".join(water_residues)
+        struct.strip(water_mask)
 
-        atom_num = int(line[6:11].strip())
-        atom_name = line[12:16].strip()
-        alt_loc = line[16]
-        res_name = line[17:20].strip().upper()
-        chain_id = line[21]
-        res_seq = int(line[22:26].strip())
-        i_code = line[26]
-        x = float(line[30:38])
-        y = float(line[38:46])
-        z = float(line[46:54])
+    # 2. Strict globally monotonic residue numbering (1..N) eliminating insertion codes
+    for idx, res in enumerate(struct.residues, start=1):
+        res.number = idx
+        res.insertion_code = ""
 
-        # Exclude solvent strictly based on configuration Single Source of Truth
-        if res_name in water_residues:
-            continue
-
-        res_key = (chain_id, res_seq, i_code, res_name)
-        if res_key != current_key:
-            current_key = res_key
-            current_res = {
-                "chain_id": chain_id,
-                "orig_res_seq": res_seq,
-                "i_code": i_code,
-                "res_name": res_name,
-                "clean_res_seq": 0,
-                "atoms": [],
-            }
-            residues.append(current_res)
-
-        current_res["atoms"].append(
-            {
-                "atom_num": atom_num,
-                "atom_name": atom_name,
-                "line": line,
-                "x": x,
-                "y": y,
-                "z": z,
-            }
-        )
-
-    # 2. Establish strict globally monotonic residue numbering (1..N) eliminating insertion codes
-    global_res_counter = 0
-    for r in residues:
-        global_res_counter += 1
-        r["clean_res_seq"] = global_res_counter
-
-    # 3. Identify Disulfide Bridges using exact canonical clean residue IDs
+    # 3. Detect Disulfide Bridges geometrically via ParmEd atom positions
+    cys_residues = [r for r in struct.residues if r.name in ("CYS", "CYX")]
     bonds = []
-    cyx_indices = set()
-    cys_candidates = []
+    cyx_residues = set()
 
-    for idx, r in enumerate(residues):
-        if r["res_name"] in ["CYS", "CYX"]:
-            sg = next((a for a in r["atoms"] if a["atom_name"] == "SG"), None)
-            if sg:
-                cys_candidates.append((idx, r, sg))
-
-    for i in range(len(cys_candidates)):
-        idx1, r1, sg1 = cys_candidates[i]
-        for j in range(i + 1, len(cys_candidates)):
-            idx2, r2, sg2 = cys_candidates[j]
-            dist = math.sqrt(
-                (sg1["x"] - sg2["x"]) ** 2
-                + (sg1["y"] - sg2["y"]) ** 2
-                + (sg1["z"] - sg2["z"]) ** 2
-            )
+    for i, r1 in enumerate(cys_residues):
+        sg1 = next((a for a in r1.atoms if a.name == "SG"), None)
+        if not sg1:
+            continue
+        for r2 in cys_residues[i + 1 :]:
+            sg2 = next((a for a in r2.atoms if a.name == "SG"), None)
+            if not sg2:
+                continue
+            dist = math.sqrt((sg1.xx - sg2.xx) ** 2 + (sg1.xy - sg2.xy) ** 2 + (sg1.xz - sg2.xz) ** 2)
             if dist < args.ss_cutoff:
-                cyx_indices.add(idx1)
-                cyx_indices.add(idx2)
-                bonds.append(
-                    f"bond complex.{r1['clean_res_seq']}.SG complex.{r2['clean_res_seq']}.SG"
-                )
+                cyx_residues.add(r1)
+                cyx_residues.add(r2)
+                bonds.append(f"bond complex.{r1.number}.SG complex.{r2.number}.SG")
 
     if args.bonds_out:
         with open(args.bonds_out, "w") as fb:
             for b in bonds:
                 fb.write(f"{b}\n")
 
-    # 4. Apply chemical renaming rules strictly matching AMBER ff19SB force field specifications
-    for idx, r in enumerate(residues):
-        res_name = r["res_name"]
-        atom_names = [a["atom_name"] for a in r["atoms"]]
+    # 4. Chemical Standardization: ParmEd object transformations matching ff19SB
+    atoms_to_remove = []
 
-        # Disulfide Cysteine
-        if idx in cyx_indices:
-            r["res_name"] = "CYX"
-            r["atoms"] = [a for a in r["atoms"] if a["atom_name"] not in ["HG", "2HG"]]
+    for res in struct.residues:
+        # Ignore non-protein small molecules (ligands/cofactors): leave coordinates and names 100% untouched
+        if res.name not in STANDARD_PROTEIN_RESIDUES and res not in cyx_residues:
+            continue
+
+        atom_names = {a.name.strip() for a in res.atoms}
+
+        # Disulfide Cysteine (remove thiol hydrogen)
+        if res in cyx_residues:
+            res.name = "CYX"
+            for a in res.atoms:
+                if a.name.strip() in ("HG", "2HG"):
+                    atoms_to_remove.append(a)
 
         # Protonated Aspartate (ASH)
-        elif res_name == "ASP" and any(n in ["HD2", "2HD"] for n in atom_names):
-            r["res_name"] = "ASH"
+        elif res.name == "ASP" and ({"HD2", "2HD"} & atom_names):
+            res.name = "ASH"
 
         # Protonated Glutamate (GLH)
-        elif res_name == "GLU" and any(n in ["HE2", "2HE"] for n in atom_names):
-            r["res_name"] = "GLH"
+        elif res.name == "GLU" and ({"HE2", "2HE"} & atom_names):
+            res.name = "GLH"
 
-        # Lysine / Neutral Lysine (LYN)
-        elif res_name in ["LYS", "LYN"]:
-            existing_names = [a["atom_name"].strip() for a in r["atoms"]]
-            for a in r["atoms"]:
-                if a["atom_name"].strip() == "HZ":
-                    if "HZ1" in existing_names and "HZ2" in existing_names:
-                        a["atom_name"] = "HZ3"
-                    elif "HZ1" in existing_names:
-                        a["atom_name"] = "HZ2"
+        # Neutral Lysine (LYN)
+        elif res.name in ("LYS", "LYN"):
+            for a in res.atoms:
+                if a.name.strip() == "HZ":
+                    if "HZ1" in atom_names and "HZ2" in atom_names:
+                        a.name = "HZ3"
+                    elif "HZ1" in atom_names:
+                        a.name = "HZ2"
                     else:
-                        a["atom_name"] = "HZ1"
-
-            updated_names = [a["atom_name"].strip() for a in r["atoms"]]
-            if not any(n in ["HZ3", "3HZ"] for n in updated_names):
-                r["res_name"] = "LYN"
+                        a.name = "HZ1"
+            updated_names = {a.name.strip() for a in res.atoms}
+            if not ({"HZ3", "3HZ"} & updated_names):
+                res.name = "LYN"
 
         # Histidine Protonation States
-        elif res_name in ["HIS", "HSD", "HSE", "HSP"]:
+        elif res.name in ("HIS", "HSD", "HSE", "HSP"):
             has_hd1 = "HD1" in atom_names
             has_he2 = "HE2" in atom_names
             if has_hd1 and has_he2:
-                r["res_name"] = "HIP"
+                res.name = "HIP"
             elif has_hd1:
-                r["res_name"] = "HID"
+                res.name = "HID"
             else:
-                r["res_name"] = "HIE"
+                res.name = "HIE"
 
-        # C-terminal Cap (NMA/NME -> AMBER NME template: N, H, C, H1, H2, H3)
-        elif res_name in ["NMA", "NME"]:
-            r["res_name"] = "NME"
-            for a in r["atoms"]:
-                an = a["atom_name"].strip()
-                if an in ["CA", "CH3", "C"]:
-                    a["atom_name"] = "C"
-                elif an in ["HN", "H"]:
-                    a["atom_name"] = "H"
-                elif an in ["1HA", "1H", "HH31", "HA1", "H1"]:
-                    a["atom_name"] = "H1"
-                elif an in ["2HA", "2H", "HH32", "HA2", "H2"]:
-                    a["atom_name"] = "H2"
-                elif an in ["3HA", "3H", "HH33", "HA3", "H3"]:
-                    a["atom_name"] = "H3"
+        # C-terminal Cap (NMA/NME -> AMBER ff19SB template: N, H, C, H1, H2, H3)
+        elif res.name in ("NMA", "NME"):
+            res.name = "NME"
+            for a in res.atoms:
+                an = a.name.strip()
+                if an in ("CA", "CH3", "C"):
+                    a.name = "C"
+                elif an in ("HN", "H"):
+                    a.name = "H"
+                elif an in ("1HA", "1H", "HH31", "HA1", "H1"):
+                    a.name = "H1"
+                elif an in ("2HA", "2H", "HH32", "HA2", "H2"):
+                    a.name = "H2"
+                elif an in ("3HA", "3H", "HH33", "HA3", "H3"):
+                    a.name = "H3"
 
-        # N-terminal Cap (ACE -> AMBER ACE template: CH3, C, O, H1, H2, H3)
-        elif res_name == "ACE":
-            for a in r["atoms"]:
-                an = a["atom_name"].strip()
-                if an in ["CA", "CH3"]:
-                    a["atom_name"] = "CH3"
-                elif an in ["1HA", "1H", "HH31", "HA1", "H1"]:
-                    a["atom_name"] = "H1"
-                elif an in ["2HA", "2H", "HH32", "HA2", "H2"]:
-                    a["atom_name"] = "H2"
-                elif an in ["3HA", "3H", "HH33", "HA3", "H3"]:
-                    a["atom_name"] = "H3"
+        # N-terminal Cap (ACE -> AMBER ff19SB template: CH3, C, O, H1, H2, H3)
+        elif res.name == "ACE":
+            for a in res.atoms:
+                an = a.name.strip()
+                if an in ("CA", "CH3"):
+                    a.name = "CH3"
+                elif an in ("1HA", "1H", "HH31", "HA1", "H1"):
+                    a.name = "H1"
+                elif an in ("2HA", "2H", "HH32", "HA2", "H2"):
+                    a.name = "H2"
+                elif an in ("3HA", "3H", "HH33", "HA3", "H3"):
+                    a.name = "H3"
 
-        # Standard backbone amide hydrogen fix strictly isolated to protein residues
-        elif res_name in STANDARD_PROTEIN_RESIDUES and res_name != "PRO":
-            amide_h = [
-                a
-                for a in r["atoms"]
-                if a["atom_name"] in ["H", "HN", "1H", "2H", "3H", "H1", "H2", "H3"]
-            ]
+        # Backbone Amide Hydrogens (H, H1, H2, H3)
+        elif res.name in STANDARD_PROTEIN_RESIDUES and res.name != "PRO":
+            amide_h = [a for a in res.atoms if a.name.strip() in ("H", "HN", "1H", "2H", "3H", "H1", "H2", "H3")]
             if len(amide_h) == 1:
-                amide_h[0]["atom_name"] = "H"
+                amide_h[0].name = "H"
             elif len(amide_h) == 3:
-                for h_idx, a in enumerate(
-                    sorted(amide_h, key=lambda x: x["atom_name"]), start=1
-                ):
-                    a["atom_name"] = f"H{h_idx}"
+                for h_idx, a in enumerate(sorted(amide_h, key=lambda x: x.name), start=1):
+                    a.name = f"H{h_idx}"
 
-    # 5. Write output PDB strictly preserving continuous chain continuity and exact PDB columns
-    out_lines = []
-    global_atom_idx = 1
-    prev_chain = None
+    # Prune detached hydrogens from CYX residues
+    if atoms_to_remove:
+        strip_indices = [str(a.idx + 1) for a in atoms_to_remove]
+        struct.strip("@" + ",".join(strip_indices))
 
-    for r_idx, r in enumerate(residues):
-        # Insert TER strictly when chain ID changes or between distinct non-protein molecules
-        if prev_chain is not None and (
-            r["chain_id"] != prev_chain
-            or (
-                r["res_name"] not in STANDARD_PROTEIN_RESIDUES
-                and residues[r_idx - 1]["res_name"] not in STANDARD_PROTEIN_RESIDUES
-            )
-        ):
-            prev_r = residues[r_idx - 1]
-            out_lines.append(
-                f"TER   {global_atom_idx:5d}      {prev_r['res_name']:>3s} {prev_chain}{prev_r['clean_res_seq']:4d}"
-            )
-            global_atom_idx += 1
-
-        prev_chain = r["chain_id"]
-        formatted_res = f"{r['res_name']:>3s}"
-
-        for a in r["atoms"]:
-            formatted_atom = format_atom_name(a["atom_name"])
-            orig = a["line"]
-            record_type = orig[:6] if len(orig) >= 6 else "ATOM  "
-            alt_loc = orig[16] if len(orig) > 16 else " "
-            x_str = f"{a['x']:8.3f}"
-            y_str = f"{a['y']:8.3f}"
-            z_str = f"{a['z']:8.3f}"
-            occ_str = orig[54:60] if len(orig) >= 60 else "  1.00"
-            tf_str = orig[60:66] if len(orig) >= 66 else "  0.00"
-            elem_str = (
-                orig[76:78] if len(orig) >= 78 else f"{formatted_atom.strip()[:1]:>2s}"
-            )
-
-            # Strict standard PDB column allocation:
-            # 1-6 Record, 7-11 Serial, 12 Space, 13-16 AtomName, 17 altLoc, 18-20 resName,
-            # 21 Space, 22 ChainID, 23-26 resSeq, 27 iCode (blank), 28-30 Spaces,
-            # 31-38 X, 39-46 Y, 47-54 Z, 55-60 Occ, 61-66 TF, 67-76 Spaces, 77-78 Element
-            new_line = (
-                f"{record_type}{global_atom_idx:5d} {formatted_atom:4s}{alt_loc}{formatted_res:>3s} "
-                f"{prev_chain}{r['clean_res_seq']:4d}    "
-                f"{x_str}{y_str}{z_str}{occ_str}{tf_str}          {elem_str}"
-            )
-            out_lines.append(new_line)
-            global_atom_idx += 1
-
-    # Final TER at the end of the entire protein structure
-    if residues:
-        last = residues[-1]
-        out_lines.append(
-            f"TER   {global_atom_idx:5d}      {last['res_name']:>3s} {last['chain_id']}{last['clean_res_seq']:4d}"
-        )
-
-    out_lines.append("END")
-    Path(args.output_pdb).write_text("\n".join(out_lines) + "\n")
+    # 5. Export clean PDB with strict chain and TER continuity via ParmEd C-engine
+    struct.save(args.output_pdb, overwrite=True)
 
 
 if __name__ == "__main__":
