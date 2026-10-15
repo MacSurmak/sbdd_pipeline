@@ -62,6 +62,24 @@ def _build_prep_args(config: Dict[str, Any]) -> list:
     if "cap_termini" in prep_cfg:
         args.extend(["--cap_termini", "true" if prep_cfg["cap_termini"] else "false"])
 
+    # LigPrep parameters for chemical library and native ligand preparation
+    glide_cfg = config.get("glide", {})
+    lp_cfg = glide_cfg.get("ligprep", {})
+    lig_ph = lp_cfg.get("target_ph", prep_cfg.get("target_ph", 7.4))
+    lig_tol = lp_cfg.get("ph_tolerance", prep_cfg.get("ph_tolerance", 2.0))
+    lig_ff = lp_cfg.get("force_field", 16)
+    max_st = lp_cfg.get("max_states", 32)
+    gnina_cfg = config.get("gnina", {})
+    b_size = gnina_cfg.get("batch_size", 10)
+
+    args.extend([
+        "--ligand_ph", str(lig_ph),
+        "--ligand_ph_tol", str(lig_tol),
+        "--ligprep_ff", str(lig_ff),
+        "--max_states", str(max_st),
+        "--batch_size", str(b_size),
+    ])
+
     mem_cfg = config.get("membrane", {})
     if mem_cfg.get("enabled"):
         args.extend(["--membrane", "true"])

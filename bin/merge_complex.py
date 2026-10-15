@@ -46,9 +46,19 @@ def main():
     used_chains = set()
     out_lines = []
 
-    # 1. Process receptor atoms & keep original TER cards
+    skip_resnames = set()
+    if args.lig_resname:
+        skip_resnames.add(args.lig_resname.strip().upper())
+    for r in args.extra_resnames:
+        skip_resnames.add(r.strip().upper())
+
+    # 1. Process receptor atoms, filter out cofactors/ligands already present, & keep original TER cards
     for line in rec_lines:
         if line.startswith(("ATOM", "HETATM")):
+            r_name = line[17:20].strip().upper()
+            if r_name in skip_resnames:
+                continue
+
             try:
                 res_seq = int(line[22:26].strip())
             except ValueError as e:

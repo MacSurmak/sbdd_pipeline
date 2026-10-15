@@ -8,7 +8,7 @@ import json
 import sys
 from pathlib import Path
 from rich.console import Console
-from cli.core.db import init_db, Target, ReceptorFrame, Ligand, Pose, System, Trajectory
+from cli.core.db import init_db, Target, ReceptorFrame, Pose, System, Trajectory
 from cli.core.runner import execute_nextflow
 from cli.core.config_loader import load_project_configs, build_nextflow_args
 

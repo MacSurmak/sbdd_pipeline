@@ -83,7 +83,7 @@ workflow PREPARE_WF {
         PREPARE_LIGANDS.out.prepared_ligands.map { meta, mae ->
             def base_id = meta.name ?: meta.id
             def stem = mae.name.replaceAll(/(\.maegz|\.mae)$/, "")
-            def lig_dir = file("${params.outdir}/prepared_substances/${base_id}").toAbsolutePath()
+            def lig_dir = file("${params.outdir}/ligands/${base_id}").toAbsolutePath()
             "${base_id}\t${lig_dir}/${mae.name}\t${lig_dir}/${stem}.sdf"
         }.collectFile(name: 'prep_ligand_receipt.tsv', storeDir: params.outdir, newLine: true)
     }

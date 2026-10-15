@@ -4,7 +4,7 @@ Description: CLI handler to remove items from the clean 3NF database with cascad
 """
 
 from rich.console import Console
-from cli.core.db import init_db, Target, ReceptorFrame, Ligand, Pose, System, Trajectory
+from cli.core.db import init_db, Target, ReceptorFrame, Substance, Pose, System, Trajectory
 
 console = Console()
 
@@ -55,15 +55,15 @@ def remove_entity(name: str) -> None:
             deleted = True
 
     if not deleted:
-        lig = (
-            session.query(Ligand)
-            .filter((Ligand.name == name) | (Ligand.inchikey == name))
+        sub = (
+            session.query(Substance)
+            .filter((Substance.name == name) | (Substance.inchikey == name))
             .first()
         )
-        if lig:
-            session.delete(lig)
+        if sub:
+            session.delete(sub)
             console.print(
-                f"[bold green]✓ Deleted Chemical Ligand '{name}'.[/bold green]"
+                f"[bold green]✓ Deleted Chemical Substance '{name}'.[/bold green]"
             )
             deleted = True
 
