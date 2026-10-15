@@ -8,7 +8,7 @@ process TLEAP {
     label 'process_single'
 
     input:
-    tuple val(meta), path(complex_pdb), path(mol2s, arity: '0..*'), path(frcmods, arity: '0..*')
+    tuple val(meta), path(complex_pdb), path(mol2s), path(frcmods)
     val(water_leaprc)
     val(water_box)
     val(box_type)

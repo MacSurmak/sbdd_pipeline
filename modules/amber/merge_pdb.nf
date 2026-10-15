@@ -8,7 +8,7 @@ process MERGE_PDB {
     label 'process_single'
 
     input:
-    tuple val(meta), path(rec_pdb), path(lig_sdf, arity: '0..1'), path(extra_sdfs, arity: '0..*')
+    tuple val(meta), path(rec_pdb), path(lig_sdf), path(extra_sdfs)
 
     output:
     tuple val(meta), path("complex_dry.pdb"), emit: complex_pdb
