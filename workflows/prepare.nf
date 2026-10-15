@@ -30,11 +30,11 @@ workflow PREPARE_WF {
                 id: target.name,
                 name: target.name,
                 target: target.target_name,
-                system: target.system_name,
                 prep_mode: target.prep_mode,
                 project: params.project_name,
                 native_ligand: target.native_ligand ?: "",
-                cofactors: target.cofactors ?: []
+                cofactors: target.cofactors ?: [],
+                heterogens: target.heterogens ?: []
             ]
             
             [ meta, rec_path.toAbsolutePath() ]
@@ -89,9 +89,8 @@ workflow PREPARE_WF {
 
         PREPARE_LIGANDS.out.prepared_ligands.map { meta, mae ->
             def base_id = meta.name ?: meta.id
-            def stem = mae.name.replaceAll(/(\.maegz|\.mae)$/, "")
             def sub_dir = file("${params.outdir}/substances/${meta.inchikey}").toAbsolutePath()
-            "${base_id}\t${sub_dir}/${mae.name}\t${sub_dir}/${stem}.sdf"
+            "${base_id}\t${sub_dir}/${meta.name}_conformers.maegz\t${sub_dir}/${meta.name}_conformers.sdf"
         }.collectFile(name: 'prep_ligand_receipt.tsv', storeDir: params.outdir, newLine: true)
     }
 
@@ -104,14 +103,16 @@ workflow PREPARE_WF {
             if (!sdf_path.exists()) {
                 error "FATAL: Pose SDF path explicitly provided by DB does not exist: ${pose.path}"
             }
+            def mae_path = pose.path_mae ? file(pose.path_mae) : file("NO_MAE")
             def meta = [
                 id: pose.name,
                 name: pose.name,
-                system: pose.system_name,
-                charge: pose.charge,
-                res_name: pose.res_name ?: "LIG"
+                res_name: pose.res_name ?: "LIG",
+                inchikey: pose.inchikey,
+                charge: pose.charge as int,
+                is_ion: pose.is_ion ?: false
             ]
-            [ meta, sdf_path.toAbsolutePath() ]
+            [ meta, sdf_path.toAbsolutePath(), mae_path ]
         }
     }
 
@@ -119,8 +120,12 @@ workflow PREPARE_WF {
 
     PARAMETRIZE_POSE(ch_all_poses)
 
-    PARAMETRIZE_POSE.out.map { meta, mol2, frcmod ->
-        def pose_dir = file("${params.outdir}/systems/${meta.system}/poses").toAbsolutePath()
-        "${meta.name}\t${pose_dir}/${mol2.name}\t${pose_dir}/${frcmod.name}"
+    PARAMETRIZE_POSE.out.map { meta, sdf, mae, mol2, frcmod ->
+        def pose_dir = file("${params.outdir}/substances/${meta.inchikey}/poses/${meta.name}").toAbsolutePath()
+        def sdf_abs = "${pose_dir}/${sdf.name}"
+        def mae_abs = (mae != null && file("${pose_dir}/${mae.name}").exists()) ? "${pose_dir}/${mae.name}" : "NONE"
+        def mol2_abs = (mol2 != null && file("${pose_dir}/${mol2.name}").exists()) ? "${pose_dir}/${mol2.name}" : "NONE"
+        def frcmod_abs = (frcmod != null && file("${pose_dir}/${frcmod.name}").exists()) ? "${pose_dir}/${frcmod.name}" : "NONE"
+        "${meta.name}\t${sdf_abs}\t${mae_abs}\t${mol2_abs}\t${frcmod_abs}"
     }.collectFile(name: 'prep_pose_receipt.tsv', storeDir: params.outdir, newLine: true)
 }

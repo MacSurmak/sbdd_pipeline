@@ -82,44 +82,46 @@ workflow PREPARE_RECEPTOR {
 
     SPLIT_PREPARED(ch_final_complex_mae)
 
-    // Emit structured 5-column receipt with absolute paths to canonical targets/<target>/frames/<frame>/ directory
-    ch_rec_pair = SPLIT_PREPARED.out.prepared_mae.join(SPLIT_PREPARED.out.prepared_pdb)
-    ch_lig_pair = SPLIT_PREPARED.out.ref_native_mae.join(SPLIT_PREPARED.out.ref_native_sdf)
-
-    ch_receipt_data = ch_rec_pair
-        .join(ch_lig_pair, remainder: true)
-        .map { meta, r_mae, r_pdb, n_mae, n_sdf ->
+    // Emit structured 3-column receipt strictly for ReceptorFrame
+    ch_receipt_data = SPLIT_PREPARED.out.prepared_mae
+        .join(SPLIT_PREPARED.out.prepared_pdb)
+        .map { meta, r_mae, r_pdb ->
             def frame_dir = file("${params.outdir}/targets/${meta.target}/frames/${meta.name}").toAbsolutePath()
-            def sys_poses_dir = file("${params.outdir}/systems/${meta.system}/poses").toAbsolutePath()
             def mae_abs = "${frame_dir}/${r_mae.name}"
             def pdb_abs = "${frame_dir}/${r_pdb.name}"
-            def n_mae_abs = (n_mae != null) ? "${sys_poses_dir}/${n_mae.name}" : "NONE"
-            def n_sdf_abs = (n_sdf != null) ? "${sys_poses_dir}/${n_sdf.name}" : "NONE"
-            "${meta.name}\t${mae_abs}\t${pdb_abs}\t${n_mae_abs}\t${n_sdf_abs}"
+            "${meta.name}\t${mae_abs}\t${pdb_abs}"
         }
 
     ch_receipt_data.collectFile(name: 'prep_receipt.tsv', storeDir: params.outdir, newLine: true)
 
-    // Stream protonated in-situ poses directly to Antechamber for quantum parametrization into systems/<sys>/poses
+    // Stream protonated in-situ poses directly to Antechamber for quantum parametrization into substances/<inchikey>/poses/<pose_name>
     ch_poses_to_param = SPLIT_PREPARED.out.poses_manifest
         .flatMap { meta, json_file ->
             def records = new groovy.json.JsonSlurperClassic().parseText(json_file.text)
-            records.findAll { !it.is_ion }.collect { rec ->
+            def het_map = meta.heterogens ? meta.heterogens.collectEntries { [it.res_name, it] } : [:]
+
+            records.collect { rec ->
+                def het_info = het_map[rec.res_name]
+                def p_name = het_info ? het_info.pose_name : "${meta.name}_${rec.res_name}_crystal"
+                def p_inchikey = het_info ? het_info.inchikey : "UNKNOWN"
+                def is_ion = het_info ? het_info.is_ion : rec.is_ion
+
                 def pose_meta = [
-                    id: "${meta.name}_${rec.res_name}_pose",
-                    name: "${meta.name}_${rec.res_name}_pose",
-                    system: meta.system,
+                    id: p_name,
+                    name: p_name,
+                    res_name: rec.res_name,
+                    inchikey: p_inchikey,
                     charge: rec.charge as int,
-                    res_name: rec.res_name
+                    is_ion: is_ion
                 ]
-                [ pose_meta, json_file.parent.resolve(rec.sdf) ]
+                def sdf_file = json_file.parent.resolve(rec.sdf)
+                def mae_file = json_file.parent.resolve(rec.mae)
+                [ pose_meta, sdf_file, mae_file ]
             }
         }
 
     emit:
     prepared_mae     = SPLIT_PREPARED.out.prepared_mae
-    ref_native_mae   = SPLIT_PREPARED.out.ref_native_mae
-    ref_native_sdf   = SPLIT_PREPARED.out.ref_native_sdf
     membrane_json    = ch_mem_json
     poses_to_param   = ch_poses_to_param
 }

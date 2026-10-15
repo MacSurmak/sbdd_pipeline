@@ -68,14 +68,16 @@ def main():
             )
         lig_st = st.extract(lig_atoms)
         lig_st.title = target_lig
-        lig_st.write(args.out_ligand_mae)
-        lig_st.write(args.out_ligand_sdf)
+        lig_sdf = f"{target_lig}_pose.sdf"
+        lig_mae = f"{target_lig}_pose.mae"
+        lig_st.write(lig_mae)
+        lig_st.write(lig_sdf)
         st.deleteAtoms(lig_atoms)
         extracted_records.append({
             "res_name": target_lig,
             "charge": int(lig_st.formal_charge),
-            "sdf": args.out_ligand_sdf,
-            "mae": args.out_ligand_mae,
+            "sdf": lig_sdf,
+            "mae": lig_mae,
             "is_ligand": True,
             "is_ion": (lig_st.atom_total == 1),
         })
@@ -88,8 +90,8 @@ def main():
             continue
         cof_st = st.extract(cof_atoms)
         cof_st.title = cof_name
-        cof_sdf = f"pose_{cof_name}.sdf"
-        cof_mae = f"pose_{cof_name}.mae"
+        cof_sdf = f"{cof_name}_pose.sdf"
+        cof_mae = f"{cof_name}_pose.mae"
         cof_st.write(cof_mae)
         cof_st.write(cof_sdf)
         st.deleteAtoms(cof_atoms)

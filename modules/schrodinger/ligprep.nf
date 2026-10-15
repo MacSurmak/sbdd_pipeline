@@ -15,8 +15,8 @@ process LIGPREP {
     val(max_states)
 
     output:
-    tuple val(meta), path("ligand.maegz"), emit: prepared_maegz
-    tuple val(meta), path("ligand.sdf"), emit: prepared_sdf
+    tuple val(meta), path("${meta.name}_conformers.maegz"), emit: prepared_maegz
+    tuple val(meta), path("${meta.name}_conformers.sdf"), emit: prepared_sdf
 
     script:
     """
@@ -26,8 +26,8 @@ process LIGPREP {
         --ph_tolerance ${ph_tolerance} \\
         --ff_version ${ff_version} \\
         --max_states ${max_states} \\
-        --out_maegz ligand.maegz \\
-        --out_sdf ligand.sdf
+        --out_maegz "${meta.name}_conformers.maegz" \\
+        --out_sdf "${meta.name}_conformers.sdf"
     """
 }
 

@@ -11,12 +11,10 @@ process SPLIT_PREPARED {
     tuple val(meta), path(complex_prepared_mae)
 
     output:
-    tuple val(meta), path("receptor.mae"), emit: prepared_mae
-    tuple val(meta), path("receptor.pdb"), emit: prepared_pdb
-    tuple val(meta), path("native.mae"), emit: ref_native_mae, optional: true
-    tuple val(meta), path("native.sdf"), emit: ref_native_sdf, optional: true
-    tuple val(meta), path("pose_*.sdf"), emit: cofactor_sdfs, optional: true
-    tuple val(meta), path("pose_*.mae"), emit: cofactor_maes, optional: true
+    tuple val(meta), path("${meta.name}_receptor.mae"), emit: prepared_mae
+    tuple val(meta), path("${meta.name}_receptor.pdb"), emit: prepared_pdb
+    tuple val(meta), path("*_pose.mae"), emit: pose_maes, optional: true
+    tuple val(meta), path("*_pose.sdf"), emit: pose_sdfs, optional: true
     tuple val(meta), path("extracted_poses.json"), emit: poses_manifest
 
     script:
@@ -28,10 +26,8 @@ process SPLIT_PREPARED {
         --complex_mae ${complex_prepared_mae} \\
         ${lig_arg} \\
         ${cof_arg} \\
-        --out_receptor_mae receptor.mae \\
-        --out_receptor_pdb receptor.pdb \\
-        --out_ligand_mae native.mae \\
-        --out_ligand_sdf native.sdf \\
+        --out_receptor_mae "${meta.name}_receptor.mae" \\
+        --out_receptor_pdb "${meta.name}_receptor.pdb" \\
         --out_manifest extracted_poses.json
     """
 }

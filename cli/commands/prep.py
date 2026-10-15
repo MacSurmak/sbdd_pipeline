@@ -62,17 +62,36 @@ def run_prep(
     for frame in raw_frames:
         frame_map[frame.name] = frame
         system = session.query(System).filter_by(receptor_frame_id=frame.id).first()
-        sys_name = system.name if system else f"{frame.name}_system"
+        heterogens = []
+        if system and system.pose:
+            heterogens.append({
+                "res_name": system.pose.res_name,
+                "pose_name": system.pose.name,
+                "inchikey": system.pose.substance.inchikey,
+                "is_ligand": True,
+                "is_ion": False,
+            })
+        if system:
+            for cof in system.cofactors:
+                heterogens.append({
+                    "res_name": cof.res_name,
+                    "pose_name": cof.name,
+                    "inchikey": cof.substance.inchikey,
+                    "is_ligand": False,
+                    "is_ion": (cof.substance.substance_type == "ion"),
+                })
+
         native_lig_code = system.pose.res_name if (system and system.pose) else ""
-        cofactor_names = [c.res_name for c in system.cofactors if c.res_name] if system else []
+        cofactor_names = [h["res_name"] for h in heterogens if not h["is_ligand"]]
+
         rec_plan.append({
             "name": frame.name,
             "target_name": frame.target.name,
-            "system_name": sys_name,
             "path": str(Path(frame.path).resolve()),
             "prep_mode": "full",
             "cofactors": cofactor_names,
             "native_ligand": native_lig_code,
+            "heterogens": heterogens,
         })
 
     sub_plan = []
@@ -107,17 +126,14 @@ def run_prep(
     for pose in query_poses:
         ch = pose.formal_charge
         res_name = pose.res_name
-        parent_sys = pose.systems[0] if pose.systems else None
-        if not parent_sys and pose.cofactor_systems:
-            parent_sys = pose.cofactor_systems[0]
-        sys_name = parent_sys.name if parent_sys else f"{pose.receptor_frame.name}_system"
-
         pose_plan.append({
             "name": pose.name,
-            "system_name": sys_name,
+            "res_name": res_name,
+            "inchikey": pose.substance.inchikey,
             "path": pose.path,
+            "path_mae": pose.path_mae or "",
             "charge": ch,
-            "res_name": res_name
+            "is_ion": (pose.substance.substance_type == "ion"),
         })
 
     plan_data = {"receptors": rec_plan, "ligands": sub_plan, "poses": pose_plan}
@@ -148,9 +164,9 @@ def run_prep(
             if not line.strip():
                 continue
             parts = line.split("\t")
-            if len(parts) < 5:
-                raise ValueError(f"FATAL: Corrupted line in {rec_receipt}: '{line}'. Expected 5 tab-separated fields.")
-            orig_name, r_mae, r_pdb, n_mae, n_sdf = parts
+            if len(parts) < 3:
+                raise ValueError(f"FATAL: Corrupted line in {rec_receipt}: '{line}'. Expected 3 tab-separated fields.")
+            orig_name, r_mae, r_pdb = parts
             frame = frame_map.get(orig_name)
             if not frame:
                 raise KeyError(f"FATAL: Prepared frame '{orig_name}' in receipt is not present in plan!")
@@ -167,33 +183,6 @@ def run_prep(
             frame.path = str(pdb_path)
             frame.state = "ready"
             prep_rec_count += 1
-
-            system = session.query(System).filter_by(receptor_frame_id=frame.id).first()
-            if system:
-                sys_poses_dir = cwd / "systems" / system.name / "poses"
-
-                if n_sdf != "NONE" and system.pose:
-                    sdf_path = Path(n_sdf).resolve()
-                    if not sdf_path.exists() or sdf_path.stat().st_size == 0:
-                        raise FileNotFoundError(f"FATAL: Prepared native pose SDF missing: {sdf_path}")
-                    system.pose.path_sdf = str(sdf_path)
-                    system.pose.path = str(sdf_path)
-                    if n_mae != "NONE":
-                        mae_native = Path(n_mae).resolve()
-                        if not mae_native.exists() or mae_native.stat().st_size == 0:
-                            raise FileNotFoundError(f"FATAL: Prepared native pose MAE missing: {mae_native}")
-                        system.pose.path_mae = str(mae_native)
-                    system.pose.state = "ready"
-
-                for cof in system.cofactors:
-                    c_sdf = sys_poses_dir / f"pose_{cof.res_name}.sdf"
-                    c_mae = sys_poses_dir / f"pose_{cof.res_name}.mae"
-                    if c_sdf.exists() and c_sdf.stat().st_size > 0:
-                        cof.path_sdf = str(c_sdf.resolve())
-                        cof.path = str(c_sdf.resolve())
-                        if c_mae.exists() and c_mae.stat().st_size > 0:
-                            cof.path_mae = str(c_mae.resolve())
-                        cof.state = "ready"
 
     sub_receipt = cwd / "prep_ligand_receipt.tsv"
     if sub_receipt.exists() and sub_receipt.stat().st_size > 0:
@@ -226,22 +215,37 @@ def run_prep(
             if not line.strip():
                 continue
             parts = line.split("\t")
-            if len(parts) < 3:
-                raise ValueError(f"FATAL: Corrupted line in {pose_receipt}: '{line}'. Expected 3 tab-separated fields.")
-            pose_name, rel_mol2, rel_frcmod = parts
+            if len(parts) < 5:
+                raise ValueError(f"FATAL: Corrupted line in {pose_receipt}: '{line}'. Expected 5 tab-separated fields.")
+            pose_name, rel_sdf, rel_mae, rel_mol2, rel_frcmod = parts
             pose_obj = session.query(Pose).filter_by(name=pose_name).first()
             if not pose_obj:
                 raise KeyError(f"FATAL: Parametrized pose '{pose_name}' in receipt is not registered in DB!")
 
-            mol2_path = Path(rel_mol2).resolve()
-            frcmod_path = Path(rel_frcmod).resolve()
-            if not mol2_path.exists() or mol2_path.stat().st_size == 0:
-                raise FileNotFoundError(f"FATAL: Antechamber MOL2 missing: {mol2_path}")
-            if not frcmod_path.exists() or frcmod_path.stat().st_size == 0:
-                raise FileNotFoundError(f"FATAL: Parmchk2 FRCMOD missing: {frcmod_path}")
+            sdf_path = Path(rel_sdf).resolve()
+            if not sdf_path.exists() or sdf_path.stat().st_size == 0:
+                raise FileNotFoundError(f"FATAL: Pose SDF missing on disk: {sdf_path}")
+            pose_obj.path_sdf = str(sdf_path)
+            pose_obj.path = str(sdf_path)
 
-            pose_obj.path_mol2 = str(mol2_path)
-            pose_obj.path_frcmod = str(frcmod_path)
+            if rel_mae != "NONE":
+                mae_path = Path(rel_mae).resolve()
+                if mae_path.exists() and mae_path.stat().st_size > 0:
+                    pose_obj.path_mae = str(mae_path)
+
+            if rel_mol2 != "NONE":
+                mol2_path = Path(rel_mol2).resolve()
+                if not mol2_path.exists() or mol2_path.stat().st_size == 0:
+                    raise FileNotFoundError(f"FATAL: Antechamber MOL2 missing: {mol2_path}")
+                pose_obj.path_mol2 = str(mol2_path)
+
+            if rel_frcmod != "NONE":
+                frcmod_path = Path(rel_frcmod).resolve()
+                if not frcmod_path.exists() or frcmod_path.stat().st_size == 0:
+                    raise FileNotFoundError(f"FATAL: Parmchk2 FRCMOD missing: {frcmod_path}")
+                pose_obj.path_frcmod = str(frcmod_path)
+
+            pose_obj.state = "ready"
             prep_pose_count += 1
 
     session.commit()
