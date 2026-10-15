@@ -70,7 +70,9 @@ def main():
     skip_resnames = set()
     if args.lig_resname:
         skip_resnames.add(args.lig_resname.strip().upper())
-    for r in args.extra_resnames:
+    for r in args.ion_resnames:
+        skip_resnames.add(r.strip().upper())
+    for r in args.cofactor_resnames:
         skip_resnames.add(r.strip().upper())
 
     # 1. Process receptor atoms, filter out cofactors/ligands already present, & keep original TER cards
