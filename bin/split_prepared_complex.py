@@ -70,6 +70,14 @@ def main():
             )
 
         pose_st = st.extract(atoms)
+        
+        # Strict Fail-Fast: Ensure organic poses are single connected graphs
+        if not is_ion and len(pose_st.molecule) > 1:
+            raise ValueError(
+                f"FATAL: Residue '{res_clean}' resolves to {len(pose_st.molecule)} disconnected molecules! "
+                f"Quantum parametrization (AM1-BCC) requires a single connected graph. Assign unique residue names."
+            )
+
         pose_st.title = res_clean
 
         # Deterministic local filenames for Nextflow staging

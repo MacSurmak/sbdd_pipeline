@@ -232,6 +232,13 @@ def main():
             ]
             if mol_atoms:
                 mol_st = st.extract(mol_atoms)
+                
+                if len(mol_st.molecule) > 1 and len(mol_atoms) > len(mol_st.molecule):
+                    raise ValueError(
+                        f"FATAL: Cluster centroid residue '{r_code}' resolves to {len(mol_st.molecule)} disconnected molecules! "
+                        f"This corrupts topology. Ensure input complex had uniquely named molecules."
+                    )
+                
                 mol_st.title = r_code
                 mol_st.property["s_m_title"] = r_code
 

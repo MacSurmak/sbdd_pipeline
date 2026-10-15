@@ -482,7 +482,7 @@ def run_cluster(
         parent_sys.environment_dict = env
 
         # A. Publish Centroid Frame into targets/<target>/frames/<centroid_frame_name>/
-        centroid_frame_name = centroid_title.replace("_cluster", "")
+        centroid_frame_name = centroid_title
         frame_dir = cwd / "targets" / parent_sys.target.name / "frames" / centroid_frame_name
         frame_dir.mkdir(parents=True, exist_ok=True)
 

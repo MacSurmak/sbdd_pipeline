@@ -47,7 +47,7 @@ def main():
                         f"FATAL: Missing 'Frame' column in ranking row for {title}"
                     )
 
-                frame_id = str(frame).replace("F", "").replace("f", "").strip()
+                frame_id = str(frame).strip()
                 if not frame_id:
                     raise ValueError(
                         f"FATAL: Empty 'Frame' value in ranking row for {title}"

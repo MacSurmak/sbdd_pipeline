@@ -45,6 +45,14 @@ def extract_via_schrodinger(args):
 
             if atoms:
                 cof_st = rec_st.extract(atoms)
+                
+                # Strict Fail-Fast: Single connected graph for organics
+                if len(cof_st.molecule) > 1:
+                    raise ValueError(
+                        f"FATAL: Cofactor '{clean_cof}' resolves to {len(cof_st.molecule)} disconnected molecules! "
+                        f"Unique molecules MUST have unique residue names in the 3NF schema."
+                    )
+                
                 cof_st.title = clean_cof
                 for res in cof_st.residue:
                     res.pdbres = clean_cof
@@ -98,6 +106,11 @@ def extract_via_schrodinger(args):
             raise FileNotFoundError(f"FATAL: Ligand file {args.lig_file} not found!")
         with structure.StructureReader(args.lig_file) as reader:
             for i, st in enumerate(reader):
+                if len(st.molecule) > 1:
+                    raise ValueError(
+                        f"FATAL: Ligand file {args.lig_file} contains {len(st.molecule)} disconnected molecules! "
+                        f"Must be a single connected graph."
+                    )
                 st.title = lig_code
                 for res in st.residue:
                     res.pdbres = lig_code
