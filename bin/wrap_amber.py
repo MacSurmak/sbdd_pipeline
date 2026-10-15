@@ -33,15 +33,37 @@ def parse_mol2_resname(mol2_file: Path) -> str:
 
 
 def cmd_antechamber(args):
+    from rdkit import Chem
+
     res_name = args.res_name.strip().upper()[:4]
     if len(res_name) < 3:
         res_name = f"{res_name:<3s}"
-    
+
+    # Standardize input SDF: convert V3000 to strict MDL V2000 and ensure complete 3D hydrogens
+    suppl = Chem.SDMolSupplier(str(args.sdf), removeHs=False, sanitize=False)
+    mol = next((m for m in suppl if m is not None), None)
+    if mol is None:
+        raise ValueError(f"FATAL: Could not read molecule from {args.sdf}")
+
+    try:
+        Chem.SanitizeMol(mol)
+    except Exception:
+        mol.UpdatePropertyCache(strict=False)
+
+    has_hydrogens = any(a.GetAtomicNum() == 1 for a in mol.GetAtoms())
+    if not has_hydrogens:
+        mol = Chem.AddHs(mol, addCoords=True)
+
+    clean_v2000_sdf = f"{args.mol_id}_v2000.sdf"
+    with Chem.SDWriter(clean_v2000_sdf) as writer:
+        writer.SetForceV3000(False)  # Enforce strict MDL V2000 for Antechamber compatibility
+        writer.write(mol)
+
     out_mol2 = f"{args.mol_id}_gaff2.mol2"
     run_cmd(
         [
             "antechamber",
-            "-i", args.sdf,
+            "-i", clean_v2000_sdf,
             "-fi", "sdf",
             "-o", out_mol2,
             "-fo", "mol2",
@@ -55,7 +77,7 @@ def cmd_antechamber(args):
     run_cmd(
         [
             "parmchk2",
-            "-i", f"{args.mol_id}_gaff2.mol2",
+            "-i", out_mol2,
             "-f", "mol2",
             "-o", f"{args.mol_id}.frcmod",
             "-s", "2",

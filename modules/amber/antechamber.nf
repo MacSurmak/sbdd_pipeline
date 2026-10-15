@@ -5,6 +5,7 @@
 
 process PARAMETRIZE_POSE {
     tag "${meta.name}"
+    label 'process_single'
     publishDir path: { "${params.outdir}/prepared_poses/${meta.name}" }, mode: 'copy'
 
     input:
