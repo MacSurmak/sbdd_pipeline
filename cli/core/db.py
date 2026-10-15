@@ -297,16 +297,39 @@ for _model_attr in [
     event.listen(_model_attr, "set", _validate_non_scratch_path)
 
 
-def init_db(db_path: Path = None):
+FRAMEWORK_DIR = Path(__file__).resolve().parent.parent.parent
+
+
+def init_db(db_path: Path = None, create_if_missing: bool = False):
     """
-    Initializes SQLite connection, declaratively builds the pristine 3NF schema,
-    and returns an active ORM session. Zero runtime migrations or defensive fallbacks.
+    Initializes SQLite connection to the 3NF database.
+    Strictly forbids database operations inside the framework source tree (/shared/sbdd_pipeline).
+    Enforces Fail-Fast if the database does not exist on query/execution commands.
     """
     if db_path is None:
         db_path = Path.cwd() / "sbdd_state.db"
+    else:
+        db_path = Path(db_path).resolve()
+
+    # 1. Absolute barrier: Framework source repository is an immutable monolith
+    if db_path.parent.resolve() == FRAMEWORK_DIR.resolve():
+        raise PermissionError(
+            f"FATAL: Attempted to create or access database inside pipeline codebase: {db_path}!\n"
+            f"The framework repository at {FRAMEWORK_DIR} is an immutable monolith. "
+            f"All SBDD projects must be initialized and executed in dedicated project directories (e.g. /shared/<project_name>)."
+        )
+
+    # 2. Fail-Fast: Refuse to silently spawn ghost databases on read/run commands
+    if not create_if_missing and not db_path.exists():
+        raise FileNotFoundError(
+            f"FATAL: Project database not found at {db_path}!\n"
+            f"Current working directory '{Path.cwd()}' is not an initialized SBDD project. "
+            f"Run 'sbdd init' or 'sbdd add structure' to initialize a project first."
+        )
 
     engine = create_engine(f"sqlite:///{db_path}")
-    Base.metadata.create_all(engine)
+    if create_if_missing:
+        Base.metadata.create_all(engine)
 
     SessionLocal = sessionmaker(
         autocommit=False, autoflush=False, expire_on_commit=False, bind=engine

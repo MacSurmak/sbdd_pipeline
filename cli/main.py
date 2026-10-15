@@ -421,12 +421,6 @@ def main():
 
     subcmd = args.subcommand
 
-    # Init DB unconditionally to ensure it exists on any command run inside a project
-    if subcmd not in ["init", "help"]:
-        from cli.core.db import init_db
-
-        init_db()
-
     if subcmd == "add":
         from cli.commands.add import add_receptor, add_ligand, add_traj, add_fasta
 

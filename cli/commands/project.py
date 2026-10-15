@@ -45,6 +45,9 @@ def run_init(
                 else:
                     shutil.copy(f, dest)
 
+    from cli.core.db import init_db
+    init_db(target_dir / "sbdd_state.db", create_if_missing=True)
+
     console.print(
         f"[bold green]✓ Project '{project_name}' initialized at: {target_dir}[/bold green]"
     )
