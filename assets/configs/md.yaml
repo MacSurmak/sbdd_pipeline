@@ -3,6 +3,9 @@ md_simulation:
   pbc_center: "Protein"
   pbc_extract: "COMPLEX"
   system_build:
+    protein_forcefield: "leaprc.protein.ff19SB"
+    gaff_forcefield: "leaprc.gaff2"
+    lipid_forcefield: "leaprc.lipid21"
     water_leaprc: "leaprc.water.opc3"
     water_box: "OPC3BOX"
     box_type: "oct"

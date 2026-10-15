@@ -101,16 +101,17 @@ workflow PREPARE_RECEPTOR {
 
     SPLIT_PREPARED(ch_final_complex_mae)
 
-    // Emit structured 5-column receipt with absolute paths
-    ch_receipt_data = SPLIT_PREPARED.out.prepared_mae
-        .join(SPLIT_PREPARED.out.prepared_pdb)
-        .join(SPLIT_PREPARED.out.ref_native_mae)
-        .join(SPLIT_PREPARED.out.ref_native_sdf)
+    // Emit structured 5-column receipt with absolute paths supporting both Holo and Apo complexes
+    ch_rec_pair = SPLIT_PREPARED.out.prepared_mae.join(SPLIT_PREPARED.out.prepared_pdb)
+    ch_lig_pair = SPLIT_PREPARED.out.ref_native_mae.join(SPLIT_PREPARED.out.ref_native_sdf)
+
+    ch_receipt_data = ch_rec_pair
+        .join(ch_lig_pair, remainder: true)
         .map { meta, r_mae, r_pdb, n_mae, n_sdf ->
             def mae_abs = r_mae.toAbsolutePath()
             def pdb_abs = r_pdb.toAbsolutePath()
-            def n_mae_abs = n_mae ? n_mae.toAbsolutePath() : "NONE"
-            def n_sdf_abs = n_sdf ? n_sdf.toAbsolutePath() : "NONE"
+            def n_mae_abs = (n_mae != null) ? n_mae.toAbsolutePath() : "NONE"
+            def n_sdf_abs = (n_sdf != null) ? n_sdf.toAbsolutePath() : "NONE"
             "${meta.name}\t${mae_abs}\t${pdb_abs}\t${n_mae_abs}\t${n_sdf_abs}"
         }
 

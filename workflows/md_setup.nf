@@ -7,7 +7,7 @@ include { SETUP_MD_SYSTEM } from '../subworkflows/setup_md_system'
 
 process PUBLISH_MD_SYSTEM {
     tag "${meta.id}"
-    publishDir path: { "${params.outdir}/md_systems/${meta.id}" }, mode: 'copy'
+    publishDir path: { "${params.outdir}/systems/${meta.id}/md_topology" }, mode: 'copy'
 
     input:
     tuple val(meta), path(gro), path(top), path(ndx), path(posre)
@@ -83,7 +83,7 @@ workflow MD_SETUP_WF {
     PUBLISH_MD_SYSTEM(SETUP_MD_SYSTEM.out.system_ready)
 
     PUBLISH_MD_SYSTEM.out.map { meta, gro, top, ndx, posre ->
-        def sys_dir = file("${params.outdir}/md_systems/${meta.id}").toAbsolutePath()
+        def sys_dir = file("${params.outdir}/systems/${meta.id}/md_topology").toAbsolutePath()
         "${meta.id}\t${sys_dir}/${gro.name}\t${sys_dir}/${top.name}\t${sys_dir}/${ndx.name}\n"
     }.collectFile(name: 'md_setup_receipt.tsv', storeDir: params.outdir)
 }

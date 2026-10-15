@@ -218,6 +218,9 @@ def _build_md_setup_args(config: Dict[str, Any]) -> list:
         raise ValueError("FATAL: 'md_simulation.system_build' is required!")
 
     sys_mappings = [
+        ("protein_forcefield", "protein_forcefield"),
+        ("gaff_forcefield", "gaff_forcefield"),
+        ("lipid_forcefield", "lipid_forcefield"),
         ("water_leaprc", "water_leaprc"),
         ("water_box", "water_box"),
         ("box_type", "box_type"),

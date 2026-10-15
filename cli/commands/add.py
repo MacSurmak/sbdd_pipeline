@@ -500,14 +500,17 @@ def add_ligand(path: str, name: str | None = None, force: bool = False) -> None:
         )
         sys.exit(1)
 
-    suppl = Chem.ForwardSDMolSupplier(str(target_path), removeHs=False)
+    raw_mols = [m for m in Chem.SDMolSupplier(str(target_path), removeHs=False) if m is not None]
+    if not raw_mols:
+        console.print(f"[bold red]FATAL: No valid molecules could be parsed from {target_path}[/bold red]")
+        sys.exit(1)
+
     imported = 0
     skipped = 0
     uncharger = rdMolStandardize.Uncharger()
+    cwd = Path.cwd()
 
-    for idx, mol in enumerate(suppl, start=1):
-        if mol is None:
-            continue
+    for idx, mol in enumerate(raw_mols, start=1):
         try:
             heavy_mol = Chem.RemoveHs(mol)
             parent_mol = uncharger.uncharge(heavy_mol)
@@ -517,30 +520,44 @@ def add_ligand(path: str, name: str | None = None, force: bool = False) -> None:
                 raise ValueError("Could not compute InChIKey")
                 
             smiles = Chem.MolToSmiles(parent_mol, canonical=True)
-            mol_title = name if (name and suppl_len == 1) else (
-                mol.GetProp("_Name").strip()
-                if mol.HasProp("_Name") and mol.GetProp("_Name").strip()
-                else f"MOL_{idx:05d}"
-            )
+            if len(raw_mols) == 1 and name:
+                mol_title = name.strip()
+            elif mol.HasProp("_Name") and mol.GetProp("_Name").strip():
+                mol_title = mol.GetProp("_Name").strip()
+            elif name:
+                mol_title = f"{name}_{idx:05d}"
+            else:
+                mol_title = f"MOL_{idx:05d}"
+
+            # Canonical physical substance storage: substances/<inchikey>/base.sdf
+            sub_dir = cwd / "substances" / inchikey
+            sub_dir.mkdir(parents=True, exist_ok=True)
+            base_sdf = sub_dir / "base.sdf"
+            if not base_sdf.exists() or force:
+                with Chem.SDWriter(str(base_sdf)) as w:
+                    w.write(mol)
 
             ex = session.query(Substance).filter_by(inchikey=inchikey).first()
             if ex:
                 if force:
                     ex.name = mol_title
                     ex.smiles = smiles
+                    ex.path_sdf = str(base_sdf.resolve())
                 else:
                     skipped += 1
                     continue
+            else:
+                new_sub = Substance(
+                    inchikey=inchikey,
+                    smiles=smiles,
+                    name=mol_title,
+                    substance_type="ligand",
+                    state="raw",
+                    batch_id=target_path.stem,
+                    path_sdf=str(base_sdf.resolve()),
+                )
+                session.add(new_sub)
 
-            new_sub = Substance(
-                inchikey=inchikey,
-                smiles=smiles,
-                name=name,
-                substance_type="ligand",
-                state="raw",
-                batch_id=target_path.stem,
-            )
-            session.add(new_sub)
             imported += 1
             if imported % 500 == 0:
                 session.commit()

@@ -394,8 +394,6 @@ def run_dock(
     table.add_column("Verdict", justify="center")
 
     poses_count = 0
-    poses_base_dir = (cwd / "poses").resolve()
-    poses_base_dir.mkdir(parents=True, exist_ok=True)
     pose_counter = {}
 
     with open(res_csv, "r", encoding="utf-8") as f:
@@ -448,12 +446,13 @@ def run_dock(
                 p_idx = pose_counter[key]
 
                 pose_name = f"{frame_name}_{title}_{eng}_pose{p_idx}"
+                sys_name = f"{frame_name}_{title}_{eng}_p{p_idx}"
                 origin_tag = f"docking_{eng}"
 
-                # Extract into isolated, single-molecule SDF
-                target_pose_dir = poses_base_dir / r_frame.target.name
-                target_pose_dir.mkdir(parents=True, exist_ok=True)
-                pose_sdf_file = target_pose_dir / f"{pose_name}.sdf"
+                # Strict 3NF Domain Placement: systems/<sys_name>/poses/<pose_name>.sdf
+                sys_poses_dir = cwd / "systems" / sys_name / "poses"
+                sys_poses_dir.mkdir(parents=True, exist_ok=True)
+                pose_sdf_file = sys_poses_dir / f"{pose_name}.sdf"
 
                 with Chem.SDWriter(str(pose_sdf_file)) as writer:
                     writer.write(mol_conformation)

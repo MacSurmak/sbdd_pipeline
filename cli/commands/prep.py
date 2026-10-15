@@ -71,25 +71,28 @@ def run_prep(
 
     sub_plan = []
     if query_substances:
-        raw_lig_dir = (cwd / "prepared" / "ligands" / "raw").resolve()
-        raw_lig_dir.mkdir(parents=True, exist_ok=True)
-        for sub in query_substances:
-            sub_raw_sdf = raw_lig_dir / f"{sub.name}.sdf"
-            
-            from rdkit import Chem
-            from rdkit.Chem import AllChem
-            m = Chem.MolFromSmiles(sub.smiles)
-            if not m:
-                raise ValueError(f"FATAL: RDKit failed to parse SMILES for '{sub.name}'")
-            m = Chem.AddHs(m)
-            AllChem.Compute2DCoords(m)
-            m.SetProp("_Name", sub.name)
-            with Chem.SDWriter(str(sub_raw_sdf)) as w:
-                w.write(m)
+        from rdkit import Chem
+        from rdkit.Chem import AllChem
 
+        for sub in query_substances:
+            sub_dir = cwd / "substances" / sub.inchikey
+            sub_dir.mkdir(parents=True, exist_ok=True)
+            sub_sdf = sub_dir / "base.sdf"
+
+            if not sub_sdf.exists() or sub_sdf.stat().st_size == 0:
+                m = Chem.MolFromSmiles(sub.smiles)
+                if not m:
+                    raise ValueError(f"FATAL: RDKit failed to parse SMILES for '{sub.name}'")
+                m = Chem.AddHs(m)
+                AllChem.Compute2DCoords(m)
+                m.SetProp("_Name", sub.name)
+                with Chem.SDWriter(str(sub_sdf)) as w:
+                    w.write(m)
+
+            sub.path_sdf = str(sub_sdf.resolve())
             sub_plan.append({
                 "name": sub.name,
-                "path": str(sub_raw_sdf),
+                "path": str(sub_sdf.resolve()),
                 "status": "unprepared"
             })
 
