@@ -21,7 +21,6 @@ include { ORIENT_COMPLEX  } from "../modules/schrodinger/orient_complex"
 include { PREPWIZARD      } from "../modules/schrodinger/prepwizard"
 include { APPLY_MEMBRANE   } from "../modules/membrane/apply_membrane"
 include { SPLIT_PREPARED   } from "../modules/schrodinger/split_prepared"
-include { LIGHT_PREPWIZARD } from "../modules/schrodinger/light_prep"
 
 workflow PREPARE_RECEPTOR {
     take:

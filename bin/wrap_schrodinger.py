@@ -208,47 +208,6 @@ def cmd_prime_mmgbsa(args):
         sys.exit(1)
 
 
-def cmd_light_prep(args):
-    in_path = Path(args.input_pdb)
-    raw_mae = "raw_cluster.mae"
-
-    if in_path.suffix.lower() in [".mae", ".maegz"]:
-        import shutil
-
-        shutil.copy2(in_path, raw_mae)
-    else:
-        run_cmd(get_tool("structconvert") + [str(in_path), raw_mae])
-
-    from schrodinger import structure
-
-    st = structure.StructureReader.read(raw_mae)
-
-    if args.native_ligand:
-        lig_res = args.native_ligand.split("_")[-1].strip().upper()
-        lig_atoms = [a.index for a in st.atom if a.pdbres.strip().upper() == lig_res]
-        if lig_atoms:
-            st.deleteAtoms(lig_atoms)
-
-    # Pure text normalization of AMBER residue names: preserves 100% of MD coordinates, hydrogens, and charges
-    res_translation = {
-        "HIE": "HIS",
-        "HID": "HIS",
-        "HIP": "HIS",
-        "CYX": "CYS",
-        "CYM": "CYS",
-        "ASH": "ASP",
-        "GLH": "GLU",
-        "LYN": "LYS",
-    }
-    for res in st.residue:
-        r_name = res.pdbres.strip().upper()
-        if r_name in res_translation:
-            res.pdbres = res_translation[r_name]
-
-    st.write(args.out_mae)
-    run_cmd(get_tool("structconvert") + [args.out_mae, args.out_pdb])
-
-
 def cmd_ligprep(args):
     in_flag = (
         "-imae"
@@ -362,12 +321,6 @@ def main():
     p_prime.add_argument("--job_id", required=True)
     p_prime.add_argument("--membrane", action="store_true")
 
-    p_light = subparsers.add_parser("light_prep")
-    p_light.add_argument("--input_pdb", required=True)
-    p_light.add_argument("--out_mae", required=True)
-    p_light.add_argument("--out_pdb", required=True)
-    p_light.add_argument("--native_ligand")
-
     p_ligprep = subparsers.add_parser("ligprep")
     p_ligprep.add_argument("--ligand_file", required=True)
     p_ligprep.add_argument("--target_ph", required=True)
@@ -398,8 +351,6 @@ def main():
         cmd_glide_dock(args)
     elif args.subcommand == "prime_mmgbsa":
         cmd_prime_mmgbsa(args)
-    elif args.subcommand == "light_prep":
-        cmd_light_prep(args)
     elif args.subcommand == "ligprep":
         cmd_ligprep(args)
     elif args.subcommand == "convert_ligand":
