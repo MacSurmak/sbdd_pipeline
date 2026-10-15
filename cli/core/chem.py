@@ -53,16 +53,23 @@ def get_mol_identity(source: str | Path) -> Tuple[str, str, str, int]:
 
     from rdkit.Chem.MolStandardize import rdMolStandardize
 
-    # Neutralize uncharged parent to establish invariant chemical substance identity
-    # across protonation microstates, while preserving individual pose physics
-    uncharger = rdMolStandardize.Uncharger()
-    heavy_mol = Chem.RemoveHs(mol)
-    parent_mol = uncharger.uncharge(heavy_mol)
-
-    parent_inchikey = Chem.MolToInchiKey(parent_mol)
-    parent_smiles = Chem.MolToSmiles(parent_mol, canonical=True)
     formal_charge = Chem.GetFormalCharge(mol)
-    
+
+    # Check if entity is a monoatomic ion to preserve its formal oxidation state
+    is_monoatomic_ion = (mol.GetNumHeavyAtoms() == 1 and mol.GetNumAtoms() == 1)
+
+    if is_monoatomic_ion:
+        parent_inchikey = Chem.MolToInchiKey(mol)
+        parent_smiles = Chem.MolToSmiles(mol, canonical=True)
+    else:
+        # Neutralize organic parent to establish invariant chemical substance identity
+        # across protonation microstates, while preserving individual pose physics
+        uncharger = rdMolStandardize.Uncharger()
+        heavy_mol = Chem.RemoveHs(mol)
+        parent_mol = uncharger.uncharge(heavy_mol)
+        parent_inchikey = Chem.MolToInchiKey(parent_mol)
+        parent_smiles = Chem.MolToSmiles(parent_mol, canonical=True)
+
     if not parent_inchikey:
         raise ValueError("Failed to generate InChIKey. Invalid chemical structure.")
 

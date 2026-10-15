@@ -132,8 +132,9 @@ class Substance(Base):
 
 class Pose(Base):
     """
-    Atomic 3D conformation of a Ligand positioned in a ReceptorFrame pocket.
-    Stores explicit paths to both SDF and MAE formats.
+    Atomic 3D conformation of a Substance positioned in a ReceptorFrame pocket.
+    Stores explicit, validated paths to geometry (SDF/MAE) and quantum topology (MOL2/FRCMOD).
+    Formal charge is strictly typed and mandatory for quantum electrostatics (AM1-BCC).
     """
 
     __tablename__ = "poses"
@@ -148,16 +149,17 @@ class Pose(Base):
     name = Column(String, unique=True, index=True, nullable=False)
     origin = Column(
         String, default="crystal", nullable=False
-    )  # crystal, docking, md_cluster, manual
+    )  # crystal, docking_glide, docking_gnina, md_cluster
     state = Column(String, default="raw", nullable=False)  # raw, ready
     parent_pose_id = Column(
         Integer, ForeignKey("poses.id", ondelete="SET NULL"), nullable=True
     )
+    formal_charge = Column(Integer, nullable=False)  # Crucial for Antechamber AM1-BCC
     path = Column(String, nullable=False)  # Canonical primary path
     path_sdf = Column(String, nullable=True)  # Validated SDF deliverable
     path_mae = Column(String, nullable=True)  # Validated MAE deliverable
-    path_mol2 = Column(String, nullable=True) # Antechamber AM1-BCC topology
-    path_frcmod = Column(String, nullable=True) # Antechamber GAFF2 parameters
+    path_mol2 = Column(String, nullable=True)  # Antechamber AM1-BCC topology
+    path_frcmod = Column(String, nullable=True)  # Antechamber GAFF2 parameters
     scores = Column(Text, default="{}", nullable=False)  # JSON dict of scoring metrics
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
@@ -254,22 +256,45 @@ class Trajectory(Base):
     system = relationship("System", back_populates="trajectories")
 
 
-@event.listens_for(ReceptorFrame.path, "set")
-def forbid_scratch_in_receptor_frame_path(target, value, oldvalue, initiator):
-    if value and ("/work/" in str(value) or ".nextflow" in str(value)):
-        raise ValueError(
-            f"FORBIDDEN: Attempted to write ephemeral scratch path into ReceptorFrame.path: {value}. "
-            f"All database records must strictly reference permanent project deliverables."
-        )
+def _validate_non_scratch_path(target, value, oldvalue, initiator):
+    """
+    Absolute barrier between ephemeral Nextflow/Slurm scratch and permanent DB records.
+    Triggers fatal exception on any attempt to persist intermediate work directories.
+    """
+    if value:
+        val_str = str(value)
+        forbidden_tokens = ["/work/", ".nextflow", "/tmp/", "slurm_tmp", "nfs_scratch"]
+        for token in forbidden_tokens:
+            if token in val_str:
+                col_name = initiator.key if hasattr(initiator, "key") else "path"
+                cls_name = target.__class__.__name__
+                raise ValueError(
+                    f"FATAL DB INTEGRITY VIOLATION: Ephemeral scratch path detected in {cls_name}.{col_name}: '{val_str}'! "
+                    f"Only validated, permanent project deliverables may be recorded in SQLite 3NF."
+                )
 
 
-@event.listens_for(Pose.path, "set")
-def forbid_scratch_in_pose_path(target, value, oldvalue, initiator):
-    if value and ("/work/" in str(value) or ".nextflow" in str(value)):
-        raise ValueError(
-            f"FORBIDDEN: Attempted to write ephemeral scratch path into Pose.path: {value}. "
-            f"All database records must strictly reference permanent project deliverables."
-        )
+# Attach strict validator to ALL file-referencing attributes across the entire schema
+for _model_attr in [
+    ReceptorFrame.path,
+    ReceptorFrame.path_mae,
+    ReceptorFrame.path_pdb,
+    Substance.path_mae,
+    Substance.path_sdf,
+    Pose.path,
+    Pose.path_sdf,
+    Pose.path_mae,
+    Pose.path_mol2,
+    Pose.path_frcmod,
+    System.path_gro,
+    System.path_top,
+    System.path_ndx,
+    Trajectory.raw_dir,
+    Trajectory.path_tpr,
+    Trajectory.path_clean_xtc,
+    Trajectory.path_ref_pdb,
+]:
+    event.listen(_model_attr, "set", _validate_non_scratch_path)
 
 
 def init_db(db_path: Path = None):
