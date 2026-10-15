@@ -120,6 +120,7 @@ class Substance(Base):
     inchikey = Column(String(27), unique=True, index=True, nullable=False)
     smiles = Column(Text, nullable=False)
     name = Column(String, nullable=False)
+    res_name = Column(String(8), nullable=False)
     substance_type = Column(String, default="ligand", nullable=False)  # 'ligand', 'cofactor', 'ion'
     state = Column(String, default="raw", nullable=False)  # 'raw', 'ready'
     batch_id = Column(String, nullable=True)
@@ -147,6 +148,7 @@ class Pose(Base):
         Integer, ForeignKey("receptor_frames.id", ondelete="CASCADE"), nullable=False
     )
     name = Column(String, unique=True, index=True, nullable=False)
+    res_name = Column(String(8), nullable=False)
     origin = Column(
         String, default="crystal", nullable=False
     )  # crystal, docking_glide, docking_gnina, md_cluster

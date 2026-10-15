@@ -59,8 +59,8 @@ def run_prep(
     for frame in raw_frames:
         frame_map[frame.name] = frame
         system = session.query(System).filter_by(receptor_frame_id=frame.id).first()
-        native_lig_code = system.pose.substance.name if (system and system.pose and system.pose.substance) else ""
-        cofactor_names = [c.substance.name for c in system.cofactors if c.substance] if system else []
+        native_lig_code = system.pose.res_name if (system and system.pose) else ""
+        cofactor_names = [c.res_name for c in system.cofactors if c.res_name] if system else []
         rec_plan.append({
             "name": frame.name,
             "path": str(Path(frame.path).resolve()),
@@ -99,7 +99,7 @@ def run_prep(
     pose_plan = []
     for pose in query_poses:
         ch = pose.formal_charge
-        res_name = pose.substance.name[:4].upper() if pose.substance else "LIG"
+        res_name = pose.res_name
         pose_plan.append({
             "name": pose.name,
             "path": pose.path,

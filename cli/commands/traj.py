@@ -533,15 +533,12 @@ def run_cluster(
             parent_match = None
             is_main_lig = False
 
-            if parent_sys.pose and (
-                (parent_main_resname and res_clean == parent_main_resname)
-                or (res_clean in parent_sys.pose.name.upper())
-            ):
+            if parent_sys.pose and res_clean == parent_sys.pose.res_name:
                 parent_match = parent_sys.pose
                 is_main_lig = True
             else:
                 for cof_p in parent_sys.cofactors:
-                    if (cof_p.substance and res_clean == cof_p.substance.name.strip().upper()) or (res_clean in cof_p.name.upper()):
+                    if res_clean == cof_p.res_name:
                         parent_match = cof_p
                         break
 
@@ -557,6 +554,7 @@ def run_cluster(
                     substance_id=parent_match.substance_id,
                     receptor_frame_id=frame_obj.id,
                     name=cluster_pose_name,
+                    res_name=parent_match.res_name,
                     origin="md_cluster",
                     state="raw",  # Geometry shifted in MD -> requires sbdd prep Antechamber
                     formal_charge=parent_match.formal_charge,

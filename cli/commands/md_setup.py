@@ -83,7 +83,7 @@ def run_md_setup(
                 console.print(f"[bold red]FATAL: System '{s.name}' cofactor/ion '{c.name}' missing SDF deliverable.[/bold red]")
                 sys.exit(1)
             extra_sdfs.append(str(Path(c_sdf).resolve()))
-            c_resname = c.substance.name[:4].upper()
+            c_resname = c.res_name
             extra_resnames.append(c_resname)
 
             if c.substance.substance_type != "ion":
@@ -93,7 +93,7 @@ def run_md_setup(
                 mol2_paths.append(str(Path(c.path_mol2).resolve()))
                 frcmod_paths.append(str(Path(c.path_frcmod).resolve()))
 
-        lig_resname = s.pose.substance.name[:4].upper() if (s.pose and s.pose.substance) else "LIG"
+        lig_resname = s.pose.res_name if s.pose else "LIG"
         plan_list.append(
             {
                 "id": s.name,

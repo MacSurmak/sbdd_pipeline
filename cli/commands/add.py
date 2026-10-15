@@ -83,8 +83,17 @@ STANDARD_PROTEIN_RESIDUES = {
 }
 
 
-class CleanProteinSelect:
-    """Strict whitelist filter: retains ONLY standard protein amino acid residues for ReceptorFrame."""
+class CleanStructureSelect:
+    """Strict filter: retains standard protein residues AND explicitly declared heterogens only."""
+
+    def __init__(self, allowed_ligand: str | None, allowed_cofactors: list[str], allowed_ions: list[str]):
+        self.allowed_resnames = set()
+        if allowed_ligand:
+            self.allowed_resnames.add(allowed_ligand.strip().upper())
+        for c in allowed_cofactors:
+            self.allowed_resnames.add(c.strip().upper())
+        for i in allowed_ions:
+            self.allowed_resnames.add(i.strip().upper())
 
     def accept_model(self, model):
         return 1
@@ -103,6 +112,8 @@ class CleanProteinSelect:
             is_aa(res) and res.get_id()[0] == " "
         ):
             return 1
+        if r_name in self.allowed_resnames:
+            return 1
         return 0
 
 
@@ -113,11 +124,12 @@ def _sanitize_and_split_models(
     allowed_ligand: str | None,
     allowed_cofactors: list[str],
     allowed_ions: list[str],
-) -> list[tuple[str, Path, Path]]:
+) -> list[tuple[str, Path]]:
     """
     Parses macromolecular structure, executes strict Fail-Fast verification of explicitly
-    requested ligand, cofactors, and ions, and separates pure APO protein from raw model geometry.
-    Returns list of (frame_name, apo_frame_pdb, raw_model_pdb).
+    requested ligand, cofactors, and ions, and produces sanitized complex frames containing
+    the protein and authorized heterogens, purging all unrequested solvent and crystallization artifacts.
+    Returns list of (frame_name, sanitized_complex_pdb).
     """
     from Bio.PDB import PDBParser, MMCIFParser, PDBIO
 
@@ -161,33 +173,29 @@ def _sanitize_and_split_models(
             )
 
     io = PDBIO()
-    protein_selector = CleanProteinSelect()
+    clean_selector = CleanStructureSelect(allowed_ligand, allowed_cofactors, allowed_ions)
 
     models = list(st.get_models())
     results = []
 
     if len(models) > 1:
         console.print(
-            f"[cyan]Detected {len(models)} models in ensemble. Separating clean apo frames...[/cyan]"
+            f"[cyan]Detected {len(models)} models in ensemble. Sanitizing complete complex frames...[/cyan]"
         )
         for idx, model in enumerate(models, start=1):
             f_name = f"{base_name}_m{idx}"
-            out_apo = dest_dir / f"{f_name}.pdb"
-            out_raw = dest_dir / f"{f_name}_source.pdb"
+            out_complex = dest_dir / f"{f_name}.pdb"
             
             io.set_structure(model)
-            io.save(str(out_raw))  # Preserves all atoms for heterogen extraction
-            io.save(str(out_apo), protein_selector)  # Strictly APO protein
-            results.append((f_name, out_apo, out_raw))
+            io.save(str(out_complex), clean_selector)
+            results.append((f_name, out_complex))
     else:
         f_name = base_name
-        out_apo = dest_dir / f"{f_name}.pdb"
-        out_raw = dest_dir / f"{f_name}_source.pdb"
+        out_complex = dest_dir / f"{f_name}.pdb"
 
         io.set_structure(st[0])
-        io.save(str(out_raw))
-        io.save(str(out_apo), protein_selector)
-        results.append((f_name, out_apo, out_raw))
+        io.save(str(out_complex), clean_selector)
+        results.append((f_name, out_complex))
 
     return results
 
@@ -299,13 +307,13 @@ def add_receptor(
             struct_path, frames_dir, base_name, lig_code, safe_cofactors, safe_ions
         )
 
-        for frame_name, apo_file, raw_file in frames:
-            has_gaps = _detect_gaps(apo_file)
+        for frame_name, complex_file in frames:
+            has_gaps = _detect_gaps(complex_file)
             initial_state = "broken" if has_gaps else "raw"
 
             ex_frame = session.query(ReceptorFrame).filter_by(name=frame_name).first()
             if ex_frame:
-                ex_frame.path = str(apo_file.resolve())
+                ex_frame.path = str(complex_file.resolve())
                 ex_frame.state = initial_state
                 frame_obj = ex_frame
                 console.print(
@@ -317,7 +325,7 @@ def add_receptor(
                     name=frame_name,
                     source_type=source_type,
                     state=initial_state,
-                    path=str(apo_file.resolve()),
+                    path=str(complex_file.resolve()),
                 )
                 session.add(frame_obj)
                 session.flush()
@@ -339,7 +347,7 @@ def add_receptor(
 
             def _process_heterogen(resname: str, sub_type: str):
                 pose_sdf = system_poses_dir / f"{frame_name}_{resname}_crystal.sdf"
-                _extract_ligand_atoms(raw_file, resname, pose_sdf)
+                _extract_ligand_atoms(complex_file, resname, pose_sdf)
 
                 parent_inchikey, parent_smiles, mol_name, formal_charge = get_mol_identity(pose_sdf)
 
@@ -349,12 +357,14 @@ def add_receptor(
                 if not base_sdf.exists():
                     shutil.copy2(pose_sdf, base_sdf)
 
+                clean_res_name = resname.strip().upper()
                 sub_entity = session.query(Substance).filter_by(inchikey=parent_inchikey).first()
                 if not sub_entity:
                     sub_entity = Substance(
                         inchikey=parent_inchikey,
                         smiles=parent_smiles,
                         name=mol_name or resname,
+                        res_name=clean_res_name,
                         substance_type=sub_type,
                         state="raw",
                         batch_id="crystal_extract",
@@ -373,22 +383,26 @@ def add_receptor(
                 p_obj = session.query(Pose).filter_by(name=pose_name).first()
                 if p_obj:
                     p_obj.path = str(pose_sdf.resolve())
+                    p_obj.path_sdf = str(pose_sdf.resolve())
+                    p_obj.res_name = clean_res_name
                     p_obj.formal_charge = formal_charge
                 else:
                     p_obj = Pose(
                         substance_id=sub_entity.id,
                         receptor_frame_id=frame_obj.id,
                         name=pose_name,
+                        res_name=clean_res_name,
                         origin="crystal",
                         state="raw",
                         formal_charge=formal_charge,
                         path=str(pose_sdf.resolve()),
+                        path_sdf=str(pose_sdf.resolve()),
                     )
                     session.add(p_obj)
                     session.flush()
                     ch_label = f"q={formal_charge:+d}" if formal_charge != 0 else "neutral"
                     console.print(
-                        f"[bold green]✓ Registered Pose '{pose_name}'[/bold green] [dim]({ch_label}) -> {pose_sdf.name}[/dim]"
+                        f"[bold green]✓ Registered Pose '{pose_name}'[/bold green] [dim]({clean_res_name}, {ch_label}) -> {pose_sdf.name}[/dim]"
                     )
                 return p_obj
 
@@ -404,9 +418,6 @@ def add_receptor(
             for ion in safe_ions:
                 i_pose = _process_heterogen(ion, "ion")
                 hetero_poses.append(i_pose)
-
-            # Purge intermediate extraction raw file to prevent disk clutter
-            raw_file.unlink(missing_ok=True)
 
             # System creation
             ex_sys = session.query(System).filter_by(name=sys_name).first()
@@ -551,6 +562,7 @@ def add_ligand(path: str, name: str | None = None, force: bool = False) -> None:
                     inchikey=inchikey,
                     smiles=smiles,
                     name=mol_title,
+                    res_name=mol_title[:4].upper(),
                     substance_type="ligand",
                     state="raw",
                     batch_id=target_path.stem,

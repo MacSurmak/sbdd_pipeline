@@ -50,18 +50,11 @@ def main():
         target_res = args.ligand.strip().upper()
         lig_atoms = []
 
-        # 1. Direct Python residue match immune to Maestro 4-char space padding
+        # Direct exact residue match: zero fallbacks, zero prefix wildcards
         for res in st.residue:
             r_name = res.pdbres.strip().upper()
-            if r_name == target_res or r_name.startswith(target_res):
+            if r_name == target_res:
                 lig_atoms.extend(res.getAtomIndices())
-
-        # 2. Fallback ASL with wildcards
-        if not lig_atoms:
-            lig_atoms = analyze.evaluate_asl(
-                st,
-                f"res.ptype '{target_res}*' OR res.ptype '{target_res} ' OR res.ptype '{target_res}'",
-            )
 
         if lig_atoms:
             lig_st = st.extract(lig_atoms)

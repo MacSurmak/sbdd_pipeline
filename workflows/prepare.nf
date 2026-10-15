@@ -108,9 +108,8 @@ workflow PREPARE_WF {
         PARAMETRIZE_POSE(ch_poses_in)
 
         PARAMETRIZE_POSE.out.map { meta, mol2, frcmod ->
-            def mol2_abs = mol2.toAbsolutePath()
-            def frcmod_abs = frcmod.toAbsolutePath()
-            "${meta.name}\t${mol2_abs}\t${frcmod_abs}"
+            def pose_dir = file("${params.outdir}/prepared_poses/${meta.name}").toAbsolutePath()
+            "${meta.name}\t${pose_dir}/${mol2.name}\t${pose_dir}/${frcmod.name}"
         }.collectFile(name: 'prep_pose_receipt.tsv', storeDir: params.outdir, newLine: true)
     }
 }

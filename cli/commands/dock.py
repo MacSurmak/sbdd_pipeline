@@ -492,6 +492,7 @@ def run_dock(
                         substance_id=lig.id,
                         receptor_frame_id=r_frame.id,
                         name=pose_name,
+                        res_name=lig.res_name,
                         origin=origin_tag,
                         state="raw",
                         formal_charge=f_charge,
@@ -503,15 +504,18 @@ def run_dock(
                     session.flush()
                     pose_obj = new_p
 
-                # 3NF System Assembly: Inherit cofactors from frame's system or lineage parent
-                parent_sys = session.query(System).filter(
-                    System.receptor_frame_id == r_frame.id
-                ).first()
-                if not parent_sys and r_frame.parent_frame_id:
-                    parent_sys = session.query(System).filter(
-                        System.receptor_frame_id == r_frame.parent_frame_id
-                    ).first()
-                parent_cofactors = list(parent_sys.cofactors) if parent_sys else []
+                # Deterministic 3NF inheritance: query crystal cofactors registered on this frame or lineage parent
+                lookup_frame_id = r_frame.parent_frame_id if r_frame.parent_frame_id else r_frame.id
+                parent_cofactors = (
+                    session.query(Pose)
+                    .join(Substance)
+                    .filter(
+                        Pose.receptor_frame_id == lookup_frame_id,
+                        Pose.origin == "crystal",
+                        Substance.substance_type.in_(["cofactor", "ion"]),
+                    )
+                    .all()
+                )
 
                 sys_name = f"{frame_name}_{title}_{eng}_p{p_idx}"
                 ex_sys = session.query(System).filter_by(name=sys_name).first()

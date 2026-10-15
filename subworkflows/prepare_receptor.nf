@@ -108,10 +108,11 @@ workflow PREPARE_RECEPTOR {
     ch_receipt_data = ch_rec_pair
         .join(ch_lig_pair, remainder: true)
         .map { meta, r_mae, r_pdb, n_mae, n_sdf ->
-            def mae_abs = r_mae.toAbsolutePath()
-            def pdb_abs = r_pdb.toAbsolutePath()
-            def n_mae_abs = (n_mae != null) ? n_mae.toAbsolutePath() : "NONE"
-            def n_sdf_abs = (n_sdf != null) ? n_sdf.toAbsolutePath() : "NONE"
+            def frame_dir = file("${params.outdir}/prepared_frames/${meta.id}").toAbsolutePath()
+            def mae_abs = "${frame_dir}/${r_mae.name}"
+            def pdb_abs = "${frame_dir}/${r_pdb.name}"
+            def n_mae_abs = (n_mae != null) ? "${frame_dir}/${n_mae.name}" : "NONE"
+            def n_sdf_abs = (n_sdf != null) ? "${frame_dir}/${n_sdf.name}" : "NONE"
             "${meta.name}\t${mae_abs}\t${pdb_abs}\t${n_mae_abs}\t${n_sdf_abs}"
         }
 

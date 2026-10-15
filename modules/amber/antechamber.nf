@@ -5,7 +5,7 @@
 
 process PARAMETRIZE_POSE {
     tag "${meta.name}"
-    publishDir "${params.outdir}/prepared_poses/${meta.name}", mode: 'copy'
+    publishDir path: { "${params.outdir}/prepared_poses/${meta.name}" }, mode: 'copy'
 
     input:
     tuple val(meta), path(sdf)

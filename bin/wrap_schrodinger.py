@@ -72,7 +72,7 @@ def distill_schrodinger_errors(job_name: str, raw_stderr: str = "") -> str:
 
 def run_cmd(cmd, env=None, job_name=None):
     print(f"Exec: {' '.join(cmd)}")
-    # Жесткий перехват потоков. Мусор больше не льется напрямую в Nextflow.
+    # Strictly intercept subprocess streams to isolate pipeline logs from proprietary tool noise
     res = subprocess.run(cmd, capture_output=True, text=True, env=env)
     if res.returncode != 0:
         distilled = distill_schrodinger_errors(job_name, res.stderr)

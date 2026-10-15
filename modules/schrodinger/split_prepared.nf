@@ -6,6 +6,7 @@
 process SPLIT_PREPARED {
     tag "${meta.id}"
     label "process_single"
+    publishDir path: { "${params.outdir}/prepared_frames/${meta.id}" }, mode: 'copy'
 
     input:
     tuple val(meta), path(complex_prepared_mae)
