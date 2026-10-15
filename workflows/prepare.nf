@@ -98,21 +98,20 @@ workflow PREPARE_WF {
     def poseList = planData.poses ?: []
     ch_plan_poses = Channel.empty()
     if (poseList) {
-        ch_plan_poses = Channel.fromList(poseList).map { pose ->
+        ch_plan_poses = Channel.fromList(poseList).filter { !it.is_ion }.map { pose ->
             def sdf_path = file(pose.path)
             if (!sdf_path.exists()) {
                 error "FATAL: Pose SDF path explicitly provided by DB does not exist: ${pose.path}"
             }
-            def mae_path = pose.path_mae ? file(pose.path_mae) : file("NO_MAE")
             def meta = [
                 id: pose.name,
                 name: pose.name,
                 res_name: pose.res_name ?: "LIG",
                 inchikey: pose.inchikey,
                 charge: pose.charge as int,
-                is_ion: pose.is_ion ?: false
+                is_ion: false
             ]
-            [ meta, sdf_path.toAbsolutePath(), mae_path ]
+            [ meta, sdf_path.toAbsolutePath() ]
         }
     }
 
@@ -120,12 +119,11 @@ workflow PREPARE_WF {
 
     PARAMETRIZE_POSE(ch_all_poses)
 
-    PARAMETRIZE_POSE.out.map { meta, sdf, mae, mol2, frcmod ->
+    PARAMETRIZE_POSE.out.map { meta, sdf, mol2, frcmod ->
         def pose_dir = file("${params.outdir}/substances/${meta.inchikey}/poses/${meta.name}").toAbsolutePath()
         def sdf_abs = "${pose_dir}/${sdf.name}"
-        def mae_abs = (mae != null && file("${pose_dir}/${mae.name}").exists()) ? "${pose_dir}/${mae.name}" : "NONE"
-        def mol2_abs = (mol2 != null && file("${pose_dir}/${mol2.name}").exists()) ? "${pose_dir}/${mol2.name}" : "NONE"
-        def frcmod_abs = (frcmod != null && file("${pose_dir}/${frcmod.name}").exists()) ? "${pose_dir}/${frcmod.name}" : "NONE"
-        "${meta.name}\t${sdf_abs}\t${mae_abs}\t${mol2_abs}\t${frcmod_abs}"
+        def mol2_abs = "${pose_dir}/${mol2.name}"
+        def frcmod_abs = "${pose_dir}/${frcmod.name}"
+        "${meta.name}\t${sdf_abs}\t${mol2_abs}\t${frcmod_abs}"
     }.collectFile(name: 'prep_pose_receipt.tsv', storeDir: params.outdir, newLine: true)
 }

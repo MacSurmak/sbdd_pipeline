@@ -215,9 +215,9 @@ def run_prep(
             if not line.strip():
                 continue
             parts = line.split("\t")
-            if len(parts) < 5:
-                raise ValueError(f"FATAL: Corrupted line in {pose_receipt}: '{line}'. Expected 5 tab-separated fields.")
-            pose_name, rel_sdf, rel_mae, rel_mol2, rel_frcmod = parts
+            if len(parts) < 4:
+                raise ValueError(f"FATAL: Corrupted line in {pose_receipt}: '{line}'. Expected 4 tab-separated fields.")
+            pose_name, rel_sdf, rel_mol2, rel_frcmod = parts
             pose_obj = session.query(Pose).filter_by(name=pose_name).first()
             if not pose_obj:
                 raise KeyError(f"FATAL: Parametrized pose '{pose_name}' in receipt is not registered in DB!")
@@ -228,22 +228,15 @@ def run_prep(
             pose_obj.path_sdf = str(sdf_path)
             pose_obj.path = str(sdf_path)
 
-            if rel_mae != "NONE":
-                mae_path = Path(rel_mae).resolve()
-                if mae_path.exists() and mae_path.stat().st_size > 0:
-                    pose_obj.path_mae = str(mae_path)
+            mol2_path = Path(rel_mol2).resolve()
+            if not mol2_path.exists() or mol2_path.stat().st_size == 0:
+                raise FileNotFoundError(f"FATAL: Antechamber MOL2 missing on disk: {mol2_path}")
+            pose_obj.path_mol2 = str(mol2_path)
 
-            if rel_mol2 != "NONE":
-                mol2_path = Path(rel_mol2).resolve()
-                if not mol2_path.exists() or mol2_path.stat().st_size == 0:
-                    raise FileNotFoundError(f"FATAL: Antechamber MOL2 missing: {mol2_path}")
-                pose_obj.path_mol2 = str(mol2_path)
-
-            if rel_frcmod != "NONE":
-                frcmod_path = Path(rel_frcmod).resolve()
-                if not frcmod_path.exists() or frcmod_path.stat().st_size == 0:
-                    raise FileNotFoundError(f"FATAL: Parmchk2 FRCMOD missing: {frcmod_path}")
-                pose_obj.path_frcmod = str(frcmod_path)
+            frcmod_path = Path(rel_frcmod).resolve()
+            if not frcmod_path.exists() or frcmod_path.stat().st_size == 0:
+                raise FileNotFoundError(f"FATAL: Parmchk2 FRCMOD missing on disk: {frcmod_path}")
+            pose_obj.path_frcmod = str(frcmod_path)
 
             pose_obj.state = "ready"
             prep_pose_count += 1
