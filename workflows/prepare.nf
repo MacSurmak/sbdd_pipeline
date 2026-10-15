@@ -29,6 +29,8 @@ workflow PREPARE_WF {
             def meta = [
                 id: target.name,
                 name: target.name,
+                target: target.target_name,
+                system: target.system_name,
                 prep_mode: target.prep_mode,
                 project: params.project_name,
                 native_ligand: target.native_ligand ?: "",
@@ -64,6 +66,7 @@ workflow PREPARE_WF {
             def meta = [
                 id: lig.name,
                 name: lig.name,
+                inchikey: lig.inchikey,
                 project: params.project_name,
                 status: lig.status ?: 'unprepared',
                 is_native: lig.is_native ?: false
@@ -87,8 +90,8 @@ workflow PREPARE_WF {
         PREPARE_LIGANDS.out.prepared_ligands.map { meta, mae ->
             def base_id = meta.name ?: meta.id
             def stem = mae.name.replaceAll(/(\.maegz|\.mae)$/, "")
-            def lig_dir = file("${params.outdir}/ligands/${base_id}").toAbsolutePath()
-            "${base_id}\t${lig_dir}/${mae.name}\t${lig_dir}/${stem}.sdf"
+            def sub_dir = file("${params.outdir}/substances/${meta.inchikey}").toAbsolutePath()
+            "${base_id}\t${sub_dir}/${mae.name}\t${sub_dir}/${stem}.sdf"
         }.collectFile(name: 'prep_ligand_receipt.tsv', storeDir: params.outdir, newLine: true)
     }
 
@@ -104,6 +107,7 @@ workflow PREPARE_WF {
             def meta = [
                 id: pose.name,
                 name: pose.name,
+                system: pose.system_name,
                 charge: pose.charge,
                 res_name: pose.res_name ?: "LIG"
             ]
@@ -116,7 +120,7 @@ workflow PREPARE_WF {
     PARAMETRIZE_POSE(ch_all_poses)
 
     PARAMETRIZE_POSE.out.map { meta, mol2, frcmod ->
-        def pose_dir = file("${params.outdir}/prepared_poses/${meta.name}").toAbsolutePath()
+        def pose_dir = file("${params.outdir}/systems/${meta.system}/poses").toAbsolutePath()
         "${meta.name}\t${pose_dir}/${mol2.name}\t${pose_dir}/${frcmod.name}"
     }.collectFile(name: 'prep_pose_receipt.tsv', storeDir: params.outdir, newLine: true)
 }

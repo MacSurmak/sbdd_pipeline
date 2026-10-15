@@ -82,24 +82,25 @@ workflow PREPARE_RECEPTOR {
 
     SPLIT_PREPARED(ch_final_complex_mae)
 
-    // Emit structured 5-column receipt with absolute paths supporting both Holo and Apo complexes
+    // Emit structured 5-column receipt with absolute paths to canonical targets/<target>/frames/<frame>/ directory
     ch_rec_pair = SPLIT_PREPARED.out.prepared_mae.join(SPLIT_PREPARED.out.prepared_pdb)
     ch_lig_pair = SPLIT_PREPARED.out.ref_native_mae.join(SPLIT_PREPARED.out.ref_native_sdf)
 
     ch_receipt_data = ch_rec_pair
         .join(ch_lig_pair, remainder: true)
         .map { meta, r_mae, r_pdb, n_mae, n_sdf ->
-            def frame_dir = file("${params.outdir}/prepared/${meta.id}").toAbsolutePath()
+            def frame_dir = file("${params.outdir}/targets/${meta.target}/frames/${meta.name}").toAbsolutePath()
+            def sys_poses_dir = file("${params.outdir}/systems/${meta.system}/poses").toAbsolutePath()
             def mae_abs = "${frame_dir}/${r_mae.name}"
             def pdb_abs = "${frame_dir}/${r_pdb.name}"
-            def n_mae_abs = (n_mae != null) ? "${frame_dir}/${n_mae.name}" : "NONE"
-            def n_sdf_abs = (n_sdf != null) ? "${frame_dir}/${n_sdf.name}" : "NONE"
+            def n_mae_abs = (n_mae != null) ? "${sys_poses_dir}/${n_mae.name}" : "NONE"
+            def n_sdf_abs = (n_sdf != null) ? "${sys_poses_dir}/${n_sdf.name}" : "NONE"
             "${meta.name}\t${mae_abs}\t${pdb_abs}\t${n_mae_abs}\t${n_sdf_abs}"
         }
 
     ch_receipt_data.collectFile(name: 'prep_receipt.tsv', storeDir: params.outdir, newLine: true)
 
-    // Stream protonated in-situ poses directly to Antechamber for quantum parametrization
+    // Stream protonated in-situ poses directly to Antechamber for quantum parametrization into systems/<sys>/poses
     ch_poses_to_param = SPLIT_PREPARED.out.poses_manifest
         .flatMap { meta, json_file ->
             def records = new groovy.json.JsonSlurperClassic().parseText(json_file.text)
@@ -107,6 +108,7 @@ workflow PREPARE_RECEPTOR {
                 def pose_meta = [
                     id: "${meta.name}_${rec.res_name}_pose",
                     name: "${meta.name}_${rec.res_name}_pose",
+                    system: meta.system,
                     charge: rec.charge as int,
                     res_name: rec.res_name
                 ]

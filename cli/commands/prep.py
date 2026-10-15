@@ -62,10 +62,13 @@ def run_prep(
     for frame in raw_frames:
         frame_map[frame.name] = frame
         system = session.query(System).filter_by(receptor_frame_id=frame.id).first()
+        sys_name = system.name if system else f"{frame.name}_system"
         native_lig_code = system.pose.res_name if (system and system.pose) else ""
         cofactor_names = [c.res_name for c in system.cofactors if c.res_name] if system else []
         rec_plan.append({
             "name": frame.name,
+            "target_name": frame.target.name,
+            "system_name": sys_name,
             "path": str(Path(frame.path).resolve()),
             "prep_mode": "full",
             "cofactors": cofactor_names,
@@ -95,6 +98,7 @@ def run_prep(
             sub.path_sdf = str(sub_sdf.resolve())
             sub_plan.append({
                 "name": sub.name,
+                "inchikey": sub.inchikey,
                 "path": str(sub_sdf.resolve()),
                 "status": "unprepared"
             })
@@ -103,8 +107,14 @@ def run_prep(
     for pose in query_poses:
         ch = pose.formal_charge
         res_name = pose.res_name
+        parent_sys = pose.systems[0] if pose.systems else None
+        if not parent_sys and pose.cofactor_systems:
+            parent_sys = pose.cofactor_systems[0]
+        sys_name = parent_sys.name if parent_sys else f"{pose.receptor_frame.name}_system"
+
         pose_plan.append({
             "name": pose.name,
+            "system_name": sys_name,
             "path": pose.path,
             "charge": ch,
             "res_name": res_name
@@ -158,33 +168,36 @@ def run_prep(
             frame.state = "ready"
             prep_rec_count += 1
 
-            if n_sdf != "NONE":
-                system = session.query(System).filter_by(receptor_frame_id=frame.id).first()
-                if system and system.pose:
-                    sdf_path = Path(n_sdf).resolve()
-                    if not sdf_path.exists() or sdf_path.stat().st_size == 0:
-                        raise FileNotFoundError(f"FATAL: Prepared native pose SDF missing: {sdf_path}")
-                    system.pose.path_sdf = str(sdf_path)
-                    system.pose.path = str(sdf_path)
-                    if n_mae != "NONE":
-                        mae_native = Path(n_mae).resolve()
-                        if not mae_native.exists() or mae_native.stat().st_size == 0:
-                            raise FileNotFoundError(f"FATAL: Prepared native pose MAE missing: {mae_native}")
-                        system.pose.path_mae = str(mae_native)
-                    system.pose.state = "ready"
-
-            # Update cofactors and ions with PrepWizard deliverables
-            frame_dir = Path(r_pdb).parent
             system = session.query(System).filter_by(receptor_frame_id=frame.id).first()
             if system:
+                sys_poses_dir = cwd / "systems" / system.name / "poses"
+                sys_poses_dir.mkdir(parents=True, exist_ok=True)
+
+                if n_sdf != "NONE" and system.pose:
+                    src_sdf = Path(n_sdf).resolve()
+                    if not src_sdf.exists() or src_sdf.stat().st_size == 0:
+                        # Deliverable was copied to system poses directory
+                        src_sdf = sys_poses_dir / "native.sdf"
+                    if not src_sdf.exists():
+                        raise FileNotFoundError(f"FATAL: Prepared native pose SDF missing: {src_sdf}")
+
+                    dest_sdf = sys_poses_dir / f"{system.pose.name}.sdf"
+                    if src_sdf != dest_sdf:
+                        shutil.copy2(src_sdf, dest_sdf)
+
+                    system.pose.path_sdf = str(dest_sdf.resolve())
+                    system.pose.path = str(dest_sdf.resolve())
+                    system.pose.state = "ready"
+
                 for cof in system.cofactors:
-                    c_sdf = frame_dir / f"pose_{cof.res_name}.sdf"
-                    c_mae = frame_dir / f"pose_{cof.res_name}.mae"
-                    if c_sdf.exists() and c_sdf.stat().st_size > 0:
-                        cof.path_sdf = str(c_sdf.resolve())
-                        cof.path = str(c_sdf.resolve())
-                        if c_mae.exists() and c_mae.stat().st_size > 0:
-                            cof.path_mae = str(c_mae.resolve())
+                    frame_dir = Path(r_pdb).parent
+                    c_src_sdf = frame_dir / f"pose_{cof.res_name}.sdf"
+                    if c_src_sdf.exists() and c_src_sdf.stat().st_size > 0:
+                        c_dest_sdf = sys_poses_dir / f"{cof.name}.sdf"
+                        if c_src_sdf != c_dest_sdf:
+                            shutil.copy2(c_src_sdf, c_dest_sdf)
+                        cof.path_sdf = str(c_dest_sdf.resolve())
+                        cof.path = str(c_dest_sdf.resolve())
                         cof.state = "ready"
 
     sub_receipt = cwd / "prep_ligand_receipt.tsv"
