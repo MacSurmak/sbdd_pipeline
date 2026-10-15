@@ -16,12 +16,6 @@ process SPLIT_PREPARED {
     tuple val(meta), path("receptor.pdb"), emit: prepared_pdb
     tuple val(meta), path("native.mae"), emit: ref_native_mae, optional: true
     tuple val(meta), path("native.sdf"), emit: ref_native_sdf, optional: true
-
-    output:
-    tuple val(meta), path("receptor.mae"), emit: prepared_mae
-    tuple val(meta), path("receptor.pdb"), emit: prepared_pdb
-    tuple val(meta), path("native.mae"), emit: ref_native_mae, optional: true
-    tuple val(meta), path("native.sdf"), emit: ref_native_sdf, optional: true
     tuple val(meta), path("pose_*.sdf"), emit: cofactor_sdfs, optional: true
     tuple val(meta), path("pose_*.mae"), emit: cofactor_maes, optional: true
     tuple val(meta), path("extracted_poses.json"), emit: poses_manifest

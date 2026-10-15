@@ -122,7 +122,6 @@ workflow PREPARE_RECEPTOR {
     ch_poses_to_param = SPLIT_PREPARED.out.poses_manifest
         .flatMap { meta, json_file ->
             def records = new groovy.json.JsonSlurperClassic().parseText(json_file.text)
-            def frame_dir = file("${params.outdir}/prepared/${meta.id}").toAbsolutePath()
             records.findAll { !it.is_ion }.collect { rec ->
                 def pose_meta = [
                     id: "${meta.name}_${rec.res_name}_pose",
@@ -130,7 +129,7 @@ workflow PREPARE_RECEPTOR {
                     charge: rec.charge as int,
                     res_name: rec.res_name
                 ]
-                [ pose_meta, file("${frame_dir}/${rec.sdf}") ]
+                [ pose_meta, json_file.parent.resolve(rec.sdf) ]
             }
         }
 
