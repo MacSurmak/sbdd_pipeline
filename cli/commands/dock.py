@@ -7,7 +7,7 @@ import json
 import sys
 from pathlib import Path
 from rich.console import Console
-from cli.core.db import init_db, Target, ReceptorFrame, Ligand, Pose, System
+from cli.core.db import init_db, Target, ReceptorFrame, Substance, Pose, System
 from cli.core.runner import execute_nextflow
 from cli.core.config_loader import load_project_configs, build_nextflow_args
 
@@ -91,7 +91,7 @@ def run_dock(
                 continue
 
             native_pose = target_sys.pose
-            native_lig = native_pose.ligand
+            native_lig = native_pose.substance
 
             active_frames.append((r, native_pose, native_lig))
 
@@ -198,7 +198,7 @@ def run_dock(
             )
             sys.exit(1)
 
-        ligands = session.query(Ligand).filter(Ligand.name.in_(ligand_names)).all()
+        ligands = session.query(Substance).filter(Substance.name.in_(ligand_names), Substance.substance_type == "ligand").all()
         if len(ligands) != len(ligand_names):
             found = {l.name for l in ligands}
             missing = set(ligand_names) - found
@@ -216,7 +216,7 @@ def run_dock(
                 sys.exit(1)
 
             pose_obj = sys_obj.pose
-            native_lig = pose_obj.ligand.name
+            native_lig = pose_obj.substance.name
             pose_p = Path(pose_obj.path).resolve()
 
             ref_sdf = pose_p.with_suffix(".sdf")
@@ -284,7 +284,7 @@ def run_dock(
                 sys.exit(1)
 
             has_crystal_pose = (
-                session.query(Pose).filter_by(ligand_id=l.id, origin="crystal").first()
+                session.query(Pose).filter_by(substance_id=l.id, origin="crystal").first()
                 is not None
             )
 
@@ -406,7 +406,7 @@ def run_dock(
                     f"FATAL: ReceptorFrame '{frame_name}' in ranking is not registered in SQLite database!"
                 )
 
-            lig = session.query(Ligand).filter_by(name=title).first()
+            lig = session.query(Substance).filter_by(name=title, substance_type="ligand").first()
             if not lig:
                 session.close()
                 raise ValueError(
@@ -459,9 +459,10 @@ def run_dock(
                     ex_pose.scores_dict = scores_dict
                     ex_pose.origin = origin_tag
                     ex_pose.state = "ready"
+                    pose_obj = ex_pose
                 else:
                     new_p = Pose(
-                        ligand_id=lig.id,
+                        substance_id=lig.id,
                         receptor_frame_id=r_frame.id,
                         name=pose_name,
                         origin=origin_tag,
@@ -470,6 +471,33 @@ def run_dock(
                     )
                     new_p.scores_dict = scores_dict
                     session.add(new_p)
+                    pose_obj = new_p
+
+                # 3NF System Assembly: Inherit cofactors from parent system
+                parent_sys = session.query(System).filter(
+                    System.receptor_frame_id == r_frame.id,
+                    System.origin == "crystal"
+                ).first()
+                parent_cofactors = parent_sys.cofactors if parent_sys else []
+
+                sys_name = f"{frame_name}_{title}_{eng}"
+                ex_sys = session.query(System).filter_by(name=sys_name).first()
+                if ex_sys:
+                    ex_sys.pose_id = pose_obj.id
+                    ex_sys.state = "raw"  # Awaiting md-setup
+                    ex_sys.cofactors = parent_cofactors
+                else:
+                    new_sys = System(
+                        target_id=r_frame.target_id,
+                        receptor_frame_id=r_frame.id,
+                        pose_id=pose_obj.id,
+                        name=sys_name,
+                        state="raw",
+                        origin=origin_tag,
+                    )
+                    new_sys.cofactors = parent_cofactors
+                    session.add(new_sys)
+
                 poses_count += 1
 
             # Populate display row for the Rich Summary Table
