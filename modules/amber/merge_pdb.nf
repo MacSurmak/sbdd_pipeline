@@ -8,18 +8,18 @@ process MERGE_PDB {
     label 'process_single'
 
     input:
-    tuple val(meta), path(rec_pdb), path(org_pdbs)
+    tuple val(meta), path(rec_pdb), path(lig_sdf)
 
     output:
     tuple val(meta), path("complex_dry.pdb"), emit: complex_pdb
 
     script:
-    def org_arg = org_pdbs ? "--org_pdbs ${org_pdbs}" : ""
+    def lig_arg = lig_sdf ? "--lig_sdf ${lig_sdf}" : ""
     """
     python3 ${projectDir}/bin/merge_complex.py \\
         --rec_pdb ${rec_pdb} \\
         --out_pdb complex_dry.pdb \\
-        ${org_arg}
+        ${lig_arg}
     """
 
     stub:

@@ -3,8 +3,6 @@
  * Full MD System Build: Extraction -> Amberization -> Membrane/Solvation -> GROMACS conversion -> Restraints
  */
 
-include { EXTRACT_MD_SYSTEM } from '../modules/schrodinger/extract_md_system'
-include { ANTECHAMBER       } from '../modules/amber/antechamber'
 include { MERGE_PDB         } from '../modules/amber/merge_pdb'
 include { PACKMOL_MEMGEN    } from '../modules/membrane/packmol'
 include { TLEAP             } from '../modules/amber/tleap'
@@ -14,7 +12,7 @@ include { NDX_POSRE         } from '../modules/gromacs/ndx_posre'
 
 workflow SETUP_MD_SYSTEM {
     take:
-    ch_targets        // channel: [ val(meta), path(receptor_pdb), path(ligand_file), val(cofactors_list) ]
+    ch_targets        // channel: [ meta, rec_pdb, lig_sdf, mol2s, frcmods ]
     is_membrane       // val: true/false
     upper_lipids      // val: "POPC:POPE:CHL1"
     upper_ratio       // val: "5:4:1"
@@ -39,44 +37,14 @@ workflow SETUP_MD_SYSTEM {
     declash_tol
 
     main:
-    // 1. Extract files
-    EXTRACT_MD_SYSTEM(ch_targets)
-    
-    // 2. Parse organic components for parallel Antechamber
-    ch_ante_in = EXTRACT_MD_SYSTEM.out.extracted.flatMap { meta, rec_pdb, json_file, org_files ->
-        def org_list = org_files instanceof List ? org_files : (org_files ? [org_files] : [])
-        def data = new groovy.json.JsonSlurperClassic().parseText(json_file.text)
-        data.collect { org ->
-            def mol_meta = meta + [mol_id: org.name]
-            def m_file = org_list.find { it.name == org.mol2 }
-            def c_file = org_list.find { it.name == org.charge }
-            [ mol_meta, m_file, c_file ]
-        }
+    // 1. Clean merge of standardized protein (with cofactors) and the active ligand
+    ch_merge_in = ch_targets.map { meta, rec_pdb, lig_sdf, mol2s, frcmods ->
+        [ meta, rec_pdb, lig_sdf ]
     }
-
-    ANTECHAMBER(ch_ante_in)
-
-    ch_ante_grouped = ANTECHAMBER.out.gaff_params
-        .map { mol_meta, mol2, frcmod, pdb ->
-            def orig_meta = mol_meta.findAll { it.key != 'mol_id' }
-            [ orig_meta, mol2, frcmod, pdb ]
-        }
-        .groupTuple(by: 0, sort: true)
-
-    // 3. Clean Bash Merge of standardized protein and ALL organics
-    ch_merge_in = EXTRACT_MD_SYSTEM.out.extracted_base
-        .map { meta, rec_pdb, json_file -> [ meta, rec_pdb ] }
-        .join(ch_ante_grouped, remainder: true)
-        .map { tuple ->
-            def meta = tuple[0]
-            def rec_pdb = tuple[1]
-            def pdbs = (tuple.size() > 4 && tuple[4] != null) ? tuple[4] : []
-            [ meta, rec_pdb, pdbs ]
-        }
 
     MERGE_PDB(ch_merge_in)
 
-    // 4. Membrane Assembly or Solvation
+    // 2. Membrane Assembly or Solvation
     if (is_membrane.toString() == 'true') {
         PACKMOL_MEMGEN(
             MERGE_PDB.out.complex_pdb,
@@ -93,14 +61,10 @@ workflow SETUP_MD_SYSTEM {
         ch_tleap_pdb = MERGE_PDB.out.complex_pdb
     }
 
-    // 5. tLEaP topology building
+    // 3. tLEaP topology building
     ch_tleap_in = ch_tleap_pdb
-        .join(ch_ante_grouped, remainder: true)
-        .map { tuple ->
-            def meta = tuple[0]
-            def pdb = tuple[1]
-            def mol2s = (tuple.size() > 2 && tuple[2] != null) ? tuple[2] : []
-            def frcmods = (tuple.size() > 3 && tuple[3] != null) ? tuple[3] : []
+        .join(ch_targets.map { meta, rec_pdb, lig_sdf, mol2s, frcmods -> [meta, mol2s, frcmods] })
+        .map { meta, pdb, mol2s, frcmods ->
             [ meta, pdb, mol2s, frcmods ]
         }
     

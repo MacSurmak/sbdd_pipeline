@@ -15,7 +15,7 @@ def main():
     )
     parser.add_argument("--rec_pdb", required=True, help="Input receptor PDB")
     parser.add_argument(
-        "--org_pdbs", nargs="*", default=[], help="Organic PDB files from Antechamber"
+        "--lig_sdf", help="Active ligand SDF file (if holo)"
     )
     parser.add_argument("--out_pdb", required=True, help="Output complex PDB")
     args = parser.parse_args()
@@ -53,35 +53,46 @@ def main():
     # Available chain IDs for small molecules (working backwards from Z)
     available_chains = [c for c in "ZYXWVUTSRQPONMLKJIHGFEDCB" if c not in used_chains]
 
-    # 2. Append each organic molecule as an independent, TER-separated residue
-    for org_f in args.org_pdbs:
-        p = Path(org_f)
-        if not p.exists() or p.stat().st_size == 0:
-            print(f"FATAL: Organic PDB is missing or empty: {org_f}", file=sys.stderr)
+    # 2. Append active ligand as an independent, TER-separated residue
+    if args.lig_sdf:
+        p_sdf = Path(args.lig_sdf)
+        if not p_sdf.exists() or p_sdf.stat().st_size == 0:
+            print(f"FATAL: Ligand SDF is missing or empty: {p_sdf}", file=sys.stderr)
             sys.exit(1)
+        
+        try:
+            from rdkit import Chem
+            suppl = Chem.SDMolSupplier(str(p_sdf), removeHs=False)
+            mol = next((m for m in suppl if m is not None), None)
+            if not mol:
+                raise ValueError("RDKit failed to parse ligand.")
+            
+            lig_pdb_block = Chem.MolToPDBBlock(mol)
+            
+            max_res_seq += 1
+            chain_id = available_chains.pop(0) if available_chains else "Z"
 
-        max_res_seq += 1
-        chain_id = available_chains.pop(0) if available_chains else "Z"
-
-        for line in p.read_text(errors="ignore").splitlines():
-            if line.startswith(("ATOM", "HETATM")):
-                # Ensure correct PDB columns:
-                # 0-20: Record name, serial, atom name, altLoc, resName
-                # 21: Chain ID
-                # 22-25: resSeq
-                # 26+: iCode, coords, occupancy, tempFactor, element
-                atom_part = line[:21]
-                rest = line[26:] if len(line) >= 26 else ""
-                new_line = f"{atom_part[:21]:<21}{chain_id}{max_res_seq:4d}{rest}"
-                out_lines.append(new_line)
-
-        out_lines.append("TER")
+            for line in lig_pdb_block.splitlines():
+                if line.startswith(("ATOM", "HETATM")):
+                    # Ensure correct PDB columns:
+                    # 0-20: Record name, serial, atom name, altLoc, resName
+                    # 21: Chain ID
+                    # 22-25: resSeq
+                    # 26+: iCode, coords, occupancy, tempFactor, element
+                    atom_part = line[:21]
+                    rest = line[26:] if len(line) >= 26 else ""
+                    new_line = f"{atom_part[:21]:<21}{chain_id}{max_res_seq:4d}{rest}"
+                    out_lines.append(new_line)
+            
+            out_lines.append("TER")
+        except Exception as e:
+            print(f"FATAL: Could not convert ligand SDF to PDB block: {e}", file=sys.stderr)
+            sys.exit(1)
 
     out_lines.append("END")
     Path(args.out_pdb).write_text("\n".join(out_lines) + "\n")
-    print(
-        f"Successfully assembled {args.out_pdb} with {len(args.org_pdbs)} distinct organic residue(s)."
-    )
+    lig_msg = "with 1 active ligand." if args.lig_sdf else "(Apo)."
+    print(f"Successfully assembled {args.out_pdb} {lig_msg}")
 
 
 if __name__ == "__main__":
