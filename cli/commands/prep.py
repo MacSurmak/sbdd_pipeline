@@ -95,7 +95,7 @@ def run_prep(
 
     pose_plan = []
     for pose in query_poses:
-        ch = pose.scores_dict.get("formal_charge", 0)
+        ch = pose.formal_charge
         res_name = pose.substance.name[:4].upper() if pose.substance else "LIG"
         pose_plan.append({
             "name": pose.name,
@@ -124,54 +124,100 @@ def run_prep(
         console.print("[bold red]Nextflow preparation failed. Database not updated.[/bold red]")
         sys.exit(ret_code)
 
-    # Read Receipts
+    # Read Receipts strictly via Plan & Receipt protocol without path guessing
     prep_rec_count, prep_sub_count, prep_pose_count = 0, 0, 0
     rec_receipt = cwd / "prep_receipt.tsv"
-    if rec_receipt.exists():
+    if rec_receipt.exists() and rec_receipt.stat().st_size > 0:
         for line in rec_receipt.read_text().strip().splitlines():
-            if not line.strip(): continue
-            orig_name, rel_path = line.split("\t")
+            if not line.strip():
+                continue
+            parts = line.split("\t")
+            if len(parts) < 5:
+                raise ValueError(f"FATAL: Corrupted line in {rec_receipt}: '{line}'. Expected 5 tab-separated fields.")
+            orig_name, r_mae, r_pdb, n_mae, n_sdf = parts
             frame = frame_map.get(orig_name)
-            if frame:
-                frame.path_mae = str((cwd / "prepared" / rel_path).resolve())
-                frame.path_pdb = str((cwd / "prepared" / orig_name / "receptor.pdb").resolve())
-                frame.state = "ready"
-                prep_rec_count += 1
+            if not frame:
+                raise KeyError(f"FATAL: Prepared frame '{orig_name}' in receipt is not present in plan!")
 
+            mae_path = (cwd / "prepared" / r_mae).resolve()
+            pdb_path = (cwd / "prepared" / r_pdb).resolve()
+            if not mae_path.exists():
+                raise FileNotFoundError(f"FATAL: Prepared receptor MAE missing on disk: {mae_path}")
+            if not pdb_path.exists():
+                raise FileNotFoundError(f"FATAL: Prepared receptor PDB missing on disk: {pdb_path}")
+
+            frame.path_mae = str(mae_path)
+            frame.path_pdb = str(pdb_path)
+            frame.state = "ready"
+            prep_rec_count += 1
+
+            if n_sdf != "NONE":
                 system = session.query(System).filter_by(receptor_frame_id=frame.id).first()
                 if system and system.pose:
-                    prep_sdf = (cwd / "prepared" / orig_name / "native.sdf").resolve()
-                    prep_mae = (cwd / "prepared" / orig_name / "native.mae").resolve()
-                    if prep_sdf.exists() and prep_sdf.stat().st_size > 0:
-                        system.pose.path_sdf = str(prep_sdf)
-                        system.pose.path_mae = str(prep_mae) if prep_mae.exists() else None
-                        system.pose.state = "ready"
+                    sdf_path = (cwd / "prepared" / n_sdf).resolve()
+                    if not sdf_path.exists():
+                        raise FileNotFoundError(f"FATAL: Prepared native pose SDF missing: {sdf_path}")
+                    system.pose.path_sdf = str(sdf_path)
+                    if n_mae != "NONE":
+                        mae_native = (cwd / "prepared" / n_mae).resolve()
+                        if not mae_native.exists():
+                            raise FileNotFoundError(f"FATAL: Prepared native pose MAE missing: {mae_native}")
+                        system.pose.path_mae = str(mae_native)
+                    system.pose.state = "ready"
 
     sub_receipt = cwd / "prep_ligand_receipt.tsv"
-    if sub_receipt.exists():
+    if sub_receipt.exists() and sub_receipt.stat().st_size > 0:
         for line in sub_receipt.read_text().strip().splitlines():
-            if not line.strip(): continue
-            sub_name, rel_path = line.split("\t")
+            if not line.strip():
+                continue
+            parts = line.split("\t")
+            if len(parts) < 3:
+                raise ValueError(f"FATAL: Corrupted line in {sub_receipt}: '{line}'. Expected 3 tab-separated fields.")
+            sub_name, rel_mae, rel_sdf = parts
             sub_obj = session.query(Substance).filter_by(name=sub_name).first()
-            if sub_obj:
-                sub_obj.path_mae = str((cwd / "ligands" / rel_path).resolve())
-                sdf_name = Path(rel_path).name.replace(".maegz", ".sdf").replace(".mae", ".sdf")
-                sub_obj.path_sdf = str((cwd / "ligands" / Path(rel_path).parent / sdf_name).resolve())
-                sub_obj.state = "ready"
-                prep_sub_count += 1
+            if not sub_obj:
+                raise KeyError(f"FATAL: Prepared substance '{sub_name}' in receipt is not registered in DB!")
+
+            mae_path = (cwd / "ligands" / rel_mae).resolve()
+            sdf_path = (cwd / "ligands" / rel_sdf).resolve()
+            if not mae_path.exists():
+                raise FileNotFoundError(f"FATAL: Prepared ligand MAE missing: {mae_path}")
+            if not sdf_path.exists():
+                raise FileNotFoundError(f"FATAL: Prepared ligand SDF missing: {sdf_path}")
+
+            sub_obj.path_mae = str(mae_path)
+            sub_obj.path_sdf = str(sdf_path)
+            sub_obj.state = "ready"
+            prep_sub_count += 1
 
     pose_receipt = cwd / "prep_pose_receipt.tsv"
-    if pose_receipt.exists():
+    if pose_receipt.exists() and pose_receipt.stat().st_size > 0:
         for line in pose_receipt.read_text().strip().splitlines():
-            if not line.strip(): continue
-            pose_name, rel_mol2, rel_frcmod = line.split("\t")
+            if not line.strip():
+                continue
+            parts = line.split("\t")
+            if len(parts) < 3:
+                raise ValueError(f"FATAL: Corrupted line in {pose_receipt}: '{line}'. Expected 3 tab-separated fields.")
+            pose_name, rel_mol2, rel_frcmod = parts
             pose_obj = session.query(Pose).filter_by(name=pose_name).first()
-            if pose_obj:
-                pose_obj.path_mol2 = str((cwd / "prepared" / "prepared_poses" / rel_mol2).resolve())
-                pose_obj.path_frcmod = str((cwd / "prepared" / "prepared_poses" / rel_frcmod).resolve())
-                prep_pose_count += 1
+            if not pose_obj:
+                raise KeyError(f"FATAL: Parametrized pose '{pose_name}' in receipt is not registered in DB!")
+
+            mol2_path = (cwd / "prepared" / rel_mol2).resolve()
+            frcmod_path = (cwd / "prepared" / rel_frcmod).resolve()
+            if not mol2_path.exists():
+                raise FileNotFoundError(f"FATAL: Antechamber MOL2 missing: {mol2_path}")
+            if not frcmod_path.exists():
+                raise FileNotFoundError(f"FATAL: Parmchk2 FRCMOD missing: {frcmod_path}")
+
+            pose_obj.path_mol2 = str(mol2_path)
+            pose_obj.path_frcmod = str(frcmod_path)
+            prep_pose_count += 1
 
     session.commit()
     session.close()
 
-    console.print(f"\n[bold green]✓ Successfully prepared {prep_rec_count} receptors, {prep_sub_count} library substances, and parametrized {prep_pose_count} 3D poses![/bold green]")
+    console.print(
+        f"\n[bold green]✓ Verified deliverables via receipts: {prep_rec_count} receptor(s), "
+        f"{prep_sub_count} substance(s), {prep_pose_count} 3D pose(s) parametrized![/bold green]"
+    )

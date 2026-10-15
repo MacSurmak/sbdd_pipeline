@@ -77,7 +77,9 @@ workflow PREPARE_WF {
         )
 
         PREPARE_LIGANDS.out.prepared_ligands.map { meta, mae ->
-            "${meta.name ?: meta.id}\t${meta.name ?: meta.id}/${mae.name}"
+            def base_id = meta.name ?: meta.id
+            def stem = mae.name.replaceAll(/(\.maegz|\.mae)$/, "")
+            "${base_id}\t${base_id}/${mae.name}\t${base_id}/${stem}.sdf"
         }.collectFile(name: 'prep_ligand_receipt.tsv', storeDir: params.outdir, newLine: true)
     }
 
@@ -101,7 +103,7 @@ workflow PREPARE_WF {
         PARAMETRIZE_POSE(ch_poses_in)
 
         PARAMETRIZE_POSE.out.map { meta, mol2, frcmod ->
-            "${meta.name}\t${meta.name}/${mol2.name}\t${meta.name}/${frcmod.name}"
+            "${meta.name}\tprepared_poses/${meta.name}/${mol2.name}\tprepared_poses/${meta.name}/${frcmod.name}"
         }.collectFile(name: 'prep_pose_receipt.tsv', storeDir: params.outdir, newLine: true)
     }
 }
