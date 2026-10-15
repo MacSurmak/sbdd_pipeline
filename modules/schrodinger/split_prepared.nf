@@ -8,7 +8,7 @@ process SPLIT_PREPARED {
     label "process_single"
 
     input:
-    tuple val(meta), path(complex_prepared_mae)
+    tuple val(meta), path(complex_prepared_mae), path(poses_spec_json)
 
     output:
     tuple val(meta), path("${meta.name}_receptor.mae"), emit: prepared_mae
@@ -18,14 +18,10 @@ process SPLIT_PREPARED {
     tuple val(meta), path("extracted_poses.json"), emit: poses_manifest
 
     script:
-    def lig_arg = meta.native_ligand ? "--ligand ${meta.native_ligand}" : ""
-    def cof_list = meta.cofactors ? (meta.cofactors instanceof List ? meta.cofactors.join(' ') : meta.cofactors) : ""
-    def cof_arg = cof_list ? "--cofactors ${cof_list}" : ""
     """
     schrodinger run ${projectDir}/bin/split_prepared_complex.py \\
         --complex_mae ${complex_prepared_mae} \\
-        ${lig_arg} \\
-        ${cof_arg} \\
+        --poses_spec_json ${poses_spec_json} \\
         --out_receptor_mae "${meta.name}_receptor.mae" \\
         --out_receptor_pdb "${meta.name}_receptor.pdb" \\
         --out_manifest extracted_poses.json

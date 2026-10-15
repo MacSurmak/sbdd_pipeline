@@ -14,29 +14,22 @@ from schrodinger.structutils import analyze
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Split prepared complex into receptor and ligand"
+        description="Deterministically split prepared complex into receptor and poses using manifest specification"
     )
     parser.add_argument(
         "--complex_mae", required=True, help="Input prepared complex MAE"
     )
-    parser.add_argument("--ligand", default="", help="Native ligand residue name")
     parser.add_argument(
-        "--cofactors", nargs="*", default=[], help="Cofactor/ion residue names"
+        "--poses_spec_json", required=True, help="JSON file containing explicit pose extraction targets from DB plan"
     )
     parser.add_argument(
-        "--out_receptor_mae", required=True, help="Output prepared receptor MAE"
+        "--out_receptor_mae", required=True, help="Explicit destination for prepared receptor MAE"
     )
     parser.add_argument(
-        "--out_receptor_pdb", required=True, help="Output prepared receptor PDB"
+        "--out_receptor_pdb", required=True, help="Explicit destination for prepared receptor PDB"
     )
     parser.add_argument(
-        "--out_ligand_mae", required=True, help="Output prepared ligand MAE"
-    )
-    parser.add_argument(
-        "--out_ligand_sdf", required=True, help="Output prepared ligand SDF"
-    )
-    parser.add_argument(
-        "--out_manifest", default="extracted_poses.json", help="Output JSON manifest"
+        "--out_manifest", default="extracted_poses.json", help="Output JSON receipt of extracted poses"
     )
     args = parser.parse_args()
 
@@ -49,61 +42,55 @@ def main():
         for next_st in sts[1:]:
             st.extend(next_st)
     except Exception as e:
-        print(f"FATAL: Could not read {args.complex_mae}: {e}")
+        print(f"FATAL: Could not read {args.complex_mae}: {e}", file=sys.stderr)
         sys.exit(1)
 
     import json
-    extracted_records = []
-    target_lig = args.ligand.strip().upper() if args.ligand else None
-    target_cofactors = {c.strip().upper() for c in (args.cofactors or []) if c.strip()}
+    spec_path = Path(args.poses_spec_json)
+    if not spec_path.exists():
+        raise FileNotFoundError(f"FATAL: Pose specification manifest not found: {spec_path}")
 
-    # 1. Extract active native ligand if present
-    if target_lig:
-        lig_atoms = [a.index for a in st.atom if a.pdbres.strip().upper() == target_lig]
-        if not lig_atoms:
+    poses_spec = json.loads(spec_path.read_text(encoding="utf-8"))
+    extracted_records = []
+
+    # Deterministic extraction strictly guided by DB specification
+    for item in poses_spec:
+        res_clean = item["res_name"].strip().upper()
+        pose_name = item["pose_name"]
+        inchikey = item["inchikey"]
+        is_lig = item.get("is_ligand", False)
+        is_ion = item.get("is_ion", False)
+
+        atoms = [a.index for a in st.atom if a.pdbres.strip().upper() == res_clean]
+        if not atoms:
             avail = sorted(list(set(r.pdbres.strip().upper() for r in st.residue)))
             raise ValueError(
-                f"FATAL: Native ligand '{target_lig}' not found in prepared complex! "
+                f"FATAL: Residue '{res_clean}' for pose '{pose_name}' not found in prepared complex! "
                 f"Available residues: {avail}"
             )
-        lig_st = st.extract(lig_atoms)
-        lig_st.title = target_lig
-        lig_sdf = f"{target_lig}_pose.sdf"
-        lig_mae = f"{target_lig}_pose.mae"
-        lig_st.write(lig_mae)
-        lig_st.write(lig_sdf)
-        st.deleteAtoms(lig_atoms)
-        extracted_records.append({
-            "res_name": target_lig,
-            "charge": int(lig_st.formal_charge),
-            "sdf": lig_sdf,
-            "mae": lig_mae,
-            "is_ligand": True,
-            "is_ion": (lig_st.atom_total == 1),
-        })
-        print(f"Extracted prepared native ligand '{target_lig}' ({len(lig_atoms)} atoms).")
 
-    # 2. Extract declared cofactors and ions with PrepWizard-optimized hydrogens
-    for cof_name in sorted(list(target_cofactors)):
-        cof_atoms = [a.index for a in st.atom if a.pdbres.strip().upper() == cof_name]
-        if not cof_atoms:
-            continue
-        cof_st = st.extract(cof_atoms)
-        cof_st.title = cof_name
-        cof_sdf = f"{cof_name}_pose.sdf"
-        cof_mae = f"{cof_name}_pose.mae"
-        cof_st.write(cof_mae)
-        cof_st.write(cof_sdf)
-        st.deleteAtoms(cof_atoms)
+        pose_st = st.extract(atoms)
+        pose_st.title = res_clean
+
+        # Deterministic local filenames for Nextflow staging
+        out_sdf = f"{pose_name}_pose.sdf"
+        out_mae = f"{pose_name}_pose.mae"
+        pose_st.write(out_sdf)
+        pose_st.write(out_mae)
+
+        st.deleteAtoms(atoms)
+
         extracted_records.append({
-            "res_name": cof_name,
-            "charge": int(cof_st.formal_charge),
-            "sdf": cof_sdf,
-            "mae": cof_mae,
-            "is_ligand": False,
-            "is_ion": (cof_st.atom_total == 1),
+            "pose_name": pose_name,
+            "res_name": res_clean,
+            "inchikey": inchikey,
+            "charge": int(pose_st.formal_charge),
+            "sdf": out_sdf,
+            "mae": out_mae,
+            "is_ligand": is_lig,
+            "is_ion": is_ion,
         })
-        print(f"Extracted prepared cofactor/ion '{cof_name}' ({len(cof_atoms)} atoms).")
+        print(f"Extracted pose '{pose_name}' ({res_clean}, {len(atoms)} atoms, formal charge {int(pose_st.formal_charge)}).")
 
     # The remaining structure is 100% PURE APO PROTEIN
     st.write(args.out_receptor_mae)

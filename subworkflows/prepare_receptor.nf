@@ -80,7 +80,14 @@ workflow PREPARE_RECEPTOR {
         ch_final_complex_mae = PREPWIZARD.out.prepared_mae
     }
 
-    SPLIT_PREPARED(ch_final_complex_mae)
+    // Create explicit staging JSON file for pose specifications in the task directory
+    ch_split_in = ch_final_complex_mae.map { meta, complex_mae ->
+        def spec_json = file("${workDir}/stage_${meta.name}_spec.json")
+        spec_json.text = groovy.json.JsonOutput.toJson(meta.heterogens ?: [])
+        [ meta, complex_mae, spec_json ]
+    }
+
+    SPLIT_PREPARED(ch_split_in)
 
     // Emit structured 3-column receipt strictly for ReceptorFrame
     ch_receipt_data = SPLIT_PREPARED.out.prepared_mae
@@ -98,21 +105,15 @@ workflow PREPARE_RECEPTOR {
     ch_poses_to_param = SPLIT_PREPARED.out.poses_manifest
         .flatMap { meta, json_file ->
             def records = new groovy.json.JsonSlurperClassic().parseText(json_file.text)
-            def het_map = meta.heterogens ? meta.heterogens.collectEntries { [it.res_name, it] } : [:]
 
             records.collect { rec ->
-                def het_info = het_map[rec.res_name]
-                def p_name = het_info ? het_info.pose_name : "${meta.name}_${rec.res_name}_crystal"
-                def p_inchikey = het_info ? het_info.inchikey : "UNKNOWN"
-                def is_ion = het_info ? het_info.is_ion : rec.is_ion
-
                 def pose_meta = [
-                    id: p_name,
-                    name: p_name,
+                    id: rec.pose_name,
+                    name: rec.pose_name,
                     res_name: rec.res_name,
-                    inchikey: p_inchikey,
+                    inchikey: rec.inchikey,
                     charge: rec.charge as int,
-                    is_ion: is_ion
+                    is_ion: rec.is_ion
                 ]
                 def sdf_file = json_file.parent.resolve(rec.sdf)
                 def mae_file = json_file.parent.resolve(rec.mae)
