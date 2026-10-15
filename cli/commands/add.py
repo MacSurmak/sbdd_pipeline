@@ -262,40 +262,136 @@ def _extract_ligand_atoms(rec_path: Path, lig_resname: str, out_sdf: Path) -> No
         )
 
 
-def _resolve_target_sequence(target_name: str, fasta_arg: str | None) -> str:
-    """Resolves true reference amino acid sequence via CLI argument or interactive prompt."""
-    if fasta_arg:
-        f_path = Path(fasta_arg).resolve()
-        if not f_path.exists():
-            raise FileNotFoundError(f"FATAL: Specified FASTA file not found: {f_path}")
-        raw_lines = f_path.read_text(encoding="utf-8", errors="ignore").splitlines()
-        seq = "".join(l.strip().upper() for l in raw_lines if not l.startswith(">"))
-        if seq:
-            return seq
-        raise ValueError(f"FATAL: FASTA file {f_path} is empty or contains no sequence data.")
+from Bio.PDB.Polypeptide import protein_letters_3to1
 
-    if sys.stdin.isatty():
-        console.print(
-            f"\n[bold yellow]Target '{target_name}' has no registered reference FASTA sequence.[/bold yellow]\n"
-            "Paste the complete FASTA sequence below. Press [bold]Enter[/bold], then [bold]Ctrl+D[/bold] to submit:"
-        )
-        try:
-            seq_input = sys.stdin.read()
-        except EOFError:
-            seq_input = ""
 
-        clean_seq = "".join(
-            line.strip().upper()
-            for line in seq_input.splitlines()
-            if not line.startswith(">")
-        )
-        if clean_seq:
-            return clean_seq
+def _extract_resolved_sequences_by_chain(st) -> dict[str, str]:
+    """Extracts 1-letter amino acid sequences from resolved protein chains in structure."""
+    from Bio.PDB import is_aa
 
-    raise ValueError(
-        f"FATAL: Reference FASTA sequence is mandatory for Target '{target_name}'. "
-        "Provide it via '--fasta <path>' or interactively during import."
-    )
+    chain_seqs = {}
+    for model in st:
+        for chain in model:
+            letters = []
+            for res in chain:
+                if is_aa(res) and "CA" in res:
+                    rname = res.get_resname().strip().upper()
+                    letters.append(protein_letters_3to1.get(rname, "X"))
+            if letters:
+                chain_seqs[chain.id] = "".join(letters)
+        break  # Use first model for primary sequence definition
+    return chain_seqs
+
+
+def _build_multi_fasta(chain_dict: dict[str, str]) -> str:
+    """Encodes dictionary of chain sequences into canonical multi-FASTA string."""
+    return "\n".join(f">{c}\n{s}" for c, s in sorted(chain_dict.items()))
+
+
+def _align_and_clamp_sequence(struct_seq: str, full_fasta_seq: str) -> str:
+    """
+    Performs pairwise alignment to map an isolated construct (e.g. residues 600-800)
+    against full-length gene FASTA and clamps target sequence to construct boundaries.
+    """
+    from Bio import Align
+
+    aligner = Align.PairwiseAligner()
+    aligner.mode = "global"
+    aligner.match_score = 2
+    aligner.mismatch_score = -1
+    aligner.open_gap_score = -4
+    aligner.extend_gap_score = -0.5
+
+    alignments = aligner.align(full_fasta_seq, struct_seq)
+    if not alignments:
+        raise ValueError("FATAL: Provided FASTA sequence cannot be aligned to experimental structure!")
+
+    best = alignments[0]
+    blocks_fasta = best.aligned[0]
+    f_start = blocks_fasta[0][0]
+    f_end = blocks_fasta[-1][1]
+
+    # Return clamped sequence corresponding strictly to resolved construct domain
+    return full_fasta_seq[f_start:f_end]
+
+
+def _resolve_target_sequence(
+    target_name: str,
+    struct_path: Path,
+    fasta_arg: str | None,
+    has_gaps: bool
+) -> str | None:
+    """
+    Deterministically resolves reference sequence without blocking interactive prompts.
+    - If continuous (no gaps): automatically extracts sequence directly from 3D coordinates.
+    - If gaps exist and FASTA provided: aligns and clamps reference construct sequence.
+    - If gaps exist and NO FASTA: logs warning and sets sequence to None (awaiting sbdd heal).
+    """
+    from Bio.PDB import PDBParser, MMCIFParser
+
+    suffix = struct_path.suffix.lower()
+    parser = MMCIFParser(QUIET=True) if suffix in [".cif", ".mmcif"] else PDBParser(QUIET=True)
+    st = parser.get_structure("struct", str(struct_path))
+    resolved_chains = _extract_resolved_sequences_by_chain(st)
+
+    if not resolved_chains:
+        raise ValueError(f"FATAL: No amino acid chains found in {struct_path.name}!")
+
+    if not fasta_arg:
+        if not has_gaps:
+            # Continuous chain(s): 100% deterministic sequence extraction directly from atoms
+            return _build_multi_fasta(resolved_chains)
+        else:
+            # Broken chain with gaps: coordinates cannot guess missing amino acids
+            return None
+
+    # FASTA file explicitly provided by user
+    f_path = Path(fasta_arg).resolve()
+    if not f_path.exists():
+        raise FileNotFoundError(f"FATAL: Specified FASTA file not found: {f_path}")
+
+    raw_fasta = f_path.read_text(encoding="utf-8", errors="ignore")
+    fasta_records = {}
+    curr_id = None
+    curr_seq = []
+
+    for line in raw_fasta.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        if line.startswith(">"):
+            if curr_id and curr_seq:
+                fasta_records[curr_id] = "".join(curr_seq).upper()
+            curr_id = line[1:].split()[0].strip()
+            curr_seq = []
+        else:
+            curr_seq.append(line)
+    if curr_id and curr_seq:
+        fasta_records[curr_id] = "".join(curr_seq).upper()
+
+    if not fasta_records:
+        raise ValueError(f"FATAL: FASTA file {f_path} is empty or invalid.")
+
+    # Match and clamp chains
+    clamped_chains = {}
+    if len(resolved_chains) == 1 and len(fasta_records) == 1:
+        c_id = list(resolved_chains.keys())[0]
+        full_seq = list(fasta_records.values())[0]
+        clamped_chains[c_id] = _align_and_clamp_sequence(resolved_chains[c_id], full_seq)
+    else:
+        for c_id, r_seq in resolved_chains.items():
+            if c_id in fasta_records:
+                clamped_chains[c_id] = _align_and_clamp_sequence(r_seq, fasta_records[c_id])
+            elif len(fasta_records) == 1:
+                full_seq = list(fasta_records.values())[0]
+                clamped_chains[c_id] = _align_and_clamp_sequence(r_seq, full_seq)
+            else:
+                raise KeyError(
+                    f"FATAL: Chain '{c_id}' in structure has no matching header in multi-FASTA {f_path.name}! "
+                    f"Available headers: {list(fasta_records.keys())}"
+                )
+
+    return _build_multi_fasta(clamped_chains)
 
 
 def add_receptor(
@@ -327,21 +423,6 @@ def add_receptor(
 
         target_name = target_cli_name if target_cli_name else struct_path.stem
         target_obj = session.query(Target).filter_by(name=target_name).first()
-        if not target_obj:
-            ref_seq = _resolve_target_sequence(target_name, fasta)
-            target_obj = Target(
-                name=target_name,
-                reference_sequence=ref_seq,
-                description=f"Target {target_name}"
-            )
-            session.add(target_obj)
-            session.flush()
-            console.print(f"[bold green]✓ Created Target '{target_name}'[/bold green] [dim](Sequence: {len(ref_seq)} aa)[/dim]")
-        elif not target_obj.reference_sequence:
-            ref_seq = _resolve_target_sequence(target_name, fasta)
-            target_obj.reference_sequence = ref_seq
-            session.flush()
-            console.print(f"[bold green]✓ Associated FASTA sequence ({len(ref_seq)} aa) with existing Target '{target_name}'[/bold green]")
 
         base_name = name if (len(struct_paths) == 1 and name) else struct_path.stem
         safe_cofactors = [c.strip().upper() for c in (cofactors or [])]
@@ -353,6 +434,27 @@ def add_receptor(
         frames = _sanitize_and_split_models(
             struct_path, frames_dir, base_name, lig_code, safe_cofactors, safe_ions
         )
+
+        # Check overall gap status across models
+        ensemble_has_gaps = any(_detect_gaps(complex_file) for _, complex_file in frames)
+
+        if not target_obj:
+            ref_seq = _resolve_target_sequence(target_name, struct_path, fasta, ensemble_has_gaps)
+            target_obj = Target(
+                name=target_name,
+                reference_sequence=ref_seq,
+                description=f"Target {target_name}"
+            )
+            session.add(target_obj)
+            session.flush()
+            seq_info = f"{len(ref_seq.splitlines()[-1])} aa" if ref_seq else "[yellow]pending FASTA[/yellow]"
+            console.print(f"[bold green]✓ Created Target '{target_name}'[/bold green] [dim](Sequence: {seq_info})[/dim]")
+        elif not target_obj.reference_sequence:
+            ref_seq = _resolve_target_sequence(target_name, struct_path, fasta, ensemble_has_gaps)
+            if ref_seq:
+                target_obj.reference_sequence = ref_seq
+                session.flush()
+                console.print(f"[bold green]✓ Associated Sequence with existing Target '{target_name}'[/bold green]")
 
         for frame_name, complex_file in frames:
             has_gaps = _detect_gaps(complex_file)
