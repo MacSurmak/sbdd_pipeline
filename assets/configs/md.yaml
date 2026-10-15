@@ -26,7 +26,7 @@ md_simulation:
   execution:
     minim_flags: "-nb gpu -ntmpi 1 -pin on"
     eq_flags: "-nb gpu -pme gpu -update gpu -bonded gpu -ntmpi 1 -pin on"
-    prod_flags: "-nb gpu -pme gpu -ntmpi 1 -pin on"
+    prod_flags: "-nb gpu -pme gpu -update gpu -bonded gpu -ntmpi 1 -pin on"
   production:
     temperature: 310.15
     total_time_ns: 100
