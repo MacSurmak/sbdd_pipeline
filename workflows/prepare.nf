@@ -6,6 +6,22 @@
 include { PREPARE_RECEPTOR } from '../subworkflows/prepare_receptor'
 include { PREPARE_LIGANDS  } from '../subworkflows/prepare_ligands'
 
+process PARAMETRIZE_POSE {
+    tag "${meta.name}"
+    publishDir "${params.outdir}/prepared_poses/${meta.name}", mode: 'copy'
+
+    input:
+    tuple val(meta), path(sdf)
+
+    output:
+    tuple val(meta), path("${meta.name}_gaff2.mol2"), path("${meta.name}.frcmod")
+
+    script:
+    """
+    wrap_amber.py antechamber --sdf "${sdf}" --charge ${meta.charge} --mol_id "${meta.name}"
+    """
+}
+
 workflow PREPARE_WF {
     if (!params.plan) { error "FATAL: Parameter --plan (JSON) is required for database-driven preparation." }
     
@@ -78,5 +94,28 @@ workflow PREPARE_WF {
         PREPARE_LIGANDS.out.prepared_ligands.map { meta, mae ->
             "${meta.name ?: meta.id}\t${meta.name ?: meta.id}/${mae.name}"
         }.collectFile(name: 'prep_ligand_receipt.tsv', storeDir: params.outdir, newLine: true)
+    }
+
+    // 3. Process Poses for Quantum Parametrization
+    def poseList = planData.poses ?: []
+    if (poseList) {
+        ch_poses_in = Channel.fromList(poseList).map { pose ->
+            def sdf_path = file(pose.path)
+            if (!sdf_path.exists()) {
+                error "FATAL: Pose SDF path explicitly provided by DB does not exist: ${pose.path}"
+            }
+            def meta = [
+                id: pose.name,
+                name: pose.name,
+                charge: pose.charge
+            ]
+            [ meta, sdf_path.toAbsolutePath() ]
+        }
+
+        PARAMETRIZE_POSE(ch_poses_in)
+
+        PARAMETRIZE_POSE.out.map { meta, mol2, frcmod ->
+            "${meta.name}\t${meta.name}/${mol2.name}\t${meta.name}/${frcmod.name}"
+        }.collectFile(name: 'prep_pose_receipt.tsv', storeDir: params.outdir, newLine: true)
     }
 }

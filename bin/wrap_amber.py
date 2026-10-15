@@ -14,55 +14,31 @@ def run_cmd(cmd):
 
 
 def cmd_antechamber(args):
-    with open(args.charge_file, "r") as f:
-        charge = f.read().strip()
+    # Antechamber strictly requires residue names to be 3-4 chars long.
+    # We slice the long DB pose name to a generic 3-letter code to prevent internal Fortran crashes.
+    res_name = args.mol_id[:3].upper() if len(args.mol_id) > 3 else args.mol_id.upper()
+    
     run_cmd(
         [
             "antechamber",
-            "-i",
-            args.mol2,
-            "-fi",
-            "mol2",
-            "-o",
-            f"{args.mol_id}_gaff2.mol2",
-            "-fo",
-            "mol2",
-            "-at",
-            "gaff2",
-            "-c",
-            "bcc",
-            "-nc",
-            charge,
-            "-rn",
-            args.mol_id,
-            "-ek",
-            "qm_theory='AM1', grms_tol=0.0005, scfconv=1.d-10, ndiis_attempts=700, MAXCYC=0",
-        ]
-    )
-    run_cmd(
-        [
-            "antechamber",
-            "-i",
-            f"{args.mol_id}_gaff2.mol2",
-            "-fi",
-            "mol2",
-            "-o",
-            f"{args.mol_id}_gaff2.pdb",
-            "-fo",
-            "pdb",
+            "-i", args.sdf,
+            "-fi", "sdf",
+            "-o", f"{args.mol_id}_gaff2.mol2",
+            "-fo", "mol2",
+            "-at", "gaff2",
+            "-c", "bcc",
+            "-nc", str(args.charge),
+            "-rn", res_name,
+            "-ek", "qm_theory='AM1', grms_tol=0.0005, scfconv=1.d-10, ndiis_attempts=700, MAXCYC=0",
         ]
     )
     run_cmd(
         [
             "parmchk2",
-            "-i",
-            f"{args.mol_id}_gaff2.mol2",
-            "-f",
-            "mol2",
-            "-o",
-            f"{args.mol_id}.frcmod",
-            "-s",
-            "2",
+            "-i", f"{args.mol_id}_gaff2.mol2",
+            "-f", "mol2",
+            "-o", f"{args.mol_id}.frcmod",
+            "-s", "2",
         ]
     )
 
@@ -170,8 +146,8 @@ def main():
     subparsers = parser.add_subparsers(dest="subcommand", required=True)
 
     p_ante = subparsers.add_parser("antechamber")
-    p_ante.add_argument("--mol2", required=True)
-    p_ante.add_argument("--charge_file", required=True)
+    p_ante.add_argument("--sdf", required=True)
+    p_ante.add_argument("--charge", required=True, type=int)
     p_ante.add_argument("--mol_id", required=True)
 
     p_tleap = subparsers.add_parser("tleap")
