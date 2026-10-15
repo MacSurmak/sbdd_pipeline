@@ -184,6 +184,7 @@ def run_dock(
                     "is_native": True,
                     "receptor": r.name,
                     "ligand_title": native_lig.name,
+                    "substance_id": native_lig.id,
                 }
             )
 
@@ -294,6 +295,8 @@ def run_dock(
                     "path_sdf": str(lig_sdf),
                     "path_mae": str(lig_mae),
                     "is_native": has_crystal_pose,
+                    "ligand_title": l.name,
+                    "substance_id": l.id,
                 }
             )
 
@@ -346,7 +349,17 @@ def run_dock(
             f"FATAL: Ranking summary CSV {res_csv} does not exist. Pipeline failed to summarize docking."
         )
 
-    # Parse receipt: map of (frame_id, engine) -> absolute validated SDF path
+    from rdkit import Chem
+    import csv
+    from rich.table import Table
+
+    # Build deterministic substance lookup from plan (zero string splitting heuristics)
+    substance_by_title = {
+        item["name"]: session.query(Substance).get(item["substance_id"])
+        for item in plan["ligands"]
+    }
+
+    # Parse receipt: map of (frame_name, engine) -> absolute validated merged SDF path
     receipt_map = {}
     with open(receipt_file, "r", encoding="utf-8") as rf:
         for line_num, line in enumerate(rf, start=1):
@@ -360,22 +373,25 @@ def run_dock(
                     f"FATAL: Corrupted line {line_num} in {receipt_file}: '{line}'. Expected 3 tab-separated columns."
                 )
             r_frame_id, r_engine, r_sdf_path = parts[0], parts[1], parts[2]
-            if "/work/" in r_sdf_path or ".nextflow" in r_sdf_path:
-                session.close()
-                raise ValueError(
-                    f"FATAL: Receipt {receipt_file} references scratch path: {r_sdf_path}. "
-                    "Must reference published permanent project deliverable."
-                )
             sdf_file = Path(r_sdf_path).resolve()
             if not sdf_file.exists() or sdf_file.stat().st_size == 0:
                 session.close()
                 raise FileNotFoundError(
                     f"FATAL: Published pose file specified in receipt does not exist or is empty: {sdf_file}"
                 )
-            receipt_map[(r_frame_id, r_engine)] = str(sdf_file)
+            receipt_map[(r_frame_id, r_engine)] = sdf_file
 
-    import csv
-    from rich.table import Table
+    # Index molecules in merged docking SDFs by title to slice individual pose SDFs
+    poses_by_engine_and_title = {}
+    for (f_name, eng), m_sdf in receipt_map.items():
+        suppl = Chem.SDMolSupplier(str(m_sdf), removeHs=False)
+        for mol_idx, m in enumerate(suppl):
+            if m is None:
+                continue
+            m_title = m.GetProp("_Name").strip() if m.HasProp("_Name") else ""
+            if not m_title and m.HasProp("s_m_title"):
+                m_title = m.GetProp("s_m_title").strip()
+            poses_by_engine_and_title.setdefault((f_name, eng, m_title), []).append(m)
 
     table = Table(title="🎯 Redocking & Scoring Summary", show_header=True)
     table.add_column("Receptor", style="cyan")
@@ -388,6 +404,10 @@ def run_dock(
     table.add_column("Verdict", justify="center")
 
     poses_count = 0
+    poses_base_dir = (cwd / "poses").resolve()
+    poses_base_dir.mkdir(parents=True, exist_ok=True)
+    pose_counter = {}
+
     with open(res_csv, "r", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
@@ -406,18 +426,13 @@ def run_dock(
                     f"FATAL: ReceptorFrame '{frame_name}' in ranking is not registered in SQLite database!"
                 )
 
-            # Resolve substance entity considering self-docking unique titles
-            clean_sub_name = title.split("_")[-1] if ("_" in title and is_self) else title
-            lig = session.query(Substance).filter_by(name=clean_sub_name, substance_type="ligand").first()
-            if not lig:
-                lig = session.query(Substance).filter_by(name=title, substance_type="ligand").first()
+            lig = substance_by_title.get(title)
             if not lig:
                 session.close()
-                raise ValueError(
-                    f"FATAL: Ligand '{title}' (resolved as '{clean_sub_name}') in ranking is not registered in SQLite database!"
+                raise KeyError(
+                    f"FATAL: Ligand Title '{title}' in ranking was not declared in docking plan!"
                 )
 
-            # Register poses for each executed engine without blind fallbacks
             engines_for_frame = [
                 eng for (f_id, eng) in receipt_map.keys() if f_id == frame_name
             ]
@@ -428,18 +443,38 @@ def run_dock(
                 )
 
             for eng in engines_for_frame:
-                sdf_path_str = receipt_map[(frame_name, eng)]
-                pose_name = f"{frame_name}_{title}_{eng}_dock"
+                mol_pool = poses_by_engine_and_title.get((frame_name, eng, title), [])
+                if not mol_pool:
+                    session.close()
+                    raise ValueError(
+                        f"FATAL: 3D coordinates for molecule '{title}' not found in {eng} docking deliverable!"
+                    )
+                
+                # Consume next 3D conformation for this ligand/engine pair
+                mol_conformation = mol_pool.pop(0)
+
+                key = (frame_name, title, eng)
+                pose_counter[key] = pose_counter.get(key, 0) + 1
+                p_idx = pose_counter[key]
+
+                pose_name = f"{frame_name}_{title}_{eng}_pose{p_idx}"
                 origin_tag = f"docking_{eng}"
+
+                # Extract into isolated, single-molecule SDF
+                target_pose_dir = poses_base_dir / r_frame.target.name
+                target_pose_dir.mkdir(parents=True, exist_ok=True)
+                pose_sdf_file = target_pose_dir / f"{pose_name}.sdf"
+
+                with Chem.SDWriter(str(pose_sdf_file)) as writer:
+                    writer.write(mol_conformation)
+
+                f_charge = Chem.GetFormalCharge(mol_conformation)
 
                 scores_dict = {}
                 if eng == "glide":
                     if row.get("GlideScore") and row["GlideScore"] != "nan":
                         scores_dict["GlideScore"] = float(row["GlideScore"])
-                    if (
-                        row.get("InSitu_RMSD_Glide_A")
-                        and row["InSitu_RMSD_Glide_A"] != "nan"
-                    ):
+                    if row.get("InSitu_RMSD_Glide_A") and row["InSitu_RMSD_Glide_A"] != "nan":
                         scores_dict["RMSD_Glide_A"] = float(row["InSitu_RMSD_Glide_A"])
                 elif eng == "gnina":
                     if row.get("Dock_CNNaffinity") and row["Dock_CNNaffinity"] != "nan":
@@ -448,10 +483,7 @@ def run_dock(
                         scores_dict["CNNscore"] = float(row["Dock_CNNscore"])
                     if row.get("Dock_VinaAff") and row["Dock_VinaAff"] != "nan":
                         scores_dict["VinaAff"] = float(row["Dock_VinaAff"])
-                    if (
-                        row.get("InSitu_RMSD_GNINA_A")
-                        and row["InSitu_RMSD_GNINA_A"] != "nan"
-                    ):
+                    if row.get("InSitu_RMSD_GNINA_A") and row["InSitu_RMSD_GNINA_A"] != "nan":
                         scores_dict["RMSD_GNINA_A"] = float(row["InSitu_RMSD_GNINA_A"])
 
                 if row.get("Ultimate_Score") and row["Ultimate_Score"] != "nan":
@@ -459,10 +491,12 @@ def run_dock(
 
                 ex_pose = session.query(Pose).filter_by(name=pose_name).first()
                 if ex_pose:
-                    ex_pose.path = sdf_path_str
+                    ex_pose.path = str(pose_sdf_file.resolve())
+                    ex_pose.path_sdf = str(pose_sdf_file.resolve())
+                    ex_pose.formal_charge = f_charge
                     ex_pose.scores_dict = scores_dict
                     ex_pose.origin = origin_tag
-                    ex_pose.state = "ready"
+                    ex_pose.state = "raw"  # Awaiting quantum parametrization in sbdd prep
                     pose_obj = ex_pose
                 else:
                     new_p = Pose(
@@ -470,11 +504,14 @@ def run_dock(
                         receptor_frame_id=r_frame.id,
                         name=pose_name,
                         origin=origin_tag,
-                        state="ready",
-                        path=sdf_path_str,
+                        state="raw",
+                        formal_charge=f_charge,
+                        path=str(pose_sdf_file.resolve()),
+                        path_sdf=str(pose_sdf_file.resolve()),
                     )
                     new_p.scores_dict = scores_dict
                     session.add(new_p)
+                    session.flush()
                     pose_obj = new_p
 
                 # 3NF System Assembly: Inherit cofactors from frame's system or lineage parent
@@ -487,11 +524,11 @@ def run_dock(
                     ).first()
                 parent_cofactors = list(parent_sys.cofactors) if parent_sys else []
 
-                sys_name = f"{frame_name}_{title}_{eng}"
+                sys_name = f"{frame_name}_{title}_{eng}_p{p_idx}"
                 ex_sys = session.query(System).filter_by(name=sys_name).first()
                 if ex_sys:
                     ex_sys.pose_id = pose_obj.id
-                    ex_sys.state = "raw"  # Awaiting md-setup
+                    ex_sys.state = "raw"
                     ex_sys.cofactors = parent_cofactors
                 else:
                     new_sys = System(
