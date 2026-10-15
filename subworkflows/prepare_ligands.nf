@@ -28,11 +28,9 @@ workflow PREPARE_LIGANDS {
     ch_prep_chunks = SPLIT_SDF.out.chunks.flatMap { meta, files ->
         def fileList = files instanceof List ? files : (files ? [files] : [])
         fileList.withIndex().collect { f, idx ->
-            def chunk_meta = [
+            def chunk_meta = meta + [
                 id: "${meta.id}_c${idx}",
-                name: meta.name ?: meta.id,
                 chunk_idx: idx,
-                project: meta.project ?: meta.id,
                 status: 'ready'
             ]
             [ chunk_meta, f ]
@@ -48,11 +46,9 @@ workflow PREPARE_LIGANDS {
             list.withIndex().collect { item, idx ->
                 def meta = item[0]
                 def f = item[1]
-                def chunk_meta = [
+                def chunk_meta = meta + [
                     id: "${meta.id}_ready_${idx}",
-                    name: meta.name ?: meta.id,
                     chunk_idx: "ready_${idx}",
-                    project: meta.project ?: meta.id,
                     status: "ready"
                 ]
                 [ chunk_meta, f, "ready_${idx}" ]

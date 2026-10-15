@@ -171,33 +171,28 @@ def run_prep(
             system = session.query(System).filter_by(receptor_frame_id=frame.id).first()
             if system:
                 sys_poses_dir = cwd / "systems" / system.name / "poses"
-                sys_poses_dir.mkdir(parents=True, exist_ok=True)
 
                 if n_sdf != "NONE" and system.pose:
-                    src_sdf = Path(n_sdf).resolve()
-                    if not src_sdf.exists() or src_sdf.stat().st_size == 0:
-                        # Deliverable was copied to system poses directory
-                        src_sdf = sys_poses_dir / "native.sdf"
-                    if not src_sdf.exists():
-                        raise FileNotFoundError(f"FATAL: Prepared native pose SDF missing: {src_sdf}")
-
-                    dest_sdf = sys_poses_dir / f"{system.pose.name}.sdf"
-                    if src_sdf != dest_sdf:
-                        shutil.copy2(src_sdf, dest_sdf)
-
-                    system.pose.path_sdf = str(dest_sdf.resolve())
-                    system.pose.path = str(dest_sdf.resolve())
+                    sdf_path = Path(n_sdf).resolve()
+                    if not sdf_path.exists() or sdf_path.stat().st_size == 0:
+                        raise FileNotFoundError(f"FATAL: Prepared native pose SDF missing: {sdf_path}")
+                    system.pose.path_sdf = str(sdf_path)
+                    system.pose.path = str(sdf_path)
+                    if n_mae != "NONE":
+                        mae_native = Path(n_mae).resolve()
+                        if not mae_native.exists() or mae_native.stat().st_size == 0:
+                            raise FileNotFoundError(f"FATAL: Prepared native pose MAE missing: {mae_native}")
+                        system.pose.path_mae = str(mae_native)
                     system.pose.state = "ready"
 
                 for cof in system.cofactors:
-                    frame_dir = Path(r_pdb).parent
-                    c_src_sdf = frame_dir / f"pose_{cof.res_name}.sdf"
-                    if c_src_sdf.exists() and c_src_sdf.stat().st_size > 0:
-                        c_dest_sdf = sys_poses_dir / f"{cof.name}.sdf"
-                        if c_src_sdf != c_dest_sdf:
-                            shutil.copy2(c_src_sdf, c_dest_sdf)
-                        cof.path_sdf = str(c_dest_sdf.resolve())
-                        cof.path = str(c_dest_sdf.resolve())
+                    c_sdf = sys_poses_dir / f"pose_{cof.res_name}.sdf"
+                    c_mae = sys_poses_dir / f"pose_{cof.res_name}.mae"
+                    if c_sdf.exists() and c_sdf.stat().st_size > 0:
+                        cof.path_sdf = str(c_sdf.resolve())
+                        cof.path = str(c_sdf.resolve())
+                        if c_mae.exists() and c_mae.stat().st_size > 0:
+                            cof.path_mae = str(c_mae.resolve())
                         cof.state = "ready"
 
     sub_receipt = cwd / "prep_ligand_receipt.tsv"
