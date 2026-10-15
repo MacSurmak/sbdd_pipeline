@@ -127,15 +127,12 @@ def _sanitize_and_split_models(
 ) -> list[tuple[str, Path]]:
     """
     Parses macromolecular structure, executes strict Fail-Fast verification of explicitly
-    requested ligand, cofactors, and ions, and produces sanitized complex frames containing
-    the protein and authorized heterogens, purging all unrequested solvent and crystallization artifacts.
-    Returns list of (frame_name, sanitized_complex_pdb).
+    requested ligand, cofactors, and ions, and produces sanitized complex frames in dedicated
+    frame subdirectories: targets/<target>/frames/<frame>/<frame>_raw.pdb.
     """
     from Bio.PDB import PDBParser, MMCIFParser, PDBIO
 
-    dest_dir.mkdir(parents=True, exist_ok=True)
     suffix = struct_path.suffix.lower()
-
     if suffix in [".cif", ".mmcif"]:
         parser = MMCIFParser(QUIET=True)
     elif suffix == ".pdb":
@@ -184,14 +181,18 @@ def _sanitize_and_split_models(
         )
         for idx, model in enumerate(models, start=1):
             f_name = f"{base_name}_m{idx}"
-            out_complex = dest_dir / f"{f_name}.pdb"
+            frame_dir = dest_dir / f_name
+            frame_dir.mkdir(parents=True, exist_ok=True)
+            out_complex = frame_dir / f"{f_name}_raw.pdb"
             
             io.set_structure(model)
             io.save(str(out_complex), clean_selector)
             results.append((f_name, out_complex))
     else:
         f_name = base_name
-        out_complex = dest_dir / f"{f_name}.pdb"
+        frame_dir = dest_dir / f_name
+        frame_dir.mkdir(parents=True, exist_ok=True)
+        out_complex = frame_dir / f"{f_name}_raw.pdb"
 
         io.set_structure(st[0])
         io.save(str(out_complex), clean_selector)
@@ -438,6 +439,9 @@ def add_receptor(
         # Check overall gap status across models
         ensemble_has_gaps = any(_detect_gaps(complex_file) for _, complex_file in frames)
 
+        target_dir = cwd / "targets" / target_name
+        target_dir.mkdir(parents=True, exist_ok=True)
+
         if not target_obj:
             ref_seq = _resolve_target_sequence(target_name, struct_path, fasta, ensemble_has_gaps)
             target_obj = Target(
@@ -447,12 +451,19 @@ def add_receptor(
             )
             session.add(target_obj)
             session.flush()
+
+            if ref_seq:
+                fasta_file = target_dir / f"{target_name}_sequence.fasta"
+                fasta_file.write_text(ref_seq + "\n", encoding="utf-8")
+
             seq_info = f"{len(ref_seq.splitlines()[-1])} aa" if ref_seq else "[yellow]pending FASTA[/yellow]"
             console.print(f"[bold green]✓ Created Target '{target_name}'[/bold green] [dim](Sequence: {seq_info})[/dim]")
         elif not target_obj.reference_sequence:
             ref_seq = _resolve_target_sequence(target_name, struct_path, fasta, ensemble_has_gaps)
             if ref_seq:
                 target_obj.reference_sequence = ref_seq
+                fasta_file = target_dir / f"{target_name}_sequence.fasta"
+                fasta_file.write_text(ref_seq + "\n", encoding="utf-8")
                 session.flush()
                 console.print(f"[bold green]✓ Associated Sequence with existing Target '{target_name}'[/bold green]")
 
@@ -490,33 +501,34 @@ def add_receptor(
                     f"    It cannot be processed by 'sbdd prep'. Provide FASTA and run 'sbdd heal' to physically repair it."
                 )
 
-            sys_name = f"{frame_name}_{lig_code}" if lig_code else frame_name
-            system_poses_dir = cwd / "systems" / sys_name / "poses"
-            system_poses_dir.mkdir(parents=True, exist_ok=True)
-
+            # In the 3NF schema, Poses live inside substances/<inchikey>/poses/<pose_name>/
             def _process_heterogen(resname: str, sub_type: str):
-                pose_sdf = system_poses_dir / f"{frame_name}_{resname}_crystal.sdf"
-                _extract_ligand_atoms(complex_file, resname, pose_sdf)
+                clean_res_name = resname.strip().upper()
+                tmp_extract_sdf = cwd / ".tmp_extract.sdf"
+                _extract_ligand_atoms(complex_file, clean_res_name, tmp_extract_sdf)
 
-                parent_inchikey, parent_smiles, mol_name, formal_charge = get_mol_identity(pose_sdf)
+                parent_inchikey, parent_smiles, mol_name, formal_charge = get_mol_identity(tmp_extract_sdf)
 
                 sub_dir = cwd / "substances" / parent_inchikey
                 sub_dir.mkdir(parents=True, exist_ok=True)
-                base_sdf = sub_dir / "base.sdf"
-                if not base_sdf.exists():
-                    shutil.copy2(pose_sdf, base_sdf)
 
-                clean_res_name = resname.strip().upper()
+                # Canonical Base Template: substances/<inchikey>/<res>_base.sdf
+                base_sdf = sub_dir / f"{clean_res_name}_base.sdf"
+                if not base_sdf.exists():
+                    shutil.copy2(tmp_extract_sdf, base_sdf)
+
+                # Substance Registration
                 sub_entity = session.query(Substance).filter_by(inchikey=parent_inchikey).first()
                 if not sub_entity:
                     sub_entity = Substance(
                         inchikey=parent_inchikey,
                         smiles=parent_smiles,
-                        name=mol_name or resname,
+                        name=mol_name or clean_res_name,
                         res_name=clean_res_name,
                         substance_type=sub_type,
                         state="raw",
                         batch_id="crystal_extract",
+                        path_sdf=str(base_sdf.resolve()),
                     )
                     session.add(sub_entity)
                     session.flush()
@@ -528,7 +540,14 @@ def add_receptor(
                         f"[bold green]✓ Matched existing {sub_type.capitalize()} '{sub_entity.name}' via InChIKey[/bold green] [dim]({parent_inchikey})[/dim]"
                     )
 
-                pose_name = f"{frame_name}_{resname}_pose"
+                # Canonical Pose Storage: substances/<inchikey>/poses/<pose_name>/<res>_pose.sdf
+                pose_name = f"{frame_name}_{clean_res_name}_crystal"
+                pose_dir = sub_dir / "poses" / pose_name
+                pose_dir.mkdir(parents=True, exist_ok=True)
+                pose_sdf = pose_dir / f"{clean_res_name}_pose.sdf"
+
+                shutil.move(str(tmp_extract_sdf), str(pose_sdf))
+
                 p_obj = session.query(Pose).filter_by(name=pose_name).first()
                 if p_obj:
                     p_obj.path = str(pose_sdf.resolve())
@@ -551,7 +570,7 @@ def add_receptor(
                     session.flush()
                     ch_label = f"q={formal_charge:+d}" if formal_charge != 0 else "neutral"
                     console.print(
-                        f"[bold green]✓ Registered Pose '{pose_name}'[/bold green] [dim]({clean_res_name}, {ch_label}) -> {pose_sdf.name}[/dim]"
+                        f"[bold green]✓ Registered Pose '{pose_name}'[/bold green] [dim]({clean_res_name}, {ch_label}) in substance {parent_inchikey}[/dim]"
                     )
                 return p_obj
 
@@ -568,7 +587,8 @@ def add_receptor(
                 i_pose = _process_heterogen(ion, "ion")
                 hetero_poses.append(i_pose)
 
-            # System creation
+            # System assembly (Pure relational binding of Frame + Poses)
+            sys_name = f"{frame_name}_{lig_code}" if lig_code else frame_name
             ex_sys = session.query(System).filter_by(name=sys_name).first()
             if ex_sys:
                 ex_sys.pose_id = main_ligand_pose.id if main_ligand_pose else None
@@ -689,10 +709,11 @@ def add_ligand(path: str, name: str | None = None, force: bool = False) -> None:
             else:
                 mol_title = f"MOL_{idx:05d}"
 
-            # Canonical physical substance storage: substances/<inchikey>/base.sdf
+            # Canonical physical substance storage: substances/<inchikey>/<res>_base.sdf
             sub_dir = cwd / "substances" / inchikey
             sub_dir.mkdir(parents=True, exist_ok=True)
-            base_sdf = sub_dir / "base.sdf"
+            clean_res = mol_title[:4].strip().upper()
+            base_sdf = sub_dir / f"{clean_res}_base.sdf"
             if not base_sdf.exists() or force:
                 with Chem.SDWriter(str(base_sdf)) as w:
                     w.write(mol)
