@@ -30,11 +30,14 @@ workflow MD_SETUP_WF {
     ch_targets = Channel.fromList(planData).map { target ->
         def meta = [
             id: target.id,
-            project: params.project_name,
-            native_ligand: target.lig_name ?: ""
+            project: params.project_name
         ]
-        def lig_f = target.lig_path ? file(target.lig_path).toAbsolutePath() : []
-        [ meta, file(target.rec_path).toAbsolutePath(), lig_f, target.cofactors ?: [] ]
+        def rec_pdb = file(target.rec_pdb).toAbsolutePath()
+        def lig_sdf = target.lig_sdf ? file(target.lig_sdf).toAbsolutePath() : []
+        def mol2s = target.mol2_paths.collect { file(it).toAbsolutePath() }
+        def frcmods = target.frcmod_paths.collect { file(it).toAbsolutePath() }
+
+        [ meta, rec_pdb, lig_sdf, mol2s, frcmods ]
     }
 
     SETUP_MD_SYSTEM(

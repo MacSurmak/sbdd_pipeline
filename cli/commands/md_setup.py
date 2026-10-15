@@ -47,36 +47,49 @@ def run_md_setup(
     plan_list = []
     for s in raw_systems:
         frame = s.receptor_frame
-        if not frame.path_mae:
-            raise ValueError(
-                f"FATAL: ReceptorFrame '{frame.name}' does not have path_mae registered. "
-                "Run 'sbdd prep' first."
-            )
-        rec_path = Path(frame.path_mae).resolve()
-        if not rec_path.exists():
-            raise FileNotFoundError(f"Prepared receptor missing: {rec_path}")
+        if not frame.path_pdb:
+            console.print(f"[bold red]FATAL: ReceptorFrame '{frame.name}' missing path_pdb. Run 'sbdd prep' first.[/bold red]")
+            sys.exit(1)
+        
+        rec_pdb = Path(frame.path_pdb).resolve()
+        if not rec_pdb.exists():
+            raise FileNotFoundError(f"Prepared receptor PDB missing: {rec_pdb}")
 
-        lig_path = None
-        lig_name = ""
+        lig_sdf = None
+        mol2_paths = []
+        frcmod_paths = []
+
+        # 1. Active ligand
         if s.pose:
-            pose_sdf = s.pose.path_sdf or s.pose.path
-            if not pose_sdf:
-                raise ValueError(
-                    f"FATAL: Native Pose '{s.pose.name}' missing path_sdf."
-                )
-            p_sdf_path = Path(pose_sdf).resolve()
-            if not p_sdf_path.exists():
-                raise FileNotFoundError(f"Prepared ligand missing: {p_sdf_path}")
-            lig_path = str(p_sdf_path)
-            lig_name = s.pose.ligand.name[:4].upper()
+            if s.pose.substance.substance_type != "ion":
+                if not s.pose.path_mol2 or not s.pose.path_frcmod:
+                    console.print(f"[bold red]FATAL: System '{s.name}' contains unparametrized ligand '{s.pose.name}'. Run 'sbdd prep'![/bold red]")
+                    sys.exit(1)
+                mol2_paths.append(str(Path(s.pose.path_mol2).resolve()))
+                frcmod_paths.append(str(Path(s.pose.path_frcmod).resolve()))
+            
+            p_sdf = s.pose.path_sdf or s.pose.path
+            if not p_sdf:
+                console.print(f"[bold red]FATAL: Pose '{s.pose.name}' missing path_sdf.[/bold red]")
+                sys.exit(1)
+            lig_sdf = str(Path(p_sdf).resolve())
+
+        # 2. Cofactors (Coordinates are already embedded in rec_pdb by PrepWizard)
+        for c in s.cofactors:
+            if c.substance.substance_type != "ion":
+                if not c.path_mol2 or not c.path_frcmod:
+                    console.print(f"[bold red]FATAL: System '{s.name}' contains unparametrized cofactor '{c.name}'. Run 'sbdd prep'![/bold red]")
+                    sys.exit(1)
+                mol2_paths.append(str(Path(c.path_mol2).resolve()))
+                frcmod_paths.append(str(Path(c.path_frcmod).resolve()))
 
         plan_list.append(
             {
                 "id": s.name,
-                "rec_path": str(rec_path),
-                "lig_path": lig_path,
-                "lig_name": lig_name,
-                "cofactors": frame.cofactors_list,
+                "rec_pdb": str(rec_pdb),
+                "lig_sdf": lig_sdf,
+                "mol2_paths": mol2_paths,
+                "frcmod_paths": frcmod_paths,
             }
         )
 
