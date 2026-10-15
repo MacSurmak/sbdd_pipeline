@@ -14,16 +14,18 @@ def run_cmd(cmd):
 
 
 def cmd_antechamber(args):
-    # Antechamber strictly requires residue names to be 3-4 chars long.
-    # We slice the long DB pose name to a generic 3-letter code to prevent internal Fortran crashes.
-    res_name = args.mol_id[:3].upper() if len(args.mol_id) > 3 else args.mol_id.upper()
+    # Extract canonical 3-letter residue name matching PDB structure
+    res_name = args.mol_id.split("_")[0][:3].upper()
+    if len(res_name) < 3:
+        res_name = "LIG"
     
+    out_mol2 = f"{args.mol_id}_gaff2.mol2"
     run_cmd(
         [
             "antechamber",
             "-i", args.sdf,
             "-fi", "sdf",
-            "-o", f"{args.mol_id}_gaff2.mol2",
+            "-o", out_mol2,
             "-fo", "mol2",
             "-at", "gaff2",
             "-c", "bcc",
@@ -118,8 +120,11 @@ def cmd_tleap(args):
             f"source leaprc.protein.ff19SB\nsource leaprc.gaff2\nsource leaprc.lipid21\nsource {leaprc_water}\n"
         )
         for m in args.mol2s:
-            name = Path(m).stem.replace("_gaff2", "")
-            f.write(f"{name} = loadmol2 {m}\n")
+            m_path = Path(m)
+            res_code = m_path.stem.split("_")[0][:3].upper()
+            if len(res_code) < 3:
+                res_code = "LIG"
+            f.write(f"{res_code} = loadmol2 {m}\n")
         for m in args.frcmods:
             f.write(f"loadAmberParams {m}\n")
         f.write(

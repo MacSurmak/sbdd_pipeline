@@ -406,11 +406,15 @@ def run_dock(
                     f"FATAL: ReceptorFrame '{frame_name}' in ranking is not registered in SQLite database!"
                 )
 
-            lig = session.query(Substance).filter_by(name=title, substance_type="ligand").first()
+            # Resolve substance entity considering self-docking unique titles
+            clean_sub_name = title.split("_")[-1] if ("_" in title and is_self) else title
+            lig = session.query(Substance).filter_by(name=clean_sub_name, substance_type="ligand").first()
+            if not lig:
+                lig = session.query(Substance).filter_by(name=title, substance_type="ligand").first()
             if not lig:
                 session.close()
                 raise ValueError(
-                    f"FATAL: Ligand '{title}' in ranking is not registered in SQLite database!"
+                    f"FATAL: Ligand '{title}' (resolved as '{clean_sub_name}') in ranking is not registered in SQLite database!"
                 )
 
             # Register poses for each executed engine without blind fallbacks

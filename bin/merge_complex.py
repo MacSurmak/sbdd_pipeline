@@ -72,16 +72,14 @@ def main():
             max_res_seq += 1
             chain_id = available_chains.pop(0) if available_chains else "Z"
 
+            res_code = p_sdf.stem.split("_")[0][:3].upper() if p_sdf.stem else "LIG"
+            if len(res_code) < 3:
+                res_code = f"{res_code:<3s}"
             for line in lig_pdb_block.splitlines():
                 if line.startswith(("ATOM", "HETATM")):
-                    # Ensure correct PDB columns:
-                    # 0-20: Record name, serial, atom name, altLoc, resName
-                    # 21: Chain ID
-                    # 22-25: resSeq
-                    # 26+: iCode, coords, occupancy, tempFactor, element
-                    atom_part = line[:21]
-                    rest = line[26:] if len(line) >= 26 else ""
-                    new_line = f"{atom_part[:21]:<21}{chain_id}{max_res_seq:4d}{rest}"
+                    atom_name = line[12:16]
+                    coords_and_rest = line[26:] if len(line) >= 26 else ""
+                    new_line = f"HETATM{len(out_lines)+1:5d} {atom_name:<4s} {res_code:3s} {chain_id}{max_res_seq:4d}{coords_and_rest}"
                     out_lines.append(new_line)
             
             out_lines.append("TER")

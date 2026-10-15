@@ -193,8 +193,8 @@ def run_metrics(
             sys.exit(1)
 
         sys_obj = t.system
-        lig_code = sys_obj.pose.substance.name if sys_obj.pose else ""
-        cofactors = sys_obj.receptor_frame.cofactors_list
+        lig_code = sys_obj.pose.substance.name if (sys_obj.pose and sys_obj.pose.substance) else ""
+        cofactors = [c.substance.name for c in sys_obj.cofactors if c.substance]
         metrics_dir = clean_dir.parent / "metrics"
 
         plan_list.append(
@@ -499,7 +499,6 @@ def run_cluster(
                 path_mae=str(mae_file),
                 path_pdb=str(pdb_file),
             )
-            new_frame.cofactors_list = parent_sys.receptor_frame.cofactors_list
             session.add(new_frame)
             session.flush()
             frame_obj = new_frame

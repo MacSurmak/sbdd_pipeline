@@ -9,7 +9,7 @@ from typing import Tuple, Optional
 import sys
 
 
-def get_mol_identity(source: str | Path) -> Tuple[str, str, str]:
+def get_mol_identity(source: str | Path) -> Tuple[str, str, str, int]:
     """
     Parses a chemical structure (SDF file, molblock, SMILES or PDB),
     standardizes it, and returns (inchikey, canonical_smiles, mol_name).

@@ -59,12 +59,13 @@ def run_prep(
     for frame in raw_frames:
         frame_map[frame.name] = frame
         system = session.query(System).filter_by(receptor_frame_id=frame.id).first()
-        native_lig_code = system.pose.substance.name if system and system.pose else ""
+        native_lig_code = system.pose.substance.name if (system and system.pose and system.pose.substance) else ""
+        cofactor_names = [c.substance.name for c in system.cofactors if c.substance] if system else []
         rec_plan.append({
             "name": frame.name,
             "path": str(Path(frame.path).resolve()),
             "prep_mode": "full",
-            "cofactors": frame.cofactors_list,
+            "cofactors": cofactor_names,
             "native_ligand": native_lig_code,
         })
 
@@ -81,8 +82,7 @@ def run_prep(
             if not m:
                 raise ValueError(f"FATAL: RDKit failed to parse SMILES for '{sub.name}'")
             m = Chem.AddHs(m)
-            if AllChem.EmbedMolecule(m, randomSeed=42) != 0:
-                raise RuntimeError(f"FATAL: RDKit failed to generate 3D coordinates for '{sub.name}'")
+            AllChem.Compute2DCoords(m)
             m.SetProp("_Name", sub.name)
             with Chem.SDWriter(str(sub_raw_sdf)) as w:
                 w.write(m)
@@ -165,8 +165,8 @@ def run_prep(
             pose_name, rel_mol2, rel_frcmod = line.split("\t")
             pose_obj = session.query(Pose).filter_by(name=pose_name).first()
             if pose_obj:
-                pose_obj.path_mol2 = str((cwd / "prepared_poses" / rel_mol2).resolve())
-                pose_obj.path_frcmod = str((cwd / "prepared_poses" / rel_frcmod).resolve())
+                pose_obj.path_mol2 = str((cwd / "prepared" / "prepared_poses" / rel_mol2).resolve())
+                pose_obj.path_frcmod = str((cwd / "prepared" / "prepared_poses" / rel_frcmod).resolve())
                 prep_pose_count += 1
 
     session.commit()
