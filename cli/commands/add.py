@@ -294,7 +294,7 @@ def add_receptor(
         lig_code = ligand.strip().upper() if ligand else None
         source_type = "crystal"
 
-        frames_dir = cwd / "structures" / target_name
+        frames_dir = cwd / "targets" / target_name / "frames"
         frames = _sanitize_and_split_models(
             struct_path, frames_dir, base_name, lig_code, safe_cofactors, safe_ions
         )
@@ -333,13 +333,21 @@ def add_receptor(
                     f"    It cannot be processed by 'sbdd prep'. Provide FASTA and run 'sbdd heal' to physically repair it."
                 )
 
-            poses_dir = cwd / "poses" / target_name
-            
+            sys_name = f"{frame_name}_{lig_code}" if lig_code else frame_name
+            system_poses_dir = cwd / "systems" / sys_name / "poses"
+            system_poses_dir.mkdir(parents=True, exist_ok=True)
+
             def _process_heterogen(resname: str, sub_type: str):
-                pose_sdf = poses_dir / f"{frame_name}_{resname}_crystal.sdf"
+                pose_sdf = system_poses_dir / f"{frame_name}_{resname}_crystal.sdf"
                 _extract_ligand_atoms(raw_file, resname, pose_sdf)
 
                 parent_inchikey, parent_smiles, mol_name, formal_charge = get_mol_identity(pose_sdf)
+
+                sub_dir = cwd / "substances" / parent_inchikey
+                sub_dir.mkdir(parents=True, exist_ok=True)
+                base_sdf = sub_dir / "base.sdf"
+                if not base_sdf.exists():
+                    shutil.copy2(pose_sdf, base_sdf)
 
                 sub_entity = session.query(Substance).filter_by(inchikey=parent_inchikey).first()
                 if not sub_entity:
@@ -401,7 +409,6 @@ def add_receptor(
             raw_file.unlink(missing_ok=True)
 
             # System creation
-            sys_name = f"{frame_name}_{lig_code}" if main_ligand_pose else frame_name
             ex_sys = session.query(System).filter_by(name=sys_name).first()
             if ex_sys:
                 ex_sys.pose_id = main_ligand_pose.id if main_ligand_pose else None
@@ -473,7 +480,7 @@ def add_fasta(path: str) -> None:
     )
 
 
-def add_ligand(path: str) -> None:
+def add_ligand(path: str, name: str | None = None, force: bool = False) -> None:
     """
     Imports chemical substances (SDF/SMILES) into the Substance table.
     Performs topological deduplication via Standard InChIKey.
@@ -510,7 +517,7 @@ def add_ligand(path: str) -> None:
                 raise ValueError("Could not compute InChIKey")
                 
             smiles = Chem.MolToSmiles(parent_mol, canonical=True)
-            name = (
+            mol_title = name if (name and suppl_len == 1) else (
                 mol.GetProp("_Name").strip()
                 if mol.HasProp("_Name") and mol.GetProp("_Name").strip()
                 else f"MOL_{idx:05d}"
@@ -518,8 +525,12 @@ def add_ligand(path: str) -> None:
 
             ex = session.query(Substance).filter_by(inchikey=inchikey).first()
             if ex:
-                skipped += 1
-                continue
+                if force:
+                    ex.name = mol_title
+                    ex.smiles = smiles
+                else:
+                    skipped += 1
+                    continue
 
             new_sub = Substance(
                 inchikey=inchikey,

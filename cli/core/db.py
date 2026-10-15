@@ -170,10 +170,9 @@ class Pose(Base):
 
     @property
     def scores_dict(self) -> dict:
-        try:
-            return json.loads(self.scores) if self.scores else {}
-        except Exception:
+        if not self.scores:
             return {}
+        return json.loads(self.scores)
 
     @scores_dict.setter
     def scores_dict(self, val: dict):
@@ -221,10 +220,9 @@ class System(Base):
 
     @property
     def environment_dict(self) -> dict:
-        try:
-            return json.loads(self.environment) if self.environment else {}
-        except Exception:
+        if not self.environment:
             return {}
+        return json.loads(self.environment)
 
     @environment_dict.setter
     def environment_dict(self, val: dict):

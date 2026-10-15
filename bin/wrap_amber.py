@@ -91,7 +91,7 @@ def cmd_tleap(args):
     # 1. First tLEaP pass: Solvation and accurate water molecule enumeration
     with open("tleap_solv.in", "w") as f:
         f.write(
-            f"source leaprc.protein.ff19SB\nsource leaprc.gaff2\nsource leaprc.lipid21\nsource {leaprc_water}\n"
+            f"source {args.protein_ff}\nsource {args.gaff_ff}\nsource {args.lipid_ff}\nsource {leaprc_water}\n"
         )
         for m in args.mol2s:
             res_code = parse_mol2_resname(Path(m))
@@ -139,7 +139,7 @@ def cmd_tleap(args):
     # 3. Final production tLEaP topology generation with neutralization + physiological salt
     with open("tleap.in", "w") as f:
         f.write(
-            f"source leaprc.protein.ff19SB\nsource leaprc.gaff2\nsource leaprc.lipid21\nsource {leaprc_water}\n"
+            f"source {args.protein_ff}\nsource {args.gaff_ff}\nsource {args.lipid_ff}\nsource {leaprc_water}\n"
         )
         for m in args.mol2s:
             m_path = Path(m)
@@ -183,8 +183,11 @@ def main():
     p_tleap.add_argument("--box_type", required=True)
     p_tleap.add_argument("--box_padding", required=True)
     p_tleap.add_argument("--ss_cutoff", required=True)
+    p_tleap.add_argument("--protein_ff", required=True)
+    p_tleap.add_argument("--gaff_ff", required=True)
+    p_tleap.add_argument("--lipid_ff", required=True)
     p_tleap.add_argument("--water_names", required=True)
-    p_tleap.add_argument("--salt_conc", default="0.15")
+    p_tleap.add_argument("--salt_conc", required=True)
     p_tleap.add_argument("--mol2s", nargs="*", default=[])
     p_tleap.add_argument("--frcmods", nargs="*", default=[])
     p_tleap.add_argument("--membrane", action="store_true")

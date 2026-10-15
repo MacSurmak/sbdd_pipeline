@@ -139,28 +139,30 @@ def run_prep(
             if not frame:
                 raise KeyError(f"FATAL: Prepared frame '{orig_name}' in receipt is not present in plan!")
 
-            mae_path = (cwd / "prepared" / r_mae).resolve()
-            pdb_path = (cwd / "prepared" / r_pdb).resolve()
-            if not mae_path.exists():
+            mae_path = Path(r_mae).resolve()
+            pdb_path = Path(r_pdb).resolve()
+            if not mae_path.exists() or mae_path.stat().st_size == 0:
                 raise FileNotFoundError(f"FATAL: Prepared receptor MAE missing on disk: {mae_path}")
-            if not pdb_path.exists():
+            if not pdb_path.exists() or pdb_path.stat().st_size == 0:
                 raise FileNotFoundError(f"FATAL: Prepared receptor PDB missing on disk: {pdb_path}")
 
             frame.path_mae = str(mae_path)
             frame.path_pdb = str(pdb_path)
+            frame.path = str(pdb_path)
             frame.state = "ready"
             prep_rec_count += 1
 
             if n_sdf != "NONE":
                 system = session.query(System).filter_by(receptor_frame_id=frame.id).first()
                 if system and system.pose:
-                    sdf_path = (cwd / "prepared" / n_sdf).resolve()
-                    if not sdf_path.exists():
+                    sdf_path = Path(n_sdf).resolve()
+                    if not sdf_path.exists() or sdf_path.stat().st_size == 0:
                         raise FileNotFoundError(f"FATAL: Prepared native pose SDF missing: {sdf_path}")
                     system.pose.path_sdf = str(sdf_path)
+                    system.pose.path = str(sdf_path)
                     if n_mae != "NONE":
-                        mae_native = (cwd / "prepared" / n_mae).resolve()
-                        if not mae_native.exists():
+                        mae_native = Path(n_mae).resolve()
+                        if not mae_native.exists() or mae_native.stat().st_size == 0:
                             raise FileNotFoundError(f"FATAL: Prepared native pose MAE missing: {mae_native}")
                         system.pose.path_mae = str(mae_native)
                     system.pose.state = "ready"
@@ -178,11 +180,11 @@ def run_prep(
             if not sub_obj:
                 raise KeyError(f"FATAL: Prepared substance '{sub_name}' in receipt is not registered in DB!")
 
-            mae_path = (cwd / "ligands" / rel_mae).resolve()
-            sdf_path = (cwd / "ligands" / rel_sdf).resolve()
-            if not mae_path.exists():
+            mae_path = Path(rel_mae).resolve()
+            sdf_path = Path(rel_sdf).resolve()
+            if not mae_path.exists() or mae_path.stat().st_size == 0:
                 raise FileNotFoundError(f"FATAL: Prepared ligand MAE missing: {mae_path}")
-            if not sdf_path.exists():
+            if not sdf_path.exists() or sdf_path.stat().st_size == 0:
                 raise FileNotFoundError(f"FATAL: Prepared ligand SDF missing: {sdf_path}")
 
             sub_obj.path_mae = str(mae_path)
@@ -203,11 +205,11 @@ def run_prep(
             if not pose_obj:
                 raise KeyError(f"FATAL: Parametrized pose '{pose_name}' in receipt is not registered in DB!")
 
-            mol2_path = (cwd / "prepared" / rel_mol2).resolve()
-            frcmod_path = (cwd / "prepared" / rel_frcmod).resolve()
-            if not mol2_path.exists():
+            mol2_path = Path(rel_mol2).resolve()
+            frcmod_path = Path(rel_frcmod).resolve()
+            if not mol2_path.exists() or mol2_path.stat().st_size == 0:
                 raise FileNotFoundError(f"FATAL: Antechamber MOL2 missing: {mol2_path}")
-            if not frcmod_path.exists():
+            if not frcmod_path.exists() or frcmod_path.stat().st_size == 0:
                 raise FileNotFoundError(f"FATAL: Parmchk2 FRCMOD missing: {frcmod_path}")
 
             pose_obj.path_mol2 = str(mol2_path)

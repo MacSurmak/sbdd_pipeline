@@ -559,11 +559,11 @@ def run_cluster(
                     name=cluster_pose_name,
                     origin="md_cluster",
                     state="raw",  # Geometry shifted in MD -> requires sbdd prep Antechamber
+                    formal_charge=parent_match.formal_charge,
                     path=str(p_sdf_file),
                     path_sdf=str(p_sdf_file),
                     path_mae=str(p_mae_file) if p_mae_file and p_mae_file.exists() else None,
                 )
-                new_p.scores_dict = {"formal_charge": parent_match.scores_dict.get("formal_charge", 0)}
                 session.add(new_p)
                 session.flush()
                 curr_pose = new_p
@@ -571,6 +571,7 @@ def run_cluster(
                 ex_pose.path = str(p_sdf_file)
                 ex_pose.path_sdf = str(p_sdf_file)
                 ex_pose.path_mae = str(p_mae_file) if p_mae_file and p_mae_file.exists() else None
+                ex_pose.formal_charge = parent_match.formal_charge
                 ex_pose.state = "raw"
                 curr_pose = ex_pose
 

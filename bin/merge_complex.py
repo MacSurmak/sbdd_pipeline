@@ -18,7 +18,7 @@ def main():
         "--lig_sdf", help="Active ligand SDF file (if holo)"
     )
     parser.add_argument(
-        "--lig_resname", default="LIG", help="Strict PDB residue name for ligand (e.g. KVR)"
+        "--lig_resname", required=True, help="Strict PDB residue name for ligand (e.g. KVR)"
     )
     parser.add_argument(
         "--extra_sdfs", nargs="*", default=[], help="Additional SDF files (cofactors, ions)"
@@ -51,13 +51,14 @@ def main():
         if line.startswith(("ATOM", "HETATM")):
             try:
                 res_seq = int(line[22:26].strip())
-                if res_seq > max_res_seq:
-                    max_res_seq = res_seq
-                chain = line[21]
-                if chain.strip():
-                    used_chains.add(chain)
-            except ValueError:
-                pass
+            except ValueError as e:
+                print(f"FATAL: Malformed residue sequence number in line '{line}': {e}", file=sys.stderr)
+                sys.exit(1)
+            if res_seq > max_res_seq:
+                max_res_seq = res_seq
+            chain = line[21]
+            if chain.strip():
+                used_chains.add(chain)
             out_lines.append(line)
         elif line.startswith("TER"):
             out_lines.append(line)

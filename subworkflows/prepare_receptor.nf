@@ -35,18 +35,10 @@ workflow PREPARE_RECEPTOR {
     cap_termini       // val: true
 
     main:
-    // 1. Strict branching based on DB prep_mode
-    ch_receptor.branch {
-        full:  it[0].prep_mode == 'full'
-        light: it[0].prep_mode == 'light'
-    }.set { routed_targets }
+    // Raw experimental structures proceed directly through comprehensive PrepWizard
+    COUNT_MODELS(ch_receptor)
 
-    // ==========================================
-    // ROUTE A: FULL PREPARATION (Crystals/Raw structures)
-    // ==========================================
-    COUNT_MODELS(routed_targets.full)
-
-    ch_extracted_in = routed_targets.full
+    ch_extracted_in = ch_receptor
         .join(COUNT_MODELS.out.count_file)
         .flatMap { meta, rec_file, count_txt ->
             def total = count_txt.text.trim() as int
@@ -108,25 +100,24 @@ workflow PREPARE_RECEPTOR {
     }
 
     SPLIT_PREPARED(ch_final_complex_mae)
-    ch_full_prepared_mae = SPLIT_PREPARED.out.prepared_mae
 
-    // ==========================================
-    // ROUTE B: LIGHT PREPARATION (MD frames)
-    // ==========================================
-    LIGHT_PREPWIZARD(routed_targets.light)
-    ch_light_prepared_mae = LIGHT_PREPWIZARD.out.prepared_mae
+    // Emit structured 5-column receipt with absolute paths
+    ch_receipt_data = SPLIT_PREPARED.out.prepared_mae
+        .join(SPLIT_PREPARED.out.prepared_pdb)
+        .join(SPLIT_PREPARED.out.ref_native_mae)
+        .join(SPLIT_PREPARED.out.ref_native_sdf)
+        .map { meta, r_mae, r_pdb, n_mae, n_sdf ->
+            def mae_abs = r_mae.toAbsolutePath()
+            def pdb_abs = r_pdb.toAbsolutePath()
+            def n_mae_abs = n_mae ? n_mae.toAbsolutePath() : "NONE"
+            def n_sdf_abs = n_sdf ? n_sdf.toAbsolutePath() : "NONE"
+            "${meta.name}\t${mae_abs}\t${pdb_abs}\t${n_mae_abs}\t${n_sdf_abs}"
+        }
 
-
-    // ==========================================
-    // EMIT RECEIPT FOR CLI DATABASE
-    // ==========================================
-    ch_all_maes = ch_full_prepared_mae.mix(ch_light_prepared_mae)
-
-    ch_all_maes.map { meta, mae -> "${meta.name}\t${meta.id}/${mae.name}" }
-               .collectFile(name: 'prep_receipt.tsv', storeDir: params.outdir, newLine: true)
+    ch_receipt_data.collectFile(name: 'prep_receipt.tsv', storeDir: params.outdir, newLine: true)
 
     emit:
-    prepared_mae     = ch_all_maes
+    prepared_mae     = SPLIT_PREPARED.out.prepared_mae
     ref_native_mae   = SPLIT_PREPARED.out.ref_native_mae
     ref_native_sdf   = SPLIT_PREPARED.out.ref_native_sdf
     membrane_json    = ch_mem_json

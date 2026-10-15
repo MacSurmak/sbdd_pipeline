@@ -13,11 +13,19 @@ process PUBLISH_MD_SYSTEM {
     tuple val(meta), path(gro), path(top), path(ndx), path(posre)
 
     output:
-    tuple val(meta), path(gro), path(top), path(ndx), path(posre)
+    tuple val(meta), path("${gro.name}"), path("${top.name}"), path("${ndx.name}"), path("${posre.name}")
 
     script:
     """
-    # Publish passthrough
+    ln -sf "${gro}" "${gro.name}"
+    ln -sf "${top}" "${top.name}"
+    ln -sf "${ndx}" "${ndx.name}"
+    ln -sf "${posre}" "${posre.name}"
+    """
+
+    stub:
+    """
+    touch "${gro.name}" "${top.name}" "${ndx.name}" "${posre.name}"
     """
 }
 
@@ -66,12 +74,16 @@ workflow MD_SETUP_WF {
         params.declash_damping,
         params.declash_max_move,
         params.declash_jitter,
-        params.declash_tol
+        params.declash_tol,
+        params.protein_forcefield,
+        params.gaff_forcefield,
+        params.lipid_forcefield
     )
 
     PUBLISH_MD_SYSTEM(SETUP_MD_SYSTEM.out.system_ready)
 
     PUBLISH_MD_SYSTEM.out.map { meta, gro, top, ndx, posre ->
-        "${meta.id}\t${params.outdir}/md_systems/${meta.id}/${gro.name}\t${params.outdir}/md_systems/${meta.id}/${top.name}\t${params.outdir}/md_systems/${meta.id}/${ndx.name}\n"
+        def sys_dir = file("${params.outdir}/md_systems/${meta.id}").toAbsolutePath()
+        "${meta.id}\t${sys_dir}/${gro.name}\t${sys_dir}/${top.name}\t${sys_dir}/${ndx.name}\n"
     }.collectFile(name: 'md_setup_receipt.tsv', storeDir: params.outdir)
 }

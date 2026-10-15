@@ -218,16 +218,6 @@ def run_dock(
 
             pose_obj = sys_obj.pose
             native_lig = pose_obj.substance.name
-            pose_p = Path(pose_obj.path).resolve()
-
-            ref_sdf = pose_p.with_suffix(".sdf")
-            ref_mae = pose_p.with_suffix(".mae")
-
-            if not ref_sdf.exists() or not ref_mae.exists():
-                console.print(
-                    f"[bold red]FATAL: Reference pose files missing for '{r.name}'. Need both .sdf and .mae![/bold red]"
-                )
-                sys.exit(1)
 
             if not r.path_mae or not r.path_pdb:
                 raise ValueError(
@@ -554,16 +544,14 @@ def run_dock(
             disp_glide = _color_rmsd(g_rmsd)
             disp_gnina = _color_rmsd(n_rmsd)
 
-            verdict = "[dim]-[/dim]"
-            try:
-                vg = float(g_rmsd) if g_rmsd and g_rmsd not in ["nan", "-"] else None
-                vn = float(n_rmsd) if n_rmsd and n_rmsd not in ["nan", "-"] else None
-                if (vg is not None and vg <= 2.5) or (vn is not None and vn <= 2.5):
-                    verdict = "[bold green]✓ SUCCESS[/bold green]"
-                elif vg is not None or vn is not None:
-                    verdict = "[bold yellow]⚠ DRIFT[/bold yellow]"
-            except (ValueError, TypeError):
-                pass
+            vg = float(g_rmsd) if g_rmsd and g_rmsd not in ["nan", "-"] else None
+            vn = float(n_rmsd) if n_rmsd and n_rmsd not in ["nan", "-"] else None
+            if (vg is not None and vg <= 2.5) or (vn is not None and vn <= 2.5):
+                verdict = "[bold green]✓ SUCCESS[/bold green]"
+            elif vg is not None or vn is not None:
+                verdict = "[bold yellow]⚠ DRIFT[/bold yellow]"
+            else:
+                verdict = "[dim]-[/dim]"
 
             table.add_row(
                 frame_name,

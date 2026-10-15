@@ -17,6 +17,9 @@ process TLEAP {
     val(ss_cutoff)
     val(water_names)
     val(salt_conc)
+    val(protein_ff)
+    val(gaff_ff)
+    val(lipid_ff)
 
     output:
     tuple val(meta), path("complex.prmtop"), path("complex.inpcrd"), emit: amber_system
@@ -36,6 +39,9 @@ process TLEAP {
         --ss_cutoff ${ss_cutoff} \\
         --water_names "${water_names}" \\
         --salt_conc ${salt_conc} \\
+        --protein_ff ${protein_ff} \\
+        --gaff_ff ${gaff_ff} \\
+        --lipid_ff ${lipid_ff} \\
         ${mol2_arg} \\
         ${frcmod_arg} \\
         ${mem_arg}

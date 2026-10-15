@@ -439,7 +439,7 @@ def main():
         elif args.add_type == "fasta":
             add_fasta(path=args.path)
         elif args.add_type == "ligand":
-            add_ligand(path=args.path)
+            add_ligand(path=args.path, name=args.name, force=args.force)
         elif args.add_type == "traj":
             add_traj(
                 system=args.system,

@@ -92,8 +92,9 @@ def normalize_gmx_cluster_pdb(raw_pdb_path: Path, lig_name: str) -> list[Path]:
             res_name = line[17:20].strip().upper()
             try:
                 res_seq = int(line[22:26].strip())
-            except ValueError:
-                res_seq = 0
+            except ValueError as e:
+                print(f"FATAL: Malformed residue sequence number in line '{line}': {e}", file=sys.stderr)
+                sys.exit(1)
 
             # Chain transition detection rules
             is_lig = (res_name == lig_name) or (res_name not in STANDARD_PROTEIN)
@@ -210,12 +211,7 @@ def main():
                 mol_st.property["s_m_title"] = r_code
 
                 # Perceive chemistry, double bonds and formal charges from 3D geometry
-                try:
-                    assignbondorders.assign_st(mol_st)
-                except Exception as e:
-                    sys.stderr.write(
-                        f"Warning: assignbondorders note for {r_code} in cluster {i}: {e}\n"
-                    )
+                assignbondorders.assign_st(mol_st)
 
                 sdf_out = f"pose_{r_code}_{i}.sdf"
                 mae_out = f"pose_{r_code}_{i}.mae"

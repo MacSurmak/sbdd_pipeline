@@ -12,7 +12,7 @@ include { NDX_POSRE         } from '../modules/gromacs/ndx_posre'
 
 workflow SETUP_MD_SYSTEM {
     take:
-    ch_targets        // channel: [ meta, rec_pdb, lig_sdf, mol2s, frcmods ]
+    ch_targets        // channel: [ meta, rec_pdb, lig_sdf, extra_sdfs, mol2s, frcmods ]
     is_membrane       // val: true/false
     upper_lipids      // val: "POPC:POPE:CHL1"
     upper_ratio       // val: "5:4:1"
@@ -35,6 +35,9 @@ workflow SETUP_MD_SYSTEM {
     declash_max_move
     declash_jitter
     declash_tol
+    protein_ff
+    gaff_ff
+    lipid_ff
 
     main:
     // 1. Clean merge of standardized apo protein with active ligand and cofactors/ions
@@ -68,7 +71,20 @@ workflow SETUP_MD_SYSTEM {
             [ meta, pdb, mol2s, frcmods ]
         }
     
-    TLEAP(ch_tleap_in, water_leaprc, water_box, box_type, is_membrane, wat_pad, ss_cutoff, water_names, salt_conc)
+    TLEAP(
+        ch_tleap_in,
+        water_leaprc,
+        water_box,
+        box_type,
+        is_membrane,
+        wat_pad,
+        ss_cutoff,
+        water_names,
+        salt_conc,
+        protein_ff,
+        gaff_ff,
+        lipid_ff
+    )
 
     // 6. ParmEd conversion to GROMACS
     PARMED(TLEAP.out.amber_system)

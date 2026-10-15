@@ -67,19 +67,24 @@ workflow PREPARE_WF {
             [ meta, lig_path.toAbsolutePath() ]
         }
 
+        if (!params.batch_size || !params.ligand_ph || !params.ligand_ph_tol || !params.ligprep_ff || !params.max_states) {
+            error "FATAL: Ligand preparation parameters missing in configuration! Check project.yaml."
+        }
+
         PREPARE_LIGANDS(
             ch_lig_in,
-            params.batch_size ?: 15,
-            params.ligand_ph ?: 7.4,
-            params.ligand_ph_tol ?: 2.0,
-            params.ligprep_ff ?: 16,
-            params.max_states ?: 32
+            params.batch_size,
+            params.ligand_ph,
+            params.ligand_ph_tol,
+            params.ligprep_ff,
+            params.max_states
         )
 
         PREPARE_LIGANDS.out.prepared_ligands.map { meta, mae ->
             def base_id = meta.name ?: meta.id
             def stem = mae.name.replaceAll(/(\.maegz|\.mae)$/, "")
-            "${base_id}\t${base_id}/${mae.name}\t${base_id}/${stem}.sdf"
+            def lig_dir = file("${params.outdir}/prepared_substances/${base_id}").toAbsolutePath()
+            "${base_id}\t${lig_dir}/${mae.name}\t${lig_dir}/${stem}.sdf"
         }.collectFile(name: 'prep_ligand_receipt.tsv', storeDir: params.outdir, newLine: true)
     }
 
@@ -103,7 +108,9 @@ workflow PREPARE_WF {
         PARAMETRIZE_POSE(ch_poses_in)
 
         PARAMETRIZE_POSE.out.map { meta, mol2, frcmod ->
-            "${meta.name}\tprepared_poses/${meta.name}/${mol2.name}\tprepared_poses/${meta.name}/${frcmod.name}"
+            def mol2_abs = mol2.toAbsolutePath()
+            def frcmod_abs = frcmod.toAbsolutePath()
+            "${meta.name}\t${mol2_abs}\t${frcmod_abs}"
         }.collectFile(name: 'prep_pose_receipt.tsv', storeDir: params.outdir, newLine: true)
     }
 }
