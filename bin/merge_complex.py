@@ -17,6 +17,9 @@ def main():
     parser.add_argument(
         "--lig_sdf", help="Active ligand SDF file (if holo)"
     )
+    parser.add_argument(
+        "--lig_resname", default="LIG", help="Strict PDB residue name for ligand (e.g. KVR)"
+    )
     parser.add_argument("--out_pdb", required=True, help="Output complex PDB")
     args = parser.parse_args()
 
@@ -72,14 +75,14 @@ def main():
             max_res_seq += 1
             chain_id = available_chains.pop(0) if available_chains else "Z"
 
-            res_code = p_sdf.stem.split("_")[0][:3].upper() if p_sdf.stem else "LIG"
+            res_code = args.lig_resname.strip().upper()[:4]
             if len(res_code) < 3:
                 res_code = f"{res_code:<3s}"
             for line in lig_pdb_block.splitlines():
                 if line.startswith(("ATOM", "HETATM")):
                     atom_name = line[12:16]
                     coords_and_rest = line[26:] if len(line) >= 26 else ""
-                    new_line = f"HETATM{len(out_lines)+1:5d} {atom_name:<4s} {res_code:3s} {chain_id}{max_res_seq:4d}{coords_and_rest}"
+                    new_line = f"HETATM{len(out_lines)+1:5d} {atom_name:<4s} {res_code:>3s} {chain_id}{max_res_seq:4d}{coords_and_rest}"
                     out_lines.append(new_line)
             
             out_lines.append("TER")

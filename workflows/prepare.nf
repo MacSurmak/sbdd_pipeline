@@ -92,7 +92,8 @@ workflow PREPARE_WF {
             def meta = [
                 id: pose.name,
                 name: pose.name,
-                charge: pose.charge
+                charge: pose.charge,
+                res_name: pose.res_name ?: "LIG"
             ]
             [ meta, sdf_path.toAbsolutePath() ]
         }

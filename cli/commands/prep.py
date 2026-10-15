@@ -96,10 +96,12 @@ def run_prep(
     pose_plan = []
     for pose in query_poses:
         ch = pose.scores_dict.get("formal_charge", 0)
+        res_name = pose.substance.name[:4].upper() if pose.substance else "LIG"
         pose_plan.append({
             "name": pose.name,
             "path": pose.path,
-            "charge": ch
+            "charge": ch,
+            "res_name": res_name
         })
 
     plan_data = {"receptors": rec_plan, "ligands": sub_plan, "poses": pose_plan}

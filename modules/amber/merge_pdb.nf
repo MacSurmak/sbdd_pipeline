@@ -14,7 +14,7 @@ process MERGE_PDB {
     tuple val(meta), path("complex_dry.pdb"), emit: complex_pdb
 
     script:
-    def lig_arg = (lig_sdf && lig_sdf.name != 'NO_FILE') ? "--lig_sdf ${lig_sdf}" : ""
+    def lig_arg = (lig_sdf && lig_sdf.name != 'NO_FILE') ? "--lig_sdf ${lig_sdf} --lig_resname ${meta.lig_resname}" : ""
     """
     python3 ${projectDir}/bin/merge_complex.py \\
         --rec_pdb ${rec_pdb} \\

@@ -30,6 +30,7 @@ workflow MD_SETUP_WF {
     ch_targets = Channel.fromList(planData).map { target ->
         def meta = [
             id: target.id,
+            lig_resname: target.lig_resname ?: "LIG",
             project: params.project_name
         ]
         def rec_pdb = file(target.rec_pdb).toAbsolutePath()

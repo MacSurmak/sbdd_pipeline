@@ -14,10 +14,9 @@ def run_cmd(cmd):
 
 
 def cmd_antechamber(args):
-    # Extract canonical 3-letter residue name matching PDB structure
-    res_name = args.mol_id.split("_")[0][:3].upper()
+    res_name = args.res_name.strip().upper()[:4]
     if len(res_name) < 3:
-        res_name = "LIG"
+        res_name = f"{res_name:<3s}"
     
     out_mol2 = f"{args.mol_id}_gaff2.mol2"
     run_cmd(
@@ -115,15 +114,25 @@ def cmd_tleap(args):
         )
 
     # 3. Final production tLEaP topology generation with neutralization + physiological salt
+    def parse_mol2_resname(mol2_file: Path) -> str:
+        in_sub = False
+        for line in mol2_file.read_text(errors="ignore").splitlines():
+            if line.startswith("@<TRIPOS>SUBSTRUCTURE"):
+                in_sub = True
+                continue
+            if in_sub and line.strip():
+                parts = line.split()
+                if len(parts) >= 2:
+                    return parts[1][:4].upper()
+        return "LIG"
+
     with open("tleap.in", "w") as f:
         f.write(
             f"source leaprc.protein.ff19SB\nsource leaprc.gaff2\nsource leaprc.lipid21\nsource {leaprc_water}\n"
         )
         for m in args.mol2s:
             m_path = Path(m)
-            res_code = m_path.stem.split("_")[0][:3].upper()
-            if len(res_code) < 3:
-                res_code = "LIG"
+            res_code = parse_mol2_resname(m_path)
             f.write(f"{res_code} = loadmol2 {m}\n")
         for m in args.frcmods:
             f.write(f"loadAmberParams {m}\n")
@@ -154,6 +163,7 @@ def main():
     p_ante.add_argument("--sdf", required=True)
     p_ante.add_argument("--charge", required=True, type=int)
     p_ante.add_argument("--mol_id", required=True)
+    p_ante.add_argument("--res_name", required=True)
 
     p_tleap = subparsers.add_parser("tleap")
     p_tleap.add_argument("--complex_pdb", required=True)

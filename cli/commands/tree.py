@@ -6,7 +6,7 @@ Description: CLI handler to visualize the 3NF database lineage cleanly without s
 from pathlib import Path
 from rich.console import Console
 from rich.tree import Tree
-from cli.core.db import init_db, Target, ReceptorFrame, Ligand, Pose, System, Trajectory
+from cli.core.db import init_db, Target, ReceptorFrame, Substance, Pose, System, Trajectory
 
 console = Console()
 
@@ -44,13 +44,8 @@ def print_tree() -> None:
                         if f.parent_frame_id
                         else ""
                     )
-                    cofs = (
-                        f" [yellow]+{','.join(f.cofactors_list)}[/yellow]"
-                        if f.cofactors_list
-                        else ""
-                    )
                     f_branch.add(
-                        f"[{f_color}]{f.name}[/{f_color}] [dim]({f.source_type}, state={f.state})[/dim]{cofs}{lineage}"
+                        f"[{f_color}]{f.name}[/{f_color}] [dim]({f.source_type}, state={f.state})[/dim]{lineage}"
                     )
 
             # Systems
@@ -65,12 +60,14 @@ def print_tree() -> None:
                 for s in systems:
                     s_color = "green" if s.state == "ready" else "yellow"
                     pose_label = (
-                        f" + Pose [cyan]{s.pose.name}[/cyan]"
+                        f" + Ligand [cyan]{s.pose.name}[/cyan]"
                         if s.pose
                         else " [dim](Apo)[/dim]"
                     )
+                    cofs = [c.substance.name for c in s.cofactors if c.substance]
+                    cofs_label = f" [yellow]+[{','.join(cofs)}][/yellow]" if cofs else ""
                     sys_node = s_branch.add(
-                        f"[{s_color}]{s.name}[/{s_color}] [dim](state={s.state})[/dim] on [cyan]{s.receptor_frame.name}[/cyan]{pose_label}"
+                        f"[{s_color}]{s.name}[/{s_color}] [dim](state={s.state})[/dim] on [cyan]{s.receptor_frame.name}[/cyan]{pose_label}{cofs_label}"
                     )
 
                     # Trajectories under system
@@ -94,25 +91,26 @@ def print_tree() -> None:
                             )
 
     # 2. Chemical Substances & Their 3D Poses
-    ligands = session.query(Ligand).order_by(Ligand.name).all()
-    if ligands:
-        lig_branch = root_tree.add(
-            "[bold yellow]Chemical Ligands (Substances) & 3D Poses[/bold yellow]"
+    substances = session.query(Substance).order_by(Substance.substance_type, Substance.name).all()
+    if substances:
+        sub_branch = root_tree.add(
+            "[bold yellow]Chemical Substances & 3D Poses[/bold yellow]"
         )
-        for lig in ligands:
-            l_color = "green" if lig.state == "ready" else "yellow"
+        for sub in substances:
+            s_color = "green" if sub.state == "ready" else "yellow"
             prep_info = (
-                f" [dim](LigPrep: {Path(lig.path_mae).name})[/dim]"
-                if lig.state == "ready" and lig.path_mae
-                else " [dim](unprepared, raw)[/dim]"
+                f" [dim](LigPrep: {Path(sub.path_mae).name})[/dim]"
+                if sub.state == "ready" and sub.path_mae
+                else (" [dim](ready, 3D)[/dim]" if sub.state == "ready" else " [dim](raw)[/dim]")
             )
-            lig_node = lig_branch.add(
-                f"[{l_color}]{lig.name}[/{l_color}] [{l_color}][{lig.state}][/{l_color}]{prep_info} [dim]({lig.inchikey}) SMILES: {lig.smiles}[/dim]"
+            type_badge = f"[bold]{sub.substance_type.upper()}[/bold]"
+            sub_node = sub_branch.add(
+                f"{type_badge}: [{s_color}]{sub.name}[/{s_color}] [{s_color}][{sub.state}][/{s_color}]{prep_info} [dim]({sub.inchikey}) SMILES: {sub.smiles}[/dim]"
             )
 
             poses = (
                 session.query(Pose)
-                .filter_by(ligand_id=lig.id)
+                .filter_by(substance_id=sub.id)
                 .order_by(Pose.name)
                 .all()
             )
@@ -124,8 +122,9 @@ def print_tree() -> None:
                     if ch is not None and ch != 0
                     else (" [dim](neutral)[/dim]" if ch == 0 else "")
                 )
-                lig_node.add(
-                    f"Pose: [{p_color}]{p.name}[/{p_color}] [dim]({p.origin}, state={p.state})[/dim]{ch_tag} in [cyan]{p.receptor_frame.name}[/cyan] -> {Path(p.path).name}"
+                param_status = " [bold green]+GAFF2[/bold green]" if (p.path_mol2 and p.path_frcmod) else ""
+                sub_node.add(
+                    f"Pose: [{p_color}]{p.name}[/{p_color}] [dim]({p.origin}, state={p.state})[/dim]{ch_tag}{param_status} in [cyan]{p.receptor_frame.name}[/cyan] -> {Path(p.path).name}"
                 )
 
     session.close()

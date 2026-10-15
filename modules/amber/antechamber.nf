@@ -18,7 +18,8 @@ process PARAMETRIZE_POSE {
     python3 ${projectDir}/bin/wrap_amber.py antechamber \\
         --sdf "${sdf}" \\
         --charge ${meta.charge} \\
-        --mol_id "${meta.name}"
+        --mol_id "${meta.name}" \\
+        --res_name "${meta.res_name}"
     """
 
     stub:
