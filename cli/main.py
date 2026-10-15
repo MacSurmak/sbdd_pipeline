@@ -248,7 +248,9 @@ def main():
         "md-setup", help="Prepare MD topologies for raw systems (tLEaP/Declash)"
     )
     p_mdsetup.add_argument("--system", help="Specific System to setup")
-    p_mdsetup.add_argument("--target", help="Setup all raw systems for a specific Target")
+    p_mdsetup.add_argument(
+        "--target", help="Setup all raw systems for a specific Target"
+    )
     add_common_wf_args(p_mdsetup)
 
     # 6. md / dynamics

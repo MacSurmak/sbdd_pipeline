@@ -299,20 +299,24 @@ def cmd_prepwizard(args):
     cap_termini = args.cap_termini
 
     # Execute unified PrepWizard on the entire complex.
-    # -rmsd applies a restrained minimization (OPLS) to relieve steric clashes 
+    # -rmsd applies a restrained minimization (OPLS) to relieve steric clashes
     # of the newly added hydrogens without drifting the experimental heavy atom coordinates.
     # PROPKA and Epik work cooperatively within the binding pocket.
     prep_cmd = get_tool("prepwizard") + [
         "-fix",
         "-fillsidechains",
-        "-propka_pH", str(target_ph),
-        "-epik_pH", str(target_ph),
-        "-epik_pHt", str(ph_tolerance),
-        "-rmsd", str(min_rmsd),
+        "-propka_pH",
+        str(target_ph),
+        "-epik_pH",
+        str(target_ph),
+        "-epik_pHt",
+        str(ph_tolerance),
+        "-rmsd",
+        str(min_rmsd),
         "-preserve_st_titles",
         "-WAIT",
     ]
-    
+
     if cap_termini:
         prep_cmd.append("-captermini")
 

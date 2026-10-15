@@ -249,12 +249,15 @@ def cmd_equilibration(args):
             line = line.strip()
             if not line:
                 continue
-            
+
             parts = line.split(",")
             if len(parts) != 2:
-                print(f"FATAL: Invalid protocol.txt line format (expected type,mdp_path): {line}", file=sys.stderr)
+                print(
+                    f"FATAL: Invalid protocol.txt line format (expected type,mdp_path): {line}",
+                    file=sys.stderr,
+                )
                 sys.exit(1)
-            
+
             p_type, mdp = parts[0].strip(), parts[1].strip()
             stage = Path(mdp).stem
             last_stage = stage
@@ -287,7 +290,7 @@ def cmd_equilibration(args):
             # Blindly apply exact hardware execution flags from YAML contract
             exec_flags = args.minim_flags if p_type == "minim" else args.eq_flags
             run_cmd = ["gmx", "mdrun", "-deffnm", stage] + exec_flags.split()
-            
+
             # CPU threading is managed dynamically by Slurm, we append it explicitly
             run_cmd.extend(["-ntomp", str(args.cpus)])
 
@@ -387,7 +390,14 @@ def cmd_run_chunk(args):
                 "3",
             ]
         )
-        run_cmd = ["gmx", "mdrun", "-deffnm", f"md_{args.chunk_idx}", "-s", "out.tpr"] + args.prod_flags.split()
+        run_cmd = [
+            "gmx",
+            "mdrun",
+            "-deffnm",
+            f"md_{args.chunk_idx}",
+            "-s",
+            "out.tpr",
+        ] + args.prod_flags.split()
         run_cmd.extend(["-ntomp", str(args.cpus)])
         run_mdrun(run_cmd, f"MD: {args.sys_name}")
         shutil.copy2("out.tpr", "sys_ref.tpr")
@@ -404,7 +414,17 @@ def cmd_run_chunk(args):
                 "out.tpr",
             ]
         )
-        run_cmd = ["gmx", "mdrun", "-deffnm", f"md_{args.chunk_idx}", "-s", "out.tpr", "-cpi", args.prev_cpt, "-noappend"] + args.prod_flags.split()
+        run_cmd = [
+            "gmx",
+            "mdrun",
+            "-deffnm",
+            f"md_{args.chunk_idx}",
+            "-s",
+            "out.tpr",
+            "-cpi",
+            args.prev_cpt,
+            "-noappend",
+        ] + args.prod_flags.split()
         run_cmd.extend(["-ntomp", str(args.cpus)])
         run_mdrun(run_cmd, f"MD: {args.sys_name}")
         shutil.copy2("out.tpr", "sys_ref.tpr")

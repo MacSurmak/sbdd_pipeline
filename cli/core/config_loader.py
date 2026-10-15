@@ -286,7 +286,11 @@ def _build_md_setup_args(config: Dict[str, Any]) -> list:
     args.extend(["--md_restraints_fc", ",".join(map(str, rf_list))])
 
     prod_cfg = md_cfg.get("production")
-    if prod_cfg and "restraints_fc" in prod_cfg and int(float(prod_cfg["restraints_fc"])) > 0:
+    if (
+        prod_cfg
+        and "restraints_fc" in prod_cfg
+        and int(float(prod_cfg["restraints_fc"])) > 0
+    ):
         args.extend(
             ["--prod_restraints_fc", str(int(float(prod_cfg["restraints_fc"])))]
         )

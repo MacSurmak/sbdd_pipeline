@@ -38,7 +38,9 @@ def run_md_setup(
 
     raw_systems = query.all()
     if not raw_systems:
-        console.print("[green]No raw Systems found to setup. Topologies are up to date![/green]")
+        console.print(
+            "[green]No raw Systems found to setup. Topologies are up to date![/green]"
+        )
         session.close()
         return
 
@@ -59,7 +61,9 @@ def run_md_setup(
         if s.pose:
             pose_sdf = s.pose.path_sdf or s.pose.path
             if not pose_sdf:
-                raise ValueError(f"FATAL: Native Pose '{s.pose.name}' missing path_sdf.")
+                raise ValueError(
+                    f"FATAL: Native Pose '{s.pose.name}' missing path_sdf."
+                )
             p_sdf_path = Path(pose_sdf).resolve()
             if not p_sdf_path.exists():
                 raise FileNotFoundError(f"Prepared ligand missing: {p_sdf_path}")
@@ -80,7 +84,9 @@ def run_md_setup(
     with open(plan_file, "w") as f:
         json.dump(plan_list, f, indent=2)
 
-    console.print(f"[bold cyan]Dispatching topology setup for {len(plan_list)} System(s)...[/bold cyan]")
+    console.print(
+        f"[bold cyan]Dispatching topology setup for {len(plan_list)} System(s)...[/bold cyan]"
+    )
 
     nf_args = build_nextflow_args(configs, cwd, entrypoint="md-setup")
     nf_args.extend(["--md_plan", str(plan_file.resolve())])
@@ -123,5 +129,9 @@ def run_md_setup(
     session.commit()
     session.close()
 
-    console.print(f"\n[bold green]✓ MD Setup completed! {registered} System(s) transitioned to 'ready'.[/bold green]")
-    console.print("[dim]Topologies compiled. Run 'sbdd md' to launch production dynamics.[/dim]")
+    console.print(
+        f"\n[bold green]✓ MD Setup completed! {registered} System(s) transitioned to 'ready'.[/bold green]"
+    )
+    console.print(
+        "[dim]Topologies compiled. Run 'sbdd md' to launch production dynamics.[/dim]"
+    )

@@ -99,7 +99,9 @@ def run_dynamics(
         p_top_dir = p_top.parent
         posre_files = [str(f.resolve()) for f in p_top_dir.glob("posre_*.itp")]
         if not posre_files:
-            raise FileNotFoundError(f"FATAL: No position restraint files (posre_*.itp) found in topology directory: {p_top_dir}")
+            raise FileNotFoundError(
+                f"FATAL: No position restraint files (posre_*.itp) found in topology directory: {p_top_dir}"
+            )
 
         systems_to_run.append((s, missing_reps))
         plan_list.append(
