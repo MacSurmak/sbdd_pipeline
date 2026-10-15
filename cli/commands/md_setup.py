@@ -142,14 +142,25 @@ def run_md_setup(
         if not line.strip():
             continue
         parts = line.split("\t")
-        if len(parts) != 4:
+        if len(parts) == 5:
+            sys_id, gro, top, ndx, posre_str = parts
+            posre_files = posre_str.split(",") if posre_str else []
+        elif len(parts) == 4:
+            sys_id, gro, top, ndx = parts
+            posre_files = []
+        else:
             continue
-        sys_id, gro, top, ndx = parts
+
         if sys_id in sys_map:
             s = sys_map[sys_id]
             s.path_gro = gro
             s.path_top = top
             s.path_ndx = ndx
+            
+            env = s.environment_dict
+            env["posre_files"] = posre_files
+            s.environment_dict = env
+            
             s.state = "ready"
             registered += 1
 

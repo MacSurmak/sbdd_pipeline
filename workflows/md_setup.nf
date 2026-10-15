@@ -78,6 +78,7 @@ workflow MD_SETUP_WF {
 
     PUBLISH_MD_SYSTEM.out.map { meta, gro, top, ndx, posre ->
         def sys_dir = file("${params.outdir}/systems/${meta.id}/md_topology").toAbsolutePath()
-        "${meta.id}\t${sys_dir}/${gro.name}\t${sys_dir}/${top.name}\t${sys_dir}/${ndx.name}\n"
+        def posre_list = posre instanceof List ? posre.collect { "${sys_dir}/${it.name}" }.join(',') : "${sys_dir}/${posre.name}"
+        "${meta.id}\t${sys_dir}/${gro.name}\t${sys_dir}/${top.name}\t${sys_dir}/${ndx.name}\t${posre_list}\n"
     }.collectFile(name: 'md_setup_receipt.tsv', storeDir: params.outdir)
 }
