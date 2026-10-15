@@ -452,6 +452,7 @@ def run_cluster(
     for rec in records:
         parent_sys_key = rec["sys_name"]
         centroid_title = rec["centroid_title"]
+        view_pdb_name = rec["view_pdb"]
         pdb_name = rec["pdb"]
         mae_name = rec["mae"]
         poses_dict = rec.get("poses", {})
@@ -463,18 +464,15 @@ def run_cluster(
             )
         parent_sys, active_traj_names, cluster_sig = mapped_item
 
-        # Absolute, deterministic path resolution directly from task namespace
-        task_dir = (cwd / "prepared" / parent_sys_key).resolve()
-        pdb_file = (task_dir / pdb_name).resolve()
-        mae_file = (task_dir / mae_name).resolve()
+        # Absolute path resolution directly from task cluster directory
+        task_dir = (cwd / "reports" / "clusters" / parent_sys_key).resolve()
+        src_pdb = (task_dir / pdb_name).resolve()
+        src_mae = (task_dir / mae_name).resolve()
+        src_view_pdb = (task_dir / view_pdb_name).resolve()
 
-        if not pdb_file.exists():
+        if not src_pdb.exists() or not src_mae.exists():
             raise FileNotFoundError(
-                f"FATAL: Centroid PDB deliverable missing: {pdb_file}"
-            )
-        if not mae_file.exists():
-            raise FileNotFoundError(
-                f"FATAL: Centroid MAE deliverable missing: {mae_file}"
+                f"FATAL: Centroid deliverable missing in {task_dir}: {src_pdb.name} / {src_mae.name}"
             )
 
         # Record clustering signature on parent system
@@ -483,8 +481,19 @@ def run_cluster(
         env["cluster_params_sig"] = cluster_sig
         parent_sys.environment_dict = env
 
-        # A. Register Centroid in SQLite with explicit MAE and PDB file locations
+        # A. Publish Centroid Frame into targets/<target>/frames/<centroid_frame_name>/
         centroid_frame_name = centroid_title.replace("_cluster", "")
+        frame_dir = cwd / "targets" / parent_sys.target.name / "frames" / centroid_frame_name
+        frame_dir.mkdir(parents=True, exist_ok=True)
+
+        dest_pdb = frame_dir / f"{centroid_frame_name}_receptor.pdb"
+        dest_mae = frame_dir / f"{centroid_frame_name}_receptor.mae"
+        import shutil
+        if src_pdb != dest_pdb:
+            shutil.copy2(src_pdb, dest_pdb)
+        if src_mae != dest_mae:
+            shutil.copy2(src_mae, dest_mae)
+
         ex_frame = (
             session.query(ReceptorFrame).filter_by(name=centroid_frame_name).first()
         )
@@ -495,39 +504,30 @@ def run_cluster(
                 source_type="md_centroid",
                 state="ready",
                 parent_frame_id=parent_sys.receptor_frame_id,
-                path=str(mae_file),
-                path_mae=str(mae_file),
-                path_pdb=str(pdb_file),
+                path=str(dest_pdb.resolve()),
+                path_mae=str(dest_mae.resolve()),
+                path_pdb=str(dest_pdb.resolve()),
             )
             session.add(new_frame)
             session.flush()
             frame_obj = new_frame
         else:
-            ex_frame.path = str(mae_file)
-            ex_frame.path_mae = str(mae_file)
-            ex_frame.path_pdb = str(pdb_file)
+            ex_frame.path = str(dest_pdb.resolve())
+            ex_frame.path_mae = str(dest_mae.resolve())
+            ex_frame.path_pdb = str(dest_pdb.resolve())
             frame_obj = ex_frame
 
-        # B. Register in-situ Poses for all extracted molecules (ligand and cofactors)
+        # B. Publish Centroid Poses into substances/<inchikey>/poses/<centroid_pose_name>/
         centroid_main_pose = None
         centroid_cofactors = []
 
-        parent_main_resname = (
-            parent_sys.pose.substance.name.strip().upper()
-            if parent_sys.pose and parent_sys.pose.substance
-            else None
-        )
-
         for res_name, p_files in poses_dict.items():
             res_clean = res_name.strip().upper()
-            sdf_name = p_files.get("sdf")
-            mae_name = p_files.get("mae")
+            src_p_sdf = (task_dir / p_files["sdf"]).resolve()
+            src_p_mae = (task_dir / p_files["mae"]).resolve()
 
-            p_sdf_file = (task_dir / sdf_name).resolve() if sdf_name else None
-            p_mae_file = (task_dir / mae_name).resolve() if mae_name else None
-
-            if not p_sdf_file or not p_sdf_file.exists() or p_sdf_file.stat().st_size == 0:
-                raise FileNotFoundError(f"FATAL: Centroid pose SDF missing or empty: {p_sdf_file}")
+            if not src_p_sdf.exists() or src_p_sdf.stat().st_size == 0:
+                raise FileNotFoundError(f"FATAL: Centroid pose SDF missing or empty: {src_p_sdf}")
 
             # Match with parent pose to preserve substance lineage and charge
             parent_match = None
@@ -548,6 +548,17 @@ def run_cluster(
                 )
 
             cluster_pose_name = f"{centroid_frame_name}_{res_clean}_pose"
+            sub_pose_dir = cwd / "substances" / parent_match.substance.inchikey / "poses" / cluster_pose_name
+            sub_pose_dir.mkdir(parents=True, exist_ok=True)
+
+            dest_p_sdf = sub_pose_dir / f"{res_clean}_pose.sdf"
+            dest_p_mae = sub_pose_dir / f"{res_clean}_pose.mae"
+
+            if src_p_sdf != dest_p_sdf:
+                shutil.copy2(src_p_sdf, dest_p_sdf)
+            if src_p_mae.exists() and src_p_mae != dest_p_mae:
+                shutil.copy2(src_p_mae, dest_p_mae)
+
             ex_pose = session.query(Pose).filter_by(name=cluster_pose_name).first()
             if not ex_pose:
                 new_p = Pose(
@@ -558,17 +569,17 @@ def run_cluster(
                     origin="md_cluster",
                     state="raw",  # Geometry shifted in MD -> requires sbdd prep Antechamber
                     formal_charge=parent_match.formal_charge,
-                    path=str(p_sdf_file),
-                    path_sdf=str(p_sdf_file),
-                    path_mae=str(p_mae_file) if p_mae_file and p_mae_file.exists() else None,
+                    path=str(dest_p_sdf.resolve()),
+                    path_sdf=str(dest_p_sdf.resolve()),
+                    path_mae=str(dest_p_mae.resolve()) if dest_p_mae.exists() else None,
                 )
                 session.add(new_p)
                 session.flush()
                 curr_pose = new_p
             else:
-                ex_pose.path = str(p_sdf_file)
-                ex_pose.path_sdf = str(p_sdf_file)
-                ex_pose.path_mae = str(p_mae_file) if p_mae_file and p_mae_file.exists() else None
+                ex_pose.path = str(dest_p_sdf.resolve())
+                ex_pose.path_sdf = str(dest_p_sdf.resolve())
+                ex_pose.path_mae = str(dest_p_mae.resolve()) if dest_p_mae.exists() else None
                 ex_pose.formal_charge = parent_match.formal_charge
                 ex_pose.state = "raw"
                 curr_pose = ex_pose
@@ -578,12 +589,18 @@ def run_cluster(
             else:
                 centroid_cofactors.append(curr_pose)
 
-        # C. Register System for this Centroid with fresh child cofactors
+        # C. Register System for this Centroid with view.pdb in systems/<centroid_sys_name>/
         cluster_sys_name = (
             f"{centroid_frame_name}_{parent_sys.pose.substance.name}"
             if centroid_main_pose
             else centroid_frame_name
         )
+
+        sys_dir = cwd / "systems" / cluster_sys_name
+        sys_dir.mkdir(parents=True, exist_ok=True)
+        dest_view_pdb = sys_dir / f"{cluster_sys_name}_view.pdb"
+        if src_view_pdb.exists() and src_view_pdb != dest_view_pdb:
+            shutil.copy2(src_view_pdb, dest_view_pdb)
 
         ex_sys = session.query(System).filter_by(name=cluster_sys_name).first()
         if not ex_sys:
@@ -725,13 +742,21 @@ def run_mmpbsa(
         if not t.path_clean_xtc or not t.path_ref_pdb:
             continue
 
-        raw_dir = Path(t.raw_dir)
-        # Topologies are deterministically placed at the system root md/{system_name}/
-        sys_dir = raw_dir.parent.parent
-        topol_path = sys_dir / "topol.top"
-        ndx_path = sys_dir / "index.ndx"
-
         sys_obj = t.system
+        if not sys_obj.path_top or not sys_obj.path_ndx:
+            raise ValueError(
+                f"FATAL: System '{sys_obj.name}' has no registered topology paths in database! "
+                "Run 'sbdd md-setup' first."
+            )
+
+        topol_path = Path(sys_obj.path_top).resolve()
+        ndx_path = Path(sys_obj.path_ndx).resolve()
+
+        if not topol_path.exists() or not ndx_path.exists():
+            raise FileNotFoundError(
+                f"FATAL: GROMACS topology files missing on disk for '{sys_obj.name}': {topol_path} / {ndx_path}"
+            )
+
         lig_code = sys_obj.pose.substance.name if sys_obj.pose else ""
 
         plan_list.append(
@@ -741,8 +766,8 @@ def run_mmpbsa(
                 "rep": t.replicate,
                 "clean_xtc": str(Path(t.path_clean_xtc).resolve()),
                 "ref_pdb": str(Path(t.path_ref_pdb).resolve()),
-                "topol": str(topol_path.resolve()),
-                "ndx": str(ndx_path.resolve()),
+                "topol": str(topol_path),
+                "ndx": str(ndx_path),
                 "ligand": lig_code,
             }
         )

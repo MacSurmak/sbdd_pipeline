@@ -199,31 +199,10 @@ def main():
             if r_clean not in STANDARD_PROTEIN and r_clean not in water_residues:
                 small_mol_resnames.add(r_clean)
 
-        for r_code in sorted(list(small_mol_resnames)):
-            mol_atoms = [
-                a.index
-                for a in st.atom
-                if a.pdbres.strip().upper() == r_code
-            ]
-            if mol_atoms:
-                mol_st = st.extract(mol_atoms)
-                mol_st.title = r_code
-                mol_st.property["s_m_title"] = r_code
+        c_title = f"{args.sys_name}_centroid_{i}"
+        view_pdb_name = f"{c_title}_view.pdb"
 
-                # Perceive chemistry, double bonds and formal charges from 3D geometry
-                assignbondorders.assign_st(mol_st)
-
-                sdf_out = f"pose_{r_code}_{i}.sdf"
-                mae_out = f"pose_{r_code}_{i}.mae"
-                mol_st.write(sdf_out)
-                mol_st.write(mae_out)
-                st.deleteAtoms(mol_atoms)
-                centroid_poses[r_code] = {
-                    "sdf": sdf_out,
-                    "mae": mae_out,
-                }
-
-        # 3. Clean AMBER residue translations for receptor
+        # 3. Clean AMBER residue translations across all residues
         res_translation = {
             "HIE": "HIS",
             "HID": "HIS",
@@ -239,17 +218,45 @@ def main():
             if r_clean in res_translation:
                 res.pdbres = res_translation[r_clean]
 
-        c_title = f"{args.sys_name}_centroid_{i}"
-        st.title = c_title
+        # Save complete assembled view PDB of the centroid system for PyMOL
+        st.title(c_title)
         st.property["s_m_title"] = c_title
-        pdb_name = f"centroid_{i}.pdb"
-        mae_name = f"centroid_{i}.mae"
+        st.write(view_pdb_name)
+
+        # 4. Extract ALL non-protein, non-water small molecules into separate poses
+        for r_code in sorted(list(small_mol_resnames)):
+            mol_atoms = [
+                a.index
+                for a in st.atom
+                if a.pdbres.strip().upper() == r_code
+            ]
+            if mol_atoms:
+                mol_st = st.extract(mol_atoms)
+                mol_st.title = r_code
+                mol_st.property["s_m_title"] = r_code
+
+                # Perceive chemistry, double bonds and formal charges from 3D geometry
+                assignbondorders.assign_st(mol_st)
+
+                sdf_out = f"{r_code}_pose.sdf"
+                mae_out = f"{r_code}_pose.mae"
+                mol_st.write(sdf_out)
+                mol_st.write(mae_out)
+                st.deleteAtoms(mol_atoms)
+                centroid_poses[r_code] = {
+                    "sdf": sdf_out,
+                    "mae": mae_out,
+                }
+
+        pdb_name = f"{c_title}_receptor.pdb"
+        mae_name = f"{c_title}_receptor.mae"
         st.write(pdb_name)
         st.write(mae_name)
 
         receipt_records.append({
             "sys_name": args.sys_name,
             "centroid_title": c_title,
+            "view_pdb": view_pdb_name,
             "pdb": pdb_name,
             "mae": mae_name,
             "poses": centroid_poses,

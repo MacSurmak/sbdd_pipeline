@@ -13,14 +13,13 @@ process PUBLISH_MD_SYSTEM {
     tuple val(meta), path(gro), path(top), path(ndx), path(posre)
 
     output:
-    tuple val(meta), path("${gro.name}"), path("${top.name}"), path("${ndx.name}"), path("${posre.name}")
+    tuple val(meta), path("${meta.id}_step3.gro"), path("${meta.id}_topol.top"), path("${meta.id}_index.ndx"), path("posre_*.itp")
 
     script:
     """
-    ln -sf "${gro}" "${gro.name}"
-    ln -sf "${top}" "${top.name}"
-    ln -sf "${ndx}" "${ndx.name}"
-    ln -sf "${posre}" "${posre.name}"
+    cp -L "${gro}" "${meta.id}_step3.gro"
+    cp -L "${top}" "${meta.id}_topol.top"
+    cp -L "${ndx}" "${meta.id}_index.ndx"
     """
 }
 

@@ -180,7 +180,7 @@ def run_dynamics(
     registered_trajs = 0
     for sys_obj, missing_reps in systems_to_run:
         for rep_idx in missing_reps:
-            raw_dir = cwd / "md" / sys_obj.name / f"rep_{rep_idx}" / "raw"
+            raw_dir = cwd / "md_runs" / sys_obj.name / f"rep_{rep_idx}" / "raw"
             tpr_path = raw_dir / "sys_ref.tpr"
             first_chunk = raw_dir / "md_1.xtc"
 
