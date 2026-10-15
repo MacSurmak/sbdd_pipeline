@@ -118,9 +118,26 @@ workflow PREPARE_RECEPTOR {
 
     ch_receipt_data.collectFile(name: 'prep_receipt.tsv', storeDir: params.outdir, newLine: true)
 
+    // Stream protonated in-situ poses directly to Antechamber for quantum parametrization
+    ch_poses_to_param = SPLIT_PREPARED.out.poses_manifest
+        .flatMap { meta, json_file ->
+            def records = new groovy.json.JsonSlurperClassic().parseText(json_file.text)
+            def frame_dir = file("${params.outdir}/prepared/${meta.id}").toAbsolutePath()
+            records.findAll { !it.is_ion }.collect { rec ->
+                def pose_meta = [
+                    id: "${meta.name}_${rec.res_name}_pose",
+                    name: "${meta.name}_${rec.res_name}_pose",
+                    charge: rec.charge as int,
+                    res_name: rec.res_name
+                ]
+                [ pose_meta, file("${frame_dir}/${rec.sdf}") ]
+            }
+        }
+
     emit:
     prepared_mae     = SPLIT_PREPARED.out.prepared_mae
     ref_native_mae   = SPLIT_PREPARED.out.ref_native_mae
     ref_native_sdf   = SPLIT_PREPARED.out.ref_native_sdf
     membrane_json    = ch_mem_json
+    poses_to_param   = ch_poses_to_param
 }

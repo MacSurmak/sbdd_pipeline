@@ -50,9 +50,14 @@ def cmd_antechamber(args):
     except Exception:
         mol.UpdatePropertyCache(strict=False)
 
+    # Fail-Fast: verify explicit hydrogens exist from PrepWizard or LigPrep
     has_hydrogens = any(a.GetAtomicNum() == 1 for a in mol.GetAtoms())
     if not has_hydrogens:
-        mol = Chem.AddHs(mol, addCoords=True)
+        raise ValueError(
+            f"FATAL: Molecule '{args.mol_id}' in {args.sdf} has no explicit hydrogens! "
+            f"Antechamber AM1-BCC charge calculation strictly requires a protonated 3D structure. "
+            f"Structure must be protonated via PrepWizard or LigPrep before parametrization."
+        )
 
     clean_v2000_sdf = f"{args.mol_id}_v2000.sdf"
     with Chem.SDWriter(clean_v2000_sdf) as writer:

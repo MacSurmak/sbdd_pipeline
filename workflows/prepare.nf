@@ -17,6 +17,8 @@ workflow PREPARE_WF {
 
     // 1. Process Receptors if present in plan
     def receptorList = planData.receptors ?: (planData instanceof List ? planData : [])
+    ch_extracted_poses = Channel.empty()
+
     if (receptorList) {
         ch_targets = Channel.fromList(receptorList).map { target ->
             def rec_path = file(target.path)
@@ -47,6 +49,8 @@ workflow PREPARE_WF {
             params.minimize_rmsd,
             params.cap_termini
         )
+
+        ch_extracted_poses = PREPARE_RECEPTOR.out.poses_to_param
     }
 
     // 2. Process Ligands if present in plan
@@ -88,10 +92,11 @@ workflow PREPARE_WF {
         }.collectFile(name: 'prep_ligand_receipt.tsv', storeDir: params.outdir, newLine: true)
     }
 
-    // 3. Process Poses for Quantum Parametrization
+    // 3. Process Poses for Quantum Parametrization (Standalone Poses + In-Situ Poses from PrepWizard)
     def poseList = planData.poses ?: []
+    ch_plan_poses = Channel.empty()
     if (poseList) {
-        ch_poses_in = Channel.fromList(poseList).map { pose ->
+        ch_plan_poses = Channel.fromList(poseList).map { pose ->
             def sdf_path = file(pose.path)
             if (!sdf_path.exists()) {
                 error "FATAL: Pose SDF path explicitly provided by DB does not exist: ${pose.path}"
@@ -104,12 +109,14 @@ workflow PREPARE_WF {
             ]
             [ meta, sdf_path.toAbsolutePath() ]
         }
-
-        PARAMETRIZE_POSE(ch_poses_in)
-
-        PARAMETRIZE_POSE.out.map { meta, mol2, frcmod ->
-            def pose_dir = file("${params.outdir}/prepared_poses/${meta.name}").toAbsolutePath()
-            "${meta.name}\t${pose_dir}/${mol2.name}\t${pose_dir}/${frcmod.name}"
-        }.collectFile(name: 'prep_pose_receipt.tsv', storeDir: params.outdir, newLine: true)
     }
+
+    ch_all_poses = ch_plan_poses.mix(ch_extracted_poses)
+
+    PARAMETRIZE_POSE(ch_all_poses)
+
+    PARAMETRIZE_POSE.out.map { meta, mol2, frcmod ->
+        def pose_dir = file("${params.outdir}/prepared_poses/${meta.name}").toAbsolutePath()
+        "${meta.name}\t${pose_dir}/${mol2.name}\t${pose_dir}/${frcmod.name}"
+    }.collectFile(name: 'prep_pose_receipt.tsv', storeDir: params.outdir, newLine: true)
 }

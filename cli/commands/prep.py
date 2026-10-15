@@ -42,10 +42,13 @@ def run_prep(
     # 2. Fetch abstract library Substances needing LigPrep (only type = 'ligand')
     query_substances = session.query(Substance).filter_by(state="raw", substance_type="ligand").all()
 
-    # 3. Fetch in-situ Poses lacking AM1-BCC quantum parameters (excluding monoatomic ions)
+    # 3. Fetch standalone in-situ Poses lacking AM1-BCC quantum parameters (excluding monoatomic ions)
+    # Exclude poses belonging to frames that are currently in raw_frames (they will be prepared and parametrized via PREPARE_RECEPTOR!)
+    raw_frame_ids = {frame.id for frame in raw_frames}
     query_poses = session.query(Pose).join(Substance).filter(
         Pose.path_mol2.is_(None),
-        Substance.substance_type != "ion"
+        Substance.substance_type != "ion",
+        ~Pose.receptor_frame_id.in_(raw_frame_ids) if raw_frame_ids else True
     ).all()
 
     if not raw_frames and not query_substances and not query_poses:
@@ -169,6 +172,20 @@ def run_prep(
                             raise FileNotFoundError(f"FATAL: Prepared native pose MAE missing: {mae_native}")
                         system.pose.path_mae = str(mae_native)
                     system.pose.state = "ready"
+
+            # Update cofactors and ions with PrepWizard deliverables
+            frame_dir = Path(r_pdb).parent
+            system = session.query(System).filter_by(receptor_frame_id=frame.id).first()
+            if system:
+                for cof in system.cofactors:
+                    c_sdf = frame_dir / f"pose_{cof.res_name}.sdf"
+                    c_mae = frame_dir / f"pose_{cof.res_name}.mae"
+                    if c_sdf.exists() and c_sdf.stat().st_size > 0:
+                        cof.path_sdf = str(c_sdf.resolve())
+                        cof.path = str(c_sdf.resolve())
+                        if c_mae.exists() and c_mae.stat().st_size > 0:
+                            cof.path_mae = str(c_mae.resolve())
+                        cof.state = "ready"
 
     sub_receipt = cwd / "prep_ligand_receipt.tsv"
     if sub_receipt.exists() and sub_receipt.stat().st_size > 0:
