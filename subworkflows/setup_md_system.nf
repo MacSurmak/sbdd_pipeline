@@ -37,9 +37,9 @@ workflow SETUP_MD_SYSTEM {
     declash_tol
 
     main:
-    // 1. Clean merge of standardized protein (with cofactors) and the active ligand
-    ch_merge_in = ch_targets.map { meta, rec_pdb, lig_sdf, mol2s, frcmods ->
-        [ meta, rec_pdb, lig_sdf ]
+    // 1. Clean merge of standardized apo protein with active ligand and cofactors/ions
+    ch_merge_in = ch_targets.map { meta, rec_pdb, lig_sdf, extra_sdfs, mol2s, frcmods ->
+        [ meta, rec_pdb, lig_sdf, extra_sdfs ]
     }
 
     MERGE_PDB(ch_merge_in)
@@ -63,7 +63,7 @@ workflow SETUP_MD_SYSTEM {
 
     // 3. tLEaP topology building
     ch_tleap_in = ch_tleap_pdb
-        .join(ch_targets.map { meta, rec_pdb, lig_sdf, mol2s, frcmods -> [meta, mol2s, frcmods] })
+        .join(ch_targets.map { meta, rec_pdb, lig_sdf, extra_sdfs, mol2s, frcmods -> [meta, mol2s, frcmods] })
         .map { meta, pdb, mol2s, frcmods ->
             [ meta, pdb, mol2s, frcmods ]
         }

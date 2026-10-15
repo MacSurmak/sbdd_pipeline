@@ -13,6 +13,25 @@ def run_cmd(cmd):
         sys.exit(res.returncode)
 
 
+def parse_mol2_resname(mol2_file: Path) -> str:
+    """Extracts strict 3-4 letter residue name from canonical Tripos substructure record."""
+    in_sub = False
+    for line in mol2_file.read_text(errors="ignore").splitlines():
+        if line.startswith("@<TRIPOS>SUBSTRUCTURE"):
+            in_sub = True
+            continue
+        if in_sub and line.strip():
+            parts = line.split()
+            if len(parts) >= 2:
+                res = parts[1][:4].upper()
+                if res:
+                    return res
+    raise ValueError(
+        f"FATAL: Could not parse canonical residue name from @<TRIPOS>SUBSTRUCTURE in {mol2_file}. "
+        "File is corrupted or lacks standard Tripos substructure records."
+    )
+
+
 def cmd_antechamber(args):
     res_name = args.res_name.strip().upper()[:4]
     if len(res_name) < 3:
@@ -75,8 +94,8 @@ def cmd_tleap(args):
             f"source leaprc.protein.ff19SB\nsource leaprc.gaff2\nsource leaprc.lipid21\nsource {leaprc_water}\n"
         )
         for m in args.mol2s:
-            name = Path(m).stem.replace("_gaff2", "")
-            f.write(f"{name} = loadmol2 {m}\n")
+            res_code = parse_mol2_resname(Path(m))
+            f.write(f"{res_code} = loadmol2 {m}\n")
         for m in args.frcmods:
             f.write(f"loadAmberParams {m}\n")
         f.write(
@@ -107,25 +126,17 @@ def cmd_tleap(args):
                 if r_name in water_residues and r_seq != current_res_key:
                     current_res_key = r_seq
                     wat_count += 1
-        # N_pairs = round(N_water * [salt] / 55.5)
-        salt_pairs = int(round(wat_count * (salt_conc / 55.5)))
+        WATER_MOLARITY = 55.5084  # Standard water molarity (mol/L) at 298.15 K
+        if wat_count == 0:
+            raise ValueError(
+                "FATAL: Solvation failed! Real water count in complex_solv.pdb is zero."
+            )
+        salt_pairs = int(round(wat_count * (salt_conc / WATER_MOLARITY)))
         print(
             f"Adding physiological salt: {salt_conc} M ({salt_pairs} K+/Cl- pairs for {wat_count} water molecules)."
         )
 
     # 3. Final production tLEaP topology generation with neutralization + physiological salt
-    def parse_mol2_resname(mol2_file: Path) -> str:
-        in_sub = False
-        for line in mol2_file.read_text(errors="ignore").splitlines():
-            if line.startswith("@<TRIPOS>SUBSTRUCTURE"):
-                in_sub = True
-                continue
-            if in_sub and line.strip():
-                parts = line.split()
-                if len(parts) >= 2:
-                    return parts[1][:4].upper()
-        return "LIG"
-
     with open("tleap.in", "w") as f:
         f.write(
             f"source leaprc.protein.ff19SB\nsource leaprc.gaff2\nsource leaprc.lipid21\nsource {leaprc_water}\n"

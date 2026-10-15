@@ -20,8 +20,21 @@ def main():
     parser.add_argument(
         "--lig_resname", default="LIG", help="Strict PDB residue name for ligand (e.g. KVR)"
     )
+    parser.add_argument(
+        "--extra_sdfs", nargs="*", default=[], help="Additional SDF files (cofactors, ions)"
+    )
+    parser.add_argument(
+        "--extra_resnames", nargs="*", default=[], help="Residue names corresponding to extra SDFs"
+    )
     parser.add_argument("--out_pdb", required=True, help="Output complex PDB")
     args = parser.parse_args()
+
+    if len(args.extra_sdfs) != len(args.extra_resnames):
+        print(
+            f"FATAL: Mismatch between --extra_sdfs ({len(args.extra_sdfs)}) and --extra_resnames ({len(args.extra_resnames)})!",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
     rec_path = Path(args.rec_pdb)
     if not rec_path.exists():
@@ -56,44 +69,54 @@ def main():
     # Available chain IDs for small molecules (working backwards from Z)
     available_chains = [c for c in "ZYXWVUTSRQPONMLKJIHGFEDCB" if c not in used_chains]
 
-    # 2. Append active ligand as an independent, TER-separated residue
-    if args.lig_sdf:
-        p_sdf = Path(args.lig_sdf)
-        if not p_sdf.exists() or p_sdf.stat().st_size == 0:
-            print(f"FATAL: Ligand SDF is missing or empty: {p_sdf}", file=sys.stderr)
-            sys.exit(1)
-        
-        try:
-            from rdkit import Chem
-            suppl = Chem.SDMolSupplier(str(p_sdf), removeHs=False)
-            mol = next((m for m in suppl if m is not None), None)
-            if not mol:
-                raise ValueError("RDKit failed to parse ligand.")
-            
-            lig_pdb_block = Chem.MolToPDBBlock(mol)
-            
-            max_res_seq += 1
-            chain_id = available_chains.pop(0) if available_chains else "Z"
+    from rdkit import Chem
 
-            res_code = args.lig_resname.strip().upper()[:4]
-            if len(res_code) < 3:
-                res_code = f"{res_code:<3s}"
-            for line in lig_pdb_block.splitlines():
-                if line.startswith(("ATOM", "HETATM")):
-                    atom_name = line[12:16]
-                    coords_and_rest = line[26:] if len(line) >= 26 else ""
-                    new_line = f"HETATM{len(out_lines)+1:5d} {atom_name:<4s} {res_code:>3s} {chain_id}{max_res_seq:4d}{coords_and_rest}"
-                    out_lines.append(new_line)
-            
-            out_lines.append("TER")
-        except Exception as e:
-            print(f"FATAL: Could not convert ligand SDF to PDB block: {e}", file=sys.stderr)
+    # 2. Helper to append small molecule residues with unique chains and TER cards
+    def _append_small_molecule(sdf_path_str: str, resname: str):
+        nonlocal max_res_seq
+        p_sdf = Path(sdf_path_str)
+        if not p_sdf.exists() or p_sdf.stat().st_size == 0:
+            print(f"FATAL: Small molecule SDF missing or empty: {p_sdf}", file=sys.stderr)
             sys.exit(1)
+
+        suppl = Chem.SDMolSupplier(str(p_sdf), removeHs=False)
+        mol = next((m for m in suppl if m is not None), None)
+        if not mol:
+            print(f"FATAL: RDKit failed to parse molecule from {p_sdf}", file=sys.stderr)
+            sys.exit(1)
+
+        pdb_block = Chem.MolToPDBBlock(mol)
+        if not available_chains:
+            print("FATAL: Exhausted all available chain IDs for small molecules!", file=sys.stderr)
+            sys.exit(1)
+
+        chain_id = available_chains.pop(0)
+        max_res_seq += 1
+
+        res_code = resname.strip().upper()[:4]
+        if len(res_code) < 3:
+            res_code = f"{res_code:<3s}"
+
+        for line in pdb_block.splitlines():
+            if line.startswith(("ATOM", "HETATM")):
+                atom_name = line[12:16]
+                coords_and_rest = line[26:] if len(line) >= 26 else ""
+                new_line = f"HETATM{len(out_lines)+1:5d} {atom_name:<4s} {res_code:>3s} {chain_id}{max_res_seq:4d}{coords_and_rest}"
+                out_lines.append(new_line)
+
+        out_lines.append("TER")
+
+    # Append active ligand if present
+    if args.lig_sdf:
+        _append_small_molecule(args.lig_sdf, args.lig_resname)
+
+    # Append all cofactors and ions
+    for e_sdf, e_res in zip(args.extra_sdfs, args.extra_resnames):
+        _append_small_molecule(e_sdf, e_res)
 
     out_lines.append("END")
     Path(args.out_pdb).write_text("\n".join(out_lines) + "\n")
-    lig_msg = "with 1 active ligand." if args.lig_sdf else "(Apo)."
-    print(f"Successfully assembled {args.out_pdb} {lig_msg}")
+    print(f"Successfully assembled {args.out_pdb} with {bool(args.lig_sdf)} ligand and {len(args.extra_sdfs)} cofactor(s)/ion(s).")
 
 
 if __name__ == "__main__":

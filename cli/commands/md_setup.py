@@ -56,6 +56,8 @@ def run_md_setup(
             raise FileNotFoundError(f"Prepared receptor PDB missing: {rec_pdb}")
 
         lig_sdf = None
+        extra_sdfs = []
+        extra_resnames = []
         mol2_paths = []
         frcmod_paths = []
 
@@ -74,8 +76,16 @@ def run_md_setup(
                 sys.exit(1)
             lig_sdf = str(Path(p_sdf).resolve())
 
-        # 2. Cofactors (Coordinates are already embedded in rec_pdb by PrepWizard)
+        # 2. Cofactors and Ions (Separated from pure APO ReceptorFrame)
         for c in s.cofactors:
+            c_sdf = c.path_sdf or c.path
+            if not c_sdf or not Path(c_sdf).exists():
+                console.print(f"[bold red]FATAL: System '{s.name}' cofactor/ion '{c.name}' missing SDF deliverable.[/bold red]")
+                sys.exit(1)
+            extra_sdfs.append(str(Path(c_sdf).resolve()))
+            c_resname = c.substance.name[:4].upper()
+            extra_resnames.append(c_resname)
+
             if c.substance.substance_type != "ion":
                 if not c.path_mol2 or not c.path_frcmod:
                     console.print(f"[bold red]FATAL: System '{s.name}' contains unparametrized cofactor '{c.name}'. Run 'sbdd prep'![/bold red]")
@@ -90,6 +100,8 @@ def run_md_setup(
                 "rec_pdb": str(rec_pdb),
                 "lig_sdf": lig_sdf,
                 "lig_resname": lig_resname,
+                "extra_sdfs": extra_sdfs,
+                "extra_resnames": extra_resnames,
                 "mol2_paths": mol2_paths,
                 "frcmod_paths": frcmod_paths,
             }
