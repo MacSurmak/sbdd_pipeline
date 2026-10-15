@@ -9,6 +9,9 @@ nstenergy                = 1000
 nstlog                   = 1000
 
 cutoff-scheme            = Verlet
+nstlist                  = 20
+rlist                    = 1.0
+verlet-buffer-tolerance  = 0.005
 coulombtype              = PME
 rcoulomb                 = 1.0
 vdwtype                  = cutoff
@@ -31,3 +34,7 @@ continuation             = no
 gen_vel                  = yes
 gen_temp                 = {TEMP}
 gen_seed                 = -1
+
+nstcomm                  = 100
+comm-mode                = Linear
+comm-grps                = System

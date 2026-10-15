@@ -9,6 +9,9 @@ nstenergy                = 1000
 nstlog                   = 1000
 
 cutoff-scheme            = Verlet
+nstlist                  = 20
+rlist                    = 1.0
+verlet-buffer-tolerance  = 0.005
 coulombtype              = PME
 rcoulomb                 = 1.0
 vdwtype                  = cutoff
@@ -17,7 +20,7 @@ pbc                      = xyz
 
 tcoupl                   = V-rescale
 tc-grps                  = {TC_GRPS}
-tau-t                    = 1.0 1.0
+tau-t                    = 0.1 0.1
 ref-t                    = {TEMP} {TEMP}
 
 pcoupl                   = {PCOUPL}
@@ -34,3 +37,7 @@ lincs-iter               = 1
 
 continuation             = yes
 gen_vel                  = no
+
+nstcomm                  = 100
+comm-mode                = Linear
+comm-grps                = System

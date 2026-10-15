@@ -11,6 +11,9 @@ nstenergy                = 1000
 nstlog                   = 1000
 
 cutoff-scheme            = Verlet
+nstlist                  = 20
+rlist                    = 1.0
+verlet-buffer-tolerance  = 0.005
 coulombtype              = PME
 rcoulomb                 = 1.0
 vdwtype                  = cutoff
