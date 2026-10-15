@@ -46,11 +46,4 @@ process TLEAP {
         ${frcmod_arg} \\
         ${mem_arg}
     """
-
-    stub:
-    """
-    touch complex.prmtop
-    touch complex.inpcrd
-    touch complex_tleap.pdb
-    """
 }

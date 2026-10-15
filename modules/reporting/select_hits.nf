@@ -27,10 +27,4 @@ process SELECT_HITS {
         --native_ligand "${native_ligand}" \\
         --out selected_hits.txt
     """
-
-    stub:
-    """
-    echo "PPZ_1H_Ph_BnMe,1" > selected_hits.txt
-    echo "${native_ligand ?: 'UNK'},1" >> selected_hits.txt
-    """
 }

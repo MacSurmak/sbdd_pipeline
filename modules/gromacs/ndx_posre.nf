@@ -33,11 +33,4 @@ process NDX_POSRE {
         ${prod_fc_arg} \\
         ${prod_grp_arg}
     """
-
-    stub:
-    """
-    touch index.ndx
-    touch topol.top
-    touch posre_system1.itp
-    """
 }

@@ -34,12 +34,4 @@ process MD_METRICS {
         --polar_cutoff ${c_pol} \\
         --outdir .
     """
-
-    stub:
-    """
-    touch rmsd.csv
-    touch rmsf.csv
-    touch contacts.csv
-    touch md_metrics_summary.json
-    """
 }

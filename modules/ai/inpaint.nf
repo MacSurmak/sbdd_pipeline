@@ -62,10 +62,4 @@ process HEAL_STRUCTURE {
         --hetatm hetatm_only.pdb \\
         --out final_complex.pdb
     """
-
-    stub:
-    """
-    touch final_complex.pdb
-    touch healing_report.txt
-    """
 }

@@ -31,10 +31,4 @@ process EXTRACT_MD_SYSTEM {
         ${cof_arg} \\
         --out_dir .
     """
-
-    stub:
-    """
-    touch receptor_dry.pdb
-    echo "[]" > organics.json
-    """
 }

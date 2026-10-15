@@ -32,11 +32,4 @@ process SUMMARIZE_DOCKING {
         ${bench_arg} \\
         --outdir .
     """
-
-    stub:
-    """
-    touch ranking.csv
-    touch cross_frame_matrix.csv
-    touch summary.json
-    """
 }

@@ -30,10 +30,4 @@ process FILTER_PV {
         --batch_size ${batch_size} \\
         --max_poses 1
     """
-
-    stub:
-    """
-    touch ${meta.id}_filtered_pv.maegz
-    touch ${meta.id}_filtered_c0.maegz
-    """
 }

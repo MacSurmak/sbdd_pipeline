@@ -40,13 +40,5 @@ process GMX_MMPBSA {
         ${mem_arg} \\
         ${dec_arg}
     """
-
-    stub:
-    """
-    touch thermodynamics_mmpbsa_pb.csv
-    touch thermodynamics_mmpbsa_pb.dat
-    touch decomposition_mmpbsa_gb.csv
-    touch thermodynamics_mmpbsa_gb.dat
-    """
 }
 

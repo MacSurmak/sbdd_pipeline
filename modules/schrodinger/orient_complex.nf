@@ -21,8 +21,4 @@ process ORIENT_COMPLEX {
         --complex_mae ${complex_mae} \\
         --out_complex_mae complex_oriented.mae
     """
-    stub:
-    """
-    touch ${meta.id}_complex_oriented.mae
-    """
 }

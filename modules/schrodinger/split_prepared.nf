@@ -35,13 +35,4 @@ process SPLIT_PREPARED {
         --out_ligand_sdf native.sdf \\
         --out_manifest extracted_poses.json
     """
-
-    stub:
-    """
-    touch receptor.mae
-    touch receptor.pdb
-    touch native.mae
-    touch native.sdf
-    echo "[]" > extracted_poses.json
-    """
 }

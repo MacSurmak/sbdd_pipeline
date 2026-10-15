@@ -22,10 +22,4 @@ process PARAMETRIZE_POSE {
         --mol_id "${meta.name}" \\
         --res_name "${meta.res_name}"
     """
-
-    stub:
-    """
-    touch "${meta.name}_gaff2.mol2"
-    touch "${meta.name}.frcmod"
-    """
 }

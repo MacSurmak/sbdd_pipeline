@@ -25,9 +25,4 @@ process MERGE_PDB {
         ${extra_sdfs_arg} \\
         ${extra_res_arg}
     """
-
-    stub:
-    """
-    touch complex_dry.pdb
-    """
 }

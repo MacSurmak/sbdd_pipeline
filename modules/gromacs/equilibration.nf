@@ -29,12 +29,4 @@ process GMX_EQUILIBRATION {
         --minim_flags "${minim_flags}" \\
         --eq_flags "${eq_flags}"
     """
-
-    stub:
-    """
-    touch eq_final.gro
-    touch eq_final.cpt
-    touch eq_final.tpr
-    touch eq.log
-    """
 }

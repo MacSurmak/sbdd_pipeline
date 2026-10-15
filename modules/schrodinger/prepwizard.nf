@@ -28,10 +28,5 @@ process PREPWIZARD {
         --min_rmsd ${min_rmsd} \\
         ${cap_flag}
     """
-
-    stub:
-    """
-    touch ${meta.id}_prepared.mae
-    """
 }
 

@@ -29,11 +29,5 @@ process LIGPREP {
         --out_maegz ligand.maegz \\
         --out_sdf ligand.sdf
     """
-
-    stub:
-    """
-    touch ${meta.id}_prepared.maegz
-    touch ${meta.id}_prepared.sdf
-    """
 }
 

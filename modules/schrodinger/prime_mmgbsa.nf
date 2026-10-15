@@ -24,10 +24,4 @@ process PRIME_MMGBSA {
         --job_id ${meta.id} \\
         ${mem_arg}
     """
-
-    stub:
-    """
-    touch ${meta.id}_mmgbsa-out.csv
-    touch ${meta.id}_mmgbsa-out.maegz
-    """
 }

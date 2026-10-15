@@ -35,14 +35,4 @@ process RUN_MD_CHUNK {
         --sys_name "${meta.id}_R${meta.rep}_C${chunk_idx}" \\
         --prod_flags "${prod_flags}"
     """
-
-    stub:
-    """
-    touch out.gro
-    touch out.cpt
-    touch out.tpr
-    touch md_${chunk_idx}.xtc
-    touch sys_ref.tpr
-    touch posre_system1.itp
-    """
 }

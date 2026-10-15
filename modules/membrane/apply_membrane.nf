@@ -23,9 +23,4 @@ process APPLY_MEMBRANE {
 
     mv tmp_${meta.id}_prepared_mem.mae ${meta.id}_prepared_mem.mae
     """
-
-    stub:
-    """
-    touch ${meta.id}_prepared_mem.mae
-    """
 }

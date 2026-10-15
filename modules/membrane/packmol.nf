@@ -33,10 +33,5 @@ process PACKMOL_MEMGEN {
         --salt_conc ${salt_conc} \\
         --out_id ${meta.id}
     """
-
-    stub:
-    """
-    touch ${meta.id}_mem_complex.pdb
-    """
 }
 

@@ -34,12 +34,5 @@ process GLIDE_DOCK {
         --out_csv glide_dock.csv \\
         --out_sdf glide_dock.sdf
     """
-
-    stub:
-    """
-    touch ${meta.id}_dock_pv.maegz
-    touch ${meta.id}_dock.csv
-    touch ${meta.id}_dock.sdf
-    """
 }
 

@@ -30,9 +30,4 @@ process GLIDE_GRIDGEN {
         --recep_ccut ${recep_ccut} \\
         --out_zip grid.zip
     """
-
-    stub:
-    """
-    touch ${meta.id}_grid.zip
-    """
 }

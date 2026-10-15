@@ -31,11 +31,4 @@ process IMMERS {
     mv ._membrane.json membrane.json
     mv ._membrane.txt membrane.txt
     """
-
-    stub:
-    """
-    touch ${meta.id}_oriented.pdb
-    echo '{"thickness": 28.0, "tilt": 0.0, "dg": 0.0}' > ${meta.id}_membrane.json
-    echo '28.0' > ${meta.id}_membrane.txt
-    """
 }

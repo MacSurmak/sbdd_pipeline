@@ -31,11 +31,5 @@ process TRJCONV {
         --ion_names "${ion_names}" \\
         --lipid_names "${lipid_names}"
     """
-
-    stub:
-    """
-    touch trajectory_clean.xtc
-    touch complex_ref.pdb
-    """
 }
 

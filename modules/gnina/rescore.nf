@@ -27,11 +27,5 @@ process GNINA_RESCORE {
         --out_sdf rescored.sdf \\
         --out_log rescored.log
     """
-
-    stub:
-    """
-    touch ${meta.id}_rescored.sdf
-    touch ${meta.id}_gnina_rescore.log
-    """
 }
 

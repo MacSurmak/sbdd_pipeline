@@ -19,10 +19,5 @@ process TRJCAT {
         --xtcs md_*.xtc \\
         --out_xtc concatenated.xtc
     """
-
-    stub:
-    """
-    touch concatenated.xtc
-    """
 }
 

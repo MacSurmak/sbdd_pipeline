@@ -37,9 +37,4 @@ process DECLASH {
         --tolerance ${tol} \\
         --report declash_report.txt
     """
-
-    stub:
-    """
-    touch ${meta.id}_declashed.gro
-    """
 }

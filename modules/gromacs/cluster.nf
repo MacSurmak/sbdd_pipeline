@@ -38,13 +38,4 @@ process GMX_CLUSTER {
 
     mv cluster_receipt.tsv ${meta.id}_cluster_receipt.tsv
     """
-
-    stub:
-    """
-    touch ${meta.id}_centroid_1.pdb
-    touch ${meta.id}_centroid_1.mae
-    touch ${meta.id}_pose_1.sdf
-    touch ${meta.id}_pose_1.mae
-    printf "%s\\t%s\\t%s/%s\\t%s/%s\\t%s/%s\\n" "${meta.id}" "${meta.id}_centroid_1" "\$PWD" "${meta.id}_centroid_1.pdb" "\$PWD" "${meta.id}_centroid_1.mae" "\$PWD" "${meta.id}_pose_1.sdf" > cluster_receipt_chunk.tsv
-    """
 }

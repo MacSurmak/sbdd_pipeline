@@ -17,11 +17,5 @@ process PARMED {
     """
     python3 ${projectDir}/bin/convert_amber_to_gmx.py --prmtop ${prmtop} --inpcrd ${inpcrd}
     """
-
-    stub:
-    """
-    touch topol.top
-    touch step3_input.gro
-    """
 }
 

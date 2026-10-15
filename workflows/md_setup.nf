@@ -22,11 +22,6 @@ process PUBLISH_MD_SYSTEM {
     ln -sf "${ndx}" "${ndx.name}"
     ln -sf "${posre}" "${posre.name}"
     """
-
-    stub:
-    """
-    touch "${gro.name}" "${top.name}" "${ndx.name}" "${posre.name}"
-    """
 }
 
 workflow MD_SETUP_WF {

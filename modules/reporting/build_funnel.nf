@@ -33,9 +33,4 @@ process BUILD_FUNNEL_WHITELIST {
         ${bench_arg} ${nat_arg} \\
         --output funnel_whitelist.csv
     """
-
-    stub:
-    """
-    touch funnel_whitelist.csv
-    """
 }

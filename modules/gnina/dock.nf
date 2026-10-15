@@ -31,10 +31,5 @@ process GNINA_DOCK {
         --out_sdf gnina_dock.sdf \\
         --out_log gnina_dock.log
     """
-
-    stub:
-    """
-    touch ${meta.id}_docked.sdf
-    touch ${meta.id}_gnina.log
-    """}
+}
 
