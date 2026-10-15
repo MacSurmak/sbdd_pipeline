@@ -3,8 +3,8 @@ md_simulation:
   pbc_center: "Protein"
   pbc_extract: "COMPLEX"
   system_build:
-    water_leaprc: "leaprc.water.opc"
-    water_box: "OPCBOX"
+    water_leaprc: "leaprc.water.opc3"
+    water_box: "OPC3BOX"
     box_type: "oct"
     box_padding: 15.0
     ss_cutoff: 2.5
@@ -21,9 +21,9 @@ md_simulation:
     jitter: 0.02
     tolerance: 1e-6
   execution:
-    minim_flags: "-nb gpu -ntmpi 1"
-    eq_flags: "-nb gpu -pme gpu -ntmpi 1"
-    prod_flags: "-nb gpu -pme gpu -ntmpi 1"
+    minim_flags: "-nb gpu -ntmpi 1 -pin on"
+    eq_flags: "-nb gpu -pme gpu -update gpu -bonded gpu -ntmpi 1 -pin on"
+    prod_flags: "-nb gpu -pme gpu -ntmpi 1 -pin on"
   production:
     temperature: 310.15
     total_time_ns: 100
