@@ -5,22 +5,7 @@
 
 include { PREPARE_RECEPTOR } from '../subworkflows/prepare_receptor'
 include { PREPARE_LIGANDS  } from '../subworkflows/prepare_ligands'
-
-process PARAMETRIZE_POSE {
-    tag "${meta.name}"
-    publishDir "${params.outdir}/prepared_poses/${meta.name}", mode: 'copy'
-
-    input:
-    tuple val(meta), path(sdf)
-
-    output:
-    tuple val(meta), path("${meta.name}_gaff2.mol2"), path("${meta.name}.frcmod")
-
-    script:
-    """
-    wrap_amber.py antechamber --sdf "${sdf}" --charge ${meta.charge} --mol_id "${meta.name}"
-    """
-}
+include { PARAMETRIZE_POSE } from '../modules/amber/antechamber'
 
 workflow PREPARE_WF {
     if (!params.plan) { error "FATAL: Parameter --plan (JSON) is required for database-driven preparation." }

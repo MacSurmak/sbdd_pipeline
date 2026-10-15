@@ -1,30 +1,29 @@
 /*
  * modules/amber/antechamber.nf
- * Antechamber AM1-BCC Charge Calculation and GAFF2 Parametrization
+ * Strictly isolated module for AM1-BCC charge calculation and GAFF2 parametrization
  */
 
-process ANTECHAMBER {
-    tag "${meta.id}_${meta.mol_id}"
-    label 'process_single'
+process PARAMETRIZE_POSE {
+    tag "${meta.name}"
+    publishDir "${params.outdir}/prepared_poses/${meta.name}", mode: 'copy'
 
     input:
-    tuple val(meta), path(mol2), path(charge_file)
+    tuple val(meta), path(sdf)
 
     output:
-    tuple val(meta), path("${meta.mol_id}_gaff2.mol2"), path("${meta.mol_id}.frcmod"), path("${meta.mol_id}_gaff2.pdb"), emit: gaff_params
+    tuple val(meta), path("${meta.name}_gaff2.mol2"), path("${meta.name}.frcmod")
 
     script:
     """
     python3 ${projectDir}/bin/wrap_amber.py antechamber \\
-        --mol2 ${mol2} \\
-        --charge_file ${charge_file} \\
-        --mol_id ${meta.mol_id}
+        --sdf "${sdf}" \\
+        --charge ${meta.charge} \\
+        --mol_id "${meta.name}"
     """
 
     stub:
     """
-    touch UNK_gaff2.mol2
-    touch UNK.frcmod
+    touch "${meta.name}_gaff2.mol2"
+    touch "${meta.name}.frcmod"
     """
 }
-

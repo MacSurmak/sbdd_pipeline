@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 from rich.console import Console
 from rich.table import Table
-from cli.core.db import init_db, Target, ReceptorFrame, Ligand, Pose, System, Trajectory
+from cli.core.db import init_db, Target, ReceptorFrame, Substance, Pose, System, Trajectory
 from cli.core.runner import execute_nextflow
 from cli.core.config_loader import load_project_configs, build_nextflow_args
 
@@ -193,7 +193,7 @@ def run_metrics(
             sys.exit(1)
 
         sys_obj = t.system
-        lig_code = sys_obj.pose.ligand.name if sys_obj.pose else ""
+        lig_code = sys_obj.pose.substance.name if sys_obj.pose else ""
         cofactors = sys_obj.receptor_frame.cofactors_list
         metrics_dir = clean_dir.parent / "metrics"
 
@@ -371,7 +371,7 @@ def run_cluster(
 
         clean_xtcs = [t.path_clean_xtc for t in t_list]
         ref_pdb = t_list[0].path_ref_pdb
-        lig_code = sys_obj.pose.ligand.name if sys_obj.pose else ""
+        lig_code = sys_obj.pose.substance.name if sys_obj.pose else ""
 
         plan_list.append(
             {
@@ -543,15 +543,17 @@ def run_cluster(
             ex_pose = session.query(Pose).filter_by(name=cluster_pose_name).first()
             if not ex_pose:
                 new_pose = Pose(
-                    ligand_id=parent_sys.pose.ligand_id,
+                    substance_id=parent_sys.pose.substance_id,
                     receptor_frame_id=frame_obj.id,
                     name=cluster_pose_name,
                     origin="md_cluster",
-                    state="ready",
+                    state="raw",  # Requires antechamber (sbdd prep) due to new geometry
                     path=str(pose_sdf_file),
                     path_sdf=str(pose_sdf_file),
                     path_mae=str(pose_mae_file) if pose_mae_file else None,
                 )
+                # Inherit formal charge
+                new_pose.scores_dict = {"formal_charge": parent_sys.pose.scores_dict.get("formal_charge", 0)}
                 session.add(new_pose)
                 session.flush()
                 pose_obj = new_pose
@@ -559,12 +561,12 @@ def run_cluster(
                 ex_pose.path = str(pose_sdf_file)
                 ex_pose.path_sdf = str(pose_sdf_file)
                 ex_pose.path_mae = str(pose_mae_file) if pose_mae_file else None
-                ex_pose.state = "ready"
+                ex_pose.state = "raw"
                 pose_obj = ex_pose
 
-        # C. Register Ready System for this Centroid
+        # C. Register Ready System for this Centroid and strictly inherit Cofactors
         cluster_sys_name = (
-            f"{centroid_frame_name}_{parent_sys.pose.ligand.name}"
+            f"{centroid_frame_name}_{parent_sys.pose.substance.name}"
             if pose_obj
             else centroid_frame_name
         )
@@ -583,13 +585,16 @@ def run_cluster(
                 receptor_frame_id=frame_obj.id,
                 pose_id=pose_obj.id if pose_obj else None,
                 name=cluster_sys_name,
-                state="ready",
+                state="raw",
                 origin="md_cluster",
             )
+            # Inherit exactly the same physical cofactors that were in the parent trajectory
+            new_sys.cofactors = parent_sys.cofactors
             session.add(new_sys)
         else:
             ex_sys.pose_id = pose_obj.id if pose_obj else None
-            ex_sys.state = "ready"
+            ex_sys.state = "raw"
+            ex_sys.cofactors = parent_sys.cofactors
 
         registered_frames += 1
 
@@ -721,7 +726,7 @@ def run_mmpbsa(
         ndx_path = sys_dir / "index.ndx"
 
         sys_obj = t.system
-        lig_code = sys_obj.pose.ligand.name if sys_obj.pose else ""
+        lig_code = sys_obj.pose.substance.name if sys_obj.pose else ""
 
         plan_list.append(
             {
