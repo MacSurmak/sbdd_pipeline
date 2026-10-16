@@ -128,7 +128,7 @@ def cmd_cluster(args):
             "--max_clusters",
             str(args.max_clusters),
             "--out_receipt",
-            "cluster_receipt.tsv",
+            "cluster_receipt.json",
         ],
         check=True,
     )

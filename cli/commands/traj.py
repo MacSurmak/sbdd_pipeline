@@ -426,15 +426,16 @@ def run_cluster(
         console.print("[bold red]Nextflow clustering failed.[/bold red]")
         sys.exit(ret_code)
 
-    prepared_dir = (cwd / "prepared").resolve()
+    reports_cluster_dir = (cwd / "reports" / "clusters").resolve()
     receipt_files = []
 
     # Strict Fail-Fast verification of canonical JSON task receipts
     for task_id in sys_map.keys():
         task_receipt = (
-            prepared_dir / task_id / f"{task_id}_cluster_receipt.json"
+            reports_cluster_dir / task_id / f"{task_id}_cluster_receipt.json"
         ).resolve()
         if not task_receipt.exists():
+            session.close()
             console.print(
                 f"[bold red]FATAL: Canonical cluster JSON receipt not found at expected location: {task_receipt}[/bold red]"
             )

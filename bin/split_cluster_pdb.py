@@ -3,7 +3,7 @@
 bin/split_cluster_pdb.py
 Splits GROMACS multi-model cluster PDB into centroid structures and in-situ ligand poses.
 Extracts both PDB and MAE for centroids, and SDF and MAE for ligand poses.
-Outputs receipt TSV for CLI DB synchronization.
+Outputs structured receipt JSON for CLI DB synchronization.
 """
 
 import argparse
@@ -164,7 +164,7 @@ def main():
         "--max_clusters", type=int, default=0, help="Max clusters to extract"
     )
     parser.add_argument(
-        "--out_receipt", default="cluster_receipt.tsv", help="Output receipt TSV"
+        "--out_receipt", default="cluster_receipt.json", help="Output receipt JSON"
     )
     args = parser.parse_args()
 

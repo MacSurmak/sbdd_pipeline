@@ -16,7 +16,7 @@ process GMX_CLUSTER {
     output:
     tuple val(meta), path("centroid_*.pdb"), path("centroid_*.mae"), emit: cluster_frames
     tuple val(meta), path("pose_*.sdf"), path("pose_*.mae"), emit: cluster_poses, optional: true
-    path("${meta.id}_cluster_receipt.tsv"), emit: cluster_manifest
+    path("${meta.id}_cluster_receipt.json"), emit: cluster_manifest
 
     script:
     def max_c = meta.max_clusters ?: 0
@@ -36,6 +36,6 @@ process GMX_CLUSTER {
         --lipid_names "${lipid_names}" \\
         ${dt_arg}
 
-    mv cluster_receipt.tsv ${meta.id}_cluster_receipt.tsv
+    mv cluster_receipt.json ${meta.id}_cluster_receipt.json
     """
 }
