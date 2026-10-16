@@ -66,6 +66,7 @@ def main():
     max_res_seq = 0
     used_chains = set()
     out_lines = []
+    topology_lines = []
 
     skip_resnames = set()
     if args.lig_resname:
@@ -75,7 +76,7 @@ def main():
     for r in args.cofactor_resnames:
         skip_resnames.add(r.strip().upper())
 
-    # 1. Process receptor atoms, filter out cofactors/ligands already present, & keep original TER cards
+    # 1. Process receptor atoms, filter out existing cofactors/ligands, and preserve covalent topology mapping
     for line in rec_lines:
         if line.startswith(("ATOM", "HETATM")):
             r_name = line[17:20].strip().upper()
@@ -95,6 +96,8 @@ def main():
             out_lines.append(line)
         elif line.startswith("TER"):
             out_lines.append(line)
+        elif line.startswith(("CONECT", "LINK", "SSBOND")):
+            topology_lines.append(line)
 
     # Ensure a TER separates receptor from any downstream organics
     if out_lines and not out_lines[-1].startswith("TER"):
@@ -175,6 +178,7 @@ def main():
     for c_sdf, c_res in zip(args.cofactor_sdfs, args.cofactor_resnames):
         _append_small_molecule(c_sdf, c_res, is_ion=False)
 
+    out_lines.extend(topology_lines)
     out_lines.append("END")
     Path(args.out_pdb).write_text("\n".join(out_lines) + "\n")
     print(f"Successfully assembled {args.out_pdb} with {bool(args.lig_sdf)} ligand, {len(args.ion_sdfs)} ion(s), and {len(args.cofactor_sdfs)} cofactor(s).")

@@ -119,10 +119,28 @@ def main():
     # 4. Chemical Standardization: ParmEd object transformations matching ff19SB
     atoms_to_remove = []
 
-    for res in struct.residues:
+    for idx, res in enumerate(struct.residues):
         # Ignore non-protein small molecules (ligands/cofactors): leave coordinates and names 100% untouched
         if res.name not in STANDARD_PROTEIN_RESIDUES and res not in cyx_residues:
             continue
+
+        # Strictly enforce PDB v3.3 standard: all biopolymers and covalent caps MUST be ATOM records
+        for a in res.atoms:
+            a.hetatm = False
+
+        # Ensure covalent caps are seamlessly integrated into the peptide chain (no TER cards)
+        if res.name == "ACE":
+            res.ter = False
+            if idx + 1 < len(struct.residues):
+                res.chain = struct.residues[idx + 1].chain
+                
+        if idx + 1 < len(struct.residues) and struct.residues[idx + 1].name in ("NMA", "NME"):
+            res.ter = False
+            struct.residues[idx + 1].chain = res.chain
+            # Strip terminal oxygen (OXT) if Maestro left it, as it chemically blocks C-N peptide bond formation
+            oxt = next((a for a in res.atoms if a.name.strip() == "OXT"), None)
+            if oxt:
+                atoms_to_remove.append(oxt)
 
         atom_names = {a.name.strip() for a in res.atoms}
 
