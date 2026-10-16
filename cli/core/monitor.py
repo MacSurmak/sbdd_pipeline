@@ -135,7 +135,8 @@ def run_monitor(port: int = 8089):
                             task_id, node_name, stage, natoms, timestep_fs,
                             total_steps, last_step, speed_cumulative_ns_day,
                             speed_instant_ns_day, eta_string, gpu_model,
-                            gpu_power_avg_w, gpu_vram_peak_mb, status,
+                            gpu_power_avg_w, gpu_util_cur_pct, gpu_vram_peak_mb,
+                            status, last_payload_json,
                             strftime('%s', 'now') - strftime('%s', updated_at) AS age_sec
                         FROM simulation_runs
                         WHERE status = 'running'
@@ -172,7 +173,26 @@ def run_monitor(port: int = 8089):
                     if "RTX" in gpu_short:
                         gpu_short = "RTX " + gpu_short.split("RTX")[-1].strip()
 
-                    power_val = data.get("gpu_power_avg_w")
+                    # Extract real-time GPU load % and instant watts
+                    gpu_util = data.get("gpu_util_cur_pct")
+                    power_val = None
+                    if data.get("last_payload_json"):
+                        try:
+                            lp = json.loads(data["last_payload_json"])
+                            hw_gpu = lp.get("hardware", {}).get("gpu", {})
+                            if gpu_util is None:
+                                gpu_util = hw_gpu.get("utilization_gpu_pct")
+                            power_val = hw_gpu.get("power_watts")
+                        except Exception:
+                            pass
+
+                    if gpu_util is not None:
+                        gpu_str = f"{gpu_short} ({gpu_util}%)"
+                    else:
+                        gpu_str = gpu_short
+
+                    if power_val is None:
+                        power_val = data.get("gpu_power_avg_w")
                     power_str = f"{power_val:>5.1f} W" if power_val else "-- W"
 
                     eta_str = data.get("eta_string") or "--:--"
@@ -193,7 +213,7 @@ def run_monitor(port: int = 8089):
                             total=total,
                             completed=step,
                             node=escape(data.get("node_name") or "node"),
-                            gpu=escape(gpu_short),
+                            gpu=escape(gpu_str),
                             power=power_str,
                             speed=speed_str,
                             step_info=step_info,
@@ -208,14 +228,14 @@ def run_monitor(port: int = 8089):
                             task_bars[t_id],
                             completed=step,
                             node=escape(data.get("node_name") or "node"),
-                            gpu=escape(gpu_short),
+                            gpu=escape(gpu_str),
                             power=power_str,
                             speed=speed_str,
                             step_info=step_info,
                             eta=eta_str,
                         )
 
-                time.sleep(0.5)
+                time.sleep(0.25)
 
     except KeyboardInterrupt:
         console.print("\n[yellow]Monitoring stopped.[/yellow]")
