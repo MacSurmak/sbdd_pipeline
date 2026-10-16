@@ -96,29 +96,24 @@ def run_prep(
 
     sub_plan = []
     if query_substances:
-        from rdkit import Chem
-        from rdkit.Chem import AllChem
-
         for sub in query_substances:
-            sub_dir = cwd / "substances" / sub.inchikey
-            sub_dir.mkdir(parents=True, exist_ok=True)
-            sub_sdf = sub_dir / "base.sdf"
+            if not sub.path_sdf:
+                session.close()
+                raise ValueError(
+                    f"FATAL: Substance '{sub.name}' has no registered path_sdf. Database lineage is corrupted."
+                )
 
+            sub_sdf = Path(sub.path_sdf).resolve()
             if not sub_sdf.exists() or sub_sdf.stat().st_size == 0:
-                m = Chem.MolFromSmiles(sub.smiles)
-                if not m:
-                    raise ValueError(f"FATAL: RDKit failed to parse SMILES for '{sub.name}'")
-                m = Chem.AddHs(m)
-                AllChem.Compute2DCoords(m)
-                m.SetProp("_Name", sub.name)
-                with Chem.SDWriter(str(sub_sdf)) as w:
-                    w.write(m)
+                session.close()
+                raise FileNotFoundError(
+                    f"FATAL: Registered reference SDF for substance '{sub.name}' is missing or empty on disk: {sub_sdf}"
+                )
 
-            sub.path_sdf = str(sub_sdf.resolve())
             sub_plan.append({
                 "name": sub.name,
                 "inchikey": sub.inchikey,
-                "path": str(sub_sdf.resolve()),
+                "path": str(sub_sdf),
                 "status": "unprepared"
             })
 
