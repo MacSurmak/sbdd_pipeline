@@ -89,16 +89,26 @@ from pathlib import Path
 TELEMETRY_DB = Path("/var/lib/sbdd/cluster_telemetry.db")
 
 
-def run_monitor(port: int = 8089):
+def run_monitor(port: int = 8088):
     """
-    Renders real-time cluster progress bars by streaming active simulations directly
-    from the local telemetry WAL SQLite database maintained by sbdd-telemetry.
-    Eliminates socket address collisions and displays live GPU wattage and hardware load.
+    Renders high-frequency (10Hz) real-time cluster progress bars by listening to the local
+    UDP fanout stream on 127.0.0.1:8088 relayed by sbdd-telemetry.
+    Zero-delay updates with smooth GPU power and utilization metrics.
     """
     console.rule("[bold cyan]SBDD Cluster MD Live Monitor (GROMACS)[/bold cyan]")
     console.print(
-        f"[dim]Streaming live telemetry from {TELEMETRY_DB}... Press Ctrl+C to exit.[/dim]\n"
+        f"[dim]Streaming live 10Hz telemetry from 127.0.0.1:{port}... Press Ctrl+C to exit.[/dim]\n"
     )
+
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    if hasattr(socket, "SO_REUSEPORT"):
+        try:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+        except Exception:
+            pass
+    sock.bind(("127.0.0.1", port))
+    sock.settimeout(0.2)
 
     progress = Progress(
         TextColumn("[bold cyan]{task.description}"),
@@ -114,91 +124,61 @@ def run_monitor(port: int = 8089):
     )
 
     task_bars = {}
+    last_seen = {}
 
     try:
         with progress:
             while True:
-                if not TELEMETRY_DB.exists():
-                    time.sleep(1.0)
-                    continue
+                now = time.time()
 
-                active_tasks = {}
+                # Remove stalled or halted tasks after 3.5s of silence
+                for t_id in list(task_bars.keys()):
+                    if now - last_seen.get(t_id, now) > 3.5:
+                        progress.remove_task(task_bars[t_id])
+                        del task_bars[t_id]
+                        last_seen.pop(t_id, None)
+
                 try:
-                    conn = sqlite3.connect(
-                        f"file:{TELEMETRY_DB}?mode=ro", uri=True, timeout=1.0
-                    )
-                    conn.row_factory = sqlite3.Row
-                    cursor = conn.cursor()
-                    cursor.execute(
-                        """
-                        SELECT
-                            task_id, node_name, stage, natoms, timestep_fs,
-                            total_steps, last_step, speed_cumulative_ns_day,
-                            speed_instant_ns_day, eta_string, gpu_model,
-                            gpu_power_avg_w, gpu_util_cur_pct, gpu_vram_peak_mb,
-                            status, last_payload_json,
-                            (strftime('%s', 'now') - strftime('%s', updated_at)) AS age_sec
-                        FROM simulation_runs
-                        WHERE status = 'running'
-                          AND (strftime('%s', 'now') - strftime('%s', updated_at)) <= 4
-                        ORDER BY updated_at DESC;
-                        """
-                    )
-                    rows = cursor.fetchall()
-                    conn.close()
+                    data, _ = sock.recvfrom(65535)
+                    payload = json.loads(data.decode("utf-8", errors="ignore"))
+                    t_id = payload.get("task", "unknown")
+                    if t_id == "unknown":
+                        continue
 
-                    for r in rows:
-                        active_tasks[r["task_id"]] = dict(r)
-                except Exception:
-                    pass
+                    if payload.get("event") == "exit":
+                        if t_id in task_bars:
+                            progress.remove_task(task_bars[t_id])
+                            del task_bars[t_id]
+                            last_seen.pop(t_id, None)
+                        continue
 
-                # Purge bars for tasks that are no longer actively running
-                for t_name in list(task_bars.keys()):
-                    if t_name not in active_tasks:
-                        progress.remove_task(task_bars[t_name])
-                        del task_bars[t_name]
+                    last_seen[t_id] = now
 
-                # Update or add progress bars
-                for t_id, data in active_tasks.items():
-                    step = data.get("last_step") or 0
-                    total = data.get("total_steps") or 1
-                    dt_ps = (data.get("timestep_fs") or 2.0) / 1000.0
+                    step = payload.get("display_step", payload.get("step")) or 0
+                    total = payload.get("display_total", payload.get("total")) or 1
+                    dt_ps = payload.get("dt_ps") or 0.002
 
-                    t_str = f" [dim]({format_time_ns(step * dt_ps)})[/dim]"
-                    step_info = f"[cyan]{format_steps(step)}/{format_steps(total)}[/cyan]{t_str}"
+                    step_info = payload.get("step_info")
+                    if not step_info:
+                        t_str = f" [dim]({format_time_ns(step * dt_ps)})[/dim]"
+                        step_info = f"[cyan]{format_steps(step)}/{format_steps(total)}[/cyan]{t_str}"
 
-                    speed_val = data.get("speed_cumulative_ns_day") or data.get("speed_instant_ns_day")
-                    speed_str = f"{speed_val:>5.1f} ns/d" if speed_val else "-- ns/d"
+                    speed_str = payload.get("speed", "-- ns/d")
+                    eta_str = payload.get("eta", "--:--")
 
-                    gpu_short = data.get("gpu_model") or "GPU"
-                    if "RTX" in gpu_short:
-                        gpu_short = "RTX " + gpu_short.split("RTX")[-1].strip()
-
-                    # Extract real-time GPU load % and instant watts
-                    gpu_util = data.get("gpu_util_cur_pct")
-                    power_val = None
-                    if data.get("last_payload_json"):
-                        try:
-                            lp = json.loads(data["last_payload_json"])
-                            hw_gpu = lp.get("hardware", {}).get("gpu", {})
-                            if gpu_util is None:
-                                gpu_util = hw_gpu.get("utilization_gpu_pct")
-                            power_val = hw_gpu.get("power_watts")
-                        except Exception:
-                            pass
-
-                    if gpu_util is not None:
-                        gpu_str = f"{gpu_short} ({gpu_util}%)"
+                    hw_gpu = payload.get("hardware", {}).get("gpu", {})
+                    gpu_name = hw_gpu.get("model") or "GPU"
+                    if "RTX" in gpu_name:
+                        gpu_short = "RTX " + gpu_name.split("RTX")[-1].strip()
                     else:
-                        gpu_str = gpu_short
+                        gpu_short = gpu_name
 
-                    if power_val is None:
-                        power_val = data.get("gpu_power_avg_w")
-                    power_str = f"{power_val:>5.1f} W" if power_val else "-- W"
+                    gpu_util = hw_gpu.get("utilization_gpu_pct")
+                    gpu_str = f"{gpu_short} ({gpu_util}%)" if gpu_util is not None else gpu_short
 
-                    eta_str = data.get("eta_string") or "--:--"
+                    p_watts = hw_gpu.get("power_watts")
+                    power_str = f"{p_watts:>5.1f} W" if p_watts is not None else "-- W"
 
-                    # Normalize title display
                     clean_name = t_id.strip()
                     m_chunk_wrap = re.match(
                         r"^RUN_MD_CHUNK_\d+_(.+?)\s+(\(#\d+\))\s*\([^)]*\)$", clean_name
@@ -208,12 +188,14 @@ def run_monitor(port: int = 8089):
                     elif ":" in clean_name and not clean_name.startswith(("EQ:", "MD:", "SWISH:")):
                         clean_name = clean_name.split(":")[-1].strip()
 
+                    node_str = payload.get("node") or "node"
+
                     if t_id not in task_bars:
                         task_bars[t_id] = progress.add_task(
                             f"[green]{escape(clean_name)}",
                             total=total,
                             completed=step,
-                            node=escape(data.get("node_name") or "node"),
+                            node=escape(node_str),
                             gpu=escape(gpu_str),
                             power=power_str,
                             speed=speed_str,
@@ -228,15 +210,19 @@ def run_monitor(port: int = 8089):
                         progress.update(
                             task_bars[t_id],
                             completed=step,
-                            node=escape(data.get("node_name") or "node"),
+                            node=escape(node_str),
                             gpu=escape(gpu_str),
                             power=power_str,
                             speed=speed_str,
                             step_info=step_info,
                             eta=eta_str,
                         )
-
-                time.sleep(0.25)
+                except socket.timeout:
+                    continue
+                except Exception:
+                    pass
 
     except KeyboardInterrupt:
         console.print("\n[yellow]Monitoring stopped.[/yellow]")
+    finally:
+        sock.close()
