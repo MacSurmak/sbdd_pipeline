@@ -137,9 +137,10 @@ def run_monitor(port: int = 8089):
                             speed_instant_ns_day, eta_string, gpu_model,
                             gpu_power_avg_w, gpu_util_cur_pct, gpu_vram_peak_mb,
                             status, last_payload_json,
-                            strftime('%s', 'now') - strftime('%s', updated_at) AS age_sec
+                            (strftime('%s', 'now') - strftime('%s', updated_at)) AS age_sec
                         FROM simulation_runs
                         WHERE status = 'running'
+                          AND (strftime('%s', 'now') - strftime('%s', updated_at)) <= 4
                         ORDER BY updated_at DESC;
                         """
                     )
