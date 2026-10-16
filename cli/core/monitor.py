@@ -83,160 +83,139 @@ def format_eta(seconds_left: float | None) -> str:
     return f"{dur_str} (ETA: {date_str})"
 
 
-def run_monitor(port: int = 8089):
-    """Listens for UDP telemetry packets from GROMACS and renders real-time progress bars with dynamic lifecycle."""
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.bind(("0.0.0.0", port))
-    sock.settimeout(0.5)
+import sqlite3
+from pathlib import Path
 
+TELEMETRY_DB = Path("/var/lib/sbdd/cluster_telemetry.db")
+
+
+def run_monitor(port: int = 8089):
+    """
+    Renders real-time cluster progress bars by streaming active simulations directly
+    from the local telemetry WAL SQLite database maintained by sbdd-telemetry.
+    Eliminates socket address collisions and displays live GPU wattage and hardware load.
+    """
     console.rule("[bold cyan]SBDD Cluster MD Live Monitor (GROMACS)[/bold cyan]")
     console.print(
-        f"[dim]Listening for GROMACS UDP telemetry on port {port}... Press Ctrl+C to exit.[/dim]\n"
+        f"[dim]Streaming live telemetry from {TELEMETRY_DB}... Press Ctrl+C to exit.[/dim]\n"
     )
 
     progress = Progress(
         TextColumn("[bold cyan]{task.description}"),
         TextColumn("[bold yellow]({task.fields[node]})[/bold yellow]"),
+        TextColumn("[magenta]{task.fields[gpu]}[/magenta]"),
         BarColumn(),
         TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
         TextColumn("{task.fields[step_info]}"),
         TextColumn("[bold green]{task.fields[speed]}[/bold green]"),
-        TimeElapsedColumn(),
-        TextColumn("[yellow]{task.fields[eta]}[/yellow]"),
+        TextColumn("[yellow]{task.fields[power]}[/yellow]"),
+        TextColumn("[dim]{task.fields[eta]}[/dim]"),
         console=console,
     )
 
     task_bars = {}
-    last_seen = {}
-    last_reap = time.time()
 
     try:
         with progress:
             while True:
-                now = time.time()
+                if not TELEMETRY_DB.exists():
+                    time.sleep(1.0)
+                    continue
 
-                # Periodic reaper: sync with squeue to purge jobs terminated via SIGKILL, scancel or completion
-                if now - last_reap > 2.0:
-                    last_reap = now
-                    active_job_ids = None
-                    try:
-                        sq_out = subprocess.check_output(
-                            ["squeue", "-h", "-o", "%i"],
-                            text=True,
-                            stderr=subprocess.DEVNULL,
-                        )
-                        active_job_ids = set(sq_out.split())
-                    except Exception:
-                        pass
-
-                    for t_name in list(task_bars.keys()):
-                        m_job = re.search(r"#(\d+)", t_name)
-                        # When job has a Slurm ID and is no longer present in squeue
-                        if (
-                            m_job
-                            and active_job_ids is not None
-                            and m_job.group(1) not in active_job_ids
-                        ):
-                            progress.remove_task(task_bars[t_name])
-                            del task_bars[t_name]
-                            last_seen.pop(t_name, None)
-                            continue
-
-                        # If task went completely silent for over 25s
-                        if now - last_seen.get(t_name, now) > 25.0:
-                            progress.remove_task(task_bars[t_name])
-                            del task_bars[t_name]
-                            last_seen.pop(t_name, None)
-
+                active_tasks = {}
                 try:
-                    data, _ = sock.recvfrom(2048)
-                    msg = json.loads(data.decode("utf-8", errors="ignore"))
-                    task_name = msg.get("task", "unknown")
-                    event = msg.get("event")
+                    conn = sqlite3.connect(
+                        f"file:{TELEMETRY_DB}?mode=ro", uri=True, timeout=1.0
+                    )
+                    conn.row_factory = sqlite3.Row
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        """
+                        SELECT
+                            task_id, node_name, stage, natoms, timestep_fs,
+                            total_steps, last_step, speed_cumulative_ns_day,
+                            speed_instant_ns_day, eta_string, gpu_model,
+                            gpu_power_avg_w, gpu_vram_peak_mb, status,
+                            strftime('%s', 'now') - strftime('%s', updated_at) AS age_sec
+                        FROM simulation_runs
+                        WHERE status = 'running'
+                        ORDER BY updated_at DESC;
+                        """
+                    )
+                    rows = cursor.fetchall()
+                    conn.close()
 
-                    # Handle explicit exit signal from worker telemetry emitter
-                    if event == "exit":
-                        if task_name in task_bars:
-                            progress.remove_task(task_bars[task_name])
-                            del task_bars[task_name]
-                            last_seen.pop(task_name, None)
-                        continue
+                    for r in rows:
+                        active_tasks[r["task_id"]] = dict(r)
+                except Exception:
+                    pass
 
-                    last_seen[task_name] = now
+                # Purge bars for tasks that are no longer actively running
+                for t_name in list(task_bars.keys()):
+                    if t_name not in active_tasks:
+                        progress.remove_task(task_bars[t_name])
+                        del task_bars[t_name]
 
-                    # Clean task description and normalize container wrapper task tags
-                    clean_name = task_name.strip()
+                # Update or add progress bars
+                for t_id, data in active_tasks.items():
+                    step = data.get("last_step") or 0
+                    total = data.get("total_steps") or 1
+                    dt_ps = (data.get("timestep_fs") or 2.0) / 1000.0
+
+                    t_str = f" [dim]({format_time_ns(step * dt_ps)})[/dim]"
+                    step_info = f"[cyan]{format_steps(step)}/{format_steps(total)}[/cyan]{t_str}"
+
+                    speed_val = data.get("speed_cumulative_ns_day") or data.get("speed_instant_ns_day")
+                    speed_str = f"{speed_val:>5.1f} ns/d" if speed_val else "-- ns/d"
+
+                    gpu_short = data.get("gpu_model") or "GPU"
+                    if "RTX" in gpu_short:
+                        gpu_short = "RTX " + gpu_short.split("RTX")[-1].strip()
+
+                    power_val = data.get("gpu_power_avg_w")
+                    power_str = f"{power_val:>5.1f} W" if power_val else "-- W"
+
+                    eta_str = data.get("eta_string") or "--:--"
+
+                    # Normalize title display
+                    clean_name = t_id.strip()
                     m_chunk_wrap = re.match(
                         r"^RUN_MD_CHUNK_\d+_(.+?)\s+(\(#\d+\))\s*\([^)]*\)$", clean_name
                     )
                     if m_chunk_wrap:
-                        clean_name = (
-                            f"MD: {m_chunk_wrap.group(1)} {m_chunk_wrap.group(2)}"
-                        )
-                    elif ":" in clean_name and not clean_name.startswith(
-                        ("EQ:", "MD:", "SWISH:")
-                    ):
+                        clean_name = f"MD: {m_chunk_wrap.group(1)} {m_chunk_wrap.group(2)}"
+                    elif ":" in clean_name and not clean_name.startswith(("EQ:", "MD:", "SWISH:")):
                         clean_name = clean_name.split(":")[-1].strip()
 
-                    node_name = msg.get("node", "local")
-
-                    # Extract authoritative pre-computed metrics emitted by worker
-                    display_step = msg.get("display_step", msg.get("step"))
-                    display_total = msg.get("display_total", msg.get("total"))
-                    step_info_str = msg.get("step_info")
-                    speed_display = msg.get("speed", "-- ns/day")
-                    eta_display = msg.get("eta", "--:--")
-
-                    # Fallback formatting if raw telemetry packet arrives without pre-rendered strings
-                    if step_info_str is None and display_step is not None:
-                        dt_ps = msg.get("dt_ps")
-                        t_str = (
-                            f" [dim]({format_time_ns(display_step * dt_ps)})[/dim]"
-                            if dt_ps
-                            else ""
+                    if t_id not in task_bars:
+                        task_bars[t_id] = progress.add_task(
+                            f"[green]{escape(clean_name)}",
+                            total=total,
+                            completed=step,
+                            node=escape(data.get("node_name") or "node"),
+                            gpu=escape(gpu_short),
+                            power=power_str,
+                            speed=speed_str,
+                            step_info=step_info,
+                            eta=eta_str,
                         )
-                        if display_total is not None:
-                            step_info_str = f"[cyan]{format_steps(display_step)}/{format_steps(display_total)}[/cyan]{t_str}"
-                        else:
-                            step_info_str = (
-                                f"[cyan]{format_steps(display_step)}[/cyan]{t_str}"
-                            )
+                    else:
+                        task_obj = progress._tasks[task_bars[t_id]]
+                        if total is not None and task_obj.total != total:
+                            progress.update(task_bars[t_id], total=total)
 
-                    if display_step is not None:
-                        if task_name not in task_bars:
-                            task_bars[task_name] = progress.add_task(
-                                f"[green]{escape(clean_name)}",
-                                total=display_total,
-                                completed=display_step,
-                                node=escape(node_name),
-                                speed=speed_display,
-                                step_info=step_info_str or "",
-                                eta=eta_display,
-                            )
-                        else:
-                            task_obj = progress._tasks[task_bars[task_name]]
-                            if (
-                                display_total is not None
-                                and task_obj.total != display_total
-                            ):
-                                progress.update(
-                                    task_bars[task_name], total=display_total
-                                )
+                        progress.update(
+                            task_bars[t_id],
+                            completed=step,
+                            node=escape(data.get("node_name") or "node"),
+                            gpu=escape(gpu_short),
+                            power=power_str,
+                            speed=speed_str,
+                            step_info=step_info,
+                            eta=eta_str,
+                        )
 
-                            progress.update(
-                                task_bars[task_name],
-                                completed=display_step,
-                                node=escape(node_name),
-                                speed=speed_display,
-                                step_info=step_info_str or "",
-                                eta=eta_display,
-                            )
-                        continue
-                except socket.timeout:
-                    continue
-                except Exception:
-                    pass
+                time.sleep(0.5)
+
     except KeyboardInterrupt:
         console.print("\n[yellow]Monitoring stopped.[/yellow]")
-    finally:
-        sock.close()
