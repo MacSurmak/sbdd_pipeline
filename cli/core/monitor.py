@@ -113,11 +113,11 @@ def run_monitor(port: int = 8088):
     progress = Progress(
         TextColumn("[bold cyan]{task.description}"),
         TextColumn("[bold yellow]({task.fields[node]})[/bold yellow]"),
-        TextColumn("[magenta]{task.fields[gpu]}[/magenta]"),
         BarColumn(),
         TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
         TextColumn("{task.fields[step_info]}"),
         TextColumn("[bold green]{task.fields[speed]}[/bold green]"),
+        TextColumn("[magenta]{task.fields[gpu]}[/magenta]"),
         TextColumn("[yellow]{task.fields[power]}[/yellow]"),
         TextColumn("[dim]{task.fields[eta]}[/dim]"),
         console=console,
