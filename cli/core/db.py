@@ -324,7 +324,7 @@ def init_db(db_path: Path = None, create_if_missing: bool = False):
         raise FileNotFoundError(
             f"FATAL: Project database not found at {db_path}!\n"
             f"Current working directory '{Path.cwd()}' is not an initialized SBDD project. "
-            f"Run 'sbdd init' or 'sbdd add structure' to initialize a project first."
+            f"Run 'sbdd init' to initialize a project workspace first."
         )
 
     engine = create_engine(f"sqlite:///{db_path}")

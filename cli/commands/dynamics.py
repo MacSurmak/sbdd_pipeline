@@ -138,15 +138,15 @@ def run_dynamics(
         f"[bold cyan]Dispatching simulation to replenish replicates (Target: {reps_target}, Missing: {total_missing_dispatched})...[/bold cyan]"
     )
 
-    # 2. Check MD protocol
+    # 2. Check MD protocol (Strict Fail-Fast: Zero Auto-Init)
     protocol_dir = cwd / "configs" / "md_protocol"
-    if not protocol_dir.exists() or not (protocol_dir / "protocol.txt").exists():
-        console.print(
-            "[bold cyan]MD protocol playlist not found. Auto-initializing 'sbdd md-init'...[/bold cyan]"
+    protocol_file = protocol_dir / "protocol.txt"
+    if not protocol_file.exists():
+        session.close()
+        raise FileNotFoundError(
+            f"FATAL: MD protocol playlist not found at {protocol_file}. "
+            "You must explicitly run 'sbdd md-init' to configure your simulation protocol before launching dynamics."
         )
-        from cli.main import cmd_md_init
-
-        cmd_md_init(args)
 
     plan_file = cwd / "md_plan.json"
     with open(plan_file, "w") as f:

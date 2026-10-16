@@ -408,7 +408,7 @@ def add_receptor(
     Imports macromolecular structure(s) (PDB/CIF) into a Target with mandatory reference sequence.
     Enforces 100% APO protein frames and extracts explicit heterogens into atomic 3D poses.
     """
-    session = init_db(create_if_missing=True)
+    session = init_db()
     cwd = Path.cwd()
     target_cli_name = target
 
@@ -671,7 +671,7 @@ def add_ligand(path: str, name: str | None = None, force: bool = False) -> None:
     Imports chemical substances (SDF/SMILES) into the Substance table.
     Performs topological deduplication via Standard InChIKey.
     """
-    session = init_db(create_if_missing=True)
+    session = init_db()
     target_path = Path(path).resolve()
     if not target_path.exists():
         console.print(f"[bold red]FATAL: File does not exist: {target_path}[/bold red]")
