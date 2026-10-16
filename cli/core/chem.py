@@ -56,7 +56,7 @@ def get_mol_identity(source: str | Path) -> Tuple[str, str, str, int]:
     formal_charge = Chem.GetFormalCharge(mol)
 
     # Check if entity is a monoatomic ion to preserve its formal oxidation state
-    is_monoatomic_ion = (mol.GetNumHeavyAtoms() == 1 and mol.GetNumAtoms() == 1)
+    is_monoatomic_ion = mol.GetNumHeavyAtoms() == 1 and mol.GetNumAtoms() == 1
 
     if is_monoatomic_ion:
         parent_inchikey = Chem.MolToInchiKey(mol)

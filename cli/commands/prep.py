@@ -31,7 +31,9 @@ def run_prep(
     if target:
         target_obj = session.query(Target).filter_by(name=target).first()
         if not target_obj:
-            console.print(f"[bold red]FATAL: Target '{target}' not found in database.[/bold red]")
+            console.print(
+                f"[bold red]FATAL: Target '{target}' not found in database.[/bold red]"
+            )
             sys.exit(1)
         query = query.filter(ReceptorFrame.target_id == target_obj.id)
     elif frames:
@@ -40,19 +42,28 @@ def run_prep(
     raw_frames = query.all()
 
     # 2. Fetch abstract library Substances needing LigPrep (only type = 'ligand')
-    query_substances = session.query(Substance).filter_by(state="raw", substance_type="ligand").all()
+    query_substances = (
+        session.query(Substance).filter_by(state="raw", substance_type="ligand").all()
+    )
 
     # 3. Fetch standalone in-situ Poses lacking AM1-BCC quantum parameters (excluding monoatomic ions)
     # Exclude poses belonging to frames that are currently in raw_frames (they will be prepared and parametrized via PREPARE_RECEPTOR!)
     raw_frame_ids = {frame.id for frame in raw_frames}
-    query_poses = session.query(Pose).join(Substance).filter(
-        Pose.path_mol2.is_(None),
-        Substance.substance_type != "ion",
-        ~Pose.receptor_frame_id.in_(raw_frame_ids) if raw_frame_ids else True
-    ).all()
+    query_poses = (
+        session.query(Pose)
+        .join(Substance)
+        .filter(
+            Pose.path_mol2.is_(None),
+            Substance.substance_type != "ion",
+            ~Pose.receptor_frame_id.in_(raw_frame_ids) if raw_frame_ids else True,
+        )
+        .all()
+    )
 
     if not raw_frames and not query_substances and not query_poses:
-        console.print("[green]No raw frames, substances, or unparametrized poses found. Everything is up to date![/green]")
+        console.print(
+            "[green]No raw frames, substances, or unparametrized poses found. Everything is up to date![/green]"
+        )
         session.close()
         return
 
@@ -64,35 +75,41 @@ def run_prep(
         system = session.query(System).filter_by(receptor_frame_id=frame.id).first()
         heterogens = []
         if system and system.pose:
-            heterogens.append({
-                "res_name": system.pose.res_name,
-                "pose_name": system.pose.name,
-                "inchikey": system.pose.substance.inchikey,
-                "is_ligand": True,
-                "is_ion": False,
-            })
+            heterogens.append(
+                {
+                    "res_name": system.pose.res_name,
+                    "pose_name": system.pose.name,
+                    "inchikey": system.pose.substance.inchikey,
+                    "is_ligand": True,
+                    "is_ion": False,
+                }
+            )
         if system:
             for cof in system.cofactors:
-                heterogens.append({
-                    "res_name": cof.res_name,
-                    "pose_name": cof.name,
-                    "inchikey": cof.substance.inchikey,
-                    "is_ligand": False,
-                    "is_ion": (cof.substance.substance_type == "ion"),
-                })
+                heterogens.append(
+                    {
+                        "res_name": cof.res_name,
+                        "pose_name": cof.name,
+                        "inchikey": cof.substance.inchikey,
+                        "is_ligand": False,
+                        "is_ion": (cof.substance.substance_type == "ion"),
+                    }
+                )
 
         native_lig_code = system.pose.res_name if (system and system.pose) else ""
         cofactor_names = [h["res_name"] for h in heterogens if not h["is_ligand"]]
 
-        rec_plan.append({
-            "name": frame.name,
-            "target_name": frame.target.name,
-            "path": str(Path(frame.path).resolve()),
-            "prep_mode": "full",
-            "cofactors": cofactor_names,
-            "native_ligand": native_lig_code,
-            "heterogens": heterogens,
-        })
+        rec_plan.append(
+            {
+                "name": frame.name,
+                "target_name": frame.target.name,
+                "path": str(Path(frame.path).resolve()),
+                "prep_mode": "full",
+                "cofactors": cofactor_names,
+                "native_ligand": native_lig_code,
+                "heterogens": heterogens,
+            }
+        )
 
     sub_plan = []
     if query_substances:
@@ -110,33 +127,39 @@ def run_prep(
                     f"FATAL: Registered reference SDF for substance '{sub.name}' is missing or empty on disk: {sub_sdf}"
                 )
 
-            sub_plan.append({
-                "name": sub.name,
-                "inchikey": sub.inchikey,
-                "path": str(sub_sdf),
-                "status": "unprepared"
-            })
+            sub_plan.append(
+                {
+                    "name": sub.name,
+                    "inchikey": sub.inchikey,
+                    "path": str(sub_sdf),
+                    "status": "unprepared",
+                }
+            )
 
     pose_plan = []
     for pose in query_poses:
         ch = pose.formal_charge
         res_name = pose.res_name
-        pose_plan.append({
-            "name": pose.name,
-            "res_name": res_name,
-            "inchikey": pose.substance.inchikey,
-            "path": pose.path,
-            "path_mae": pose.path_mae or "",
-            "charge": ch,
-            "is_ion": (pose.substance.substance_type == "ion"),
-        })
+        pose_plan.append(
+            {
+                "name": pose.name,
+                "res_name": res_name,
+                "inchikey": pose.substance.inchikey,
+                "path": pose.path,
+                "path_mae": pose.path_mae or "",
+                "charge": ch,
+                "is_ion": (pose.substance.substance_type == "ion"),
+            }
+        )
 
     plan_data = {"receptors": rec_plan, "ligands": sub_plan, "poses": pose_plan}
     plan_file = cwd / "prep_plan.json"
     with open(plan_file, "w") as f:
         json.dump(plan_data, f, indent=2)
 
-    console.print(f"[bold cyan]Generated prep_plan.json ({len(rec_plan)} receptors, {len(sub_plan)} substances, {len(pose_plan)} poses).[/bold cyan]")
+    console.print(
+        f"[bold cyan]Generated prep_plan.json ({len(rec_plan)} receptors, {len(sub_plan)} substances, {len(pose_plan)} poses).[/bold cyan]"
+    )
 
     # Execute Nextflow
     configs = load_project_configs(cwd)
@@ -146,9 +169,18 @@ def run_prep(
     if urgent:
         nf_args.extend(["--queue", "urgent"])
 
-    ret_code = execute_nextflow("prepare", nf_args, cwd, profile="local" if local else "slurm", resume=resume, configs=configs)
+    ret_code = execute_nextflow(
+        "prepare",
+        nf_args,
+        cwd,
+        profile="local" if local else "slurm",
+        resume=resume,
+        configs=configs,
+    )
     if ret_code != 0:
-        console.print("[bold red]Nextflow preparation failed. Database not updated.[/bold red]")
+        console.print(
+            "[bold red]Nextflow preparation failed. Database not updated.[/bold red]"
+        )
         sys.exit(ret_code)
 
     # Read Receipts strictly via Plan & Receipt protocol without path guessing
@@ -160,18 +192,26 @@ def run_prep(
                 continue
             parts = line.split("\t")
             if len(parts) < 3:
-                raise ValueError(f"FATAL: Corrupted line in {rec_receipt}: '{line}'. Expected 3 tab-separated fields.")
+                raise ValueError(
+                    f"FATAL: Corrupted line in {rec_receipt}: '{line}'. Expected 3 tab-separated fields."
+                )
             orig_name, r_mae, r_pdb = parts
             frame = frame_map.get(orig_name)
             if not frame:
-                raise KeyError(f"FATAL: Prepared frame '{orig_name}' in receipt is not present in plan!")
+                raise KeyError(
+                    f"FATAL: Prepared frame '{orig_name}' in receipt is not present in plan!"
+                )
 
             mae_path = Path(r_mae).resolve()
             pdb_path = Path(r_pdb).resolve()
             if not mae_path.exists() or mae_path.stat().st_size == 0:
-                raise FileNotFoundError(f"FATAL: Prepared receptor MAE missing on disk: {mae_path}")
+                raise FileNotFoundError(
+                    f"FATAL: Prepared receptor MAE missing on disk: {mae_path}"
+                )
             if not pdb_path.exists() or pdb_path.stat().st_size == 0:
-                raise FileNotFoundError(f"FATAL: Prepared receptor PDB missing on disk: {pdb_path}")
+                raise FileNotFoundError(
+                    f"FATAL: Prepared receptor PDB missing on disk: {pdb_path}"
+                )
 
             frame.path_mae = str(mae_path)
             frame.path_pdb = str(pdb_path)
@@ -186,18 +226,26 @@ def run_prep(
                 continue
             parts = line.split("\t")
             if len(parts) < 3:
-                raise ValueError(f"FATAL: Corrupted line in {sub_receipt}: '{line}'. Expected 3 tab-separated fields.")
+                raise ValueError(
+                    f"FATAL: Corrupted line in {sub_receipt}: '{line}'. Expected 3 tab-separated fields."
+                )
             sub_name, rel_mae, rel_sdf = parts
             sub_obj = session.query(Substance).filter_by(name=sub_name).first()
             if not sub_obj:
-                raise KeyError(f"FATAL: Prepared substance '{sub_name}' in receipt is not registered in DB!")
+                raise KeyError(
+                    f"FATAL: Prepared substance '{sub_name}' in receipt is not registered in DB!"
+                )
 
             mae_path = Path(rel_mae).resolve()
             sdf_path = Path(rel_sdf).resolve()
             if not mae_path.exists() or mae_path.stat().st_size == 0:
-                raise FileNotFoundError(f"FATAL: Prepared ligand MAE missing: {mae_path}")
+                raise FileNotFoundError(
+                    f"FATAL: Prepared ligand MAE missing: {mae_path}"
+                )
             if not sdf_path.exists() or sdf_path.stat().st_size == 0:
-                raise FileNotFoundError(f"FATAL: Prepared ligand SDF missing: {sdf_path}")
+                raise FileNotFoundError(
+                    f"FATAL: Prepared ligand SDF missing: {sdf_path}"
+                )
 
             sub_obj.path_mae = str(mae_path)
             sub_obj.path_sdf = str(sdf_path)
@@ -211,11 +259,15 @@ def run_prep(
                 continue
             parts = line.split("\t")
             if len(parts) < 4:
-                raise ValueError(f"FATAL: Corrupted line in {pose_receipt}: '{line}'. Expected 4 tab-separated fields.")
+                raise ValueError(
+                    f"FATAL: Corrupted line in {pose_receipt}: '{line}'. Expected 4 tab-separated fields."
+                )
             pose_name, rel_sdf, rel_mol2, rel_frcmod = parts
             pose_obj = session.query(Pose).filter_by(name=pose_name).first()
             if not pose_obj:
-                raise KeyError(f"FATAL: Parametrized pose '{pose_name}' in receipt is not registered in DB!")
+                raise KeyError(
+                    f"FATAL: Parametrized pose '{pose_name}' in receipt is not registered in DB!"
+                )
 
             sdf_path = Path(rel_sdf).resolve()
             if not sdf_path.exists() or sdf_path.stat().st_size == 0:
@@ -225,12 +277,16 @@ def run_prep(
 
             mol2_path = Path(rel_mol2).resolve()
             if not mol2_path.exists() or mol2_path.stat().st_size == 0:
-                raise FileNotFoundError(f"FATAL: Antechamber MOL2 missing on disk: {mol2_path}")
+                raise FileNotFoundError(
+                    f"FATAL: Antechamber MOL2 missing on disk: {mol2_path}"
+                )
             pose_obj.path_mol2 = str(mol2_path)
 
             frcmod_path = Path(rel_frcmod).resolve()
             if not frcmod_path.exists() or frcmod_path.stat().st_size == 0:
-                raise FileNotFoundError(f"FATAL: Parmchk2 FRCMOD missing on disk: {frcmod_path}")
+                raise FileNotFoundError(
+                    f"FATAL: Parmchk2 FRCMOD missing on disk: {frcmod_path}"
+                )
             pose_obj.path_frcmod = str(frcmod_path)
 
             pose_obj.state = "ready"

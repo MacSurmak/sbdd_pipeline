@@ -61,31 +61,46 @@ def cmd_antechamber(args):
 
     clean_v2000_sdf = f"{args.mol_id}_v2000.sdf"
     with Chem.SDWriter(clean_v2000_sdf) as writer:
-        writer.SetForceV3000(False)  # Enforce strict MDL V2000 for Antechamber compatibility
+        writer.SetForceV3000(
+            False
+        )  # Enforce strict MDL V2000 for Antechamber compatibility
         writer.write(mol)
 
     out_mol2 = f"{args.mol_id}_gaff2.mol2"
     run_cmd(
         [
             "antechamber",
-            "-i", clean_v2000_sdf,
-            "-fi", "sdf",
-            "-o", out_mol2,
-            "-fo", "mol2",
-            "-at", "gaff2",
-            "-c", "bcc",
-            "-nc", str(args.charge),
-            "-rn", res_name,
-            "-ek", "qm_theory='AM1', grms_tol=0.0005, scfconv=1.d-10, ndiis_attempts=700, MAXCYC=0",
+            "-i",
+            clean_v2000_sdf,
+            "-fi",
+            "sdf",
+            "-o",
+            out_mol2,
+            "-fo",
+            "mol2",
+            "-at",
+            "gaff2",
+            "-c",
+            "bcc",
+            "-nc",
+            str(args.charge),
+            "-rn",
+            res_name,
+            "-ek",
+            "qm_theory='AM1', grms_tol=0.0005, scfconv=1.d-10, ndiis_attempts=700, MAXCYC=0",
         ]
     )
     run_cmd(
         [
             "parmchk2",
-            "-i", out_mol2,
-            "-f", "mol2",
-            "-o", f"{args.mol_id}.frcmod",
-            "-s", "2",
+            "-i",
+            out_mol2,
+            "-f",
+            "mol2",
+            "-o",
+            f"{args.mol_id}.frcmod",
+            "-s",
+            "2",
         ]
     )
 

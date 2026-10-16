@@ -6,7 +6,15 @@ Description: CLI handler to visualize the 3NF database lineage cleanly without s
 from pathlib import Path
 from rich.console import Console
 from rich.tree import Tree
-from cli.core.db import init_db, Target, ReceptorFrame, Substance, Pose, System, Trajectory
+from cli.core.db import (
+    init_db,
+    Target,
+    ReceptorFrame,
+    Substance,
+    Pose,
+    System,
+    Trajectory,
+)
 
 console = Console()
 
@@ -65,7 +73,9 @@ def print_tree() -> None:
                         else " [dim](Apo)[/dim]"
                     )
                     cofs = [c.substance.name for c in s.cofactors if c.substance]
-                    cofs_label = f" [yellow]+[{','.join(cofs)}][/yellow]" if cofs else ""
+                    cofs_label = (
+                        f" [yellow]+[{','.join(cofs)}][/yellow]" if cofs else ""
+                    )
                     sys_node = s_branch.add(
                         f"[{s_color}]{s.name}[/{s_color}] [dim](state={s.state})[/dim] on [cyan]{s.receptor_frame.name}[/cyan]{pose_label}{cofs_label}"
                     )
@@ -91,7 +101,11 @@ def print_tree() -> None:
                             )
 
     # 2. Chemical Substances & Their 3D Poses
-    substances = session.query(Substance).order_by(Substance.substance_type, Substance.name).all()
+    substances = (
+        session.query(Substance)
+        .order_by(Substance.substance_type, Substance.name)
+        .all()
+    )
     if substances:
         sub_branch = root_tree.add(
             "[bold yellow]Chemical Substances & 3D Poses[/bold yellow]"
@@ -101,7 +115,11 @@ def print_tree() -> None:
             prep_info = (
                 f" [dim](LigPrep: {Path(sub.path_mae).name})[/dim]"
                 if sub.state == "ready" and sub.path_mae
-                else (" [dim](ready, 3D)[/dim]" if sub.state == "ready" else " [dim](raw)[/dim]")
+                else (
+                    " [dim](ready, 3D)[/dim]"
+                    if sub.state == "ready"
+                    else " [dim](raw)[/dim]"
+                )
             )
             type_badge = f"[bold]{sub.substance_type.upper()}[/bold]"
             sub_node = sub_branch.add(
@@ -118,11 +136,13 @@ def print_tree() -> None:
                 p_color = "green" if p.state == "ready" else "yellow"
                 ch = p.formal_charge
                 ch_tag = (
-                    f" [cyan](q={ch:+d})[/cyan]"
-                    if ch != 0
-                    else " [dim](neutral)[/dim]"
+                    f" [cyan](q={ch:+d})[/cyan]" if ch != 0 else " [dim](neutral)[/dim]"
                 )
-                param_status = " [bold green]+GAFF2[/bold green]" if (p.path_mol2 and p.path_frcmod) else ""
+                param_status = (
+                    " [bold green]+GAFF2[/bold green]"
+                    if (p.path_mol2 and p.path_frcmod)
+                    else ""
+                )
                 sub_node.add(
                     f"Pose: [{p_color}]{p.name}[/{p_color}] [dim]({p.origin}, state={p.state})[/dim]{ch_tag}{param_status} in [cyan]{p.receptor_frame.name}[/cyan] -> {Path(p.path).name}"
                 )

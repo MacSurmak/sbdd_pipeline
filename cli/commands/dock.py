@@ -199,7 +199,13 @@ def run_dock(
             )
             sys.exit(1)
 
-        ligands = session.query(Substance).filter(Substance.name.in_(ligand_names), Substance.substance_type == "ligand").all()
+        ligands = (
+            session.query(Substance)
+            .filter(
+                Substance.name.in_(ligand_names), Substance.substance_type == "ligand"
+            )
+            .all()
+        )
         if len(ligands) != len(ligand_names):
             found = {l.name for l in ligands}
             missing = set(ligand_names) - found
@@ -275,7 +281,9 @@ def run_dock(
                 sys.exit(1)
 
             has_crystal_pose = (
-                session.query(Pose).filter_by(substance_id=l.id, origin="crystal").first()
+                session.query(Pose)
+                .filter_by(substance_id=l.id, origin="crystal")
+                .first()
                 is not None
             )
 
@@ -437,7 +445,7 @@ def run_dock(
                     raise ValueError(
                         f"FATAL: 3D coordinates for molecule '{title}' not found in {eng} docking deliverable!"
                     )
-                
+
                 # Consume next 3D conformation for this ligand/engine pair
                 mol_conformation = mol_pool.pop(0)
 
@@ -465,7 +473,10 @@ def run_dock(
                 if eng == "glide":
                     if row.get("GlideScore") and row["GlideScore"] != "nan":
                         scores_dict["GlideScore"] = float(row["GlideScore"])
-                    if row.get("InSitu_RMSD_Glide_A") and row["InSitu_RMSD_Glide_A"] != "nan":
+                    if (
+                        row.get("InSitu_RMSD_Glide_A")
+                        and row["InSitu_RMSD_Glide_A"] != "nan"
+                    ):
                         scores_dict["RMSD_Glide_A"] = float(row["InSitu_RMSD_Glide_A"])
                 elif eng == "gnina":
                     if row.get("Dock_CNNaffinity") and row["Dock_CNNaffinity"] != "nan":
@@ -474,7 +485,10 @@ def run_dock(
                         scores_dict["CNNscore"] = float(row["Dock_CNNscore"])
                     if row.get("Dock_VinaAff") and row["Dock_VinaAff"] != "nan":
                         scores_dict["VinaAff"] = float(row["Dock_VinaAff"])
-                    if row.get("InSitu_RMSD_GNINA_A") and row["InSitu_RMSD_GNINA_A"] != "nan":
+                    if (
+                        row.get("InSitu_RMSD_GNINA_A")
+                        and row["InSitu_RMSD_GNINA_A"] != "nan"
+                    ):
                         scores_dict["RMSD_GNINA_A"] = float(row["InSitu_RMSD_GNINA_A"])
 
                 if row.get("Ultimate_Score") and row["Ultimate_Score"] != "nan":
@@ -488,7 +502,9 @@ def run_dock(
                     ex_pose.formal_charge = f_charge
                     ex_pose.scores_dict = scores_dict
                     ex_pose.origin = origin_tag
-                    ex_pose.state = "raw"  # Awaiting quantum parametrization in sbdd prep
+                    ex_pose.state = (
+                        "raw"  # Awaiting quantum parametrization in sbdd prep
+                    )
                     pose_obj = ex_pose
                 else:
                     new_p = Pose(
@@ -508,7 +524,9 @@ def run_dock(
                     pose_obj = new_p
 
                 # Deterministic 3NF inheritance: query cofactors registered on this frame or lineage parent
-                lookup_frame_id = r_frame.parent_frame_id if r_frame.parent_frame_id else r_frame.id
+                lookup_frame_id = (
+                    r_frame.parent_frame_id if r_frame.parent_frame_id else r_frame.id
+                )
                 parent_cofactors = (
                     session.query(Pose)
                     .join(Substance)

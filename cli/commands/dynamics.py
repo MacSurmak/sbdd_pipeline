@@ -103,10 +103,12 @@ def run_dynamics(
                 f"FATAL: No position restraint files found in DB for system '{s.name}'. "
                 f"Was it setup with an older pipeline version?"
             )
-            
+
         for f in posre_files:
             if not Path(f).exists():
-                raise FileNotFoundError(f"FATAL: Registered position restraint missing on disk: {f}")
+                raise FileNotFoundError(
+                    f"FATAL: Registered position restraint missing on disk: {f}"
+                )
 
         systems_to_run.append((s, missing_reps))
         plan_list.append(

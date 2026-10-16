@@ -82,7 +82,9 @@ def main():
     struct = pmd.load_file(args.input_pdb)
 
     # 1. Strip solvent strictly based on configuration SSOT via ParmEd masks
-    water_residues = [w.strip().upper() for w in args.water_names.split(",") if w.strip()]
+    water_residues = [
+        w.strip().upper() for w in args.water_names.split(",") if w.strip()
+    ]
     if water_residues:
         water_mask = ":" + ",".join(water_residues)
         struct.strip(water_mask)
@@ -105,7 +107,9 @@ def main():
             sg2 = next((a for a in r2.atoms if a.name == "SG"), None)
             if not sg2:
                 continue
-            dist = math.sqrt((sg1.xx - sg2.xx) ** 2 + (sg1.xy - sg2.xy) ** 2 + (sg1.xz - sg2.xz) ** 2)
+            dist = math.sqrt(
+                (sg1.xx - sg2.xx) ** 2 + (sg1.xy - sg2.xy) ** 2 + (sg1.xz - sg2.xz) ** 2
+            )
             if dist < args.ss_cutoff:
                 cyx_residues.add(r1)
                 cyx_residues.add(r2)
@@ -133,8 +137,11 @@ def main():
             res.ter = False
             if idx + 1 < len(struct.residues):
                 res.chain = struct.residues[idx + 1].chain
-                
-        if idx + 1 < len(struct.residues) and struct.residues[idx + 1].name in ("NMA", "NME"):
+
+        if idx + 1 < len(struct.residues) and struct.residues[idx + 1].name in (
+            "NMA",
+            "NME",
+        ):
             res.ter = False
             struct.residues[idx + 1].chain = res.chain
             # Strip terminal oxygen (OXT) if Maestro left it, as it chemically blocks C-N peptide bond formation
@@ -215,11 +222,17 @@ def main():
 
         # Backbone Amide Hydrogens (H, H1, H2, H3)
         elif res.name in STANDARD_PROTEIN_RESIDUES and res.name != "PRO":
-            amide_h = [a for a in res.atoms if a.name.strip() in ("H", "HN", "1H", "2H", "3H", "H1", "H2", "H3")]
+            amide_h = [
+                a
+                for a in res.atoms
+                if a.name.strip() in ("H", "HN", "1H", "2H", "3H", "H1", "H2", "H3")
+            ]
             if len(amide_h) == 1:
                 amide_h[0].name = "H"
             elif len(amide_h) == 3:
-                for h_idx, a in enumerate(sorted(amide_h, key=lambda x: x.name), start=1):
+                for h_idx, a in enumerate(
+                    sorted(amide_h, key=lambda x: x.name), start=1
+                ):
                     a.name = f"H{h_idx}"
 
     # Prune detached hydrogens from CYX residues

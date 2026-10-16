@@ -21,13 +21,13 @@ def main():
         sys.exit(2)
 
     lig_st = st.extract(lig_atoms)
-    
+
     # Strict Fail-Fast: Organic molecules must be a single connected graph
     if len(lig_st.molecule) > 1 and len(lig_atoms) > len(lig_st.molecule):
         print(
             f"FATAL: Residue name '{lig_name}' resolves to {len(lig_st.molecule)} disconnected molecules in the pocket! "
             f"This destroys quantum parametrization. You must assign unique residue names (e.g. ATP, AT2) to distinct molecules.",
-            file=sys.stderr
+            file=sys.stderr,
         )
         sys.exit(1)
 

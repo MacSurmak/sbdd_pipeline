@@ -15,32 +15,54 @@ def main():
     )
     parser.add_argument("--rec_pdb", required=True, help="Input receptor PDB")
     parser.add_argument(
-        "--lig_sdf", default=None, help="Active ligand SDF file (strictly for holo systems)"
+        "--lig_sdf",
+        default=None,
+        help="Active ligand SDF file (strictly for holo systems)",
     )
     parser.add_argument(
-        "--lig_resname", default=None, help="Strict PDB residue name for ligand (strictly for holo systems)"
+        "--lig_resname",
+        default=None,
+        help="Strict PDB residue name for ligand (strictly for holo systems)",
     )
     parser.add_argument(
-        "--ion_sdfs", nargs="*", default=[], help="SDF files strictly representing ions (from 3NF DB)"
+        "--ion_sdfs",
+        nargs="*",
+        default=[],
+        help="SDF files strictly representing ions (from 3NF DB)",
     )
     parser.add_argument(
-        "--ion_resnames", nargs="*", default=[], help="Residue names corresponding to ion SDFs"
+        "--ion_resnames",
+        nargs="*",
+        default=[],
+        help="Residue names corresponding to ion SDFs",
     )
     parser.add_argument(
-        "--cofactor_sdfs", nargs="*", default=[], help="SDF files representing organic cofactors"
+        "--cofactor_sdfs",
+        nargs="*",
+        default=[],
+        help="SDF files representing organic cofactors",
     )
     parser.add_argument(
-        "--cofactor_resnames", nargs="*", default=[], help="Residue names corresponding to cofactor SDFs"
+        "--cofactor_resnames",
+        nargs="*",
+        default=[],
+        help="Residue names corresponding to cofactor SDFs",
     )
     parser.add_argument("--out_pdb", required=True, help="Output complex PDB")
     args = parser.parse_args()
 
     # Strict Fail-Fast: mutually conditional validation between ligand coordinates and residue name
     if args.lig_sdf and not args.lig_resname:
-        print("FATAL: --lig_resname is strictly required when --lig_sdf is provided for a holo system!", file=sys.stderr)
+        print(
+            "FATAL: --lig_resname is strictly required when --lig_sdf is provided for a holo system!",
+            file=sys.stderr,
+        )
         sys.exit(1)
     if not args.lig_sdf and args.lig_resname:
-        print("FATAL: --lig_resname cannot be specified for an apo system without --lig_sdf!", file=sys.stderr)
+        print(
+            "FATAL: --lig_resname cannot be specified for an apo system without --lig_sdf!",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     if len(args.ion_sdfs) != len(args.ion_resnames):
@@ -86,7 +108,10 @@ def main():
             try:
                 res_seq = int(line[22:26].strip())
             except ValueError as e:
-                print(f"FATAL: Malformed residue sequence number in line '{line}': {e}", file=sys.stderr)
+                print(
+                    f"FATAL: Malformed residue sequence number in line '{line}': {e}",
+                    file=sys.stderr,
+                )
                 sys.exit(1)
             if res_seq > max_res_seq:
                 max_res_seq = res_seq
@@ -113,17 +138,24 @@ def main():
         nonlocal max_res_seq
         p_sdf = Path(sdf_path_str)
         if not p_sdf.exists() or p_sdf.stat().st_size == 0:
-            print(f"FATAL: Small molecule SDF missing or empty: {p_sdf}", file=sys.stderr)
+            print(
+                f"FATAL: Small molecule SDF missing or empty: {p_sdf}", file=sys.stderr
+            )
             sys.exit(1)
 
         suppl = Chem.SDMolSupplier(str(p_sdf), removeHs=False)
         mol = next((m for m in suppl if m is not None), None)
         if not mol:
-            print(f"FATAL: RDKit failed to parse molecule from {p_sdf}", file=sys.stderr)
+            print(
+                f"FATAL: RDKit failed to parse molecule from {p_sdf}", file=sys.stderr
+            )
             sys.exit(1)
 
         if not available_chains:
-            print("FATAL: Exhausted all available chain IDs for small molecules!", file=sys.stderr)
+            print(
+                "FATAL: Exhausted all available chain IDs for small molecules!",
+                file=sys.stderr,
+            )
             sys.exit(1)
 
         chain_id = available_chains.pop(0)
@@ -148,7 +180,9 @@ def main():
             elem = mol.GetAtomWithIdx(0).GetSymbol().upper()
             clean_atom = res_code.strip()
             # Standard PDB column 13-16 alignment strictly matching user-declared ion name
-            formatted_atom = f" {clean_atom:<3s}" if len(clean_atom) < 4 else f"{clean_atom:<4s}"
+            formatted_atom = (
+                f" {clean_atom:<3s}" if len(clean_atom) < 4 else f"{clean_atom:<4s}"
+            )
             new_line = (
                 f"HETATM{len(out_lines)+1:5d} {formatted_atom:4s} {res_code:>3s} "
                 f"{chain_id}{max_res_seq:4d}    {pos.x:8.3f}{pos.y:8.3f}{pos.z:8.3f}  1.00  0.00          {elem:>2s}"
@@ -181,7 +215,9 @@ def main():
     out_lines.extend(topology_lines)
     out_lines.append("END")
     Path(args.out_pdb).write_text("\n".join(out_lines) + "\n")
-    print(f"Successfully assembled {args.out_pdb} with {bool(args.lig_sdf)} ligand, {len(args.ion_sdfs)} ion(s), and {len(args.cofactor_sdfs)} cofactor(s).")
+    print(
+        f"Successfully assembled {args.out_pdb} with {bool(args.lig_sdf)} ligand, {len(args.ion_sdfs)} ion(s), and {len(args.cofactor_sdfs)} cofactor(s)."
+    )
 
 
 if __name__ == "__main__":

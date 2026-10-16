@@ -4,7 +4,15 @@ Description: CLI handler to remove items from the clean 3NF database with cascad
 """
 
 from rich.console import Console
-from cli.core.db import init_db, Target, ReceptorFrame, Substance, Pose, System, Trajectory
+from cli.core.db import (
+    init_db,
+    Target,
+    ReceptorFrame,
+    Substance,
+    Pose,
+    System,
+    Trajectory,
+)
 
 console = Console()
 

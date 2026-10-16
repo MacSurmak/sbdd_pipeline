@@ -48,9 +48,11 @@ def run_md_setup(
     for s in raw_systems:
         frame = s.receptor_frame
         if not frame.path_pdb:
-            console.print(f"[bold red]FATAL: ReceptorFrame '{frame.name}' missing path_pdb. Run 'sbdd prep' first.[/bold red]")
+            console.print(
+                f"[bold red]FATAL: ReceptorFrame '{frame.name}' missing path_pdb. Run 'sbdd prep' first.[/bold red]"
+            )
             sys.exit(1)
-        
+
         rec_pdb = Path(frame.path_pdb).resolve()
         if not rec_pdb.exists():
             raise FileNotFoundError(f"Prepared receptor PDB missing: {rec_pdb}")
@@ -68,14 +70,18 @@ def run_md_setup(
         if s.pose:
             if s.pose.substance.substance_type != "ion":
                 if not s.pose.path_mol2 or not s.pose.path_frcmod:
-                    console.print(f"[bold red]FATAL: System '{s.name}' contains unparametrized ligand '{s.pose.name}'. Run 'sbdd prep'![/bold red]")
+                    console.print(
+                        f"[bold red]FATAL: System '{s.name}' contains unparametrized ligand '{s.pose.name}'. Run 'sbdd prep'![/bold red]"
+                    )
                     sys.exit(1)
                 mol2_paths.append(str(Path(s.pose.path_mol2).resolve()))
                 frcmod_paths.append(str(Path(s.pose.path_frcmod).resolve()))
-            
+
             p_sdf = s.pose.path_sdf or s.pose.path
             if not p_sdf:
-                console.print(f"[bold red]FATAL: Pose '{s.pose.name}' missing path_sdf.[/bold red]")
+                console.print(
+                    f"[bold red]FATAL: Pose '{s.pose.name}' missing path_sdf.[/bold red]"
+                )
                 sys.exit(1)
             lig_sdf = str(Path(p_sdf).resolve())
             lig_resname = s.pose.res_name
@@ -84,7 +90,9 @@ def run_md_setup(
         for c in s.cofactors:
             c_sdf = c.path_sdf or c.path
             if not c_sdf or not Path(c_sdf).exists():
-                console.print(f"[bold red]FATAL: System '{s.name}' component '{c.name}' missing SDF deliverable.[/bold red]")
+                console.print(
+                    f"[bold red]FATAL: System '{s.name}' component '{c.name}' missing SDF deliverable.[/bold red]"
+                )
                 sys.exit(1)
 
             sdf_path_resolved = str(Path(c_sdf).resolve())
@@ -96,7 +104,9 @@ def run_md_setup(
                 cofactor_sdfs.append(sdf_path_resolved)
                 cofactor_resnames.append(c.res_name)
                 if not c.path_mol2 or not c.path_frcmod:
-                    console.print(f"[bold red]FATAL: System '{s.name}' contains unparametrized cofactor '{c.name}'. Run 'sbdd prep'![/bold red]")
+                    console.print(
+                        f"[bold red]FATAL: System '{s.name}' contains unparametrized cofactor '{c.name}'. Run 'sbdd prep'![/bold red]"
+                    )
                     sys.exit(1)
                 mol2_paths.append(str(Path(c.path_mol2).resolve()))
                 frcmod_paths.append(str(Path(c.path_frcmod).resolve()))
@@ -165,11 +175,11 @@ def run_md_setup(
             s.path_gro = gro
             s.path_top = top
             s.path_ndx = ndx
-            
+
             env = s.environment_dict
             env["posre_files"] = posre_files
             s.environment_dict = env
-            
+
             s.state = "ready"
             registered += 1
 

@@ -410,7 +410,10 @@ def main():
         help="Monitor real-time task progress via cluster UDP telemetry",
     )
     p_watch.add_argument(
-        "--port", type=int, default=8088, help="Telemetry relay UDP port (default: 8088)"
+        "--port",
+        type=int,
+        default=8088,
+        help="Telemetry relay UDP port (default: 8088)",
     )
 
     args = parser.parse_args()

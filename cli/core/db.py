@@ -37,9 +37,17 @@ def set_sqlite_pragma(dbapi_connection, connection_record):
 system_cofactors = Table(
     "system_cofactors",
     Base.metadata,
-    Column("system_id", Integer, ForeignKey("systems.id", ondelete="CASCADE"), primary_key=True),
-    Column("pose_id", Integer, ForeignKey("poses.id", ondelete="CASCADE"), primary_key=True),
+    Column(
+        "system_id",
+        Integer,
+        ForeignKey("systems.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column(
+        "pose_id", Integer, ForeignKey("poses.id", ondelete="CASCADE"), primary_key=True
+    ),
 )
+
 
 class Target(Base):
     """
@@ -121,14 +129,18 @@ class Substance(Base):
     smiles = Column(Text, nullable=False)
     name = Column(String, nullable=False)
     res_name = Column(String(8), nullable=False)
-    substance_type = Column(String, default="ligand", nullable=False)  # 'ligand', 'cofactor', 'ion'
+    substance_type = Column(
+        String, default="ligand", nullable=False
+    )  # 'ligand', 'cofactor', 'ion'
     state = Column(String, default="raw", nullable=False)  # 'raw', 'ready'
     batch_id = Column(String, nullable=True)
     path_mae = Column(String, nullable=True)  # Prepared .maegz for LigPrep
-    path_sdf = Column(String, nullable=True)  # Prepared .sdf 
+    path_sdf = Column(String, nullable=True)  # Prepared .sdf
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
-    poses = relationship("Pose", back_populates="substance", cascade="all, delete-orphan")
+    poses = relationship(
+        "Pose", back_populates="substance", cascade="all, delete-orphan"
+    )
 
 
 class Pose(Base):
@@ -215,7 +227,9 @@ class System(Base):
     target = relationship("Target", back_populates="systems")
     receptor_frame = relationship("ReceptorFrame", back_populates="systems")
     pose = relationship("Pose", back_populates="systems")
-    cofactors = relationship("Pose", secondary=system_cofactors, backref="cofactor_systems")
+    cofactors = relationship(
+        "Pose", secondary=system_cofactors, backref="cofactor_systems"
+    )
     trajectories = relationship(
         "Trajectory", back_populates="system", cascade="all, delete-orphan"
     )

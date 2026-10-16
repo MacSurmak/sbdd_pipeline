@@ -72,13 +72,20 @@ def _build_prep_args(config: Dict[str, Any]) -> list:
     gnina_cfg = config.get("gnina", {})
     b_size = gnina_cfg.get("batch_size", 10)
 
-    args.extend([
-        "--ligand_ph", str(lig_ph),
-        "--ligand_ph_tol", str(lig_tol),
-        "--ligprep_ff", str(lig_ff),
-        "--max_states", str(max_st),
-        "--batch_size", str(b_size),
-    ])
+    args.extend(
+        [
+            "--ligand_ph",
+            str(lig_ph),
+            "--ligand_ph_tol",
+            str(lig_tol),
+            "--ligprep_ff",
+            str(lig_ff),
+            "--max_states",
+            str(max_st),
+            "--batch_size",
+            str(b_size),
+        ]
+    )
 
     mem_cfg = config.get("membrane", {})
     if mem_cfg.get("enabled"):

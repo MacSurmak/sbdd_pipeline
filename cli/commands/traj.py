@@ -9,7 +9,15 @@ import sys
 from pathlib import Path
 from rich.console import Console
 from rich.table import Table
-from cli.core.db import init_db, Target, ReceptorFrame, Substance, Pose, System, Trajectory
+from cli.core.db import (
+    init_db,
+    Target,
+    ReceptorFrame,
+    Substance,
+    Pose,
+    System,
+    Trajectory,
+)
 from cli.core.runner import execute_nextflow
 from cli.core.config_loader import load_project_configs, build_nextflow_args
 
@@ -193,7 +201,11 @@ def run_metrics(
             sys.exit(1)
 
         sys_obj = t.system
-        lig_code = sys_obj.pose.substance.name if (sys_obj.pose and sys_obj.pose.substance) else ""
+        lig_code = (
+            sys_obj.pose.substance.name
+            if (sys_obj.pose and sys_obj.pose.substance)
+            else ""
+        )
         cofactors = [c.substance.name for c in sys_obj.cofactors if c.substance]
         metrics_dir = clean_dir.parent / "metrics"
 
@@ -484,12 +496,15 @@ def run_cluster(
 
         # A. Publish Centroid Frame into targets/<target>/frames/<centroid_frame_name>/
         centroid_frame_name = centroid_title
-        frame_dir = cwd / "targets" / parent_sys.target.name / "frames" / centroid_frame_name
+        frame_dir = (
+            cwd / "targets" / parent_sys.target.name / "frames" / centroid_frame_name
+        )
         frame_dir.mkdir(parents=True, exist_ok=True)
 
         dest_pdb = frame_dir / f"{centroid_frame_name}_receptor.pdb"
         dest_mae = frame_dir / f"{centroid_frame_name}_receptor.mae"
         import shutil
+
         if src_pdb != dest_pdb:
             shutil.copy2(src_pdb, dest_pdb)
         if src_mae != dest_mae:
@@ -528,7 +543,9 @@ def run_cluster(
             src_p_mae = (task_dir / p_files["mae"]).resolve()
 
             if not src_p_sdf.exists() or src_p_sdf.stat().st_size == 0:
-                raise FileNotFoundError(f"FATAL: Centroid pose SDF missing or empty: {src_p_sdf}")
+                raise FileNotFoundError(
+                    f"FATAL: Centroid pose SDF missing or empty: {src_p_sdf}"
+                )
 
             # Match with parent pose to preserve substance lineage and charge
             parent_match = None
@@ -549,7 +566,13 @@ def run_cluster(
                 )
 
             cluster_pose_name = f"{centroid_frame_name}_{res_clean}_pose"
-            sub_pose_dir = cwd / "substances" / parent_match.substance.inchikey / "poses" / cluster_pose_name
+            sub_pose_dir = (
+                cwd
+                / "substances"
+                / parent_match.substance.inchikey
+                / "poses"
+                / cluster_pose_name
+            )
             sub_pose_dir.mkdir(parents=True, exist_ok=True)
 
             dest_p_sdf = sub_pose_dir / f"{res_clean}_pose.sdf"
@@ -580,7 +603,9 @@ def run_cluster(
             else:
                 ex_pose.path = str(dest_p_sdf.resolve())
                 ex_pose.path_sdf = str(dest_p_sdf.resolve())
-                ex_pose.path_mae = str(dest_p_mae.resolve()) if dest_p_mae.exists() else None
+                ex_pose.path_mae = (
+                    str(dest_p_mae.resolve()) if dest_p_mae.exists() else None
+                )
                 ex_pose.formal_charge = parent_match.formal_charge
                 ex_pose.state = "raw"
                 curr_pose = ex_pose

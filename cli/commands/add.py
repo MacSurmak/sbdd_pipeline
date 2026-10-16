@@ -8,7 +8,15 @@ from pathlib import Path
 import sys
 import shutil
 from rich.console import Console
-from cli.core.db import init_db, Target, ReceptorFrame, Substance, Pose, System, Trajectory
+from cli.core.db import (
+    init_db,
+    Target,
+    ReceptorFrame,
+    Substance,
+    Pose,
+    System,
+    Trajectory,
+)
 from cli.core.chem import get_mol_identity
 
 console = Console()
@@ -86,7 +94,12 @@ STANDARD_PROTEIN_RESIDUES = {
 class CleanStructureSelect:
     """Strict filter: retains standard protein residues AND explicitly declared heterogens only."""
 
-    def __init__(self, allowed_ligand: str | None, allowed_cofactors: list[str], allowed_ions: list[str]):
+    def __init__(
+        self,
+        allowed_ligand: str | None,
+        allowed_cofactors: list[str],
+        allowed_ions: list[str],
+    ):
         self.allowed_resnames = set()
         if allowed_ligand:
             self.allowed_resnames.add(allowed_ligand.strip().upper())
@@ -138,7 +151,9 @@ def _sanitize_and_split_models(
     elif suffix == ".pdb":
         parser = PDBParser(QUIET=True)
     else:
-        raise ValueError(f"FATAL: Unsupported structure format '{suffix}'. Expected .pdb or .cif/.mmcif")
+        raise ValueError(
+            f"FATAL: Unsupported structure format '{suffix}'. Expected .pdb or .cif/.mmcif"
+        )
 
     st = parser.get_structure("struct", str(struct_path))
 
@@ -170,7 +185,9 @@ def _sanitize_and_split_models(
             )
 
     io = PDBIO()
-    clean_selector = CleanStructureSelect(allowed_ligand, allowed_cofactors, allowed_ions)
+    clean_selector = CleanStructureSelect(
+        allowed_ligand, allowed_cofactors, allowed_ions
+    )
 
     models = list(st.get_models())
     results = []
@@ -184,7 +201,7 @@ def _sanitize_and_split_models(
             frame_dir = dest_dir / f_name
             frame_dir.mkdir(parents=True, exist_ok=True)
             out_complex = frame_dir / f"{f_name}_raw.pdb"
-            
+
             io.set_structure(model)
             io.save(str(out_complex), clean_selector)
             results.append((f_name, out_complex))
@@ -305,7 +322,9 @@ def _align_and_clamp_sequence(struct_seq: str, full_fasta_seq: str) -> str:
 
     alignments = aligner.align(full_fasta_seq, struct_seq)
     if not alignments:
-        raise ValueError("FATAL: Provided FASTA sequence cannot be aligned to experimental structure!")
+        raise ValueError(
+            "FATAL: Provided FASTA sequence cannot be aligned to experimental structure!"
+        )
 
     best = alignments[0]
     blocks_fasta = best.aligned[0]
@@ -317,10 +336,7 @@ def _align_and_clamp_sequence(struct_seq: str, full_fasta_seq: str) -> str:
 
 
 def _resolve_target_sequence(
-    target_name: str,
-    struct_path: Path,
-    fasta_arg: str | None,
-    has_gaps: bool
+    target_name: str, struct_path: Path, fasta_arg: str | None, has_gaps: bool
 ) -> str | None:
     """
     Deterministically resolves reference sequence without blocking interactive prompts.
@@ -331,7 +347,11 @@ def _resolve_target_sequence(
     from Bio.PDB import PDBParser, MMCIFParser
 
     suffix = struct_path.suffix.lower()
-    parser = MMCIFParser(QUIET=True) if suffix in [".cif", ".mmcif"] else PDBParser(QUIET=True)
+    parser = (
+        MMCIFParser(QUIET=True)
+        if suffix in [".cif", ".mmcif"]
+        else PDBParser(QUIET=True)
+    )
     st = parser.get_structure("struct", str(struct_path))
     resolved_chains = _extract_resolved_sequences_by_chain(st)
 
@@ -378,11 +398,15 @@ def _resolve_target_sequence(
     if len(resolved_chains) == 1 and len(fasta_records) == 1:
         c_id = list(resolved_chains.keys())[0]
         full_seq = list(fasta_records.values())[0]
-        clamped_chains[c_id] = _align_and_clamp_sequence(resolved_chains[c_id], full_seq)
+        clamped_chains[c_id] = _align_and_clamp_sequence(
+            resolved_chains[c_id], full_seq
+        )
     else:
         for c_id, r_seq in resolved_chains.items():
             if c_id in fasta_records:
-                clamped_chains[c_id] = _align_and_clamp_sequence(r_seq, fasta_records[c_id])
+                clamped_chains[c_id] = _align_and_clamp_sequence(
+                    r_seq, fasta_records[c_id]
+                )
             elif len(fasta_records) == 1:
                 full_seq = list(fasta_records.values())[0]
                 clamped_chains[c_id] = _align_and_clamp_sequence(r_seq, full_seq)
@@ -437,17 +461,21 @@ def add_receptor(
         )
 
         # Check overall gap status across models
-        ensemble_has_gaps = any(_detect_gaps(complex_file) for _, complex_file in frames)
+        ensemble_has_gaps = any(
+            _detect_gaps(complex_file) for _, complex_file in frames
+        )
 
         target_dir = cwd / "targets" / target_name
         target_dir.mkdir(parents=True, exist_ok=True)
 
         if not target_obj:
-            ref_seq = _resolve_target_sequence(target_name, struct_path, fasta, ensemble_has_gaps)
+            ref_seq = _resolve_target_sequence(
+                target_name, struct_path, fasta, ensemble_has_gaps
+            )
             target_obj = Target(
                 name=target_name,
                 reference_sequence=ref_seq,
-                description=f"Target {target_name}"
+                description=f"Target {target_name}",
             )
             session.add(target_obj)
             session.flush()
@@ -456,16 +484,26 @@ def add_receptor(
                 fasta_file = target_dir / f"{target_name}_sequence.fasta"
                 fasta_file.write_text(ref_seq + "\n", encoding="utf-8")
 
-            seq_info = f"{len(ref_seq.splitlines()[-1])} aa" if ref_seq else "[yellow]pending FASTA[/yellow]"
-            console.print(f"[bold green]✓ Created Target '{target_name}'[/bold green] [dim](Sequence: {seq_info})[/dim]")
+            seq_info = (
+                f"{len(ref_seq.splitlines()[-1])} aa"
+                if ref_seq
+                else "[yellow]pending FASTA[/yellow]"
+            )
+            console.print(
+                f"[bold green]✓ Created Target '{target_name}'[/bold green] [dim](Sequence: {seq_info})[/dim]"
+            )
         elif not target_obj.reference_sequence:
-            ref_seq = _resolve_target_sequence(target_name, struct_path, fasta, ensemble_has_gaps)
+            ref_seq = _resolve_target_sequence(
+                target_name, struct_path, fasta, ensemble_has_gaps
+            )
             if ref_seq:
                 target_obj.reference_sequence = ref_seq
                 fasta_file = target_dir / f"{target_name}_sequence.fasta"
                 fasta_file.write_text(ref_seq + "\n", encoding="utf-8")
                 session.flush()
-                console.print(f"[bold green]✓ Associated Sequence with existing Target '{target_name}'[/bold green]")
+                console.print(
+                    f"[bold green]✓ Associated Sequence with existing Target '{target_name}'[/bold green]"
+                )
 
         for frame_name, complex_file in frames:
             has_gaps = _detect_gaps(complex_file)
@@ -504,13 +542,16 @@ def add_receptor(
             # In the 3NF schema, Poses live inside substances/<inchikey>/poses/<pose_name>/
             def _process_heterogen(resname: str, sub_type: str):
                 import tempfile
+
                 clean_res_name = resname.strip().upper()
 
                 with tempfile.NamedTemporaryFile(suffix=".sdf", delete=False) as tmp_f:
                     tmp_extract_sdf = Path(tmp_f.name)
 
                 _extract_ligand_atoms(complex_file, clean_res_name, tmp_extract_sdf)
-                parent_inchikey, parent_smiles, mol_name, formal_charge = get_mol_identity(tmp_extract_sdf)
+                parent_inchikey, parent_smiles, mol_name, formal_charge = (
+                    get_mol_identity(tmp_extract_sdf)
+                )
 
                 sub_dir = cwd / "substances" / parent_inchikey
                 sub_dir.mkdir(parents=True, exist_ok=True)
@@ -521,7 +562,9 @@ def add_receptor(
                     shutil.copy2(tmp_extract_sdf, base_sdf)
 
                 # Substance Registration
-                sub_entity = session.query(Substance).filter_by(inchikey=parent_inchikey).first()
+                sub_entity = (
+                    session.query(Substance).filter_by(inchikey=parent_inchikey).first()
+                )
                 if not sub_entity:
                     sub_entity = Substance(
                         inchikey=parent_inchikey,
@@ -574,7 +617,9 @@ def add_receptor(
                     )
                     session.add(p_obj)
                     session.flush()
-                    ch_label = f"q={formal_charge:+d}" if formal_charge != 0 else "neutral"
+                    ch_label = (
+                        f"q={formal_charge:+d}" if formal_charge != 0 else "neutral"
+                    )
                     console.print(
                         f"[bold green]✓ Registered Pose '{pose_name}'[/bold green] [dim]({clean_res_name}, {ch_label}) in substance {parent_inchikey}[/dim]"
                     )
@@ -686,9 +731,13 @@ def add_ligand(path: str, name: str | None = None, force: bool = False) -> None:
         )
         sys.exit(1)
 
-    raw_mols = [m for m in Chem.SDMolSupplier(str(target_path), removeHs=False) if m is not None]
+    raw_mols = [
+        m for m in Chem.SDMolSupplier(str(target_path), removeHs=False) if m is not None
+    ]
     if not raw_mols:
-        console.print(f"[bold red]FATAL: No valid molecules could be parsed from {target_path}[/bold red]")
+        console.print(
+            f"[bold red]FATAL: No valid molecules could be parsed from {target_path}[/bold red]"
+        )
         sys.exit(1)
 
     imported = 0
@@ -704,7 +753,7 @@ def add_ligand(path: str, name: str | None = None, force: bool = False) -> None:
             inchikey = Chem.MolToInchiKey(parent_mol)
             if not inchikey:
                 raise ValueError("Could not compute InChIKey")
-                
+
             smiles = Chem.MolToSmiles(parent_mol, canonical=True)
             if len(raw_mols) == 1 and name:
                 mol_title = name.strip()

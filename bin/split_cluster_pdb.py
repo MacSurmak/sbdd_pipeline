@@ -93,7 +93,10 @@ def normalize_gmx_cluster_pdb(raw_pdb_path: Path, lig_name: str) -> list[Path]:
             try:
                 res_seq = int(line[22:26].strip())
             except ValueError as e:
-                print(f"FATAL: Malformed residue sequence number in line '{line}': {e}", file=sys.stderr)
+                print(
+                    f"FATAL: Malformed residue sequence number in line '{line}': {e}",
+                    file=sys.stderr,
+                )
                 sys.exit(1)
 
             # Chain transition detection rules
@@ -225,20 +228,16 @@ def main():
 
         # 4. Extract ALL non-protein, non-water small molecules into separate poses
         for r_code in sorted(list(small_mol_resnames)):
-            mol_atoms = [
-                a.index
-                for a in st.atom
-                if a.pdbres.strip().upper() == r_code
-            ]
+            mol_atoms = [a.index for a in st.atom if a.pdbres.strip().upper() == r_code]
             if mol_atoms:
                 mol_st = st.extract(mol_atoms)
-                
+
                 if len(mol_st.molecule) > 1 and len(mol_atoms) > len(mol_st.molecule):
                     raise ValueError(
                         f"FATAL: Cluster centroid residue '{r_code}' resolves to {len(mol_st.molecule)} disconnected molecules! "
                         f"This corrupts topology. Ensure input complex had uniquely named molecules."
                     )
-                
+
                 mol_st.title = r_code
                 mol_st.property["s_m_title"] = r_code
 
@@ -260,21 +259,27 @@ def main():
         st.write(pdb_name)
         st.write(mae_name)
 
-        receipt_records.append({
-            "sys_name": args.sys_name,
-            "centroid_title": c_title,
-            "view_pdb": view_pdb_name,
-            "pdb": pdb_name,
-            "mae": mae_name,
-            "poses": centroid_poses,
-        })
+        receipt_records.append(
+            {
+                "sys_name": args.sys_name,
+                "centroid_title": c_title,
+                "view_pdb": view_pdb_name,
+                "pdb": pdb_name,
+                "mae": mae_name,
+                "poses": centroid_poses,
+            }
+        )
 
         # Cleanup temporary normalized model PDB
         model_pdb.unlink(missing_ok=True)
 
     # Always write deterministic JSON receipt
     out_receipt_p = Path(args.out_receipt)
-    json_path = out_receipt_p.with_suffix(".json") if out_receipt_p.suffix.lower() != ".json" else out_receipt_p
+    json_path = (
+        out_receipt_p.with_suffix(".json")
+        if out_receipt_p.suffix.lower() != ".json"
+        else out_receipt_p
+    )
     json_path.write_text(json.dumps(receipt_records, indent=2), encoding="utf-8")
 
     print(f"Extracted {len(receipt_records)} cluster centroid(s) -> {json_path}")

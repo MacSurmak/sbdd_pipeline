@@ -20,16 +20,24 @@ def main():
         "--complex_mae", required=True, help="Input prepared complex MAE"
     )
     parser.add_argument(
-        "--poses_spec_json", required=True, help="JSON file containing explicit pose extraction targets from DB plan"
+        "--poses_spec_json",
+        required=True,
+        help="JSON file containing explicit pose extraction targets from DB plan",
     )
     parser.add_argument(
-        "--out_receptor_mae", required=True, help="Explicit destination for prepared receptor MAE"
+        "--out_receptor_mae",
+        required=True,
+        help="Explicit destination for prepared receptor MAE",
     )
     parser.add_argument(
-        "--out_receptor_pdb", required=True, help="Explicit destination for prepared receptor PDB"
+        "--out_receptor_pdb",
+        required=True,
+        help="Explicit destination for prepared receptor PDB",
     )
     parser.add_argument(
-        "--out_manifest", default="extracted_poses.json", help="Output JSON receipt of extracted poses"
+        "--out_manifest",
+        default="extracted_poses.json",
+        help="Output JSON receipt of extracted poses",
     )
     args = parser.parse_args()
 
@@ -46,9 +54,12 @@ def main():
         sys.exit(1)
 
     import json
+
     spec_path = Path(args.poses_spec_json)
     if not spec_path.exists():
-        raise FileNotFoundError(f"FATAL: Pose specification manifest not found: {spec_path}")
+        raise FileNotFoundError(
+            f"FATAL: Pose specification manifest not found: {spec_path}"
+        )
 
     poses_spec = json.loads(spec_path.read_text(encoding="utf-8"))
     extracted_records = []
@@ -70,7 +81,7 @@ def main():
             )
 
         pose_st = st.extract(atoms)
-        
+
         # Strict Fail-Fast: Ensure organic poses are single connected graphs
         if not is_ion and len(pose_st.molecule) > 1:
             raise ValueError(
@@ -88,23 +99,29 @@ def main():
 
         st.deleteAtoms(atoms)
 
-        extracted_records.append({
-            "pose_name": pose_name,
-            "res_name": res_clean,
-            "inchikey": inchikey,
-            "charge": int(pose_st.formal_charge),
-            "sdf": out_sdf,
-            "mae": out_mae,
-            "is_ligand": is_lig,
-            "is_ion": is_ion,
-        })
-        print(f"Extracted pose '{pose_name}' ({res_clean}, {len(atoms)} atoms, formal charge {int(pose_st.formal_charge)}).")
+        extracted_records.append(
+            {
+                "pose_name": pose_name,
+                "res_name": res_clean,
+                "inchikey": inchikey,
+                "charge": int(pose_st.formal_charge),
+                "sdf": out_sdf,
+                "mae": out_mae,
+                "is_ligand": is_lig,
+                "is_ion": is_ion,
+            }
+        )
+        print(
+            f"Extracted pose '{pose_name}' ({res_clean}, {len(atoms)} atoms, formal charge {int(pose_st.formal_charge)})."
+        )
 
     # The remaining structure is 100% PURE APO PROTEIN
     st.write(args.out_receptor_mae)
     st.write(args.out_receptor_pdb)
 
-    Path(args.out_manifest).write_text(json.dumps(extracted_records, indent=2), encoding="utf-8")
+    Path(args.out_manifest).write_text(
+        json.dumps(extracted_records, indent=2), encoding="utf-8"
+    )
     print(
         f"Wrote prepared receptor to {args.out_receptor_mae} and {args.out_receptor_pdb} ({st.atom_total} atoms)."
     )

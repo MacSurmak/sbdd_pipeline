@@ -46,6 +46,7 @@ def run_init(
                     shutil.copy(f, dest)
 
     from cli.core.db import init_db
+
     init_db(target_dir / "sbdd_state.db", create_if_missing=True)
 
     console.print(

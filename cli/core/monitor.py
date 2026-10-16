@@ -172,7 +172,9 @@ def run_monitor(port: int = 8088):
                         task_dts[t_id] = dt_ps
 
                         perf = payload.get("performance", {})
-                        speed_val = perf.get("cumulative_ns_day") or perf.get("instant_ns_day")
+                        speed_val = perf.get("cumulative_ns_day") or perf.get(
+                            "instant_ns_day"
+                        )
                         if speed_val and dt_ps > 0:
                             # Translate physical ns/day velocity into steps/sec
                             task_rate_steps_s[t_id] = speed_val / (dt_ps * 86.4)
@@ -187,10 +189,16 @@ def run_monitor(port: int = 8088):
                             gpu_short = gpu_name
 
                         gpu_util = hw_gpu.get("utilization_gpu_pct")
-                        task_gpus[t_id] = f"{gpu_short} ({gpu_util}%)" if gpu_util is not None else gpu_short
+                        task_gpus[t_id] = (
+                            f"{gpu_short} ({gpu_util}%)"
+                            if gpu_util is not None
+                            else gpu_short
+                        )
 
                         p_watts = hw_gpu.get("power_watts")
-                        task_powers[t_id] = f"{p_watts:>5.1f} W" if p_watts is not None else "-- W"
+                        task_powers[t_id] = (
+                            f"{p_watts:>5.1f} W" if p_watts is not None else "-- W"
+                        )
 
                         task_speeds[t_id] = payload.get("speed", "-- ns/d")
                         task_etas[t_id] = payload.get("eta", "--:--")
@@ -198,11 +206,16 @@ def run_monitor(port: int = 8088):
 
                         clean_name = t_id.strip()
                         m_chunk_wrap = re.match(
-                            r"^RUN_MD_CHUNK_\d+_(.+?)\s+(\(#\d+\))\s*\([^)]*\)$", clean_name
+                            r"^RUN_MD_CHUNK_\d+_(.+?)\s+(\(#\d+\))\s*\([^)]*\)$",
+                            clean_name,
                         )
                         if m_chunk_wrap:
-                            clean_name = f"MD: {m_chunk_wrap.group(1)} {m_chunk_wrap.group(2)}"
-                        elif ":" in clean_name and not clean_name.startswith(("EQ:", "MD:", "SWISH:")):
+                            clean_name = (
+                                f"MD: {m_chunk_wrap.group(1)} {m_chunk_wrap.group(2)}"
+                            )
+                        elif ":" in clean_name and not clean_name.startswith(
+                            ("EQ:", "MD:", "SWISH:")
+                        ):
                             clean_name = clean_name.split(":")[-1].strip()
                         task_names[t_id] = clean_name
 
@@ -229,7 +242,9 @@ def run_monitor(port: int = 8088):
                     total_st = task_totals.get(t_id, 1)
 
                     if rate_s > 0 and time_delta > 0:
-                        interpolated_st = min(total_st, int(real_st + rate_s * time_delta))
+                        interpolated_st = min(
+                            total_st, int(real_st + rate_s * time_delta)
+                        )
                     else:
                         interpolated_st = real_st
 
