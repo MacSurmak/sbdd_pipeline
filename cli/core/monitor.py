@@ -97,7 +97,7 @@ def run_monitor(port: int = 8088):
     """
     console.rule("[bold cyan]SBDD Cluster MD Live Monitor (GROMACS)[/bold cyan]")
     console.print(
-        f"[dim]Streaming live 10Hz telemetry from 127.0.0.1:{port}... Press Ctrl+C to exit.[/dim]\n"
+        f"[dim]Live telemetry from 127.0.0.1:{port}... Press Ctrl+C to exit.[/dim]\n"
     )
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
