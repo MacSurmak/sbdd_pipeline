@@ -108,7 +108,7 @@ def run_monitor(port: int = 8088):
         except Exception:
             pass
     sock.bind(("127.0.0.1", port))
-    sock.settimeout(0.2)
+    sock.settimeout(0.05)
 
     progress = Progress(
         TextColumn("[bold cyan]{task.description}"),
@@ -126,101 +126,144 @@ def run_monitor(port: int = 8088):
     task_bars = {}
     last_seen = {}
 
+    # Real-time state trackers for smooth dead-reckoning extrapolation
+    task_real_step = {}
+    task_packet_time = {}
+    task_rate_steps_s = {}
+    task_totals = {}
+    task_dts = {}
+    task_nodes = {}
+    task_gpus = {}
+    task_powers = {}
+    task_speeds = {}
+    task_etas = {}
+    task_names = {}
+
     try:
         with progress:
             while True:
                 now = time.time()
 
-                # Remove stalled or halted tasks after 3.5s of silence
+                # Process all incoming UDP packets (non-blocking batch)
+                while True:
+                    try:
+                        data, _ = sock.recvfrom(65535)
+                        payload = json.loads(data.decode("utf-8", errors="ignore"))
+                        t_id = payload.get("task", "unknown")
+                        if t_id == "unknown":
+                            continue
+
+                        if payload.get("event") == "exit":
+                            if t_id in task_bars:
+                                progress.remove_task(task_bars[t_id])
+                                del task_bars[t_id]
+                                last_seen.pop(t_id, None)
+                            continue
+
+                        last_seen[t_id] = now
+                        step = payload.get("display_step", payload.get("step")) or 0
+                        total = payload.get("display_total", payload.get("total")) or 1
+                        dt_ps = payload.get("dt_ps") or 0.002
+
+                        task_real_step[t_id] = step
+                        task_packet_time[t_id] = now
+                        task_totals[t_id] = total
+                        task_dts[t_id] = dt_ps
+
+                        perf = payload.get("performance", {})
+                        speed_val = perf.get("cumulative_ns_day") or perf.get("instant_ns_day")
+                        if speed_val and dt_ps > 0:
+                            # Translate physical ns/day velocity into steps/sec
+                            task_rate_steps_s[t_id] = speed_val / (dt_ps * 86.4)
+                        else:
+                            task_rate_steps_s[t_id] = 0.0
+
+                        hw_gpu = payload.get("hardware", {}).get("gpu", {})
+                        gpu_name = hw_gpu.get("model") or "GPU"
+                        if "RTX" in gpu_name:
+                            gpu_short = "RTX " + gpu_name.split("RTX")[-1].strip()
+                        else:
+                            gpu_short = gpu_name
+
+                        gpu_util = hw_gpu.get("utilization_gpu_pct")
+                        task_gpus[t_id] = f"{gpu_short} ({gpu_util}%)" if gpu_util is not None else gpu_short
+
+                        p_watts = hw_gpu.get("power_watts")
+                        task_powers[t_id] = f"{p_watts:>5.1f} W" if p_watts is not None else "-- W"
+
+                        task_speeds[t_id] = payload.get("speed", "-- ns/d")
+                        task_etas[t_id] = payload.get("eta", "--:--")
+                        task_nodes[t_id] = payload.get("node") or "node"
+
+                        clean_name = t_id.strip()
+                        m_chunk_wrap = re.match(
+                            r"^RUN_MD_CHUNK_\d+_(.+?)\s+(\(#\d+\))\s*\([^)]*\)$", clean_name
+                        )
+                        if m_chunk_wrap:
+                            clean_name = f"MD: {m_chunk_wrap.group(1)} {m_chunk_wrap.group(2)}"
+                        elif ":" in clean_name and not clean_name.startswith(("EQ:", "MD:", "SWISH:")):
+                            clean_name = clean_name.split(":")[-1].strip()
+                        task_names[t_id] = clean_name
+
+                    except (socket.timeout, BlockingIOError):
+                        break
+                    except Exception:
+                        break
+
+                # Remove stalled tasks only after 15 seconds of complete silence
                 for t_id in list(task_bars.keys()):
-                    if now - last_seen.get(t_id, now) > 3.5:
+                    if now - last_seen.get(t_id, now) > 15.0:
                         progress.remove_task(task_bars[t_id])
                         del task_bars[t_id]
                         last_seen.pop(t_id, None)
 
-                try:
-                    data, _ = sock.recvfrom(65535)
-                    payload = json.loads(data.decode("utf-8", errors="ignore"))
-                    t_id = payload.get("task", "unknown")
-                    if t_id == "unknown":
+                # 20 FPS Dead-Reckoning Extrapolation rendering
+                for t_id, real_st in list(task_real_step.items()):
+                    if now - last_seen.get(t_id, now) > 15.0:
                         continue
 
-                    if payload.get("event") == "exit":
-                        if t_id in task_bars:
-                            progress.remove_task(task_bars[t_id])
-                            del task_bars[t_id]
-                            last_seen.pop(t_id, None)
-                        continue
+                    rate_s = task_rate_steps_s.get(t_id, 0.0)
+                    time_delta = now - task_packet_time.get(t_id, now)
+                    total_st = task_totals.get(t_id, 1)
 
-                    last_seen[t_id] = now
-
-                    step = payload.get("display_step", payload.get("step")) or 0
-                    total = payload.get("display_total", payload.get("total")) or 1
-                    dt_ps = payload.get("dt_ps") or 0.002
-
-                    step_info = payload.get("step_info")
-                    if not step_info:
-                        t_str = f" [dim]({format_time_ns(step * dt_ps)})[/dim]"
-                        step_info = f"[cyan]{format_steps(step)}/{format_steps(total)}[/cyan]{t_str}"
-
-                    speed_str = payload.get("speed", "-- ns/d")
-                    eta_str = payload.get("eta", "--:--")
-
-                    hw_gpu = payload.get("hardware", {}).get("gpu", {})
-                    gpu_name = hw_gpu.get("model") or "GPU"
-                    if "RTX" in gpu_name:
-                        gpu_short = "RTX " + gpu_name.split("RTX")[-1].strip()
+                    if rate_s > 0 and time_delta > 0:
+                        interpolated_st = min(total_st, int(real_st + rate_s * time_delta))
                     else:
-                        gpu_short = gpu_name
+                        interpolated_st = real_st
 
-                    gpu_util = hw_gpu.get("utilization_gpu_pct")
-                    gpu_str = f"{gpu_short} ({gpu_util}%)" if gpu_util is not None else gpu_short
-
-                    p_watts = hw_gpu.get("power_watts")
-                    power_str = f"{p_watts:>5.1f} W" if p_watts is not None else "-- W"
-
-                    clean_name = t_id.strip()
-                    m_chunk_wrap = re.match(
-                        r"^RUN_MD_CHUNK_\d+_(.+?)\s+(\(#\d+\))\s*\([^)]*\)$", clean_name
-                    )
-                    if m_chunk_wrap:
-                        clean_name = f"MD: {m_chunk_wrap.group(1)} {m_chunk_wrap.group(2)}"
-                    elif ":" in clean_name and not clean_name.startswith(("EQ:", "MD:", "SWISH:")):
-                        clean_name = clean_name.split(":")[-1].strip()
-
-                    node_str = payload.get("node") or "node"
+                    dt_ps = task_dts.get(t_id, 0.002)
+                    t_str = f" [dim]({format_time_ns(interpolated_st * dt_ps)})[/dim]"
+                    step_info = f"[cyan]{format_steps(interpolated_st)}/{format_steps(total_st)}[/cyan]{t_str}"
 
                     if t_id not in task_bars:
                         task_bars[t_id] = progress.add_task(
-                            f"[green]{escape(clean_name)}",
-                            total=total,
-                            completed=step,
-                            node=escape(node_str),
-                            gpu=escape(gpu_str),
-                            power=power_str,
-                            speed=speed_str,
+                            f"[green]{escape(task_names.get(t_id, t_id))}",
+                            total=total_st,
+                            completed=interpolated_st,
+                            node=escape(task_nodes.get(t_id, "node")),
+                            gpu=escape(task_gpus.get(t_id, "GPU")),
+                            power=task_powers.get(t_id, "-- W"),
+                            speed=task_speeds.get(t_id, "-- ns/d"),
                             step_info=step_info,
-                            eta=eta_str,
+                            eta=task_etas.get(t_id, "--:--"),
                         )
                     else:
                         task_obj = progress._tasks[task_bars[t_id]]
-                        if total is not None and task_obj.total != total:
-                            progress.update(task_bars[t_id], total=total)
+                        if total_st is not None and task_obj.total != total_st:
+                            progress.update(task_bars[t_id], total=total_st)
 
                         progress.update(
                             task_bars[t_id],
-                            completed=step,
-                            node=escape(node_str),
-                            gpu=escape(gpu_str),
-                            power=power_str,
-                            speed=speed_str,
+                            completed=interpolated_st,
+                            node=escape(task_nodes.get(t_id, "node")),
+                            gpu=escape(task_gpus.get(t_id, "GPU")),
+                            power=task_powers.get(t_id, "-- W"),
+                            speed=task_speeds.get(t_id, "-- ns/d"),
                             step_info=step_info,
-                            eta=eta_str,
+                            eta=task_etas.get(t_id, "--:--"),
                         )
-                except socket.timeout:
-                    continue
-                except Exception:
-                    pass
+
+                time.sleep(0.05)
 
     except KeyboardInterrupt:
         console.print("\n[yellow]Monitoring stopped.[/yellow]")
