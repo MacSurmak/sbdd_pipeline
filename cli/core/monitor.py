@@ -157,7 +157,8 @@ def run_monitor(port: int = 8088):
                             if t_id in task_bars:
                                 progress.remove_task(task_bars[t_id])
                                 del task_bars[t_id]
-                                last_seen.pop(t_id, None)
+                            last_seen.pop(t_id, None)
+                            task_real_step.pop(t_id, None)
                             continue
 
                         last_seen[t_id] = now
@@ -216,6 +217,7 @@ def run_monitor(port: int = 8088):
                         progress.remove_task(task_bars[t_id])
                         del task_bars[t_id]
                         last_seen.pop(t_id, None)
+                        task_real_step.pop(t_id, None)
 
                 # 20 FPS Dead-Reckoning Extrapolation rendering
                 for t_id, real_st in list(task_real_step.items()):
