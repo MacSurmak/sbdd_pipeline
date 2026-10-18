@@ -1,6 +1,5 @@
 /* Dynamically generated unrolled DAG for chunked MD */
 include { GMX_EQUILIBRATION } from '../modules/gromacs/equilibration'
-include { TRJCAT            } from '../modules/gromacs/trjcat'
 include { RUN_MD_CHUNK as RUN_MD_CHUNK_1 } from '../modules/gromacs/run_chunk'
 include { RUN_MD_CHUNK as RUN_MD_CHUNK_2 } from '../modules/gromacs/run_chunk'
 include { RUN_MD_CHUNK as RUN_MD_CHUNK_3 } from '../modules/gromacs/run_chunk'
@@ -81,10 +80,6 @@ workflow RUN_CHUNKED_MD {
 
     sys_files = step_1.sys_files
 
-    ch_grouped_xtcs = ch_all_xtcs.groupTuple(by: 0, size: 10, sort: true)
-    TRJCAT(ch_grouped_xtcs)
-
     emit:
-    raw_trajectory = TRJCAT.out.concat_xtc
     sys_files = sys_files
 }
