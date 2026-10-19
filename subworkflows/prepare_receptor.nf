@@ -101,27 +101,7 @@ workflow PREPARE_RECEPTOR {
 
     ch_receipt_data.collectFile(name: 'prep_receipt.tsv', storeDir: params.outdir, newLine: true)
 
-    // Stream protonated in-situ organic poses directly to Antechamber for quantum parametrization into substances/<inchikey>/poses/<pose_name>
-    ch_poses_to_param = SPLIT_PREPARED.out.poses_manifest
-        .flatMap { meta, json_file ->
-            def records = new groovy.json.JsonSlurperClassic().parseText(json_file.text)
-
-            records.findAll { !it.is_ion }.collect { rec ->
-                def pose_meta = [
-                    id: rec.pose_name,
-                    name: rec.pose_name,
-                    res_name: rec.res_name,
-                    inchikey: rec.inchikey,
-                    charge: rec.charge as int,
-                    is_ion: false
-                ]
-                def sdf_file = json_file.parent.resolve(rec.sdf)
-                [ pose_meta, sdf_file ]
-            }
-        }
-
     emit:
     prepared_mae     = SPLIT_PREPARED.out.prepared_mae
     membrane_json    = ch_mem_json
-    poses_to_param   = ch_poses_to_param
 }

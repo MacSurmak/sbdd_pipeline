@@ -122,8 +122,13 @@ def print_tree() -> None:
                 )
             )
             type_badge = f"[bold]{sub.substance_type.upper()}[/bold]"
+            param_status = (
+                " [bold green]+GAFF2[/bold green]"
+                if (sub.path_mol2 and sub.path_frcmod)
+                else ""
+            )
             sub_node = sub_branch.add(
-                f"{type_badge}: [{s_color}]{sub.name}[/{s_color}] [{s_color}][{sub.state}][/{s_color}]{prep_info} [dim]({sub.inchikey}) SMILES: {sub.smiles}[/dim]"
+                f"{type_badge}: [{s_color}]{sub.name}[/{s_color}] [{s_color}][{sub.state}][/{s_color}]{param_status}{prep_info} [dim]({sub.inchikey}) SMILES: {sub.smiles}[/dim]"
             )
 
             poses = (
@@ -138,13 +143,8 @@ def print_tree() -> None:
                 ch_tag = (
                     f" [cyan](q={ch:+d})[/cyan]" if ch != 0 else " [dim](neutral)[/dim]"
                 )
-                param_status = (
-                    " [bold green]+GAFF2[/bold green]"
-                    if (p.path_mol2 and p.path_frcmod)
-                    else ""
-                )
                 sub_node.add(
-                    f"Pose: [{p_color}]{p.name}[/{p_color}] [dim]({p.origin}, state={p.state})[/dim]{ch_tag}{param_status} in [cyan]{p.receptor_frame.name}[/cyan] -> {Path(p.path).name}"
+                    f"Pose: [{p_color}]{p.name}[/{p_color}] [dim]({p.origin}, state={p.state})[/dim]{ch_tag} in [cyan]{p.receptor_frame.name}[/cyan] -> {Path(p.path).name}"
                 )
 
     session.close()

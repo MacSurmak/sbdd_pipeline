@@ -5,7 +5,6 @@
 
 include { PREPARE_RECEPTOR } from '../subworkflows/prepare_receptor'
 include { PREPARE_LIGANDS  } from '../subworkflows/prepare_ligands'
-include { PARAMETRIZE_POSE } from '../modules/amber/antechamber'
 
 workflow PREPARE_WF {
     if (!params.plan) { error "FATAL: Parameter --plan (JSON) is required for database-driven preparation." }
@@ -17,7 +16,6 @@ workflow PREPARE_WF {
 
     // 1. Process Receptors if present in plan
     def receptorList = planData.receptors ?: (planData instanceof List ? planData : [])
-    ch_extracted_poses = Channel.empty()
 
     if (receptorList) {
         ch_targets = Channel.fromList(receptorList).map { target ->
@@ -51,8 +49,6 @@ workflow PREPARE_WF {
             params.minimize_rmsd,
             params.cap_termini
         )
-
-        ch_extracted_poses = PREPARE_RECEPTOR.out.poses_to_param
     }
 
     // 2. Process Ligands if present in plan
@@ -93,37 +89,4 @@ workflow PREPARE_WF {
             "${base_id}\t${sub_dir}/${meta.name}_conformers.maegz\t${sub_dir}/${meta.name}_conformers.sdf"
         }.collectFile(name: 'prep_ligand_receipt.tsv', storeDir: params.outdir, newLine: true)
     }
-
-    // 3. Process Poses for Quantum Parametrization (Standalone Poses + In-Situ Poses from PrepWizard)
-    def poseList = planData.poses ?: []
-    ch_plan_poses = Channel.empty()
-    if (poseList) {
-        ch_plan_poses = Channel.fromList(poseList).filter { !it.is_ion }.map { pose ->
-            def sdf_path = file(pose.path)
-            if (!sdf_path.exists()) {
-                error "FATAL: Pose SDF path explicitly provided by DB does not exist: ${pose.path}"
-            }
-            def meta = [
-                id: pose.name,
-                name: pose.name,
-                res_name: pose.res_name ?: "LIG",
-                inchikey: pose.inchikey,
-                charge: pose.charge as int,
-                is_ion: false
-            ]
-            [ meta, sdf_path.toAbsolutePath() ]
-        }
-    }
-
-    ch_all_poses = ch_plan_poses.mix(ch_extracted_poses)
-
-    PARAMETRIZE_POSE(ch_all_poses)
-
-    PARAMETRIZE_POSE.out.map { meta, sdf, mol2, frcmod ->
-        def pose_dir = file("${params.outdir}/substances/${meta.inchikey}/poses/${meta.name}").toAbsolutePath()
-        def sdf_abs = "${pose_dir}/${sdf.name}"
-        def mol2_abs = "${pose_dir}/${mol2.name}"
-        def frcmod_abs = "${pose_dir}/${frcmod.name}"
-        "${meta.name}\t${sdf_abs}\t${mol2_abs}\t${frcmod_abs}"
-    }.collectFile(name: 'prep_pose_receipt.tsv', storeDir: params.outdir, newLine: true)
 }

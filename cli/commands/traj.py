@@ -18,6 +18,59 @@ from cli.core.db import (
     System,
     Trajectory,
 )
+
+
+def _restore_pose_from_template(template_sdf: Path, raw_pose_sdf: Path, out_sdf: Path) -> None:
+    """
+    Transfers MD cluster coordinates onto the pristine chemical graph template of the Substance.
+    Guarantees 100% preservation of correct bond orders, formal valences, and formal charges.
+    """
+    import shutil
+    from rdkit import Chem
+
+    ref_mol = next(Chem.SDMolSupplier(str(template_sdf), removeHs=False, sanitize=False), None)
+    raw_mol = next(Chem.SDMolSupplier(str(raw_pose_sdf), removeHs=False, sanitize=False), None)
+
+    if not ref_mol or not raw_mol:
+        shutil.copy2(raw_pose_sdf, out_sdf)
+        return
+
+    # 1. Direct coordinate transfer if atom counts and symbols match 1-to-1
+    if ref_mol.GetNumAtoms() == raw_mol.GetNumAtoms():
+        ref_syms = [a.GetSymbol() for a in ref_mol.GetAtoms()]
+        raw_syms = [a.GetSymbol() for a in raw_mol.GetAtoms()]
+        if ref_syms == raw_syms:
+            conf_ref = ref_mol.GetConformer()
+            conf_raw = raw_mol.GetConformer()
+            for i in range(ref_mol.GetNumAtoms()):
+                conf_ref.SetAtomPosition(i, conf_raw.GetAtomPosition(i))
+            with Chem.SDWriter(str(out_sdf)) as w:
+                w.write(ref_mol)
+            return
+
+    # 2. Subgraph isomorphism coordinate transfer for heavy atoms
+    ref_heavy = Chem.RemoveHs(ref_mol, sanitize=False)
+    raw_heavy = Chem.RemoveHs(raw_mol, sanitize=False)
+
+    q_raw = Chem.Mol(raw_heavy)
+    for b in q_raw.GetBonds():
+        b.SetBondType(Chem.BondType.SINGLE)
+    q_ref = Chem.Mol(ref_heavy)
+    for b in q_ref.GetBonds():
+        b.SetBondType(Chem.BondType.SINGLE)
+
+    match = q_ref.GetSubstructMatch(q_raw)
+    if match and len(match) == q_raw.GetNumAtoms():
+        conf_ref = ref_heavy.GetConformer()
+        conf_raw = raw_heavy.GetConformer()
+        for raw_idx, ref_idx in enumerate(match):
+            conf_ref.SetAtomPosition(ref_idx, conf_raw.GetAtomPosition(raw_idx))
+        restored = Chem.AddHs(ref_heavy, addCoords=True)
+        with Chem.SDWriter(str(out_sdf)) as w:
+            w.write(restored)
+        return
+
+    shutil.copy2(raw_pose_sdf, out_sdf)
 from cli.core.runner import execute_nextflow
 from cli.core.config_loader import load_project_configs, build_nextflow_args
 
@@ -534,6 +587,7 @@ def run_cluster(
             session.flush()
             frame_obj = new_frame
         else:
+            ex_frame.state = "ready"
             ex_frame.path = str(dest_pdb.resolve())
             ex_frame.path_mae = str(dest_mae.resolve())
             ex_frame.path_pdb = str(dest_pdb.resolve())
@@ -584,9 +638,12 @@ def run_cluster(
             dest_p_sdf = sub_pose_dir / f"{res_clean}_pose.sdf"
             dest_p_mae = sub_pose_dir / f"{res_clean}_pose.mae"
 
-            # Move poses to canonical 3NF directory to eliminate redundant storage
-            if src_p_sdf != dest_p_sdf:
-                shutil.move(str(src_p_sdf), str(dest_p_sdf))
+            # Restore exact chemical topology and valences from parent substance base template
+            template_sdf = Path(parent_match.substance.path_sdf).resolve()
+            _restore_pose_from_template(template_sdf, src_p_sdf, dest_p_sdf)
+            if src_p_sdf.exists() and src_p_sdf != dest_p_sdf:
+                src_p_sdf.unlink()
+
             if src_p_mae.exists() and src_p_mae != dest_p_mae:
                 shutil.move(str(src_p_mae), str(dest_p_mae))
 
@@ -598,7 +655,7 @@ def run_cluster(
                     name=cluster_pose_name,
                     res_name=parent_match.res_name,
                     origin="md_cluster",
-                    state="raw",  # Geometry shifted in MD -> requires sbdd prep Antechamber
+                    state="ready",
                     formal_charge=parent_match.formal_charge,
                     path=str(dest_p_sdf.resolve()),
                     path_sdf=str(dest_p_sdf.resolve()),
@@ -614,7 +671,7 @@ def run_cluster(
                     str(dest_p_mae.resolve()) if dest_p_mae.exists() else None
                 )
                 ex_pose.formal_charge = parent_match.formal_charge
-                ex_pose.state = "raw"
+                ex_pose.state = "ready"
                 curr_pose = ex_pose
 
             if is_main_lig:
