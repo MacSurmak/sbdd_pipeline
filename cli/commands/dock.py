@@ -454,7 +454,7 @@ def run_dock(
                 pose_counter[key] = pose_counter.get(key, 0) + 1
                 p_idx = pose_counter[key]
 
-                p_suffix = f"redock_p{p_idx}" if is_self else f"dock_{eng}_p{p_idx}"
+                p_suffix = f"redock_{eng}_p{p_idx}" if is_self else f"dock_{eng}_p{p_idx}"
                 pose_name = f"{frame_name}_{title}_{p_suffix}"
                 sys_name = f"{frame_name}_{title}_{p_suffix}"
                 origin_tag = f"redock_{eng}" if is_self else f"docking_{eng}"

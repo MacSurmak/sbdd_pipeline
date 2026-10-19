@@ -6,10 +6,22 @@ from pathlib import Path
 def cmd_merge_sdf(args):
     with open(args.out_sdf, "w") as out:
         for sdf in args.in_sdfs:
-            content = Path(sdf).read_text(errors="ignore")
-            out.write(content)
-            if not content.endswith("$$$$\n"):
-                out.write("\n$$$$\n")
+            lines = Path(sdf).read_text(errors="ignore").splitlines()
+            # Strip trailing empty lines or stray $$$$ to prevent empty blocks
+            while lines and (lines[-1].strip() == '' or lines[-1].strip() == '$$$$'):
+                lines.pop()
+            if not lines:
+                continue
+            
+            # Sanitise RDKit dimensionality warnings by enforcing 3D tags
+            for i in range(len(lines)):
+                if i == 1 or (i > 1 and lines[i-2] == '$$$$'):
+                    if len(lines[i]) >= 22 and lines[i][20:22] == '2D':
+                        lines[i] = lines[i][:20] + '3D' + lines[i][22:]
+                    elif '2D' in lines[i]:
+                        lines[i] = lines[i].replace('2D', '3D')
+                        
+            out.write('\n'.join(lines) + '\n$$$$\n')
 
 
 def main():

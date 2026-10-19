@@ -37,21 +37,16 @@ def main():
     # prevent RDKit coordinate dimensionality warnings without silencing the logger.
     try:
         with open(args.sdf, "r", encoding="utf-8") as f:
-            content = f.read()
-        
-        blocks = content.split('$$$$\n')
+            lines = f.read().splitlines()
+        for i in range(len(lines)):
+            # Line 1 (0-indexed) is the timestamp/dimension line. For subsequent molecules, it's 2 lines after $$$$
+            if i == 1 or (i > 1 and lines[i-2] == '$$$$'):
+                if len(lines[i]) >= 22 and lines[i][20:22] == '2D':
+                    lines[i] = lines[i][:20] + '3D' + lines[i][22:]
+                elif '2D' in lines[i]:
+                    lines[i] = lines[i].replace('2D', '3D')
         with open(args.sdf, "w", encoding="utf-8") as f:
-            for block in blocks:
-                if not block.strip():
-                    continue
-                lines = block.split('\n')
-                # Line 2 is the program/timestamp/dimension line in MDL format
-                if len(lines) > 1:
-                    if len(lines[1]) >= 22 and lines[1][20:22] == '2D':
-                        lines[1] = lines[1][:20] + '3D' + lines[1][22:]
-                    elif '2D' in lines[1]:
-                        lines[1] = lines[1].replace('2D', '3D')
-                f.write('\n'.join(lines) + '$$$$\n')
+            f.write('\n'.join(lines) + '\n')
     except Exception as e:
         import sys
         print(f"Warning: Could not format dimensionality tags in {args.sdf}: {e}", file=sys.stderr)
