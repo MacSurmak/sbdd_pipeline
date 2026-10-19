@@ -29,20 +29,31 @@ workflow SCREEN_WF {
         if (!ref_sdf.exists()) error "FATAL: Reference ligand SDF not found for ${target_id}: ${rec.ref_sdf}"
         if (!ref_mae.exists()) error "FATAL: Reference ligand MAE not found for ${target_id}: ${rec.ref_mae}"
 
+        def ion_sdfs = rec.ion_sdfs ? rec.ion_sdfs.collect { file(it) } : []
+        def ion_maes = rec.ion_maes ? rec.ion_maes.collect { file(it) } : []
+        def cof_sdfs = rec.cofactor_sdfs ? rec.cofactor_sdfs.collect { file(it) } : []
+        def cof_maes = rec.cofactor_maes ? rec.cofactor_maes.collect { file(it) } : []
+
         def meta = [
             id: target_id,
             frame: 1,
             project: params.project_name,
-            native_ligand: rec.native_ligand ?: ""
+            native_ligand: rec.native_ligand ?: "",
+            ion_resnames: rec.ion_resnames ?: [],
+            cofactor_resnames: rec.cofactor_resnames ?: []
         ]
 
-        [ meta, rec_pdb.toAbsolutePath(), rec_mae.toAbsolutePath(), ref_sdf.toAbsolutePath(), ref_mae.toAbsolutePath() ]
+        [ meta, rec_pdb.toAbsolutePath(), rec_mae.toAbsolutePath(), ref_sdf.toAbsolutePath(), ref_mae.toAbsolutePath(), ion_sdfs*.toAbsolutePath(), ion_maes*.toAbsolutePath(), cof_sdfs*.toAbsolutePath(), cof_maes*.toAbsolutePath() ]
     }
 
-    ch_rec_pdb = ch_targets.map { meta, pdb, mae, rsdf, rmae -> [meta, pdb] }
-    ch_rec_mae = ch_targets.map { meta, pdb, mae, rsdf, rmae -> [meta, mae] }
-    ch_ref_sdf = ch_targets.map { meta, pdb, mae, rsdf, rmae -> [meta, rsdf] }
-    ch_ref_mae = ch_targets.map { meta, pdb, mae, rsdf, rmae -> [meta, rmae] }
+    ch_rec_pdb  = ch_targets.map { meta, pdb, mae, rsdf, rmae, isdf, imae, csdf, cmae -> [meta, pdb] }
+    ch_rec_mae  = ch_targets.map { meta, pdb, mae, rsdf, rmae, isdf, imae, csdf, cmae -> [meta, mae] }
+    ch_ref_sdf  = ch_targets.map { meta, pdb, mae, rsdf, rmae, isdf, imae, csdf, cmae -> [meta, rsdf] }
+    ch_ref_mae  = ch_targets.map { meta, pdb, mae, rsdf, rmae, isdf, imae, csdf, cmae -> [meta, rmae] }
+    ch_ion_sdfs = ch_targets.map { meta, pdb, mae, rsdf, rmae, isdf, imae, csdf, cmae -> [meta, isdf] }
+    ch_ion_maes = ch_targets.map { meta, pdb, mae, rsdf, rmae, isdf, imae, csdf, cmae -> [meta, imae] }
+    ch_cof_sdfs = ch_targets.map { meta, pdb, mae, rsdf, rmae, isdf, imae, csdf, cmae -> [meta, csdf] }
+    ch_cof_maes = ch_targets.map { meta, pdb, mae, rsdf, rmae, isdf, imae, csdf, cmae -> [meta, cmae] }
 
     // 2. Pre-prepared Ligands
     ch_ready_ligands = Channel.fromList(planData.ligands).map { lig ->
@@ -97,6 +108,10 @@ workflow SCREEN_WF {
         ch_rec_mae,
         ch_ref_mae,
         ch_chunks_mae,
+        ch_ion_sdfs,
+        ch_ion_maes,
+        ch_cof_sdfs,
+        ch_cof_maes,
         params.dock_engine,
         params.exhaustiveness,
         params.cnn_scoring,

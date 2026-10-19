@@ -7,7 +7,7 @@ include { GNINA_DOCK }              from '../modules/gnina/dock'
 include { GNINA_RESCORE }           from '../modules/gnina/rescore'
 include { GLIDE_GRIDGEN }           from '../modules/schrodinger/gridgen'
 include { GLIDE_DOCK }              from '../modules/schrodinger/glide_dock'
-include { GENERATE_DOCKING_BOX; CALC_RMSD as CALC_RMSD_GLIDE; CALC_RMSD as CALC_RMSD_GNINA; MERGE_GNINA_DOCK as MERGE_DOCK_CHUNKS; MERGE_GNINA_RESC as MERGE_RESC_CHUNKS; MERGE_GLIDE as MERGE_GLIDE_CHUNKS } from '../modules/docking/helpers'
+include { ASSEMBLE_DOCKING_RECEPTOR; GENERATE_DOCKING_BOX; CALC_RMSD as CALC_RMSD_GLIDE; CALC_RMSD as CALC_RMSD_GNINA; MERGE_GNINA_DOCK as MERGE_DOCK_CHUNKS; MERGE_GNINA_RESC as MERGE_RESC_CHUNKS; MERGE_GLIDE as MERGE_GLIDE_CHUNKS } from '../modules/docking/helpers'
 
 workflow DOCK_LIBRARY {
     take:
@@ -17,6 +17,10 @@ workflow DOCK_LIBRARY {
     ch_receptor_mae     // channel: [ val(meta), path(receptor_mae) ]
     ch_ref_lig_mae      // channel: [ val(meta), path(ref_lig_mae) ]
     ch_chunks_mae       // channel: [ val(meta), path(chunk_mae) ]
+    ch_ion_sdfs
+    ch_ion_maes
+    ch_cof_sdfs
+    ch_cof_maes
     dock_engine         // val: "both", "gnina", "glide"
     exhaustiveness      // val: 16
     cnn_scoring         // val: "rescore"
@@ -47,9 +51,22 @@ workflow DOCK_LIBRARY {
         autobox_add
     )
 
-    // 1. GLIDE DOCKING & GNINA RESCORE
+    // 1. ASSEMBLE HOLO RECEPTOR (APO + COFACTORS)
+    ch_assemble_in = ch_receptor_pdb
+        .join(ch_receptor_mae, by: 0)
+        .join(ch_ion_sdfs, by: 0)
+        .join(ch_ion_maes, by: 0)
+        .join(ch_cof_sdfs, by: 0)
+        .join(ch_cof_maes, by: 0)
+
+    ASSEMBLE_DOCKING_RECEPTOR(ch_assemble_in)
+
+    ch_assembled_pdb = ASSEMBLE_DOCKING_RECEPTOR.out.assembled_receptors.map { meta, pdb, mae -> [meta, pdb] }
+    ch_assembled_mae = ASSEMBLE_DOCKING_RECEPTOR.out.assembled_receptors.map { meta, pdb, mae -> [meta, mae] }
+
+    // 2. GLIDE DOCKING & GNINA RESCORE
     if (dock_engine in ["glide", "both"]) {
-        ch_grid_in = ch_receptor_mae.join(ch_ref_lig_mae, by: 0)
+        ch_grid_in = ch_assembled_mae.join(ch_ref_lig_mae, by: 0)
         GLIDE_GRIDGEN(
             ch_grid_in,
             inner_box,
@@ -83,7 +100,7 @@ workflow DOCK_LIBRARY {
             glide_lig_ccut
         )
 
-        ch_rec_rescore = ch_receptor_pdb.join(ch_ref_lig_sdf, by: 0)
+        ch_rec_rescore = ch_assembled_pdb.join(ch_ref_lig_sdf, by: 0)
         ch_rescore_in = GLIDE_DOCK.out.poses_sdf
             .map { comb_meta, sdf -> [ comb_meta.frame_id, comb_meta, sdf ] }
             .combine(ch_rec_rescore.map { meta_rec, pdb, ref_sdf -> [ meta_rec.id, pdb, ref_sdf ] }, by: 0)
@@ -139,9 +156,9 @@ workflow DOCK_LIBRARY {
         ch_primary_poses = MERGE_GLIDE_CHUNKS.out.poses_sdf
     }
 
-    // 2. GNINA DOCKING
+    // 3. GNINA DOCKING
     if (dock_engine in ["gnina", "both"]) {
-        ch_rec_comb = ch_receptor_pdb.join(ch_ref_lig_sdf, by: 0)
+        ch_rec_comb = ch_assembled_pdb.join(ch_ref_lig_sdf, by: 0)
         ch_dock_in = ch_chunks_sdf.combine(ch_rec_comb)
             .filter { meta_chunk, chunk_sdf, chunk_idx, meta_rec, rec_pdb, ref_sdf ->
                 if (!is_self) return true

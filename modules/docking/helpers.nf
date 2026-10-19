@@ -1,3 +1,42 @@
+process ASSEMBLE_DOCKING_RECEPTOR {
+    tag "${meta.id}"
+    label 'process_single'
+
+    input:
+    tuple val(meta), path(rec_pdb), path(rec_mae), path(ion_sdfs), path(ion_maes), path(cof_sdfs), path(cof_maes)
+
+    output:
+    tuple val(meta), path("${meta.id}_dock_receptor.pdb"), path("${meta.id}_dock_receptor.mae"), emit: assembled_receptors
+
+    script:
+    def ion_sdfs_arg = (ion_sdfs && ion_sdfs.size() > 0) ? "--ion_sdfs ${ion_sdfs}" : ""
+    def ion_res_arg = (meta.ion_resnames && meta.ion_resnames.size() > 0) ? "--ion_resnames ${meta.ion_resnames.join(' ')}" : ""
+    def cof_sdfs_arg = (cof_sdfs && cof_sdfs.size() > 0) ? "--cofactor_sdfs ${cof_sdfs}" : ""
+    def cof_res_arg = (meta.cofactor_resnames && meta.cofactor_resnames.size() > 0) ? "--cofactor_resnames ${meta.cofactor_resnames.join(' ')}" : ""
+
+    def all_hetero_maes = []
+    if (ion_maes && ion_maes.size() > 0) all_hetero_maes.addAll(ion_maes instanceof List ? ion_maes : [ion_maes])
+    if (cof_maes && cof_maes.size() > 0) all_hetero_maes.addAll(cof_maes instanceof List ? cof_maes : [cof_maes])
+    def hetero_maes_arg = all_hetero_maes ? "--hetero_maes ${all_hetero_maes.join(' ')}" : ""
+
+    """
+    # PDB Assembly (for GNINA and scoring)
+    python3 ${projectDir}/bin/merge_complex.py \\
+        --rec_pdb ${rec_pdb} \\
+        --out_pdb ${meta.id}_dock_receptor.pdb \\
+        ${ion_sdfs_arg} \\
+        ${ion_res_arg} \\
+        ${cof_sdfs_arg} \\
+        ${cof_res_arg}
+
+    # MAE Assembly (for Glide and PrepWizard state preservation)
+    schrodinger run python3 ${projectDir}/bin/assemble_mae.py \\
+        --rec_mae ${rec_mae} \\
+        --out_mae ${meta.id}_dock_receptor.mae \\
+        ${hetero_maes_arg}
+    """
+}
+
 process GENERATE_DOCKING_BOX {
     tag "${meta.id}"
     executor 'local'

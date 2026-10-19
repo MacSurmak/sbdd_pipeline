@@ -140,6 +140,25 @@ def run_dock(
                     f"FATAL: Registered pose MAE does not exist: {pose_mae}"
                 )
 
+            ion_sdfs = []
+            ion_maes = []
+            ion_resnames = []
+            cof_sdfs = []
+            cof_maes = []
+            cof_resnames = []
+
+            for c in target_sys.cofactors:
+                if c.substance.substance_type == "ion":
+                    ion_sdfs.append(str(Path(c.path_sdf).resolve()))
+                    if c.path_mae:
+                        ion_maes.append(str(Path(c.path_mae).resolve()))
+                    ion_resnames.append(c.res_name)
+                else:
+                    cof_sdfs.append(str(Path(c.path_sdf).resolve()))
+                    if c.path_mae:
+                        cof_maes.append(str(Path(c.path_mae).resolve()))
+                    cof_resnames.append(c.res_name)
+
             plan["receptors"].append(
                 {
                     "name": r.name,
@@ -148,6 +167,12 @@ def run_dock(
                     "ref_sdf": str(pose_sdf),
                     "ref_mae": str(pose_mae),
                     "native_ligand": native_pose.res_name or native_lig.name,
+                    "ion_sdfs": ion_sdfs,
+                    "ion_maes": ion_maes,
+                    "ion_resnames": ion_resnames,
+                    "cofactor_sdfs": cof_sdfs,
+                    "cofactor_maes": cof_maes,
+                    "cofactor_resnames": cof_resnames,
                 }
             )
 
@@ -251,6 +276,25 @@ def run_dock(
                     f"FATAL: Reference pose deliverables missing for '{r.name}' on disk"
                 )
 
+            ion_sdfs = []
+            ion_maes = []
+            ion_resnames = []
+            cof_sdfs = []
+            cof_maes = []
+            cof_resnames = []
+
+            for c in sys_obj.cofactors:
+                if c.substance.substance_type == "ion":
+                    ion_sdfs.append(str(Path(c.path_sdf).resolve()))
+                    if c.path_mae:
+                        ion_maes.append(str(Path(c.path_mae).resolve()))
+                    ion_resnames.append(c.res_name)
+                else:
+                    cof_sdfs.append(str(Path(c.path_sdf).resolve()))
+                    if c.path_mae:
+                        cof_maes.append(str(Path(c.path_mae).resolve()))
+                    cof_resnames.append(c.res_name)
+
             plan["receptors"].append(
                 {
                     "name": r.name,
@@ -259,6 +303,12 @@ def run_dock(
                     "ref_sdf": str(ref_sdf),
                     "ref_mae": str(ref_mae),
                     "native_ligand": native_lig,
+                    "ion_sdfs": ion_sdfs,
+                    "ion_maes": ion_maes,
+                    "ion_resnames": ion_resnames,
+                    "cofactor_sdfs": cof_sdfs,
+                    "cofactor_maes": cof_maes,
+                    "cofactor_resnames": cof_resnames,
                 }
             )
 
@@ -473,6 +523,35 @@ def run_dock(
 
                 # Consume next 3D conformation for this ligand/engine pair
                 mol_conformation = mol_pool.pop(0)
+
+                # Topological Restoration for GNINA/United-Atom engines
+                # We strictly graft the new Heavy Atom coordinates onto the perfect LigPrep template
+                # to recover lost hydrogens, bond orders, and formal charges before Antechamber processing.
+                if eng != "glide":
+                    try:
+                        from rdkit.Chem import AllChem
+                        # Load the canonical SSOT template prepared by LigPrep
+                        ref_mol = next(Chem.SDMolSupplier(str(Path(lig.path_sdf).resolve()), removeHs=False), None)
+                        if ref_mol:
+                            # 1. Strip hydrogens from both to establish a 1:1 heavy-atom mapping isomorphism
+                            ref_heavy = Chem.RemoveHs(ref_mol)
+                            dock_heavy = Chem.RemoveHs(mol_conformation)
+                            match = ref_heavy.GetSubstructMatch(dock_heavy)
+
+                            if match and len(match) == dock_heavy.GetNumAtoms():
+                                # 2. Graft coordinates onto the perfect heavy-atom template
+                                conf = ref_heavy.GetConformer()
+                                dock_conf = dock_heavy.GetConformer()
+                                for dock_idx, ref_idx in enumerate(match):
+                                    conf.SetAtomPosition(ref_idx, dock_conf.GetAtomPosition(dock_idx))
+
+                                # 3. Reconstruct ideal hydrogen coordinates based on the new heavy atom geometry
+                                restored_mol = Chem.AddHs(ref_heavy, addCoords=True)
+                                # Transfer properties and title
+                                restored_mol.SetProp("_Name", mol_conformation.GetProp("_Name") if mol_conformation.HasProp("_Name") else "")
+                                mol_conformation = restored_mol
+                    except Exception as e:
+                        console.print(f"[yellow]Warning: Failed to topologically restore GNINA pose '{title}': {e}. Storing as-is.[/yellow]")
 
                 key = (frame_name, title, eng)
                 pose_counter[key] = pose_counter.get(key, 0) + 1
