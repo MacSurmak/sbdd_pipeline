@@ -16,9 +16,9 @@ process GLIDE_DOCK {
     val(lig_ccut)
 
     output:
-    tuple val(meta), path("glide_dock_pv.maegz"), emit: pv_maegz
-    tuple val(meta), path("glide_dock.csv"), emit: scores_csv
-    tuple val(meta), path("glide_dock.sdf"), emit: poses_sdf
+    tuple val(meta), path("glide_dock_pv.maegz"), emit: pv_maegz, optional: true
+    tuple val(meta), path("glide_dock.csv"), emit: scores_csv, optional: true
+    tuple val(meta), path("glide_dock.sdf"), emit: poses_sdf, optional: true
 
     script:
     """

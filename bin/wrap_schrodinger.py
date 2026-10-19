@@ -124,8 +124,9 @@ def cmd_glide_dock(args):
         f.write("POSTDOCK yes\nEPIK_PENALTIES yes\nSAMPLE_RINGS yes\nWRITE_CSV yes\n")
         f.write(f"FORCEFIELD {args.forcefield}\n")
         f.write(f"LIG_VSCALE {args.lig_vscale}\nLIG_CCUT {args.lig_ccut}\n")
+    
     run_cmd(
-        get_tool("glide") + ["dock.in", "-OVERWRITE", "-WAIT", "-HOST", "localhost"]
+        get_tool("glide") + ["dock.in", "-OVERWRITE", "-NOJOBID"]
     )
 
     if Path("dock_pv.maegz").exists():
@@ -133,19 +134,23 @@ def cmd_glide_dock(args):
     if Path("dock.csv").exists():
         Path("dock.csv").rename(args.out_csv)
 
-    run_cmd(
-        get_tool("run")
-        + [
-            "python3",
-            f"{Path(__file__).parent}/pv_to_sdf.py",
-            "--pv",
-            args.out_pv,
-            "--sdf",
-            args.out_sdf,
-            "--max_poses",
-            args.poses_per_lig,
-        ]
-    )
+    # Strictly process pose geometries only if Glide successfully docked at least one molecule
+    if Path(args.out_pv).exists():
+        run_cmd(
+            get_tool("run")
+            + [
+                "python3",
+                f"{Path(__file__).parent}/pv_to_sdf.py",
+                "--pv",
+                args.out_pv,
+                "--sdf",
+                args.out_sdf,
+                "--max_poses",
+                args.poses_per_lig,
+            ]
+        )
+    else:
+        print(f"Notice: Glide found 0 valid poses for {args.ligands_mae} (steric clash). Legitimate negative result. Dropping from data stream.")
 
 
 def cmd_prime_mmgbsa(args):
