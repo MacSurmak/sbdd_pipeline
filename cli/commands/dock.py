@@ -380,9 +380,31 @@ def run_dock(
                 )
             receipt_map[(r_frame_id, r_engine)] = sdf_file
 
+    def _sanitize_sdf_3d(path: Path):
+        """Physically rewrite MDL V2000 headers to enforce 3D tags, eradicating RDKit C++ warnings on stdout."""
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                lines = f.read().splitlines()
+            changed = False
+            for i in range(len(lines)):
+                # Dimension tag is strictly on line 2 (index 1) of every MOL block
+                if i == 1 or (i > 1 and lines[i-2] == '$$$$'):
+                    if len(lines[i]) >= 22 and lines[i][20:22] != '3D':
+                        lines[i] = lines[i][:20] + '3D' + lines[i][22:]
+                        changed = True
+                    elif len(lines[i]) < 22:
+                        lines[i] = lines[i].ljust(20) + '3D'
+                        changed = True
+            if changed:
+                with open(path, "w", encoding="utf-8") as f:
+                    f.write('\n'.join(lines) + '\n')
+        except Exception:
+            pass
+
     # Index molecules in merged docking SDFs by title to slice individual pose SDFs
     poses_by_engine_and_title = {}
     for (f_name, eng), m_sdf in receipt_map.items():
+        _sanitize_sdf_3d(m_sdf)
         suppl = Chem.SDMolSupplier(str(m_sdf), removeHs=False)
         for mol_idx, m in enumerate(suppl):
             if m is None:
