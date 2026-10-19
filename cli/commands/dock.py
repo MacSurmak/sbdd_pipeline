@@ -352,8 +352,9 @@ def run_dock(
     from rich.table import Table
 
     # Build deterministic substance lookup from plan (zero string splitting heuristics)
+    # Crucially, map by the true chemical ligand_title, not the Nextflow routing name
     substance_by_title = {
-        item["name"]: session.query(Substance).get(item["substance_id"])
+        item.get("ligand_title", item["name"]): session.query(Substance).get(item["substance_id"])
         for item in plan["ligands"]
     }
 

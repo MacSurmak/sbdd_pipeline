@@ -33,6 +33,29 @@ def main():
                 if title:
                     pose_counts[title] = pose_counts.get(title, 0) + 1
 
+    # Physically correct Schrodinger's invalid 2D tags in the MDL V2000 header to strictly 
+    # prevent RDKit coordinate dimensionality warnings without silencing the logger.
+    try:
+        with open(args.sdf, "r", encoding="utf-8") as f:
+            content = f.read()
+        
+        blocks = content.split('$$$$\n')
+        with open(args.sdf, "w", encoding="utf-8") as f:
+            for block in blocks:
+                if not block.strip():
+                    continue
+                lines = block.split('\n')
+                # Line 2 is the program/timestamp/dimension line in MDL format
+                if len(lines) > 1:
+                    if len(lines[1]) >= 22 and lines[1][20:22] == '2D':
+                        lines[1] = lines[1][:20] + '3D' + lines[1][22:]
+                    elif '2D' in lines[1]:
+                        lines[1] = lines[1].replace('2D', '3D')
+                f.write('\n'.join(lines) + '$$$$\n')
+    except Exception as e:
+        import sys
+        print(f"Warning: Could not format dimensionality tags in {args.sdf}: {e}", file=sys.stderr)
+
 
 if __name__ == "__main__":
     main()
