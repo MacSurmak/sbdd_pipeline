@@ -354,7 +354,9 @@ def run_dock(
     # Build deterministic substance lookup from plan (zero string splitting heuristics)
     # Crucially, map by the true chemical ligand_title, not the Nextflow routing name
     substance_by_title = {
-        item.get("ligand_title", item["name"]): session.query(Substance).get(item["substance_id"])
+        item.get("ligand_title", item["name"]): session.query(Substance).get(
+            item["substance_id"]
+        )
         for item in plan["ligands"]
     }
 
@@ -388,16 +390,16 @@ def run_dock(
             changed = False
             for i in range(len(lines)):
                 # Dimension tag is strictly on line 2 (index 1) of every MOL block
-                if i == 1 or (i > 1 and lines[i-2] == '$$$$'):
-                    if len(lines[i]) >= 22 and lines[i][20:22] != '3D':
-                        lines[i] = lines[i][:20] + '3D' + lines[i][22:]
+                if i == 1 or (i > 1 and lines[i - 2] == "$$$$"):
+                    if len(lines[i]) >= 22 and lines[i][20:22] != "3D":
+                        lines[i] = lines[i][:20] + "3D" + lines[i][22:]
                         changed = True
                     elif len(lines[i]) < 22:
-                        lines[i] = lines[i].ljust(20) + '3D'
+                        lines[i] = lines[i].ljust(20) + "3D"
                         changed = True
             if changed:
                 with open(path, "w", encoding="utf-8") as f:
-                    f.write('\n'.join(lines) + '\n')
+                    f.write("\n".join(lines) + "\n")
         except Exception:
             pass
 
@@ -476,7 +478,9 @@ def run_dock(
                 pose_counter[key] = pose_counter.get(key, 0) + 1
                 p_idx = pose_counter[key]
 
-                p_suffix = f"redock_{eng}_p{p_idx}" if is_self else f"dock_{eng}_p{p_idx}"
+                p_suffix = (
+                    f"redock_{eng}_p{p_idx}" if is_self else f"dock_{eng}_p{p_idx}"
+                )
                 pose_name = f"{frame_name}_{title}_{p_suffix}"
                 sys_name = f"{frame_name}_{title}_{p_suffix}"
                 origin_tag = f"redock_{eng}" if is_self else f"docking_{eng}"

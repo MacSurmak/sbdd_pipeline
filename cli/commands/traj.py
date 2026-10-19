@@ -379,7 +379,12 @@ def run_cluster(
                 session.flush()
 
         task_id = f"{sys_obj.name}_cluster"
-        sys_map[sys_obj.name] = (sys_obj, active_traj_names, current_cluster_sig, task_id)
+        sys_map[sys_obj.name] = (
+            sys_obj,
+            active_traj_names,
+            current_cluster_sig,
+            task_id,
+        )
 
         clean_xtcs = [t.path_clean_xtc for t in t_list]
         ref_pdb = t_list[0].path_ref_pdb

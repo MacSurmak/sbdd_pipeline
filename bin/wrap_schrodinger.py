@@ -107,9 +107,7 @@ def cmd_gridgen(args):
         f.write(f"RECEP_VSCALE {args.recep_vscale}\n")
         f.write(f"RECEP_CCUT {args.recep_ccut}\n")
 
-    run_cmd(
-        get_tool("glide") + ["gridgen.in", "-OVERWRITE", "-NOJOBID"]
-    )
+    run_cmd(get_tool("glide") + ["gridgen.in", "-OVERWRITE", "-NOJOBID"])
 
 
 def cmd_glide_dock(args):
@@ -124,10 +122,8 @@ def cmd_glide_dock(args):
         f.write("POSTDOCK yes\nEPIK_PENALTIES yes\nSAMPLE_RINGS yes\nWRITE_CSV yes\n")
         f.write(f"FORCEFIELD {args.forcefield}\n")
         f.write(f"LIG_VSCALE {args.lig_vscale}\nLIG_CCUT {args.lig_ccut}\n")
-    
-    run_cmd(
-        get_tool("glide") + ["dock.in", "-OVERWRITE", "-NOJOBID"]
-    )
+
+    run_cmd(get_tool("glide") + ["dock.in", "-OVERWRITE", "-NOJOBID"])
 
     if Path("dock_pv.maegz").exists():
         Path("dock_pv.maegz").rename(args.out_pv)
@@ -150,7 +146,9 @@ def cmd_glide_dock(args):
             ]
         )
     else:
-        print(f"Notice: Glide found 0 valid poses for {args.ligands_mae} (steric clash). Legitimate negative result. Dropping from data stream.")
+        print(
+            f"Notice: Glide found 0 valid poses for {args.ligands_mae} (steric clash). Legitimate negative result. Dropping from data stream."
+        )
 
 
 def cmd_prime_mmgbsa(args):
