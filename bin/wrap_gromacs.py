@@ -128,7 +128,7 @@ def cmd_cluster(args):
             "--max_clusters",
             str(args.max_clusters),
             "--out_receipt",
-            "cluster_receipt.json",
+            args.out_receipt,
         ],
         check=True,
     )
@@ -594,6 +594,7 @@ def main():
     p_cluster.add_argument("--water_names", required=True)
     p_cluster.add_argument("--ion_names", required=True)
     p_cluster.add_argument("--lipid_names", required=True)
+    p_cluster.add_argument("--out_receipt", default="cluster_receipt.json")
 
     p_trjconv = subparsers.add_parser("trjconv")
     p_trjconv.add_argument("--xtcs", nargs="+", required=True)

@@ -14,13 +14,15 @@ process GMX_CLUSTER {
     val(lipid_names)
 
     output:
-    tuple val(meta), path("centroid_*.pdb"), path("centroid_*.mae"), emit: cluster_frames
-    tuple val(meta), path("pose_*.sdf"), path("pose_*.mae"), emit: cluster_poses, optional: true
+    tuple val(meta), path("*_receptor.pdb"), path("*_receptor.mae"), emit: cluster_frames
+    tuple val(meta), path("*_view.pdb"), emit: view_pdbs, optional: true
+    tuple val(meta), path("*_pose.sdf"), path("*_pose.mae"), emit: cluster_poses, optional: true
     path("${meta.id}_cluster_receipt.json"), emit: cluster_manifest
 
     script:
     def max_c = meta.max_clusters ?: 0
     def dt_arg = (dt && dt.toString() != '0') ? "--dt ${dt}" : ""
+    def sys_identifier = meta.system ?: meta.id
     """
     python3 ${projectDir}/bin/wrap_gromacs.py cluster \\
         --xtcs trajs_*/*.xtc \\
@@ -30,12 +32,11 @@ process GMX_CLUSTER {
         --group ${cluster_group} \\
         --ligand "${meta.ligand ?: ''}" \\
         --max_clusters ${max_c} \\
-        --sys_name "${meta.id}" \\
+        --sys_name "${sys_identifier}" \\
         --water_names "${water_names}" \\
         --ion_names "${ion_names}" \\
         --lipid_names "${lipid_names}" \\
+        --out_receipt "${meta.id}_cluster_receipt.json" \\
         ${dt_arg}
-
-    mv cluster_receipt.json ${meta.id}_cluster_receipt.json
     """
 }

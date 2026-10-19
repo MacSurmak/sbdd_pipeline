@@ -202,7 +202,7 @@ def main():
             if r_clean not in STANDARD_PROTEIN and r_clean not in water_residues:
                 small_mol_resnames.add(r_clean)
 
-        c_title = f"{args.sys_name}_centroid_{i}"
+        c_title = f"{args.sys_name}_c{i}"
         view_pdb_name = f"{c_title}_view.pdb"
 
         # 3. Clean AMBER residue translations across all residues
@@ -221,12 +221,12 @@ def main():
             if r_clean in res_translation:
                 res.pdbres = res_translation[r_clean]
 
-        # Save complete assembled view PDB of the centroid system for PyMOL
-        st.title(c_title)
+        # Save complete assembled view PDB of the centroid system for PyMOL (attribute assignment, not function call)
+        st.title = c_title
         st.property["s_m_title"] = c_title
         st.write(view_pdb_name)
 
-        # 4. Extract ALL non-protein, non-water small molecules into separate poses
+        # 4. Extract ALL non-protein, non-water small molecules into unique centroid poses (zero-collision naming)
         for r_code in sorted(list(small_mol_resnames)):
             mol_atoms = [a.index for a in st.atom if a.pdbres.strip().upper() == r_code]
             if mol_atoms:
@@ -244,8 +244,8 @@ def main():
                 # Perceive chemistry, double bonds and formal charges from 3D geometry
                 assignbondorders.assign_st(mol_st)
 
-                sdf_out = f"{r_code}_pose.sdf"
-                mae_out = f"{r_code}_pose.mae"
+                sdf_out = f"{c_title}_{r_code}_pose.sdf"
+                mae_out = f"{c_title}_{r_code}_pose.mae"
                 mol_st.write(sdf_out)
                 mol_st.write(mae_out)
                 st.deleteAtoms(mol_atoms)

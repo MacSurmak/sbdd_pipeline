@@ -52,6 +52,7 @@ workflow ANALYZE_WF {
         ch_cluster_in = Channel.fromList(planList).map { item ->
             def meta = [
                 id: item.task_id,
+                system: item.system,
                 ligand: item.ligand ?: "",
                 max_clusters: item.max_clusters ?: 5,
                 project: params.project_name

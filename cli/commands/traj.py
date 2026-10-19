@@ -379,7 +379,7 @@ def run_cluster(
                 session.flush()
 
         task_id = f"{sys_obj.name}_cluster"
-        sys_map[task_id] = (sys_obj, active_traj_names, current_cluster_sig)
+        sys_map[sys_obj.name] = (sys_obj, active_traj_names, current_cluster_sig, task_id)
 
         clean_xtcs = [t.path_clean_xtc for t in t_list]
         ref_pdb = t_list[0].path_ref_pdb
@@ -442,9 +442,9 @@ def run_cluster(
     receipt_files = []
 
     # Strict Fail-Fast verification of canonical JSON task receipts
-    for task_id in sys_map.keys():
+    for sys_key, (_, _, _, t_id) in sys_map.items():
         task_receipt = (
-            reports_cluster_dir / task_id / f"{task_id}_cluster_receipt.json"
+            reports_cluster_dir / t_id / f"{t_id}_cluster_receipt.json"
         ).resolve()
         if not task_receipt.exists():
             session.close()
@@ -475,10 +475,10 @@ def run_cluster(
             raise KeyError(
                 f"FATAL: System mapping missing for explicit SSOT key '{parent_sys_key}'"
             )
-        parent_sys, active_traj_names, cluster_sig = mapped_item
+        parent_sys, active_traj_names, cluster_sig, task_id = mapped_item
 
         # Absolute path resolution directly from task cluster directory
-        task_dir = (cwd / "reports" / "clusters" / parent_sys_key).resolve()
+        task_dir = (cwd / "reports" / "clusters" / task_id).resolve()
         src_pdb = (task_dir / pdb_name).resolve()
         src_mae = (task_dir / mae_name).resolve()
         src_view_pdb = (task_dir / view_pdb_name).resolve()
@@ -505,10 +505,11 @@ def run_cluster(
         dest_mae = frame_dir / f"{centroid_frame_name}_receptor.mae"
         import shutil
 
+        # Move deliverables to enforce strict Zero Duplication on NFS
         if src_pdb != dest_pdb:
-            shutil.copy2(src_pdb, dest_pdb)
+            shutil.move(str(src_pdb), str(dest_pdb))
         if src_mae != dest_mae:
-            shutil.copy2(src_mae, dest_mae)
+            shutil.move(str(src_mae), str(dest_mae))
 
         ex_frame = (
             session.query(ReceptorFrame).filter_by(name=centroid_frame_name).first()
@@ -578,10 +579,11 @@ def run_cluster(
             dest_p_sdf = sub_pose_dir / f"{res_clean}_pose.sdf"
             dest_p_mae = sub_pose_dir / f"{res_clean}_pose.mae"
 
+            # Move poses to canonical 3NF directory to eliminate redundant storage
             if src_p_sdf != dest_p_sdf:
-                shutil.copy2(src_p_sdf, dest_p_sdf)
+                shutil.move(str(src_p_sdf), str(dest_p_sdf))
             if src_p_mae.exists() and src_p_mae != dest_p_mae:
-                shutil.copy2(src_p_mae, dest_p_mae)
+                shutil.move(str(src_p_mae), str(dest_p_mae))
 
             ex_pose = session.query(Pose).filter_by(name=cluster_pose_name).first()
             if not ex_pose:
@@ -626,7 +628,7 @@ def run_cluster(
         sys_dir.mkdir(parents=True, exist_ok=True)
         dest_view_pdb = sys_dir / f"{cluster_sys_name}_view.pdb"
         if src_view_pdb.exists() and src_view_pdb != dest_view_pdb:
-            shutil.copy2(src_view_pdb, dest_view_pdb)
+            shutil.move(str(src_view_pdb), str(dest_view_pdb))
 
         ex_sys = session.query(System).filter_by(name=cluster_sys_name).first()
         if not ex_sys:
