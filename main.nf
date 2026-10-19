@@ -12,8 +12,9 @@ include { SCREEN_WF   } from './workflows/screen'
 include { RESCORE_WF  } from './workflows/rescore'
 include { MD_SETUP_WF } from './workflows/md_setup'
 include { DYNAMICS_WF } from './workflows/dynamics'
-include { ANALYZE_WF  } from './workflows/analyze'
-include { HEAL_WF     } from './workflows/heal'
+include { ANALYZE_WF      } from './workflows/analyze'
+include { HEAL_WF         } from './workflows/heal'
+include { PARAMETRIZE_WF  } from './workflows/parametrize'
 
 def helpMessage() {
     log.info """
@@ -59,6 +60,8 @@ workflow {
         DYNAMICS_WF()
     } else if (entrypoint == "md-analyze") {
         ANALYZE_WF()
+    } else if (entrypoint == "parametrize") {
+        PARAMETRIZE_WF()
     } else {
         if (entrypoint != null && entrypoint != "null") {
             log.error "Unknown entrypoint: ${entrypoint}"

@@ -3,22 +3,20 @@
  * Strictly isolated module for AM1-BCC charge calculation and GAFF2 parametrization
  */
 
-process PARAMETRIZE_POSE {
+process PARAMETRIZE_SUBSTANCE {
     tag "${meta.name}"
     label 'process_single'
 
     input:
-    tuple val(meta), path(sdf, stageAs: 'input_raw.sdf')
+    tuple val(meta), path(base_sdf, stageAs: 'input_base.sdf')
 
     output:
-    tuple val(meta), path("${meta.res_name}_pose.sdf"), path("${meta.res_name}_topology.mol2"), path("${meta.res_name}_topology.frcmod")
+    tuple val(meta), path("${meta.res_name}_topology.mol2"), path("${meta.res_name}_topology.frcmod"), emit: topology
 
     script:
     """
-    cp -L input_raw.sdf "${meta.res_name}_pose.sdf"
-
     python3 ${projectDir}/bin/wrap_amber.py antechamber \\
-        --sdf "${meta.res_name}_pose.sdf" \\
+        --sdf input_base.sdf \\
         --charge ${meta.charge} \\
         --mol_id "${meta.res_name}_topology" \\
         --res_name "${meta.res_name}"
