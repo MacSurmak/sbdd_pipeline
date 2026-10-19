@@ -277,7 +277,7 @@ def cmd_prepwizard(args):
         "-rmsd",
         str(min_rmsd),
         "-preserve_st_titles",
-        "-WAIT",
+        "-NOJOBID",
     ]
 
     if cap_termini:

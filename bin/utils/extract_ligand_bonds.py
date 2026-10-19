@@ -33,9 +33,9 @@ def main():
 
     lig_st.title = lig_name
 
-    # Assign correct chemical bond orders and formal charges from 3D geometry
+    # Assign correct chemical bond orders and formal charges using CCD template when available
     try:
-        assignbondorders.assign_st(lig_st)
+        assignbondorders.assign_st(lig_st, use_ccd=True)
     except Exception as e:
         sys.stderr.write(f"Warning: assignbondorders note: {e}\n")
 

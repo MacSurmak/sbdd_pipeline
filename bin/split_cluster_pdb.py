@@ -241,8 +241,11 @@ def main():
                 mol_st.title = r_code
                 mol_st.property["s_m_title"] = r_code
 
-                # Perceive chemistry, double bonds and formal charges from 3D geometry
-                assignbondorders.assign_st(mol_st)
+                # Perceive chemistry, double bonds and formal charges using CCD template when available
+                try:
+                    assignbondorders.assign_st(mol_st, use_ccd=True)
+                except Exception as e:
+                    sys.stderr.write(f"Warning: assignbondorders note: {e}\n")
 
                 sdf_out = f"{c_title}_{r_code}_pose.sdf"
                 mae_out = f"{c_title}_{r_code}_pose.mae"

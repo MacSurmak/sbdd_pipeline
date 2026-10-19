@@ -136,6 +136,8 @@ class Substance(Base):
     batch_id = Column(String, nullable=True)
     path_mae = Column(String, nullable=True)  # Prepared .maegz for LigPrep
     path_sdf = Column(String, nullable=True)  # Prepared .sdf
+    path_mol2 = Column(String, nullable=True)  # Antechamber AM1-BCC topology (GAFF2)
+    path_frcmod = Column(String, nullable=True)  # Antechamber GAFF2 force field parameters
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     poses = relationship(
@@ -172,8 +174,6 @@ class Pose(Base):
     path = Column(String, nullable=False)  # Canonical primary path
     path_sdf = Column(String, nullable=True)  # Validated SDF deliverable
     path_mae = Column(String, nullable=True)  # Validated MAE deliverable
-    path_mol2 = Column(String, nullable=True)  # Antechamber AM1-BCC topology
-    path_frcmod = Column(String, nullable=True)  # Antechamber GAFF2 parameters
     scores = Column(Text, default="{}", nullable=False)  # JSON dict of scoring metrics
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
@@ -295,11 +295,11 @@ for _model_attr in [
     ReceptorFrame.path_pdb,
     Substance.path_mae,
     Substance.path_sdf,
+    Substance.path_mol2,
+    Substance.path_frcmod,
     Pose.path,
     Pose.path_sdf,
     Pose.path_mae,
-    Pose.path_mol2,
-    Pose.path_frcmod,
     System.path_gro,
     System.path_top,
     System.path_ndx,
