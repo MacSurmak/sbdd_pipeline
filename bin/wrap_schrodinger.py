@@ -72,12 +72,14 @@ def distill_schrodinger_errors(job_name: str, raw_stderr: str = "") -> str:
 
 def run_cmd(cmd, env=None, job_name=None):
     print(f"Exec: {' '.join(cmd)}")
-    # Strictly intercept subprocess streams to isolate pipeline logs from proprietary tool noise
     res = subprocess.run(cmd, capture_output=True, text=True, env=env)
     if res.returncode != 0:
         distilled = distill_schrodinger_errors(job_name, res.stderr)
         print(
-            f"FATAL: Schrödinger process failed! Exit Code {res.returncode}\nRoot Cause: {distilled}",
+            f"FATAL: Schrödinger process failed! Exit Code {res.returncode}\n"
+            f"Root Cause: {distilled}\n"
+            f"--- RAW STDOUT ---\n{res.stdout}\n"
+            f"--- RAW STDERR ---\n{res.stderr}",
             file=sys.stderr,
         )
         sys.exit(res.returncode)
@@ -99,7 +101,6 @@ def cmd_gridgen(args):
         f.write(f"GRIDFILE {args.out_zip}\n")
         f.write(f"RECEP_FILE {args.receptor_mae}\n")
         f.write(f"GRID_CENTER {cx:.4f}, {cy:.4f}, {cz:.4f}\n")
-        f.write(f"REF_LIGAND_FILE {args.ref_lig_mae}\n")
         f.write(f"INNERBOX {args.inner_box}\n")
         f.write(f"OUTERBOX {args.outer_box}\n")
         f.write(f"FORCEFIELD {args.forcefield}\n")
@@ -107,7 +108,7 @@ def cmd_gridgen(args):
         f.write(f"RECEP_CCUT {args.recep_ccut}\n")
 
     run_cmd(
-        get_tool("glide") + ["gridgen.in", "-OVERWRITE", "-WAIT", "-HOST", "localhost"]
+        get_tool("glide") + ["gridgen.in", "-OVERWRITE", "-NOJOBID"]
     )
 
 
