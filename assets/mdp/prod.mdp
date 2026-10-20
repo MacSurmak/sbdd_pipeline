@@ -10,7 +10,7 @@ nstenergy                = {NSTENERGY}
 nstlog                   = {NSTENERGY}
 
 cutoff-scheme            = Verlet
-nstlist                  = 20
+nstlist                  = 40
 verlet-buffer-tolerance  = 0.005
 rlist                    = 1.0
 coulombtype              = PME
