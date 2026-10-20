@@ -13,11 +13,12 @@ from cli.core.db import (
     Target,
     ReceptorFrame,
     Substance,
+    SubstanceState,
     Pose,
     System,
     Trajectory,
 )
-from cli.core.chem import get_mol_identity
+from cli.core.chem import get_mol_identity, get_microstate_identity
 
 console = Console()
 
@@ -549,9 +550,14 @@ def add_receptor(
                     tmp_extract_sdf = Path(tmp_f.name)
 
                 _extract_ligand_atoms(complex_file, clean_res_name, tmp_extract_sdf)
-                parent_inchikey, parent_smiles, mol_name, formal_charge = (
-                    get_mol_identity(tmp_extract_sdf)
-                )
+                (
+                    parent_inchikey,
+                    parent_smiles,
+                    mol_name,
+                    state_hash,
+                    isomeric_smiles,
+                    formal_charge,
+                ) = get_microstate_identity(tmp_extract_sdf)
 
                 sub_dir = cwd / "substances" / parent_inchikey
                 sub_dir.mkdir(parents=True, exist_ok=True)
@@ -561,7 +567,7 @@ def add_receptor(
                 if not base_sdf.exists():
                     shutil.copy2(tmp_extract_sdf, base_sdf)
 
-                # Substance Registration
+                # Substance Registration (Parent 2D compound)
                 sub_entity = (
                     session.query(Substance).filter_by(inchikey=parent_inchikey).first()
                 )
@@ -586,6 +592,24 @@ def add_receptor(
                         f"[bold green]✓ Matched existing {sub_type.capitalize()} '{sub_entity.name}' via InChIKey[/bold green] [dim]({parent_inchikey})[/dim]"
                     )
 
+                # SubstanceState Registration (Specific microstate / protomer / charge)
+                state_entity = (
+                    session.query(SubstanceState)
+                    .filter_by(substance_id=sub_entity.id, state_hash=state_hash)
+                    .first()
+                )
+                if not state_entity:
+                    state_entity = SubstanceState(
+                        substance_id=sub_entity.id,
+                        state_hash=state_hash,
+                        isomeric_smiles=isomeric_smiles,
+                        formal_charge=formal_charge,
+                        state="raw",
+                        path_sdf=str(base_sdf.resolve()),
+                    )
+                    session.add(state_entity)
+                    session.flush()
+
                 # Canonical Pose Storage: substances/<inchikey>/poses/<pose_name>/<res>_pose.sdf
                 pose_name = f"{frame_name}_{clean_res_name}_crystal"
                 pose_dir = sub_dir / "poses" / pose_name
@@ -599,19 +623,18 @@ def add_receptor(
 
                 p_obj = session.query(Pose).filter_by(name=pose_name).first()
                 if p_obj:
+                    p_obj.substance_state_id = state_entity.id
                     p_obj.path = str(pose_sdf.resolve())
                     p_obj.path_sdf = str(pose_sdf.resolve())
                     p_obj.res_name = clean_res_name
-                    p_obj.formal_charge = formal_charge
                 else:
                     p_obj = Pose(
-                        substance_id=sub_entity.id,
+                        substance_state_id=state_entity.id,
                         receptor_frame_id=frame_obj.id,
                         name=pose_name,
                         res_name=clean_res_name,
                         origin="crystal",
-                        state="raw",
-                        formal_charge=formal_charge,
+                        state="ready",
                         path=str(pose_sdf.resolve()),
                         path_sdf=str(pose_sdf.resolve()),
                     )
@@ -621,7 +644,7 @@ def add_receptor(
                         f"q={formal_charge:+d}" if formal_charge != 0 else "neutral"
                     )
                     console.print(
-                        f"[bold green]✓ Registered Pose '{pose_name}'[/bold green] [dim]({clean_res_name}, {ch_label}) in substance {parent_inchikey}[/dim]"
+                        f"[bold green]✓ Registered Pose '{pose_name}'[/bold green] [dim]({clean_res_name}, {ch_label}, state={state_hash}) in substance {parent_inchikey}[/dim]"
                     )
                 return p_obj
 
@@ -747,14 +770,15 @@ def add_ligand(path: str, name: str | None = None, force: bool = False) -> None:
 
     for idx, mol in enumerate(raw_mols, start=1):
         try:
-            heavy_mol = Chem.RemoveHs(mol)
-            parent_mol = uncharger.uncharge(heavy_mol)
+            (
+                parent_inchikey,
+                parent_smiles,
+                computed_name,
+                state_hash,
+                isomeric_smiles,
+                formal_charge,
+            ) = get_microstate_identity(mol)
 
-            inchikey = Chem.MolToInchiKey(parent_mol)
-            if not inchikey:
-                raise ValueError("Could not compute InChIKey")
-
-            smiles = Chem.MolToSmiles(parent_mol, canonical=True)
             if len(raw_mols) == 1 and name:
                 mol_title = name.strip()
             elif mol.HasProp("_Name") and mol.GetProp("_Name").strip():
@@ -762,10 +786,10 @@ def add_ligand(path: str, name: str | None = None, force: bool = False) -> None:
             elif name:
                 mol_title = f"{name}_{idx:05d}"
             else:
-                mol_title = f"MOL_{idx:05d}"
+                mol_title = computed_name
 
             # Canonical physical substance storage: substances/<inchikey>/<res>_base.sdf
-            sub_dir = cwd / "substances" / inchikey
+            sub_dir = cwd / "substances" / parent_inchikey
             sub_dir.mkdir(parents=True, exist_ok=True)
             clean_res = mol_title[:4].strip().upper()
             base_sdf = sub_dir / f"{clean_res}_base.sdf"
@@ -773,27 +797,50 @@ def add_ligand(path: str, name: str | None = None, force: bool = False) -> None:
                 with Chem.SDWriter(str(base_sdf)) as w:
                     w.write(mol)
 
-            ex = session.query(Substance).filter_by(inchikey=inchikey).first()
-            if ex:
+            ex_sub = session.query(Substance).filter_by(inchikey=parent_inchikey).first()
+            if ex_sub:
+                sub_entity = ex_sub
                 if force:
-                    ex.name = mol_title
-                    ex.smiles = smiles
-                    ex.path_sdf = str(base_sdf.resolve())
-                else:
-                    skipped += 1
-                    continue
+                    sub_entity.name = mol_title
+                    sub_entity.smiles = parent_smiles
+                    sub_entity.path_sdf = str(base_sdf.resolve())
             else:
-                new_sub = Substance(
-                    inchikey=inchikey,
-                    smiles=smiles,
+                sub_entity = Substance(
+                    inchikey=parent_inchikey,
+                    smiles=parent_smiles,
                     name=mol_title,
-                    res_name=mol_title[:4].upper(),
+                    res_name=clean_res,
                     substance_type="ligand",
                     state="raw",
                     batch_id=target_path.stem,
                     path_sdf=str(base_sdf.resolve()),
                 )
-                session.add(new_sub)
+                session.add(sub_entity)
+                session.flush()
+
+            ex_state = (
+                session.query(SubstanceState)
+                .filter_by(substance_id=sub_entity.id, state_hash=state_hash)
+                .first()
+            )
+            if not ex_state:
+                state_entity = SubstanceState(
+                    substance_id=sub_entity.id,
+                    state_hash=state_hash,
+                    isomeric_smiles=isomeric_smiles,
+                    formal_charge=formal_charge,
+                    state="raw",
+                    path_sdf=str(base_sdf.resolve()),
+                )
+                session.add(state_entity)
+            elif force:
+                ex_state.path_sdf = str(base_sdf.resolve())
+                ex_state.isomeric_smiles = isomeric_smiles
+                ex_state.formal_charge = formal_charge
+
+            if ex_sub and not force:
+                skipped += 1
+                continue
 
             imported += 1
             if imported % 500 == 0:

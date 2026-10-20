@@ -14,6 +14,7 @@ from cli.core.db import (
     Target,
     ReceptorFrame,
     Substance,
+    SubstanceState,
     Pose,
     System,
     Trajectory,
@@ -645,8 +646,12 @@ def run_cluster(
             dest_p_sdf = sub_pose_dir / f"{res_clean}_pose.sdf"
             dest_p_mae = sub_pose_dir / f"{res_clean}_pose.mae"
 
-            # Restore exact chemical topology and valences from parent substance base template
-            template_sdf = Path(parent_match.substance.path_sdf).resolve()
+            # Restore exact chemical topology and valences from parent microstate template
+            template_sdf = (
+                Path(parent_match.substance_state.path_sdf).resolve()
+                if (parent_match.substance_state and parent_match.substance_state.path_sdf)
+                else Path(parent_match.path_sdf).resolve()
+            )
             _restore_pose_from_template(template_sdf, src_p_sdf, dest_p_sdf)
             if src_p_sdf.exists() and src_p_sdf != dest_p_sdf:
                 src_p_sdf.unlink()
@@ -657,13 +662,12 @@ def run_cluster(
             ex_pose = session.query(Pose).filter_by(name=cluster_pose_name).first()
             if not ex_pose:
                 new_p = Pose(
-                    substance_id=parent_match.substance_id,
+                    substance_state_id=parent_match.substance_state_id,
                     receptor_frame_id=frame_obj.id,
                     name=cluster_pose_name,
                     res_name=parent_match.res_name,
                     origin="md_cluster",
                     state="ready",
-                    formal_charge=parent_match.formal_charge,
                     path=str(dest_p_sdf.resolve()),
                     path_sdf=str(dest_p_sdf.resolve()),
                     path_mae=str(dest_p_mae.resolve()) if dest_p_mae.exists() else None,
@@ -672,12 +676,12 @@ def run_cluster(
                 session.flush()
                 curr_pose = new_p
             else:
+                ex_pose.substance_state_id = parent_match.substance_state_id
                 ex_pose.path = str(dest_p_sdf.resolve())
                 ex_pose.path_sdf = str(dest_p_sdf.resolve())
                 ex_pose.path_mae = (
                     str(dest_p_mae.resolve()) if dest_p_mae.exists() else None
                 )
-                ex_pose.formal_charge = parent_match.formal_charge
                 ex_pose.state = "ready"
                 curr_pose = ex_pose
 
