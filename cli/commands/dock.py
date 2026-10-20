@@ -572,64 +572,62 @@ def run_dock(
                 # Topological Restoration for GNINA/United-Atom engines
                 # Graft docked heavy-atom coordinates onto the EXACT input template, then relax only hydrogens
                 if eng != "glide":
-                    try:
-                        from rdkit.Chem import AllChem
-                        ref_mol = next(Chem.SDMolSupplier(str(Path(lig.path_sdf).resolve()), removeHs=False, sanitize=False), None)
-                        if ref_mol:
-                            from cli.core.chem import _perceive_and_sanitize
-                            ref_mol = _perceive_and_sanitize(ref_mol)
-                            if ref_mol:
-                                ref_heavy = Chem.RemoveHs(ref_mol)
-                                dock_heavy = Chem.RemoveHs(mol_conformation, sanitize=False)
-                                
-                                # Match purely by topological graph to avoid bond type mismatch
-                                q_ref = Chem.Mol(ref_heavy)
-                                q_dock = Chem.Mol(dock_heavy)
-                                for q in (q_ref, q_dock):
-                                    for b in q.GetBonds():
-                                        b.SetBondType(Chem.BondType.SINGLE)
-                                        b.SetIsAromatic(False)
-                                    for a in q.GetAtoms():
-                                        a.SetFormalCharge(0)
-                                        a.SetIsotope(0)
+                    from rdkit.Chem import AllChem
+                    # Read the pristine template natively. It already has the correct formal charges and valences.
+                    ref_mol = next(Chem.SDMolSupplier(str(Path(lig.path_sdf).resolve()), removeHs=False, sanitize=True), None)
+                    if not ref_mol:
+                        raise ValueError(f"FATAL: Could not read reference SDF for ligand '{title}' at {lig.path_sdf}")
 
-                                match = q_dock.GetSubstructMatch(q_ref)
-                                if match and len(match) == q_dock.GetNumAtoms():
-                                    conf_ref = ref_heavy.GetConformer()
-                                    conf_dock = dock_heavy.GetConformer()
-                                    for dock_idx, ref_idx in enumerate(match):
-                                        conf_ref.SetAtomPosition(ref_idx, conf_dock.GetAtomPosition(dock_idx))
+                    ref_heavy = Chem.RemoveHs(ref_mol)
+                    dock_heavy = Chem.RemoveHs(mol_conformation, sanitize=False)
+                    
+                    # Match purely by topological graph to avoid bond type mismatch
+                    q_ref = Chem.Mol(ref_heavy)
+                    q_dock = Chem.Mol(dock_heavy)
+                    for q in (q_ref, q_dock):
+                        for b in q.GetBonds():
+                            b.SetBondType(Chem.BondType.SINGLE)
+                            b.SetIsAromatic(False)
+                        for a in q.GetAtoms():
+                            a.SetFormalCharge(0)
+                            a.SetIsotope(0)
 
-                                    # Reconstruct hydrogens based on the new heavy atom geometry
-                                    restored_mol = Chem.AddHs(ref_heavy, addCoords=True)
-                                    mp = AllChem.MMFFGetMoleculeProperties(restored_mol)
-                                    if mp:
-                                        ff = AllChem.MMFFGetMoleculeForceField(restored_mol, mp)
-                                        for a in restored_mol.GetAtoms():
-                                            if a.GetAtomicNum() != 1:
-                                                ff.AddFixedPoint(a.GetIdx())
-                                        ff.Minimize(maxIts=500)
-                                    else:
-                                        ff = AllChem.UFFGetMoleculeForceField(restored_mol)
-                                        if ff:
-                                            for a in restored_mol.GetAtoms():
-                                                if a.GetAtomicNum() != 1:
-                                                    ff.AddFixedPoint(a.GetIdx())
-                                            ff.Minimize(maxIts=500)
+                    match = q_dock.GetSubstructMatch(q_ref)
+                    if not match or len(match) != q_dock.GetNumAtoms():
+                        raise ValueError(f"FATAL: Topological mismatch: GNINA pose '{title}' does not match heavy atom graph of input template.")
 
-                                    conf_res = restored_mol.GetConformer()
-                                    for a in restored_mol.GetAtoms():
-                                        pos = conf_res.GetAtomPosition(a.GetIdx())
-                                        if abs(pos.x) < 1e-4 and abs(pos.y) < 1e-4 and abs(pos.z) < 1e-4:
-                                            raise ValueError(f"Degenerate coordinate (0,0,0) generated for {a.GetSymbol()}{a.GetIdx()+1}")
+                    conf_ref = ref_heavy.GetConformer()
+                    conf_dock = dock_heavy.GetConformer()
+                    for dock_idx, ref_idx in enumerate(match):
+                        conf_ref.SetAtomPosition(ref_idx, conf_dock.GetAtomPosition(dock_idx))
 
-                                    # Transfer properties
-                                    for prop_name in mol_conformation.GetPropNames():
-                                        restored_mol.SetProp(prop_name, mol_conformation.GetProp(prop_name))
-                                    restored_mol.SetProp("_Name", mol_conformation.GetProp("_Name") if mol_conformation.HasProp("_Name") else "")
-                                    mol_conformation = restored_mol
-                    except Exception as e:
-                        console.print(f"[yellow]Warning: Failed to topologically restore GNINA pose '{title}': {e}. Storing as-is.[/yellow]")
+                    # Reconstruct hydrogens based on the new heavy atom geometry
+                    restored_mol = Chem.AddHs(ref_heavy, addCoords=True)
+                    mp = AllChem.MMFFGetMoleculeProperties(restored_mol)
+                    if mp:
+                        ff = AllChem.MMFFGetMoleculeForceField(restored_mol, mp)
+                    else:
+                        ff = AllChem.UFFGetMoleculeForceField(restored_mol)
+                    
+                    if not ff:
+                        raise ValueError(f"FATAL: Could not build forcefield (MMFF/UFF) to relax hydrogens for '{title}'.")
+
+                    for a in restored_mol.GetAtoms():
+                        if a.GetAtomicNum() != 1:
+                            ff.AddFixedPoint(a.GetIdx())
+                    ff.Minimize(maxIts=500)
+
+                    conf_res = restored_mol.GetConformer()
+                    for a in restored_mol.GetAtoms():
+                        pos = conf_res.GetAtomPosition(a.GetIdx())
+                        if abs(pos.x) < 1e-4 and abs(pos.y) < 1e-4 and abs(pos.z) < 1e-4:
+                            raise ValueError(f"FATAL: Degenerate coordinate (0,0,0) generated for {a.GetSymbol()}{a.GetIdx()+1} during hydrogen relaxation in '{title}'")
+
+                    # Transfer properties
+                    for prop_name in mol_conformation.GetPropNames():
+                        restored_mol.SetProp(prop_name, mol_conformation.GetProp(prop_name))
+                    restored_mol.SetProp("_Name", mol_conformation.GetProp("_Name") if mol_conformation.HasProp("_Name") else "")
+                    mol_conformation = restored_mol
 
                 # Canonical 3NF Domain Placement: substances/<inchikey>/poses/<pose_name>/<res>_pose.sdf
                 sub_pose_dir = cwd / "substances" / lig.inchikey / "poses" / pose_name
