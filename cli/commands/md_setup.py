@@ -89,6 +89,7 @@ def run_md_setup(
 
         param_plan_file = cwd / "param_plan.json"
         param_plan_file.write_text(json.dumps(param_plan, indent=2), encoding="utf-8")
+        (cwd / "substance_param_receipt.tsv").unlink(missing_ok=True)
 
         nf_param_args = [
             "--project_name",
@@ -226,6 +227,7 @@ def run_md_setup(
     plan_file = cwd / "md_setup_plan.json"
     with open(plan_file, "w") as f:
         json.dump(plan_list, f, indent=2)
+    (cwd / "md_setup_receipt.tsv").unlink(missing_ok=True)
 
     console.print(
         f"[bold cyan]Dispatching topology setup for {len(plan_list)} System(s)...[/bold cyan]"

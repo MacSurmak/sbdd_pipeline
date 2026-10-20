@@ -134,7 +134,10 @@ def run_prep(
         f"[bold cyan]Generated prep_plan.json ({len(rec_plan)} receptors, {len(sub_plan)} substances).[/bold cyan]"
     )
 
-    # Execute Nextflow
+    # Execute Nextflow (Purge stale receipts to prevent cross-run pollution)
+    (cwd / "prep_receipt.tsv").unlink(missing_ok=True)
+    (cwd / "prep_ligand_receipt.tsv").unlink(missing_ok=True)
+
     configs = load_project_configs(cwd)
     nf_args = build_nextflow_args(configs, cwd, entrypoint="prepare")
     nf_args.extend(["--plan", str(plan_file.resolve())])
@@ -156,10 +159,10 @@ def run_prep(
         )
         sys.exit(ret_code)
 
-    # Read Receipts strictly via Plan & Receipt protocol without path guessing
-    prep_rec_count, prep_sub_count, prep_pose_count = 0, 0, 0
+    # Read Receipts strictly for components actually included in this plan execution
+    prep_rec_count, prep_sub_count = 0, 0
     rec_receipt = cwd / "prep_receipt.tsv"
-    if rec_receipt.exists() and rec_receipt.stat().st_size > 0:
+    if rec_plan and rec_receipt.exists() and rec_receipt.stat().st_size > 0:
         for line in rec_receipt.read_text().strip().splitlines():
             if not line.strip():
                 continue
@@ -193,7 +196,7 @@ def run_prep(
             prep_rec_count += 1
 
     sub_receipt = cwd / "prep_ligand_receipt.tsv"
-    if sub_receipt.exists() and sub_receipt.stat().st_size > 0:
+    if sub_plan and sub_receipt.exists() and sub_receipt.stat().st_size > 0:
         for line in sub_receipt.read_text().strip().splitlines():
             if not line.strip():
                 continue
