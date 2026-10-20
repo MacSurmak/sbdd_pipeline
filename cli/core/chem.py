@@ -25,7 +25,11 @@ def get_mol_identity(source: str | Path) -> Tuple[str, str, str, int]:
     mol = None
     mol_name = ""
 
-    if isinstance(source, Path) or (isinstance(source, str) and Path(source).exists()):
+    if hasattr(source, "GetAtoms"):
+        mol = Chem.Mol(source)
+        if mol.HasProp("_Name"):
+            mol_name = mol.GetProp("_Name").strip()
+    elif isinstance(source, Path) or (isinstance(source, str) and Path(source).exists()):
         p = Path(source)
         if p.suffix.lower() in [".sdf", ".mol"]:
             suppl = Chem.SDMolSupplier(str(p), removeHs=False)
@@ -97,7 +101,9 @@ def get_microstate_identity(source: str | Path) -> Tuple[str, str, str, str, str
         raise ImportError("RDKit is required for microstate identification.")
 
     mol = None
-    if isinstance(source, Path) or (isinstance(source, str) and Path(source).exists()):
+    if hasattr(source, "GetAtoms"):
+        mol = Chem.Mol(source)
+    elif isinstance(source, Path) or (isinstance(source, str) and Path(source).exists()):
         p = Path(source)
         if p.suffix.lower() in [".sdf", ".mol"]:
             suppl = Chem.SDMolSupplier(str(p), removeHs=False, sanitize=False)

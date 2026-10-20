@@ -608,7 +608,7 @@ def run_dock(
                     state_hash,
                     isomeric_smiles,
                     formal_charge,
-                ) = get_microstate_identity(mol_conformation)
+                ) = get_microstate_identity(pose_sdf_file)
 
                 state_entity = (
                     session.query(SubstanceState)
