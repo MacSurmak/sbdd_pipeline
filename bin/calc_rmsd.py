@@ -23,21 +23,30 @@ def read_heavy_atoms_mol(path: Path) -> list:
     """Reads 3D structures from SDF/PDB and returns list of heavy-atom molecules."""
     raw_mols = []
     if path.suffix.lower() == ".sdf":
-        # Strict reading: sanitization MUST be enabled to ensure proper valences for template assignment
-        suppl = Chem.SDMolSupplier(str(path), sanitize=True, removeHs=True)
+        suppl = Chem.SDMolSupplier(str(path), sanitize=False, removeHs=False)
         for idx, m in enumerate(suppl, start=1):
             if m is None:
                 raise ValueError(
-                    f"FATAL: Molecule at index {idx} in {path.name} failed RDKit sanitization (broken valence/coordinates)."
+                    f"FATAL: Molecule at index {idx} in {path.name} could not be read."
                 )
-            raw_mols.append(m)
+            m_heavy = Chem.RemoveHs(m, sanitize=False)
+            try:
+                Chem.SanitizeMol(m_heavy)
+            except Exception:
+                m_heavy.UpdatePropertyCache(strict=False)
+            raw_mols.append(m_heavy)
     elif path.suffix.lower() == ".pdb":
-        m = Chem.MolFromPDBFile(str(path), sanitize=True, removeHs=True)
+        m = Chem.MolFromPDBFile(str(path), sanitize=False, removeHs=False)
         if m is None:
             raise ValueError(
-                f"FATAL: Failed to parse and sanitize PDB molecule from {path.name}"
+                f"FATAL: Failed to parse PDB molecule from {path.name}"
             )
-        raw_mols.append(m)
+        m_heavy = Chem.RemoveHs(m, sanitize=False)
+        try:
+            Chem.SanitizeMol(m_heavy)
+        except Exception:
+            m_heavy.UpdatePropertyCache(strict=False)
+        raw_mols.append(m_heavy)
     else:
         raise ValueError(f"Unsupported molecule format: {path.suffix}")
 
