@@ -603,10 +603,43 @@ def run_cluster(
             if src_p_mae.exists() and src_p_mae.resolve() != dest_p_mae.resolve():
                 shutil.copy2(str(src_p_mae), str(dest_p_mae))
 
+            from cli.core.chem import get_microstate_identity
+
+            (
+                parent_inchikey,
+                parent_smiles,
+                mol_name,
+                state_hash,
+                isomeric_smiles,
+                formal_charge,
+            ) = get_microstate_identity(dest_p_sdf)
+
+            state_entity = (
+                session.query(SubstanceState)
+                .filter_by(substance_id=parent_match.substance.id, state_hash=state_hash)
+                .first()
+            )
+            if not state_entity:
+                state_dir = cwd / "substances" / parent_match.substance.inchikey / "states" / state_hash
+                state_dir.mkdir(parents=True, exist_ok=True)
+                state_sdf_file = state_dir / f"{res_clean}_state.sdf"
+                shutil.copy2(str(dest_p_sdf), str(state_sdf_file))
+
+                state_entity = SubstanceState(
+                    substance_id=parent_match.substance.id,
+                    state_hash=state_hash,
+                    isomeric_smiles=isomeric_smiles,
+                    formal_charge=formal_charge,
+                    state="ready",
+                    path_sdf=str(state_sdf_file.resolve()),
+                )
+                session.add(state_entity)
+                session.flush()
+
             ex_pose = session.query(Pose).filter_by(name=cluster_pose_name).first()
             if not ex_pose:
                 new_p = Pose(
-                    substance_state_id=parent_match.substance_state_id,
+                    substance_state_id=state_entity.id,
                     receptor_frame_id=frame_obj.id,
                     name=cluster_pose_name,
                     res_name=parent_match.res_name,
@@ -620,7 +653,7 @@ def run_cluster(
                 session.flush()
                 curr_pose = new_p
             else:
-                ex_pose.substance_state_id = parent_match.substance_state_id
+                ex_pose.substance_state_id = state_entity.id
                 ex_pose.path = str(dest_p_sdf.resolve())
                 ex_pose.path_sdf = str(dest_p_sdf.resolve())
                 ex_pose.path_mae = (

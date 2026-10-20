@@ -100,6 +100,7 @@ workflow PREPARE_RECEPTOR {
         }
 
     ch_receipt_data.collectFile(name: 'prep_receipt.tsv', storeDir: params.outdir, newLine: true)
+    SPLIT_PREPARED.out.poses_receipt.collectFile(name: 'prep_poses_receipt.tsv', storeDir: params.outdir, newLine: true)
 
     emit:
     prepared_mae     = SPLIT_PREPARED.out.prepared_mae

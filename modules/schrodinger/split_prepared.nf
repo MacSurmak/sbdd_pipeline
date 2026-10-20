@@ -13,9 +13,9 @@ process SPLIT_PREPARED {
     output:
     tuple val(meta), path("${meta.name}_receptor.mae"), emit: prepared_mae
     tuple val(meta), path("${meta.name}_receptor.pdb"), emit: prepared_pdb
-    tuple val(meta), path("*_pose.mae"), emit: pose_maes, optional: true
-    tuple val(meta), path("*_pose.sdf"), emit: pose_sdfs, optional: true
-    tuple val(meta), path("extracted_poses.json"), emit: poses_manifest
+    path("substances/**"), emit: published_poses, optional: true
+    path("prep_poses_receipt.tsv"), emit: poses_receipt, optional: true
+    path("extracted_poses.json"), emit: poses_manifest
 
     script:
     """
@@ -24,6 +24,7 @@ process SPLIT_PREPARED {
         --poses_spec_json ${poses_spec_json} \\
         --out_receptor_mae "${meta.name}_receptor.mae" \\
         --out_receptor_pdb "${meta.name}_receptor.pdb" \\
-        --out_manifest extracted_poses.json
+        --out_manifest extracted_poses.json \\
+        --out_receipt prep_poses_receipt.tsv
     """
 }

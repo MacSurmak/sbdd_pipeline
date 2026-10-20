@@ -195,6 +195,70 @@ def run_prep(
             frame.state = "ready"
             prep_rec_count += 1
 
+    # Synchronize microstates and poses prepared by PrepWizard
+    poses_receipt = cwd / "prep_poses_receipt.tsv"
+    if rec_plan and poses_receipt.exists() and poses_receipt.stat().st_size > 0:
+        from cli.core.chem import get_microstate_identity
+        import shutil
+
+        for line in poses_receipt.read_text().strip().splitlines():
+            if not line.strip():
+                continue
+            parts = line.split("\t")
+            if len(parts) < 6:
+                continue
+            p_name, inchikey, res_clean, charge_str, rel_sdf, rel_mae = parts
+            sdf_path = (cwd / rel_sdf).resolve() if not Path(rel_sdf).is_absolute() else Path(rel_sdf).resolve()
+            mae_path = (cwd / rel_mae).resolve() if not Path(rel_mae).is_absolute() else Path(rel_mae).resolve()
+
+            if not sdf_path.exists() or sdf_path.stat().st_size == 0:
+                continue
+
+            (
+                parent_inchikey,
+                parent_smiles,
+                mol_name,
+                state_hash,
+                isomeric_smiles,
+                formal_charge,
+            ) = get_microstate_identity(sdf_path)
+
+            sub_obj = session.query(Substance).filter_by(inchikey=parent_inchikey).first()
+            if not sub_obj:
+                sub_obj = session.query(Substance).filter_by(inchikey=inchikey).first()
+
+            if sub_obj:
+                state_entity = (
+                    session.query(SubstanceState)
+                    .filter_by(substance_id=sub_obj.id, state_hash=state_hash)
+                    .first()
+                )
+                if not state_entity:
+                    state_dir = cwd / "substances" / sub_obj.inchikey / "states" / state_hash
+                    state_dir.mkdir(parents=True, exist_ok=True)
+                    state_sdf_file = state_dir / f"{res_clean}_state.sdf"
+                    shutil.copy2(str(sdf_path), str(state_sdf_file))
+
+                    state_entity = SubstanceState(
+                        substance_id=sub_obj.id,
+                        state_hash=state_hash,
+                        isomeric_smiles=isomeric_smiles,
+                        formal_charge=formal_charge,
+                        state="ready",
+                        path_sdf=str(state_sdf_file.resolve()),
+                    )
+                    session.add(state_entity)
+                    session.flush()
+
+                pose_obj = session.query(Pose).filter_by(name=p_name).first()
+                if pose_obj:
+                    pose_obj.substance_state_id = state_entity.id
+                    pose_obj.path_sdf = str(sdf_path)
+                    pose_obj.path = str(sdf_path)
+                    if mae_path and mae_path.exists():
+                        pose_obj.path_mae = str(mae_path)
+                    pose_obj.state = "ready"
+
     sub_receipt = cwd / "prep_ligand_receipt.tsv"
     if sub_plan and sub_receipt.exists() and sub_receipt.stat().st_size > 0:
         for line in sub_receipt.read_text().strip().splitlines():
