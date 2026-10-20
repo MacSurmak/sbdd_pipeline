@@ -7,7 +7,16 @@ import json
 import sys
 from pathlib import Path
 from rich.console import Console
-from cli.core.db import init_db, Target, ReceptorFrame, Substance, Pose, System
+from cli.core.db import (
+    init_db,
+    Target,
+    ReceptorFrame,
+    Substance,
+    SubstanceState,
+    Pose,
+    System,
+)
+from cli.core.chem import get_microstate_identity
 from cli.core.runner import execute_nextflow
 from cli.core.config_loader import load_project_configs, build_nextflow_args
 
@@ -573,8 +582,40 @@ def run_dock(
                 with Chem.SDWriter(str(pose_sdf_file)) as writer:
                     writer.write(mol_conformation)
 
-                f_charge = Chem.GetFormalCharge(mol_conformation)
+                # Identify the exact chemical microstate (protomer, tautomer, stereoisomer)
+                (
+                    _,
+                    _,
+                    _,
+                    state_hash,
+                    isomeric_smiles,
+                    formal_charge,
+                ) = get_microstate_identity(mol_conformation)
 
+                state_entity = (
+                    session.query(SubstanceState)
+                    .filter_by(substance_id=lig.id, state_hash=state_hash)
+                    .first()
+                )
+                if not state_entity:
+                    state_dir = cwd / "substances" / lig.inchikey / "states" / state_hash
+                    state_dir.mkdir(parents=True, exist_ok=True)
+                    state_sdf_file = state_dir / f"{clean_res}_state.sdf"
+                    with Chem.SDWriter(str(state_sdf_file)) as writer:
+                        writer.write(mol_conformation)
+
+                    state_entity = SubstanceState(
+                        substance_id=lig.id,
+                        state_hash=state_hash,
+                        isomeric_smiles=isomeric_smiles,
+                        formal_charge=formal_charge,
+                        state="raw",
+                        path_sdf=str(state_sdf_file.resolve()),
+                    )
+                    session.add(state_entity)
+                    session.flush()
+
+                f_charge = formal_charge
                 scores_dict = {}
                 if eng == "glide":
                     if row.get("GlideScore") and row["GlideScore"] != "nan":
@@ -602,25 +643,22 @@ def run_dock(
 
                 ex_pose = session.query(Pose).filter_by(name=pose_name).first()
                 if ex_pose:
+                    ex_pose.substance_state_id = state_entity.id
                     ex_pose.path = str(pose_sdf_file.resolve())
                     ex_pose.path_sdf = str(pose_sdf_file.resolve())
                     ex_pose.res_name = clean_res
-                    ex_pose.formal_charge = f_charge
                     ex_pose.scores_dict = scores_dict
                     ex_pose.origin = origin_tag
-                    ex_pose.state = (
-                        "raw"  # Awaiting quantum parametrization in sbdd prep
-                    )
+                    ex_pose.state = "ready"
                     pose_obj = ex_pose
                 else:
                     new_p = Pose(
-                        substance_id=lig.id,
+                        substance_state_id=state_entity.id,
                         receptor_frame_id=r_frame.id,
                         name=pose_name,
                         res_name=clean_res,
                         origin=origin_tag,
-                        state="raw",
-                        formal_charge=f_charge,
+                        state="ready",
                         path=str(pose_sdf_file.resolve()),
                         path_sdf=str(pose_sdf_file.resolve()),
                     )
@@ -635,6 +673,7 @@ def run_dock(
                 )
                 parent_cofactors = (
                     session.query(Pose)
+                    .join(SubstanceState)
                     .join(Substance)
                     .filter(
                         Pose.receptor_frame_id == lookup_frame_id,
