@@ -84,8 +84,8 @@ def read_heavy_atoms_mol(path: Path) -> list:
 def calculate_pair_rmsd(m_ref, m_dock) -> float:
     """
     Computes exact in-situ Cartesian RMSD across all symmetry automorphisms.
-    Assigns reference bond orders to the docked pose to mathematically bypass
-    docking engine valence/aromaticity corruption, eliminating combinatoric explosion.
+    Preserves validated AssignBondOrdersFromTemplate logic for robust chemistry restoration,
+    but performs isomorphism matching on pure connectivity graphs to seamlessly handle Kekule ring flips.
     """
     n_atoms = m_ref.GetNumAtoms()
     if n_atoms != m_dock.GetNumAtoms():
@@ -100,9 +100,20 @@ def calculate_pair_rmsd(m_ref, m_dock) -> float:
             f"Topological mismatch: unable to assign reference bonds to dock pose. {e}"
         )
 
-    matches = m_dock_fixed.GetSubstructMatches(m_ref, uniquify=False)
+    # Strip bond orders temporarily just for symmetry mapping to avoid Kekule mismatch on symmetric rings
+    q_ref = Chem.Mol(m_ref)
+    for b in q_ref.GetBonds():
+        b.SetBondType(Chem.BondType.SINGLE)
+        b.SetIsAromatic(False)
+
+    q_dock = Chem.Mol(m_dock_fixed)
+    for b in q_dock.GetBonds():
+        b.SetBondType(Chem.BondType.SINGLE)
+        b.SetIsAromatic(False)
+
+    matches = q_dock.GetSubstructMatches(q_ref, uniquify=False)
     if not matches:
-        raise ValueError("Failed to obtain substructure isomorphism matches.")
+        raise ValueError("Failed to obtain topological substructure isomorphism matches.")
 
     best_sq_dist = float("inf")
     conf_ref = m_ref.GetConformer()
