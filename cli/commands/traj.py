@@ -441,7 +441,14 @@ def run_cluster(
 
         clean_xtcs = [t.path_clean_xtc for t in t_list]
         ref_pdb = t_list[0].path_ref_pdb
-        lig_code = sys_obj.pose.substance.name if sys_obj.pose else ""
+        lig_code = sys_obj.pose.res_name if sys_obj.pose else ""
+
+        if group.lower() == "pocket" and not lig_code:
+            session.close()
+            raise ValueError(
+                f"FATAL: System '{sys_obj.name}' has no active ligand pose registered in database! "
+                "Cannot build '[ Pocket ]' index group for an Apo system. Use --group COMPLEX or Backbone."
+            )
 
         plan_list.append(
             {
