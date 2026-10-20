@@ -216,8 +216,16 @@ def run_prep(
             if len(parts) < 6:
                 continue
             p_name, inchikey, res_clean, charge_str, rel_sdf, rel_mae = parts
-            sdf_path = (cwd / rel_sdf).resolve() if not Path(rel_sdf).is_absolute() else Path(rel_sdf).resolve()
-            mae_path = (cwd / rel_mae).resolve() if not Path(rel_mae).is_absolute() else Path(rel_mae).resolve()
+            sdf_path = (
+                (cwd / rel_sdf).resolve()
+                if not Path(rel_sdf).is_absolute()
+                else Path(rel_sdf).resolve()
+            )
+            mae_path = (
+                (cwd / rel_mae).resolve()
+                if not Path(rel_mae).is_absolute()
+                else Path(rel_mae).resolve()
+            )
 
             if not sdf_path.exists() or sdf_path.stat().st_size == 0:
                 continue
@@ -231,7 +239,9 @@ def run_prep(
                 formal_charge,
             ) = get_microstate_identity(sdf_path)
 
-            sub_obj = session.query(Substance).filter_by(inchikey=parent_inchikey).first()
+            sub_obj = (
+                session.query(Substance).filter_by(inchikey=parent_inchikey).first()
+            )
             if not sub_obj:
                 sub_obj = session.query(Substance).filter_by(inchikey=inchikey).first()
 
@@ -242,7 +252,9 @@ def run_prep(
                     .first()
                 )
                 if not state_entity:
-                    state_dir = cwd / "substances" / sub_obj.inchikey / "states" / state_hash
+                    state_dir = (
+                        cwd / "substances" / sub_obj.inchikey / "states" / state_hash
+                    )
                     state_dir.mkdir(parents=True, exist_ok=True)
                     state_sdf_file = state_dir / f"{res_clean}_state.sdf"
                     shutil.copy2(str(sdf_path), str(state_sdf_file))

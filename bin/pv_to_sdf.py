@@ -39,9 +39,9 @@ def main():
         from rdkit import Chem
         from rdkit import RDLogger
         import os
-        
-        RDLogger.DisableLog('rdApp.*')
-        
+
+        RDLogger.DisableLog("rdApp.*")
+
         suppl = Chem.SDMolSupplier(args.sdf, removeHs=False, sanitize=False)
         tmp_sdf = args.sdf + ".tmp"
         with Chem.SDWriter(tmp_sdf) as w:
@@ -51,7 +51,11 @@ def main():
         os.replace(tmp_sdf, args.sdf)
     except Exception as e:
         import sys
-        print(f"Warning: Could not structurally normalize SDF {args.sdf} via RDKit: {e}", file=sys.stderr)
+
+        print(
+            f"Warning: Could not structurally normalize SDF {args.sdf} via RDKit: {e}",
+            file=sys.stderr,
+        )
 
 
 if __name__ == "__main__":

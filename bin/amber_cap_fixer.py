@@ -82,7 +82,9 @@ def main():
     # Sanitize legacy/obsolete PDB segids (columns 73-76) that cause ParmEd to split residues
     # when Maestro outputs heavy atoms with segid and added hydrogens with blank segid
     input_path = Path(args.input_pdb)
-    raw_lines = input_path.read_text(encoding="utf-8", errors="ignore").splitlines(keepends=True)
+    raw_lines = input_path.read_text(encoding="utf-8", errors="ignore").splitlines(
+        keepends=True
+    )
     has_segid = any(
         line.startswith(("ATOM", "HETATM")) and len(line) >= 76 and line[72:76].strip()
         for line in raw_lines
@@ -90,7 +92,11 @@ def main():
 
     if has_segid:
         clean_lines = [
-            (line[:72] + "    " + line[76:]) if (line.startswith(("ATOM", "HETATM")) and len(line) >= 76) else line
+            (
+                (line[:72] + "    " + line[76:])
+                if (line.startswith(("ATOM", "HETATM")) and len(line) >= 76)
+                else line
+            )
             for line in raw_lines
         ]
         temp_pdb = input_path.parent / f".tmp_{input_path.name}"

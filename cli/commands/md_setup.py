@@ -60,8 +60,16 @@ def run_md_setup(
     # 2. Check cache: identify microstates lacking GAFF2 / AM1-BCC topology
     missing_states = []
     for state_id, state in unique_states.items():
-        mol2_ok = state.path_mol2 and Path(state.path_mol2).exists() and Path(state.path_mol2).stat().st_size > 0
-        frcmod_ok = state.path_frcmod and Path(state.path_frcmod).exists() and Path(state.path_frcmod).stat().st_size > 0
+        mol2_ok = (
+            state.path_mol2
+            and Path(state.path_mol2).exists()
+            and Path(state.path_mol2).stat().st_size > 0
+        )
+        frcmod_ok = (
+            state.path_frcmod
+            and Path(state.path_frcmod).exists()
+            and Path(state.path_frcmod).stat().st_size > 0
+        )
         if not (mol2_ok and frcmod_ok):
             missing_states.append(state)
 
@@ -82,7 +90,11 @@ def run_md_setup(
                     p_p = p.path_sdf or p.path
                     if p_p and Path(p_p).exists() and Path(p_p).stat().st_size > 0:
                         cand_sdfs.append(Path(p_p).resolve())
-            if state.path_sdf and Path(state.path_sdf).exists() and Path(state.path_sdf).stat().st_size > 0:
+            if (
+                state.path_sdf
+                and Path(state.path_sdf).exists()
+                and Path(state.path_sdf).stat().st_size > 0
+            ):
                 cand_sdfs.append(Path(state.path_sdf).resolve())
 
             best_sdf = None
@@ -108,10 +120,14 @@ def run_md_setup(
                         f"FATAL: SubstanceState '{state.state_hash}' has no reference SDF deliverables."
                     )
                 sub_sdf_resolved = cand_sdfs[0]
-                suppl = Chem.SDMolSupplier(str(sub_sdf_resolved), removeHs=False, sanitize=False)
+                suppl = Chem.SDMolSupplier(
+                    str(sub_sdf_resolved), removeHs=False, sanitize=False
+                )
                 m_base = next((mol for mol in suppl if mol is not None), None)
                 if m_base is None:
-                    raise ValueError(f"FATAL: Could not read molecule from {sub_sdf_resolved}")
+                    raise ValueError(
+                        f"FATAL: Could not read molecule from {sub_sdf_resolved}"
+                    )
 
                 m_base = Chem.AddHs(m_base, addCoords=True)
                 mp = AllChem.MMFFGetMoleculeProperties(m_base)
@@ -173,7 +189,9 @@ def run_md_setup(
         )
         if ret != 0:
             session.close()
-            console.print("[bold red]FATAL: On-demand state parametrization failed.[/bold red]")
+            console.print(
+                "[bold red]FATAL: On-demand state parametrization failed.[/bold red]"
+            )
             sys.exit(ret)
 
         param_receipt = cwd / "substance_param_receipt.tsv"
@@ -187,7 +205,9 @@ def run_md_setup(
             if not line.strip():
                 continue
             r_hash, r_mol2, r_frcmod = line.strip().split("\t")
-            state_to_update = session.query(SubstanceState).filter_by(state_hash=r_hash).first()
+            state_to_update = (
+                session.query(SubstanceState).filter_by(state_hash=r_hash).first()
+            )
             if state_to_update:
                 state_to_update.path_mol2 = str(Path(r_mol2).resolve())
                 state_to_update.path_frcmod = str(Path(r_frcmod).resolve())

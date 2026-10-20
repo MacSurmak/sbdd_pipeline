@@ -125,7 +125,9 @@ def print_tree() -> None:
             )
             for st in states:
                 st_color = "green" if st.state == "ready" else "yellow"
-                q_label = f"q={st.formal_charge:+d}" if st.formal_charge != 0 else "neutral"
+                q_label = (
+                    f"q={st.formal_charge:+d}" if st.formal_charge != 0 else "neutral"
+                )
                 param_status = (
                     " [bold green]+GAFF2[/bold green]"
                     if (st.path_mol2 and st.path_frcmod)

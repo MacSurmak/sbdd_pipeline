@@ -8,10 +8,16 @@ established during PrepWizard.
 import argparse
 from schrodinger import structure
 
+
 def main():
     parser = argparse.ArgumentParser(description="Assemble Holo MAE for Glide")
     parser.add_argument("--rec_mae", required=True, help="Input pure Apo receptor MAE")
-    parser.add_argument("--hetero_maes", nargs="*", default=[], help="Input heterogen MAEs (cofactors/ions)")
+    parser.add_argument(
+        "--hetero_maes",
+        nargs="*",
+        default=[],
+        help="Input heterogen MAEs (cofactors/ions)",
+    )
     parser.add_argument("--out_mae", required=True, help="Output assembled Holo MAE")
     args = parser.parse_args()
 
@@ -21,6 +27,7 @@ def main():
         st.extend(het_st)
 
     st.write(args.out_mae)
+
 
 if __name__ == "__main__":
     main()

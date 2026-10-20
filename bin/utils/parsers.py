@@ -107,7 +107,12 @@ def parse_gnina_sdf(sdf_path: Path, prefix: str = "") -> Dict[str, Dict[str, flo
         props: Dict[str, float] = {}
         for prop_name in mol.GetPropNames():
             tag_clean = prop_name.strip().lower()
-            if tag_clean in ["cnnscore", "cnnaffinity", "minimizedaffinity", "affinity"]:
+            if tag_clean in [
+                "cnnscore",
+                "cnnaffinity",
+                "minimizedaffinity",
+                "affinity",
+            ]:
                 try:
                     val = float(mol.GetProp(prop_name))
                     if tag_clean == "cnnscore":

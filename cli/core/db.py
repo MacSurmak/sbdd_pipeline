@@ -156,9 +156,13 @@ class SubstanceState(Base):
     )
     state_hash = Column(String(32), index=True, nullable=False)
     isomeric_smiles = Column(Text, nullable=False)
-    formal_charge = Column(Integer, nullable=False)  # Exact net charge for -nc in Antechamber
+    formal_charge = Column(
+        Integer, nullable=False
+    )  # Exact net charge for -nc in Antechamber
     state = Column(String, default="raw", nullable=False)  # 'raw', 'ready'
-    path_sdf = Column(String, nullable=True)  # 3D reference conformer for this specific state
+    path_sdf = Column(
+        String, nullable=True
+    )  # 3D reference conformer for this specific state
     path_mol2 = Column(String, nullable=True)  # GAFF2 AM1-BCC topology
     path_frcmod = Column(String, nullable=True)  # GAFF2 force field parameters
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)

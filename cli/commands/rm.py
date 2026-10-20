@@ -64,11 +64,7 @@ def remove_entity(name: str) -> None:
             deleted = True
 
     if not deleted:
-        st = (
-            session.query(SubstanceState)
-            .filter_by(state_hash=name)
-            .first()
-        )
+        st = session.query(SubstanceState).filter_by(state_hash=name).first()
         if st:
             session.delete(st)
             console.print(

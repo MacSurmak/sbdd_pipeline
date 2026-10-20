@@ -28,7 +28,9 @@ from cli.core.config_loader import load_project_configs, build_nextflow_args
 console = Console()
 
 
-def _transfer_coordinates_to_template(template_sdf: Path, raw_pose_sdf: Path, out_sdf: Path) -> None:
+def _transfer_coordinates_to_template(
+    template_sdf: Path, raw_pose_sdf: Path, out_sdf: Path
+) -> None:
     """
     Transfers exact Cartesian coordinates from MD centroid structure onto the
     canonical, validated chemical graph template of the parent SubstanceState.
@@ -642,7 +644,11 @@ def run_cluster(
             # Transfer MD centroid coordinates onto canonical template preserving true topology
             template_sdf = (
                 Path(parent_match.substance_state.path_sdf).resolve()
-                if (parent_match.substance_state and parent_match.substance_state.path_sdf and Path(parent_match.substance_state.path_sdf).exists())
+                if (
+                    parent_match.substance_state
+                    and parent_match.substance_state.path_sdf
+                    and Path(parent_match.substance_state.path_sdf).exists()
+                )
                 else Path(parent_match.path_sdf).resolve()
             )
             _transfer_coordinates_to_template(template_sdf, src_p_sdf, dest_p_sdf)

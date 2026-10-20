@@ -24,14 +24,20 @@ def _clean_heavy_mol(m):
         return None
     for atom in m.GetAtoms():
         if atom.GetAtomicNum() == 7 and atom.GetFormalCharge() == 0:
-            if len(atom.GetBonds()) == 4 and all(b.GetBondType() == Chem.BondType.SINGLE for b in atom.GetBonds()):
+            if len(atom.GetBonds()) == 4 and all(
+                b.GetBondType() == Chem.BondType.SINGLE for b in atom.GetBonds()
+            ):
                 atom.SetFormalCharge(1)
         elif atom.GetAtomicNum() == 8 and atom.GetFormalCharge() == 0:
-            if len(atom.GetBonds()) == 1 and atom.GetBonds()[0].GetBondType() == Chem.BondType.SINGLE:
+            if (
+                len(atom.GetBonds()) == 1
+                and atom.GetBonds()[0].GetBondType() == Chem.BondType.SINGLE
+            ):
                 nbr = atom.GetNeighbors()[0]
                 if nbr.GetAtomicNum() == 6:
                     has_carbonyl = any(
-                        b.GetBondType() == Chem.BondType.DOUBLE and b.GetOtherAtom(nbr).GetAtomicNum() == 8
+                        b.GetBondType() == Chem.BondType.DOUBLE
+                        and b.GetOtherAtom(nbr).GetAtomicNum() == 8
                         for b in nbr.GetBonds()
                     )
                     if has_carbonyl:
@@ -63,9 +69,7 @@ def read_heavy_atoms_mol(path: Path) -> list:
     elif path.suffix.lower() == ".pdb":
         m = Chem.MolFromPDBFile(str(path), sanitize=False, removeHs=False)
         if m is None:
-            raise ValueError(
-                f"FATAL: Failed to parse PDB molecule from {path.name}"
-            )
+            raise ValueError(f"FATAL: Failed to parse PDB molecule from {path.name}")
         raw_mols.append(_clean_heavy_mol(m))
     else:
         raise ValueError(f"Unsupported molecule format: {path.suffix}")
@@ -113,7 +117,9 @@ def calculate_pair_rmsd(m_ref, m_dock) -> float:
 
     matches = q_dock.GetSubstructMatches(q_ref, uniquify=False)
     if not matches:
-        raise ValueError("Failed to obtain topological substructure isomorphism matches.")
+        raise ValueError(
+            "Failed to obtain topological substructure isomorphism matches."
+        )
 
     best_sq_dist = float("inf")
     conf_ref = m_ref.GetConformer()

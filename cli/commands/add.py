@@ -797,7 +797,9 @@ def add_ligand(path: str, name: str | None = None, force: bool = False) -> None:
                 with Chem.SDWriter(str(base_sdf)) as w:
                     w.write(mol)
 
-            ex_sub = session.query(Substance).filter_by(inchikey=parent_inchikey).first()
+            ex_sub = (
+                session.query(Substance).filter_by(inchikey=parent_inchikey).first()
+            )
             if ex_sub:
                 sub_entity = ex_sub
                 if force:

@@ -6,9 +6,9 @@ from pathlib import Path
 def cmd_merge_sdf(args):
     from rdkit import Chem
     from rdkit import RDLogger
-    
+
     # Suppress warnings during parsing of chunks (e.g. 2D tags from GNINA)
-    RDLogger.DisableLog('rdApp.*')
+    RDLogger.DisableLog("rdApp.*")
 
     with Chem.SDWriter(args.out_sdf) as writer:
         for sdf in args.in_sdfs:
