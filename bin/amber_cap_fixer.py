@@ -79,7 +79,28 @@ def main():
         print("FATAL: ParmEd is required in current environment.", file=sys.stderr)
         sys.exit(1)
 
-    struct = pmd.load_file(args.input_pdb)
+    # Sanitize legacy/obsolete PDB segids (columns 73-76) that cause ParmEd to split residues
+    # when Maestro outputs heavy atoms with segid and added hydrogens with blank segid
+    input_path = Path(args.input_pdb)
+    raw_lines = input_path.read_text(encoding="utf-8", errors="ignore").splitlines(keepends=True)
+    has_segid = any(
+        line.startswith(("ATOM", "HETATM")) and len(line) >= 76 and line[72:76].strip()
+        for line in raw_lines
+    )
+
+    if has_segid:
+        clean_lines = [
+            (line[:72] + "    " + line[76:]) if (line.startswith(("ATOM", "HETATM")) and len(line) >= 76) else line
+            for line in raw_lines
+        ]
+        temp_pdb = input_path.parent / f".tmp_{input_path.name}"
+        temp_pdb.write_text("".join(clean_lines), encoding="utf-8")
+        try:
+            struct = pmd.load_file(str(temp_pdb))
+        finally:
+            temp_pdb.unlink(missing_ok=True)
+    else:
+        struct = pmd.load_file(args.input_pdb)
 
     # 1. Strip solvent strictly based on configuration SSOT via ParmEd masks
     water_residues = [
