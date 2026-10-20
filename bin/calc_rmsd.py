@@ -19,6 +19,36 @@ from rdkit.Chem import AllChem
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
 
+def _clean_heavy_mol(m):
+    if m is None:
+        return None
+    for atom in m.GetAtoms():
+        if atom.GetAtomicNum() == 7 and atom.GetFormalCharge() == 0:
+            if len(atom.GetBonds()) == 4 and all(b.GetBondType() == Chem.BondType.SINGLE for b in atom.GetBonds()):
+                atom.SetFormalCharge(1)
+        elif atom.GetAtomicNum() == 8 and atom.GetFormalCharge() == 0:
+            if len(atom.GetBonds()) == 1 and atom.GetBonds()[0].GetBondType() == Chem.BondType.SINGLE:
+                nbr = atom.GetNeighbors()[0]
+                if nbr.GetAtomicNum() == 6:
+                    has_carbonyl = any(
+                        b.GetBondType() == Chem.BondType.DOUBLE and b.GetOtherAtom(nbr).GetAtomicNum() == 8
+                        for b in nbr.GetBonds()
+                    )
+                    if has_carbonyl:
+                        atom.SetFormalCharge(-1)
+
+    m_heavy = Chem.RemoveHs(m, sanitize=False)
+    for atom in m_heavy.GetAtoms():
+        atom.SetNumExplicitHs(0)
+        atom.SetNoImplicit(False)
+
+    try:
+        Chem.SanitizeMol(m_heavy)
+    except Exception:
+        m_heavy.UpdatePropertyCache(strict=False)
+    return m_heavy
+
+
 def read_heavy_atoms_mol(path: Path) -> list:
     """Reads 3D structures from SDF/PDB and returns list of heavy-atom molecules."""
     raw_mols = []
@@ -29,24 +59,14 @@ def read_heavy_atoms_mol(path: Path) -> list:
                 raise ValueError(
                     f"FATAL: Molecule at index {idx} in {path.name} could not be read."
                 )
-            m_heavy = Chem.RemoveHs(m, sanitize=False)
-            try:
-                Chem.SanitizeMol(m_heavy)
-            except Exception:
-                m_heavy.UpdatePropertyCache(strict=False)
-            raw_mols.append(m_heavy)
+            raw_mols.append(_clean_heavy_mol(m))
     elif path.suffix.lower() == ".pdb":
         m = Chem.MolFromPDBFile(str(path), sanitize=False, removeHs=False)
         if m is None:
             raise ValueError(
                 f"FATAL: Failed to parse PDB molecule from {path.name}"
             )
-        m_heavy = Chem.RemoveHs(m, sanitize=False)
-        try:
-            Chem.SanitizeMol(m_heavy)
-        except Exception:
-            m_heavy.UpdatePropertyCache(strict=False)
-        raw_mols.append(m_heavy)
+        raw_mols.append(_clean_heavy_mol(m))
     else:
         raise ValueError(f"Unsupported molecule format: {path.suffix}")
 
