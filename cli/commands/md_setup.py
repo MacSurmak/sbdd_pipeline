@@ -71,24 +71,70 @@ def run_md_setup(
             f"[bold cyan]Lazy Parametrization: {len(missing_states)} chemical state(s) require GAFF2/AM1-BCC topology...[/bold cyan]"
         )
         param_plan = []
-        for state in missing_states:
-            sdf_path = state.path_sdf or (state.poses[0].path_sdf if state.poses else None)
-            if not sdf_path or not Path(sdf_path).exists():
-                session.close()
-                raise FileNotFoundError(
-                    f"FATAL: SubstanceState '{state.state_hash}' missing reference SDF deliverable."
-                )
+        from rdkit import Chem
+        from rdkit.Chem import AllChem
 
-            # Ensure the reference SDF has complete 3D hydrogens
-            from rdkit import Chem
-            sub_sdf_resolved = Path(sdf_path).resolve()
-            m_suppl = Chem.SDMolSupplier(str(sub_sdf_resolved), removeHs=False, sanitize=False)
-            m_base = next((m for m in m_suppl if m is not None), None)
-            if m_base:
-                if not any(a.GetAtomicNum() == 1 for a in m_base.GetAtoms()):
-                    m_base = Chem.AddHs(m_base, addCoords=True)
-                    with Chem.SDWriter(str(sub_sdf_resolved)) as w:
-                        w.write(m_base)
+        for state in missing_states:
+            # Prioritize candidate 3D conformers that already contain valid physical hydrogens without zero coordinates
+            cand_sdfs = []
+            if state.poses:
+                for p in state.poses:
+                    p_p = p.path_sdf or p.path
+                    if p_p and Path(p_p).exists() and Path(p_p).stat().st_size > 0:
+                        cand_sdfs.append(Path(p_p).resolve())
+            if state.path_sdf and Path(state.path_sdf).exists() and Path(state.path_sdf).stat().st_size > 0:
+                cand_sdfs.append(Path(state.path_sdf).resolve())
+
+            best_sdf = None
+            for cand in cand_sdfs:
+                suppl = Chem.SDMolSupplier(str(cand), removeHs=False, sanitize=False)
+                m = next((mol for mol in suppl if mol is not None), None)
+                if m and any(a.GetAtomicNum() == 1 for a in m.GetAtoms()):
+                    conf = m.GetConformer()
+                    has_zero = any(
+                        abs(conf.GetAtomPosition(i).x) < 1e-4
+                        and abs(conf.GetAtomPosition(i).y) < 1e-4
+                        and abs(conf.GetAtomPosition(i).z) < 1e-4
+                        for i in range(m.GetNumAtoms())
+                    )
+                    if not has_zero:
+                        best_sdf = cand
+                        break
+
+            if best_sdf is None:
+                if not cand_sdfs:
+                    session.close()
+                    raise FileNotFoundError(
+                        f"FATAL: SubstanceState '{state.state_hash}' has no reference SDF deliverables."
+                    )
+                sub_sdf_resolved = cand_sdfs[0]
+                suppl = Chem.SDMolSupplier(str(sub_sdf_resolved), removeHs=False, sanitize=False)
+                m_base = next((mol for mol in suppl if mol is not None), None)
+                if m_base is None:
+                    raise ValueError(f"FATAL: Could not read molecule from {sub_sdf_resolved}")
+
+                m_base = Chem.AddHs(m_base, addCoords=True)
+                mp = AllChem.MMFFGetMoleculeProperties(m_base)
+                if mp:
+                    ff = AllChem.MMFFGetMoleculeForceField(m_base, mp)
+                    for a in m_base.GetAtoms():
+                        if a.GetAtomicNum() != 1:
+                            ff.AddFixedPoint(a.GetIdx())
+                    ff.Minimize(maxIts=500)
+                else:
+                    ff = AllChem.UFFGetMoleculeForceField(m_base)
+                    if ff:
+                        for a in m_base.GetAtoms():
+                            if a.GetAtomicNum() != 1:
+                                ff.AddFixedPoint(a.GetIdx())
+                        ff.Minimize(maxIts=500)
+
+                with Chem.SDWriter(str(sub_sdf_resolved)) as w:
+                    w.write(m_base)
+                best_sdf = sub_sdf_resolved
+
+            # Atomically synchronize canonical state SDF with validated clean 3D structure
+            state.path_sdf = str(best_sdf)
 
             param_plan.append(
                 {
@@ -97,7 +143,7 @@ def run_md_setup(
                     "inchikey": state.substance.inchikey,
                     "state_hash": state.state_hash,
                     "charge": state.formal_charge,
-                    "sdf": str(sub_sdf_resolved),
+                    "sdf": str(best_sdf),
                 }
             )
 

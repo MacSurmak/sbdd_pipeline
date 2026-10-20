@@ -534,29 +534,47 @@ def run_dock(
                 mol_conformation = mol_pool.pop(0)
 
                 # Topological Restoration for GNINA/United-Atom engines
-                # We strictly graft the new Heavy Atom coordinates onto the perfect LigPrep template
-                # to recover lost hydrogens, bond orders, and formal charges before Antechamber processing.
+                # Graft docked heavy-atom coordinates onto the LigPrep template and optimize hydrogens with fixed heavy atoms
                 if eng != "glide":
                     try:
                         from rdkit.Chem import AllChem
-                        # Load the canonical SSOT template prepared by LigPrep
                         ref_mol = next(Chem.SDMolSupplier(str(Path(lig.path_sdf).resolve()), removeHs=False), None)
                         if ref_mol:
-                            # 1. Strip hydrogens from both to establish a 1:1 heavy-atom mapping isomorphism
                             ref_heavy = Chem.RemoveHs(ref_mol)
                             dock_heavy = Chem.RemoveHs(mol_conformation)
                             match = ref_heavy.GetSubstructMatch(dock_heavy)
 
                             if match and len(match) == dock_heavy.GetNumAtoms():
-                                # 2. Graft coordinates onto the perfect heavy-atom template
                                 conf = ref_heavy.GetConformer()
                                 dock_conf = dock_heavy.GetConformer()
                                 for dock_idx, ref_idx in enumerate(match):
                                     conf.SetAtomPosition(ref_idx, dock_conf.GetAtomPosition(dock_idx))
 
-                                # 3. Reconstruct ideal hydrogen coordinates based on the new heavy atom geometry
+                                # Reconstruct hydrogen coordinates: relax ONLY hydrogens holding heavy atoms strictly fixed
                                 restored_mol = Chem.AddHs(ref_heavy, addCoords=True)
-                                # Transfer properties and title
+                                mp = AllChem.MMFFGetMoleculeProperties(restored_mol)
+                                if mp:
+                                    ff = AllChem.MMFFGetMoleculeForceField(restored_mol, mp)
+                                    for a in restored_mol.GetAtoms():
+                                        if a.GetAtomicNum() != 1:
+                                            ff.AddFixedPoint(a.GetIdx())
+                                    ff.Minimize(maxIts=500)
+                                else:
+                                    ff = AllChem.UFFGetMoleculeForceField(restored_mol)
+                                    if ff:
+                                        for a in restored_mol.GetAtoms():
+                                            if a.GetAtomicNum() != 1:
+                                                ff.AddFixedPoint(a.GetIdx())
+                                        ff.Minimize(maxIts=500)
+
+                                conf_res = restored_mol.GetConformer()
+                                for a in restored_mol.GetAtoms():
+                                    pos = conf_res.GetAtomPosition(a.GetIdx())
+                                    if abs(pos.x) < 1e-4 and abs(pos.y) < 1e-4 and abs(pos.z) < 1e-4:
+                                        raise ValueError(
+                                            f"FATAL: Hydrogen restoration generated degenerate coordinate (0,0,0) for atom {a.GetSymbol()}{a.GetIdx()+1} in pose '{title}'!"
+                                        )
+
                                 restored_mol.SetProp("_Name", mol_conformation.GetProp("_Name") if mol_conformation.HasProp("_Name") else "")
                                 mol_conformation = restored_mol
                     except Exception as e:
