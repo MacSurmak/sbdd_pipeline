@@ -33,27 +33,25 @@ def main():
                 if title:
                     pose_counts[title] = pose_counts.get(title, 0) + 1
 
-    # Physically correct Schrodinger's invalid 2D tags in the MDL V2000 header to strictly
-    # prevent RDKit coordinate dimensionality warnings without silencing the logger.
+    # Structurally normalize the SDF via RDKit to ensure proper 3D MDL V2000 headers
+    # and eliminate downstream dimensionality warnings natively.
     try:
-        with open(args.sdf, "r", encoding="utf-8") as f:
-            lines = f.read().splitlines()
-        for i in range(len(lines)):
-            # Line 1 (0-indexed) is the timestamp/dimension line. For subsequent molecules, it's 2 lines after $$$$
-            if i == 1 or (i > 1 and lines[i - 2] == "$$$$"):
-                if len(lines[i]) >= 22 and lines[i][20:22] == "2D":
-                    lines[i] = lines[i][:20] + "3D" + lines[i][22:]
-                elif "2D" in lines[i]:
-                    lines[i] = lines[i].replace("2D", "3D")
-        with open(args.sdf, "w", encoding="utf-8") as f:
-            f.write("\n".join(lines) + "\n")
+        from rdkit import Chem
+        from rdkit import RDLogger
+        import os
+        
+        RDLogger.DisableLog('rdApp.*')
+        
+        suppl = Chem.SDMolSupplier(args.sdf, removeHs=False, sanitize=False)
+        tmp_sdf = args.sdf + ".tmp"
+        with Chem.SDWriter(tmp_sdf) as w:
+            for m in suppl:
+                if m is not None:
+                    w.write(m)
+        os.replace(tmp_sdf, args.sdf)
     except Exception as e:
         import sys
-
-        print(
-            f"Warning: Could not format dimensionality tags in {args.sdf}: {e}",
-            file=sys.stderr,
-        )
+        print(f"Warning: Could not structurally normalize SDF {args.sdf} via RDKit: {e}", file=sys.stderr)
 
 
 if __name__ == "__main__":
