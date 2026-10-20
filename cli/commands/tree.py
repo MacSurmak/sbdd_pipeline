@@ -100,7 +100,7 @@ def print_tree() -> None:
                                 f"[magenta]{t.name}[/magenta] [{t_color}]({t.status})[/{t_color}] - {t.length_ns} ns"
                             )
 
-    # 2. Chemical Substances & Their 3D Poses
+    # 2. Chemical Substances, Microstates & Their 3D Poses
     substances = (
         session.query(Substance)
         .order_by(Substance.substance_type, Substance.name)
@@ -108,44 +108,43 @@ def print_tree() -> None:
     )
     if substances:
         sub_branch = root_tree.add(
-            "[bold yellow]Chemical Substances & 3D Poses[/bold yellow]"
+            "[bold yellow]Chemical Substances & Microstates (3NF)[/bold yellow]"
         )
         for sub in substances:
-            s_color = "green" if sub.state == "ready" else "yellow"
-            prep_info = (
-                f" [dim](LigPrep: {Path(sub.path_mae).name})[/dim]"
-                if sub.state == "ready" and sub.path_mae
-                else (
-                    " [dim](ready, 3D)[/dim]"
-                    if sub.state == "ready"
-                    else " [dim](raw)[/dim]"
-                )
-            )
             type_badge = f"[bold]{sub.substance_type.upper()}[/bold]"
-            param_status = (
-                " [bold green]+GAFF2[/bold green]"
-                if (sub.path_mol2 and sub.path_frcmod)
-                else ""
-            )
             sub_node = sub_branch.add(
-                f"{type_badge}: [{s_color}]{sub.name}[/{s_color}] [{s_color}][{sub.state}][/{s_color}]{param_status}{prep_info} [dim]({sub.inchikey}) SMILES: {sub.smiles}[/dim]"
+                f"{type_badge}: [bold cyan]{sub.name}[/bold cyan] [dim]({sub.inchikey})[/dim]"
             )
 
-            poses = (
-                session.query(Pose)
+            states = (
+                session.query(SubstanceState)
                 .filter_by(substance_id=sub.id)
-                .order_by(Pose.name)
+                .order_by(SubstanceState.state_hash)
                 .all()
             )
-            for p in poses:
-                p_color = "green" if p.state == "ready" else "yellow"
-                ch = p.formal_charge
-                ch_tag = (
-                    f" [cyan](q={ch:+d})[/cyan]" if ch != 0 else " [dim](neutral)[/dim]"
+            for st in states:
+                st_color = "green" if st.state == "ready" else "yellow"
+                q_label = f"q={st.formal_charge:+d}" if st.formal_charge != 0 else "neutral"
+                param_status = (
+                    " [bold green]+GAFF2[/bold green]"
+                    if (st.path_mol2 and st.path_frcmod)
+                    else ""
                 )
-                sub_node.add(
-                    f"Pose: [{p_color}]{p.name}[/{p_color}] [dim]({p.origin}, state={p.state})[/dim]{ch_tag} in [cyan]{p.receptor_frame.name}[/cyan] -> {Path(p.path).name}"
+                state_node = sub_node.add(
+                    f"State: [magenta]{st.state_hash}[/magenta] [{st_color}][{st.state}][/{st_color}] [cyan]({q_label})[/cyan]{param_status} [dim]SMILES: {st.isomeric_smiles}[/dim]"
                 )
+
+                poses = (
+                    session.query(Pose)
+                    .filter_by(substance_state_id=st.id)
+                    .order_by(Pose.name)
+                    .all()
+                )
+                for p in poses:
+                    p_color = "green" if p.state == "ready" else "yellow"
+                    state_node.add(
+                        f"Pose: [{p_color}]{p.name}[/{p_color}] [dim]({p.origin}, state={p.state})[/dim] in [cyan]{p.receptor_frame.name}[/cyan] -> {Path(p.path).name}"
+                    )
 
     session.close()
     console.print(root_tree)

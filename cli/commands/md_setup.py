@@ -44,46 +44,60 @@ def run_md_setup(
         session.close()
         return
 
-    # 1. Collect all unique non-ion chemical substances required across the candidate systems
-    unique_substances = {}
+    # 1. Collect all unique non-ion chemical microstates required across candidate systems
+    unique_states = {}
     for s in raw_systems:
         if s.pose and s.pose.substance.substance_type != "ion":
-            unique_substances[s.pose.substance.inchikey] = s.pose.substance
+            state = s.pose.substance_state
+            if state:
+                unique_states[state.id] = state
         for c in s.cofactors:
             if c.substance.substance_type != "ion":
-                unique_substances[c.substance.inchikey] = c.substance
+                state = c.substance_state
+                if state:
+                    unique_states[state.id] = state
 
-    # 2. Check cache: identify substances lacking GAFF2 / AM1-BCC topology
-    missing_subs = []
-    for inchikey, sub in unique_substances.items():
-        mol2_ok = sub.path_mol2 and Path(sub.path_mol2).exists() and Path(sub.path_mol2).stat().st_size > 0
-        frcmod_ok = sub.path_frcmod and Path(sub.path_frcmod).exists() and Path(sub.path_frcmod).stat().st_size > 0
+    # 2. Check cache: identify microstates lacking GAFF2 / AM1-BCC topology
+    missing_states = []
+    for state_id, state in unique_states.items():
+        mol2_ok = state.path_mol2 and Path(state.path_mol2).exists() and Path(state.path_mol2).stat().st_size > 0
+        frcmod_ok = state.path_frcmod and Path(state.path_frcmod).exists() and Path(state.path_frcmod).stat().st_size > 0
         if not (mol2_ok and frcmod_ok):
-            missing_subs.append(sub)
+            missing_states.append(state)
 
-    # 3. Lazy On-Demand Parametrization: dispatch quantum calculations strictly for missing substances
-    if missing_subs:
+    # 3. Lazy On-Demand Parametrization: dispatch quantum calculations strictly for missing microstates
+    if missing_states:
         console.print(
-            f"[bold cyan]Lazy Parametrization: {len(missing_subs)} substance(s) require GAFF2/AM1-BCC topology...[/bold cyan]"
+            f"[bold cyan]Lazy Parametrization: {len(missing_states)} chemical state(s) require GAFF2/AM1-BCC topology...[/bold cyan]"
         )
         param_plan = []
-        for sub in missing_subs:
-            if not sub.path_sdf or not Path(sub.path_sdf).exists():
+        for state in missing_states:
+            sdf_path = state.path_sdf or (state.poses[0].path_sdf if state.poses else None)
+            if not sdf_path or not Path(sdf_path).exists():
                 session.close()
                 raise FileNotFoundError(
-                    f"FATAL: Substance '{sub.name}' is missing reference base SDF at: {sub.path_sdf}"
+                    f"FATAL: SubstanceState '{state.state_hash}' missing reference SDF deliverable."
                 )
 
-            pose_sample = session.query(Pose).filter_by(substance_id=sub.id).first()
-            charge = pose_sample.formal_charge if pose_sample else 0
+            # Ensure the reference SDF has complete 3D hydrogens
+            from rdkit import Chem
+            sub_sdf_resolved = Path(sdf_path).resolve()
+            m_suppl = Chem.SDMolSupplier(str(sub_sdf_resolved), removeHs=False, sanitize=False)
+            m_base = next((m for m in m_suppl if m is not None), None)
+            if m_base:
+                if not any(a.GetAtomicNum() == 1 for a in m_base.GetAtoms()):
+                    m_base = Chem.AddHs(m_base, addCoords=True)
+                    with Chem.SDWriter(str(sub_sdf_resolved)) as w:
+                        w.write(m_base)
 
             param_plan.append(
                 {
-                    "name": sub.name,
-                    "res_name": sub.res_name,
-                    "inchikey": sub.inchikey,
-                    "charge": charge,
-                    "sdf": str(Path(sub.path_sdf).resolve()),
+                    "name": f"{state.substance.name}_{state.state_hash}",
+                    "res_name": state.substance.res_name,
+                    "inchikey": state.substance.inchikey,
+                    "state_hash": state.state_hash,
+                    "charge": state.formal_charge,
+                    "sdf": str(sub_sdf_resolved),
                 }
             )
 
@@ -113,7 +127,7 @@ def run_md_setup(
         )
         if ret != 0:
             session.close()
-            console.print("[bold red]FATAL: On-demand substance parametrization failed.[/bold red]")
+            console.print("[bold red]FATAL: On-demand state parametrization failed.[/bold red]")
             sys.exit(ret)
 
         param_receipt = cwd / "substance_param_receipt.tsv"
@@ -126,16 +140,16 @@ def run_md_setup(
         for line in param_receipt.read_text().splitlines():
             if not line.strip():
                 continue
-            r_inchikey, r_mol2, r_frcmod = line.strip().split("\t")
-            sub_to_update = session.query(Substance).filter_by(inchikey=r_inchikey).first()
-            if sub_to_update:
-                sub_to_update.path_mol2 = str(Path(r_mol2).resolve())
-                sub_to_update.path_frcmod = str(Path(r_frcmod).resolve())
-                sub_to_update.state = "ready"
+            r_hash, r_mol2, r_frcmod = line.strip().split("\t")
+            state_to_update = session.query(SubstanceState).filter_by(state_hash=r_hash).first()
+            if state_to_update:
+                state_to_update.path_mol2 = str(Path(r_mol2).resolve())
+                state_to_update.path_frcmod = str(Path(r_frcmod).resolve())
+                state_to_update.state = "ready"
 
         session.commit()
         console.print(
-            f"[bold green]✓ Parametrized {len(missing_subs)} substance(s). Cached for lifetime of project![/bold green]"
+            f"[bold green]✓ Parametrized {len(missing_states)} chemical state(s). Cached for lifetime of project![/bold green]"
         )
 
     plan_list = []
@@ -160,18 +174,19 @@ def run_md_setup(
         mol2_paths = []
         frcmod_paths = []
 
-        # 1. Active ligand (topology resolved strictly from Substance SSOT)
+        # 1. Active ligand (topology resolved strictly from SubstanceState SSOT)
         if s.pose:
             if s.pose.substance.substance_type != "ion":
-                sub_mol2 = s.pose.substance.path_mol2
-                sub_frcmod = s.pose.substance.path_frcmod
-                if not sub_mol2 or not sub_frcmod or not Path(sub_mol2).exists():
+                state = s.pose.substance_state
+                state_mol2 = state.path_mol2
+                state_frcmod = state.path_frcmod
+                if not state_mol2 or not state_frcmod or not Path(state_mol2).exists():
                     console.print(
-                        f"[bold red]FATAL: Substance '{s.pose.substance.name}' missing GAFF2 topology.[/bold red]"
+                        f"[bold red]FATAL: SubstanceState '{state.state_hash}' missing GAFF2 topology.[/bold red]"
                     )
                     sys.exit(1)
-                mol2_paths.append(str(Path(sub_mol2).resolve()))
-                frcmod_paths.append(str(Path(sub_frcmod).resolve()))
+                mol2_paths.append(str(Path(state_mol2).resolve()))
+                frcmod_paths.append(str(Path(state_frcmod).resolve()))
 
             p_sdf = s.pose.path_sdf or s.pose.path
             if not p_sdf:
@@ -199,11 +214,12 @@ def run_md_setup(
             else:
                 cofactor_sdfs.append(sdf_path_resolved)
                 cofactor_resnames.append(c.res_name)
-                c_mol2 = c.substance.path_mol2
-                c_frcmod = c.substance.path_frcmod
+                state = c.substance_state
+                c_mol2 = state.path_mol2
+                c_frcmod = state.path_frcmod
                 if not c_mol2 or not c_frcmod or not Path(c_mol2).exists():
                     console.print(
-                        f"[bold red]FATAL: Cofactor substance '{c.substance.name}' missing GAFF2 topology.[/bold red]"
+                        f"[bold red]FATAL: Cofactor SubstanceState '{state.state_hash}' missing GAFF2 topology.[/bold red]"
                     )
                     sys.exit(1)
                 mol2_paths.append(str(Path(c_mol2).resolve()))
