@@ -89,59 +89,42 @@ def parse_gnina_sdf(sdf_path: Path, prefix: str = "") -> Dict[str, Dict[str, flo
     data: Dict[str, Dict[str, float]] = {}
     if not sdf_path or not sdf_path.exists():
         return data
-    with open(sdf_path, "r", encoding="utf-8", errors="ignore") as f:
-        content = f.read()
 
-    for entry in content.split("$$$$"):
-        if entry.startswith("\n"):
-            entry = entry[1:]
-        elif entry.startswith("\r\n"):
-            entry = entry[2:]
+    try:
+        from rdkit import Chem
+    except ImportError:
+        return data
 
-        lines = entry.splitlines()
-        if len(lines) < 4:
+    suppl = Chem.SDMolSupplier(str(sdf_path), removeHs=False, sanitize=False)
+    for mol in suppl:
+        if mol is None:
             continue
 
-        raw_title = lines[0].strip()
-        prop_title = None
+        title = mol.GetProp("_Name").strip() if mol.HasProp("_Name") else ""
+        if not title and mol.HasProp("s_m_title"):
+            title = mol.GetProp("s_m_title").strip()
+
         props: Dict[str, float] = {}
-
-        for i, line in enumerate(lines):
-            line_str = line.strip()
-            if line_str.startswith("> <") and line_str.endswith(">"):
-                tag_clean = line_str[3:-1].strip().lower()
-                if i + 1 < len(lines):
-                    val_str = lines[i + 1].strip()
-                    if tag_clean in ["_name", "s_m_title", "title", "compound_id"]:
-                        prop_title = val_str
-                    elif tag_clean in [
-                        "cnnscore",
-                        "cnnaffinity",
-                        "minimizedaffinity",
-                        "affinity",
-                    ]:
-                        try:
-                            val = float(val_str)
-                            if tag_clean == "cnnscore":
-                                props[f"{prefix}CNNscore"] = val
-                            elif tag_clean == "cnnaffinity":
-                                props[f"{prefix}CNNaffinity"] = val
-                            elif tag_clean in ["minimizedaffinity", "affinity"]:
-                                props[f"{prefix}VinaAff"] = val
-                        except ValueError as e:
-                            raise ValueError(
-                                f"FATAL: Unparseable GNINA metric '{val_str}' for tag '{tag_clean}': {e}"
-                            )
-
-        title = prop_title or raw_title
-        if not title:
-            continue
+        for prop_name in mol.GetPropNames():
+            tag_clean = prop_name.strip().lower()
+            if tag_clean in ["cnnscore", "cnnaffinity", "minimizedaffinity", "affinity"]:
+                try:
+                    val = float(mol.GetProp(prop_name))
+                    if tag_clean == "cnnscore":
+                        props[f"{prefix}CNNscore"] = val
+                    elif tag_clean == "cnnaffinity":
+                        props[f"{prefix}CNNaffinity"] = val
+                    elif tag_clean in ["minimizedaffinity", "affinity"]:
+                        props[f"{prefix}VinaAff"] = val
+                except ValueError:
+                    pass
 
         title_clean = re.sub(r"(_model_\d+|_dock_\d+|_\d+)$", "", title).strip()
 
         if props:
-            if title not in data:
+            if title and title not in data:
                 data[title] = props
             if title_clean and title_clean not in data:
                 data[title_clean] = props
+
     return data
