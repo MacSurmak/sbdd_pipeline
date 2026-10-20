@@ -115,11 +115,9 @@ class ReceptorFrame(Base):
 
 class Substance(Base):
     """
-    Chemical substance (2D topology).
-    Deduplicated across the entire database by Standard InChIKey.
-    substance_type: 'ligand', 'cofactor', 'ion'.
-    state: 'raw' (imported 2D/3D) -> 'ready' (processed via LigPrep at target pH).
-    path_mae/path_sdf: LigPrep-generated canonical 3D states used for screening and docking.
+    Abstract Chemical Substance (Parent 2D compound).
+    Deduplicated across the entire database by Neutral Standard InChIKey.
+    Acts strictly as a catalogue-level container for all chemical microstates.
     """
 
     __tablename__ = "substances"
@@ -136,27 +134,52 @@ class Substance(Base):
     batch_id = Column(String, nullable=True)
     path_mae = Column(String, nullable=True)  # Prepared .maegz for LigPrep
     path_sdf = Column(String, nullable=True)  # Prepared .sdf
-    path_mol2 = Column(String, nullable=True)  # Antechamber AM1-BCC topology (GAFF2)
-    path_frcmod = Column(String, nullable=True)  # Antechamber GAFF2 force field parameters
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
+    states = relationship(
+        "SubstanceState", back_populates="substance", cascade="all, delete-orphan"
+    )
+
+
+class SubstanceState(Base):
+    """
+    Specific Chemical Microstate (Protomer, Tautomer, Stereoisomer, Ionization state).
+    Keyed deterministically by state_hash (SHA-256 of RDKit Isomeric Canonical SMILES).
+    Acts as the single quantum invariant for GAFF2 force field parameters and AM1-BCC charges.
+    """
+
+    __tablename__ = "substance_states"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    substance_id = Column(
+        Integer, ForeignKey("substances.id", ondelete="CASCADE"), nullable=False
+    )
+    state_hash = Column(String(32), index=True, nullable=False)
+    isomeric_smiles = Column(Text, nullable=False)
+    formal_charge = Column(Integer, nullable=False)  # Exact net charge for -nc in Antechamber
+    state = Column(String, default="raw", nullable=False)  # 'raw', 'ready'
+    path_sdf = Column(String, nullable=True)  # 3D reference conformer for this specific state
+    path_mol2 = Column(String, nullable=True)  # GAFF2 AM1-BCC topology
+    path_frcmod = Column(String, nullable=True)  # GAFF2 force field parameters
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    substance = relationship("Substance", back_populates="states")
     poses = relationship(
-        "Pose", back_populates="substance", cascade="all, delete-orphan"
+        "Pose", back_populates="substance_state", cascade="all, delete-orphan"
     )
 
 
 class Pose(Base):
     """
-    Atomic 3D conformation of a Substance positioned in a ReceptorFrame pocket.
-    Stores explicit, validated paths to geometry (SDF/MAE) and quantum topology (MOL2/FRCMOD).
-    Formal charge is strictly typed and mandatory for quantum electrostatics (AM1-BCC).
+    Spatial 3D conformation of a specific SubstanceState in a ReceptorFrame pocket.
+    Contains Cartesian coordinates (x, y, z) while delegating chemical topology to SubstanceState.
     """
 
     __tablename__ = "poses"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    substance_id = Column(
-        Integer, ForeignKey("substances.id", ondelete="CASCADE"), nullable=False
+    substance_state_id = Column(
+        Integer, ForeignKey("substance_states.id", ondelete="CASCADE"), nullable=False
     )
     receptor_frame_id = Column(
         Integer, ForeignKey("receptor_frames.id", ondelete="CASCADE"), nullable=False
@@ -166,21 +189,36 @@ class Pose(Base):
     origin = Column(
         String, default="crystal", nullable=False
     )  # crystal, docking_glide, docking_gnina, md_cluster
-    state = Column(String, default="raw", nullable=False)  # raw, ready
+    state = Column(String, default="ready", nullable=False)  # raw, ready
     parent_pose_id = Column(
         Integer, ForeignKey("poses.id", ondelete="SET NULL"), nullable=True
     )
-    formal_charge = Column(Integer, nullable=False)  # Crucial for Antechamber AM1-BCC
     path = Column(String, nullable=False)  # Canonical primary path
     path_sdf = Column(String, nullable=True)  # Validated SDF deliverable
     path_mae = Column(String, nullable=True)  # Validated MAE deliverable
     scores = Column(Text, default="{}", nullable=False)  # JSON dict of scoring metrics
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
-    substance = relationship("Substance", back_populates="poses")
+    substance_state = relationship("SubstanceState", back_populates="poses")
     receptor_frame = relationship("ReceptorFrame", back_populates="poses")
     parent_pose = relationship("Pose", remote_side=[id], backref="derived_poses")
     systems = relationship("System", back_populates="pose")
+
+    @property
+    def substance(self):
+        return self.substance_state.substance if self.substance_state else None
+
+    @property
+    def formal_charge(self) -> int:
+        return self.substance_state.formal_charge if self.substance_state else 0
+
+    @property
+    def path_mol2(self) -> str | None:
+        return self.substance_state.path_mol2 if self.substance_state else None
+
+    @property
+    def path_frcmod(self) -> str | None:
+        return self.substance_state.path_frcmod if self.substance_state else None
 
     @property
     def scores_dict(self) -> dict:
@@ -295,8 +333,9 @@ for _model_attr in [
     ReceptorFrame.path_pdb,
     Substance.path_mae,
     Substance.path_sdf,
-    Substance.path_mol2,
-    Substance.path_frcmod,
+    SubstanceState.path_sdf,
+    SubstanceState.path_mol2,
+    SubstanceState.path_frcmod,
     Pose.path,
     Pose.path_sdf,
     Pose.path_mae,
