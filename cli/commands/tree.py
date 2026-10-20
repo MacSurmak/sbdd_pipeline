@@ -11,6 +11,7 @@ from cli.core.db import (
     Target,
     ReceptorFrame,
     Substance,
+    SubstanceState,
     Pose,
     System,
     Trajectory,

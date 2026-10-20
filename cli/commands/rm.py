@@ -9,6 +9,7 @@ from cli.core.db import (
     Target,
     ReceptorFrame,
     Substance,
+    SubstanceState,
     Pose,
     System,
     Trajectory,
@@ -60,6 +61,19 @@ def remove_entity(name: str) -> None:
         if traj:
             session.delete(traj)
             console.print(f"[bold green]✓ Deleted Trajectory '{name}'.[/bold green]")
+            deleted = True
+
+    if not deleted:
+        st = (
+            session.query(SubstanceState)
+            .filter_by(state_hash=name)
+            .first()
+        )
+        if st:
+            session.delete(st)
+            console.print(
+                f"[bold green]✓ Deleted SubstanceState '{name}'.[/bold green]"
+            )
             deleted = True
 
     if not deleted:
