@@ -116,16 +116,7 @@ def execute_nextflow(
                 f"\n[bold red]✗ Nextflow failed with exit code {ret}[/bold red]"
             )
             console.print(
-                "\n[bold yellow]╔══════════════════════════════════════════════════════════════════════════════════════════════════════╗\n"
-                "║ CLUSTER DISK I/O LAW ($SLURM_TMPDIR):                                                                ║\n"
-                "║                                                                                                      ║\n"
-                "║ ALL PROCESS CALCULATIONS WERE EXECUTED EXCLUSIVELY ON THE COMPUTE NODE'S LOCAL SSD ($SLURM_TMPDIR).  ║\n"
-                "║ THAT EPHEMERAL DIRECTORY WAS PERMANENTLY AND IRREVOCABLY PURGED UPON TASK TERMINATION.               ║\n"
-                "║                                                                                                      ║\n"
-                "║ THE DIRECTORY IN /shared/work/... CONTAINS ONLY WRAPPER SCRIPTS (.command.*) AND RESUME METADATA.    ║\n"
-                "║ NO TASK ARTIFACTS (LOG, PDB, GRO, TOP, OUT) EXIST IN /shared/work/...!                               ║\n"
-                "║ DO NOT ATTEMPT TO LOCATE CALCULATION FILES THERE — THEY WERE ON THE WORKER'S LOCAL DISK AND ARE GONE.║\n"
-                "╚══════════════════════════════════════════════════════════════════════════════════════════════════════╝[/bold yellow]\n"
+                "[dim]Note: Tasks execute in node-local scratch ($SLURM_TMPDIR) and are purged upon exit. Intermediate calculation artifacts do not reside in /shared/work/.[/dim]"
             )
             console.print(
                 f"[yellow]Scratch directory {scratch_base} preserved for '-resume'.[/yellow]"
