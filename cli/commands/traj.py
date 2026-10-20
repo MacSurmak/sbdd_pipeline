@@ -28,6 +28,61 @@ from cli.core.config_loader import load_project_configs, build_nextflow_args
 console = Console()
 
 
+def _transfer_coordinates_to_template(template_sdf: Path, raw_pose_sdf: Path, out_sdf: Path) -> None:
+    """
+    Transfers exact Cartesian coordinates from MD centroid structure onto the
+    canonical, validated chemical graph template of the parent SubstanceState.
+    Preserves 100% of the true bond orders, formal charges, stereochemistry,
+    and valences without any heuristic re-assignment or valence guessing.
+    """
+    from rdkit import Chem
+
+    suppl_tmpl = Chem.SDMolSupplier(str(template_sdf), removeHs=False, sanitize=False)
+    tmpl_mol = next((m for m in suppl_tmpl if m is not None), None)
+
+    suppl_raw = Chem.SDMolSupplier(str(raw_pose_sdf), removeHs=False, sanitize=False)
+    raw_mol = next((m for m in suppl_raw if m is not None), None)
+
+    if not tmpl_mol or not raw_mol:
+        raise ValueError(
+            f"FATAL: Could not parse chemical structure from template {template_sdf} or MD pose {raw_pose_sdf}"
+        )
+
+    n_tmpl = tmpl_mol.GetNumAtoms()
+    n_raw = raw_mol.GetNumAtoms()
+    if n_tmpl != n_raw:
+        raise ValueError(
+            f"FATAL: Atom count mismatch between template {template_sdf.name} ({n_tmpl} atoms) "
+            f"and MD centroid pose {raw_pose_sdf.name} ({n_raw} atoms)! Topology cannot be preserved."
+        )
+
+    for i in range(n_tmpl):
+        s_tmpl = tmpl_mol.GetAtomWithIdx(i).GetSymbol()
+        s_raw = raw_mol.GetAtomWithIdx(i).GetSymbol()
+        if s_tmpl != s_raw:
+            raise ValueError(
+                f"FATAL: Element mismatch at atom index {i}: template has {s_tmpl}, MD pose has {s_raw}!"
+            )
+
+    conf_tmpl = tmpl_mol.GetConformer()
+    conf_raw = raw_mol.GetConformer()
+    for i in range(n_tmpl):
+        conf_tmpl.SetAtomPosition(i, conf_raw.GetAtomPosition(i))
+
+    for i in range(n_tmpl):
+        pos = conf_tmpl.GetAtomPosition(i)
+        if abs(pos.x) < 1e-4 and abs(pos.y) < 1e-4 and abs(pos.z) < 1e-4:
+            raise ValueError(
+                f"FATAL: Atom {tmpl_mol.GetAtomWithIdx(i).GetSymbol()}{i+1} has degenerate coordinates (0, 0, 0)!"
+            )
+
+    tmpl_mol.SetProp("_Name", out_sdf.stem)
+    tmpl_mol.SetProp("s_m_title", out_sdf.stem)
+
+    with Chem.SDWriter(str(out_sdf)) as writer:
+        writer.write(tmpl_mol)
+
+
 def _query_trajectories(
     session,
     systems: list[str] | None = None,
@@ -584,26 +639,17 @@ def run_cluster(
                 )
 
             cluster_pose_name = f"{centroid_frame_name}_{res_clean}_pose"
-            sub_pose_dir = (
-                cwd
-                / "substances"
-                / parent_match.substance.inchikey
-                / "poses"
-                / cluster_pose_name
+            # Transfer MD centroid coordinates onto canonical template preserving true topology
+            template_sdf = (
+                Path(parent_match.substance_state.path_sdf).resolve()
+                if (parent_match.substance_state and parent_match.substance_state.path_sdf and Path(parent_match.substance_state.path_sdf).exists())
+                else Path(parent_match.path_sdf).resolve()
             )
-            sub_pose_dir.mkdir(parents=True, exist_ok=True)
-
-            dest_p_sdf = sub_pose_dir / f"{res_clean}_pose.sdf"
-            dest_p_mae = sub_pose_dir / f"{res_clean}_pose.mae"
-
-            # Directly preserve 100% of real physical MD cluster coordinates and hydrogens
-            if src_p_sdf.exists() and src_p_sdf.resolve() != dest_p_sdf.resolve():
-                shutil.copy2(str(src_p_sdf), str(dest_p_sdf))
+            _transfer_coordinates_to_template(template_sdf, src_p_sdf, dest_p_sdf)
 
             if src_p_mae.exists() and src_p_mae.resolve() != dest_p_mae.resolve():
                 shutil.copy2(str(src_p_mae), str(dest_p_mae))
 
-            # Centroid pose inherits the exact, invariant SubstanceState of the parent system
             ex_pose = session.query(Pose).filter_by(name=cluster_pose_name).first()
             if not ex_pose:
                 new_p = Pose(

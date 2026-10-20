@@ -143,13 +143,14 @@ def main():
             )
             sys.exit(1)
 
-        suppl = Chem.SDMolSupplier(str(p_sdf), removeHs=False)
+        suppl = Chem.SDMolSupplier(str(p_sdf), removeHs=False, sanitize=False)
         mol = next((m for m in suppl if m is not None), None)
         if not mol:
             print(
                 f"FATAL: RDKit failed to parse molecule from {p_sdf}", file=sys.stderr
             )
             sys.exit(1)
+        mol.UpdatePropertyCache(strict=False)
 
         if not available_chains:
             print(
