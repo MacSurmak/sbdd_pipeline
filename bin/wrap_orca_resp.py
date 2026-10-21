@@ -251,19 +251,15 @@ def main():
     def run_orca_calculation(inp_name: str, out_name: str, desc: str):
         print(f"[{desc}] Exec: {orca_bin} {inp_name} > {out_name}", flush=True)
 
-        # Sanitize Slurm environment so OpenMPI/PRRTE does not constrain slot allocation to SLURM_NTASKS=1
+        # In Slurm cpus-per-task allocations, bridge Slurm CPUs to OpenMPI/PRRTE task slots
         orca_env = os.environ.copy()
-        for slurm_var in [
-            "SLURM_NTASKS",
-            "SLURM_NPROCS",
-            "SLURM_TASKS_PER_NODE",
-            "SLURM_STEP_TASKS_PER_NODE",
-        ]:
-            orca_env.pop(slurm_var, None)
+        cpus_per_task = orca_env.get("SLURM_CPUS_PER_TASK", str(args.nprocs))
+        orca_env["SLURM_TASKS_PER_NODE"] = str(cpus_per_task)
+        orca_env["SLURM_NTASKS"] = str(cpus_per_task)
+        orca_env["SLURM_NPROCS"] = str(cpus_per_task)
 
         # PRRTE and OpenMPI 5.x tuning for local node multi-threading under Slurm cgroups
         orca_env["PRTE_MCA_rmaps_default_mapping_policy"] = ":oversubscribe"
-        orca_env["PRTE_MCA_ras_slurm_use_allocated_cpus"] = "1"
         orca_env["OMPI_MCA_rmaps_base_oversubscribe"] = "1"
         orca_env["OMPI_MCA_hwloc_base_binding_policy"] = "none"
         orca_env["OMPI_MCA_btl"] = "^openib"
