@@ -44,19 +44,19 @@ workflow PARAMETRIZE_WF {
     // Branch 1: High-precision Two-Stage ORCA RESP
     PARAMETRIZE_SUBSTANCE_RESP(
         ch_branched.resp,
-        params.param_ff ?: "gaff2",
-        params.orca_maxcore ?: 4000,
-        params.orca_opt_theory ?: "B3LYP",
-        params.orca_opt_basis ?: "def2-SVP",
-        params.orca_opt_dispersion ?: "D4",
-        params.orca_opt_solvent ?: "CPCM(Water)",
-        params.orca_opt_rijcosx ?: "true",
-        params.orca_opt_maxiter ?: 200,
-        params.orca_scf_conv ?: "TightSCF",
-        params.orca_scf_maxiter ?: 250,
-        params.orca_esp_theory ?: "HF",
-        params.orca_esp_basis ?: "6-31G*",
-        params.orca_esp_density ?: "Merz-Kollman"
+        params.param_ff,
+        params.orca_maxcore,
+        params.orca_opt_theory,
+        params.orca_opt_basis,
+        params.orca_opt_dispersion,
+        params.orca_opt_solvent,
+        params.orca_opt_rijcosx,
+        params.orca_opt_maxiter,
+        params.orca_scf_conv,
+        params.orca_scf_maxiter,
+        params.orca_esp_theory,
+        params.orca_esp_basis,
+        params.orca_esp_density
     )
 
     // Branch 2: Fast Semi-empirical AM1-BCC
