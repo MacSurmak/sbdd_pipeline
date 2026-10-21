@@ -31,29 +31,38 @@ def setup_orca_environment(nprocs: int) -> dict:
 
 
 def run_orca(inp_file: Path, out_file: Path, nprocs: int):
-    """Executes ORCA binary with strict error trapping."""
+    """Executes ORCA binary with real-time stdout streaming and file logging."""
     orca_bin = shutil.which("orca") or "/opt/containers/bin/orca"
     env = setup_orca_environment(nprocs)
 
-    print(f"Exec: {orca_bin} {inp_file.name} > {out_file.name}", flush=True)
+    print(
+        f"Exec: {orca_bin} {inp_file.name} (live streaming to .command.log)",
+        flush=True,
+    )
     with open(out_file, "w", encoding="utf-8") as out_f:
-        res = subprocess.run(
+        proc = subprocess.Popen(
             [orca_bin, inp_file.name],
-            stdout=out_f,
+            stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
-            check=False,
+            bufsize=1,
             env=env,
         )
+        for line in proc.stdout:
+            sys.stdout.write(line)
+            sys.stdout.flush()
+            out_f.write(line)
+            out_f.flush()
+        proc.wait()
 
     if not out_file.exists() or out_file.stat().st_size == 0:
         raise RuntimeError(f"FATAL: ORCA failed to produce output log: {out_file}")
 
     log_content = out_file.read_text(encoding="utf-8", errors="ignore")
-    if res.returncode != 0 or "ORCA TERMINATED NORMALLY" not in log_content:
+    if proc.returncode != 0 or "ORCA TERMINATED NORMALLY" not in log_content:
         tail_lines = "\n".join(log_content.splitlines()[-40:])
         raise RuntimeError(
-            f"FATAL: ORCA terminated abnormally with exit code {res.returncode}!\n"
+            f"FATAL: ORCA terminated abnormally with exit code {proc.returncode}!\n"
             f"--- TAIL OF {out_file.name} ---\n{tail_lines}"
         )
 
