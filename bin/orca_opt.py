@@ -80,6 +80,11 @@ def main():
         "--rijcosx", action="store_true", help="Enable RIJCOSX approximation"
     )
     parser.add_argument(
+        "--opt_level",
+        default="Opt",
+        help="Geometry optimization level (LooseOpt, Opt, TightOpt)",
+    )
+    parser.add_argument(
         "--maxiter", type=int, required=True, help="Max geometry cycles"
     )
     parser.add_argument(
@@ -137,7 +142,7 @@ def main():
     solv_flag = args.solvent if args.solvent.lower() != "none" else ""
 
     inp_lines = [
-        f"! {args.theory} {disp_flag} {args.basis} {rij_flag} {solv_flag} Opt {args.scf_convergence}",
+        f"! {args.theory} {disp_flag} {args.basis} {rij_flag} {solv_flag} {args.opt_level} {args.scf_convergence}",
         f"%maxcore {args.maxcore_mb}",
         f"%pal nprocs {args.nprocs} end",
         f"%geom maxiter {args.maxiter} end",

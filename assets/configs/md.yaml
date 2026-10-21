@@ -24,8 +24,10 @@ md_simulation:
       maxcore_mb: 4000                  # Per-core RAM allocation in MB (%maxcore)
       preopt_theory: "PBE"              # Stage 1A: Fast pure GGA pre-relaxation functional
       preopt_basis: "def2-SVP"          # Stage 1A: Pre-relaxation basis set
+      preopt_opt_level: "LooseOpt"      # Stage 1A: Geometry convergence tolerance (LooseOpt, Opt)
       refine_theory: "B3LYP"            # Stage 1B: High-level hybrid DFT geometry refinement functional
       refine_basis: "def2-SVP"          # Stage 1B: Refinement basis set
+      refine_opt_level: "Opt"           # Stage 1B: Geometry convergence tolerance (Opt, TightOpt)
       opt_dispersion: "D4"              # Dispersion correction (D3BJ, D4, none)
       opt_solvent: "CPCM(Water)"        # Implicit solvent model (CPCM(Water), SMD, none)
       opt_rijcosx: true                 # RIJCOSX approximation for Coulomb and HF exchange

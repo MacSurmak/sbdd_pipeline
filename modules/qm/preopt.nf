@@ -23,6 +23,7 @@ process ORCA_PREOPT {
         --basis "${params.orca_preopt_basis}" \\
         --dispersion "${params.orca_opt_dispersion}" \\
         --solvent "${params.orca_opt_solvent}" \\
+        --opt_level "${params.orca_preopt_opt_level}" \\
         --maxiter ${params.orca_opt_maxiter} \\
         --scf_convergence "${params.orca_geom_scf_conv}" \\
         --scf_maxiter ${params.orca_geom_scf_maxiter} \\

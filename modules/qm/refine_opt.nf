@@ -24,6 +24,7 @@ process ORCA_REFINE_OPT {
         --basis "${params.orca_refine_basis}" \\
         --dispersion "${params.orca_opt_dispersion}" \\
         --solvent "${params.orca_opt_solvent}" \\
+        --opt_level "${params.orca_refine_opt_level}" \\
         ${rij_flag} \\
         --maxiter ${params.orca_opt_maxiter} \\
         --scf_convergence "${params.orca_geom_scf_conv}" \\
