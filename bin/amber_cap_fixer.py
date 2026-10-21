@@ -12,14 +12,6 @@ import sys
 from pathlib import Path
 
 
-def format_atom_name(name: str) -> str:
-    name = name.strip()
-    if len(name) >= 4:
-        return f"{name[:4]:4s}"
-    else:
-        return f" {name:<3s}"
-
-
 STANDARD_PROTEIN_RESIDUES = {
     "ALA",
     "ARG",

@@ -10,17 +10,6 @@ import os
 from pathlib import Path
 
 
-def send_telemetry(msg):
-    master = os.environ.get("SLURM_SUBMIT_HOST", "127.0.0.1")
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    try:
-        sock.sendto(json.dumps(msg).encode("utf-8"), (master, 8089))
-    except Exception:
-        pass
-    finally:
-        sock.close()
-
-
 def run_mdrun(cmd, task_name):
     """
     Executes GROMACS mdrun.
@@ -262,6 +251,11 @@ def cmd_equilibration(args):
             stage = Path(mdp).stem
             last_stage = stage
 
+            # ARCHITECTURAL NOTE: -maxwarn 2 is currently required to permit minor non-fatal warnings
+            # generated during ParmEd AMBER-to-GROMACS topology conversion (e.g. 1-4 interaction exclusions
+            # and virtual site declarations in ff19SB/lipid21).
+            # FUTURE RESOLUTION: Fix ParmEd conversion templates upstream to eliminate warnings natively,
+            # allowing strict -maxwarn 0 enforcement.
             cmd = [
                 "gmx",
                 "grompp",
@@ -368,6 +362,9 @@ def cmd_run_chunk(args):
         mdp = re.sub(r"nstenergy\s*=.*", f"nstenergy = {nstenergy}", mdp)
         Path("md_run.mdp").write_text(mdp)
 
+        # ARCHITECTURAL NOTE: -maxwarn 3 is currently required during chunk 1 grompp because
+        # continuation velocity matching and ParmEd 1-4 scaling pair warnings are triggered simultaneously.
+        # FUTURE RESOLUTION: Enforce clean mdp generation and topology sanitization so -maxwarn 0 is viable.
         run_gmx(
             [
                 "gmx",

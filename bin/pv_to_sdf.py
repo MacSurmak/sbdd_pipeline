@@ -34,11 +34,10 @@ def main():
                     pose_counts[title] = pose_counts.get(title, 0) + 1
 
     # Structurally normalize the SDF via RDKit to ensure proper 3D MDL V2000 headers
-    # and eliminate downstream dimensionality warnings natively.
+    # and eliminate downstream dimensionality warnings natively. Fail-Fast on error.
     try:
-        from rdkit import Chem
-        from rdkit import RDLogger
         import os
+        from rdkit import Chem, RDLogger
 
         RDLogger.DisableLog("rdApp.*")
 
@@ -53,9 +52,11 @@ def main():
         import sys
 
         print(
-            f"Warning: Could not structurally normalize SDF {args.sdf} via RDKit: {e}",
+            f"FATAL: Failed to structurally normalize SDF {args.sdf} via RDKit: {e}",
             file=sys.stderr,
+            flush=True,
         )
+        sys.exit(1)
 
 
 if __name__ == "__main__":

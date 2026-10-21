@@ -19,7 +19,6 @@ process GNINA_DOCK {
 
     script:
     """
-    trap '[[ -f gnina_dock.log ]] && cp -f gnina_dock.log ${task.workDir}/ 2>/dev/null || true' EXIT ERR
     python3 ${projectDir}/bin/wrap_gnina.py dock \\
         --receptor ${receptor_pdb} \\
         --ligand ${chunk_sdf} \\

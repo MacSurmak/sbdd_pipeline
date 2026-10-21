@@ -1,3 +1,24 @@
+/*
+ * =========================================================================================
+ * ARCHITECTURAL DEFECT & TECHNICAL DEBT NOTICE: STATIC CHUNK UNROLLING LIMIT
+ * =========================================================================================
+ * ISSUE:
+ *   This subworkflow statically instantiates exactly 10 sequential MD chunk execution steps
+ *   (RUN_MD_CHUNK_1 through RUN_MD_CHUNK_10). Nextflow DSL2 lacks native dynamic cyclic
+ *   recursion without pre-compiling explicit process nodes into the DAG.
+ *
+ * CONSEQUENCE:
+ *   If 'assets/configs/md.yaml' specifies total_time_ns > 10 * chunk_size_ns (e.g. 200 ns total
+ *   with 10 ns chunks = 20 chunks), any chunks beyond #10 are silently omitted, or the simulation
+ *   stops at 100 ns.
+ *
+ * REQUIRED FUNDAMENTAL RESOLUTION:
+ *   Replace this statically unrolled subworkflow with an iterative Nextflow orchestrator pattern
+ *   (e.g., dynamic external submission via Nextflow feedback channel, an orchestrating CLI loop
+ *   in 'sbdd md' that submits batches of chunks, or a recursive DAG generator that dynamically
+ *   templates the exact number of required chunk processes based on md.yaml before invocation).
+ * =========================================================================================
+ */
 /* Dynamically generated unrolled DAG for chunked MD */
 include { GMX_EQUILIBRATION } from '../modules/gromacs/equilibration'
 include { RUN_MD_CHUNK as RUN_MD_CHUNK_1 } from '../modules/gromacs/run_chunk'

@@ -18,7 +18,6 @@ process GNINA_RESCORE {
     script:
     def cnn_arg = cnn_model ? "--cnn_model ${cnn_model}" : ""
     """
-    trap '[[ -f rescored.log ]] && cp -f rescored.log ${task.workDir}/ 2>/dev/null || true' EXIT ERR
     python3 ${projectDir}/bin/wrap_gnina.py rescore \\
         --receptor ${receptor_pdb} \\
         --ligand ${poses_sdf} \\

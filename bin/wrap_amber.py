@@ -55,6 +55,8 @@ def cmd_antechamber(args):
         writer.write(mol)
 
     out_mol2 = f"{args.mol_id}_gaff2.mol2"
+    scfconv = getattr(args, "scfconv", None) or "1.d-10"
+    grms_tol = getattr(args, "grms_tol", None) or "0.0005"
     run_cmd(
         [
             "antechamber",
@@ -75,7 +77,7 @@ def cmd_antechamber(args):
             "-rn",
             res_name,
             "-ek",
-            "qm_theory='AM1', grms_tol=0.0005, scfconv=1.d-10, ndiis_attempts=700",
+            f"qm_theory='AM1', grms_tol={grms_tol}, scfconv={scfconv}, ndiis_attempts=700",
         ]
     )
     run_cmd(
@@ -205,6 +207,8 @@ def main():
     p_ante.add_argument("--charge", required=True, type=int)
     p_ante.add_argument("--mol_id", required=True)
     p_ante.add_argument("--res_name", required=True)
+    p_ante.add_argument("--scfconv", default="1.d-10")
+    p_ante.add_argument("--grms_tol", default="0.0005")
 
     p_tleap = subparsers.add_parser("tleap")
     p_tleap.add_argument("--complex_pdb", required=True)

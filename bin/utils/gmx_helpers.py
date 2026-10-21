@@ -59,8 +59,10 @@ def ensure_complex_ndx_group(
     complex_atoms = sorted(list(system_atoms - solvent_atoms))
 
     if not complex_atoms:
-        # Fallback to Protein if calculation yielded empty set
-        complex_atoms = groups.get("Protein", [])
+        raise ValueError(
+            "FATAL: Group [ COMPLEX ] is empty after excluding solvent and lipids! "
+            "Check water_names, ion_names, and lipid_names in md.yaml configuration."
+        )
 
     # Replace or append [ COMPLEX ]
     lines = ndx_path.read_text(encoding="utf-8", errors="ignore").splitlines()

@@ -19,7 +19,9 @@ process PARAMETRIZE_SUBSTANCE_BCC {
         --sdf input_base.sdf \\
         --charge ${meta.charge} \\
         --mol_id "${meta.res_name}_topology" \\
-        --res_name "${meta.res_name}"
+        --res_name "${meta.res_name}" \\
+        --scfconv "${params.bcc_scfconv}" \\
+        --grms_tol "${params.bcc_grms_tol}"
 
     mv "${meta.res_name}_topology_gaff2.mol2" "${meta.res_name}_topology.mol2"
     """
