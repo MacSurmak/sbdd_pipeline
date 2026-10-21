@@ -6,6 +6,7 @@ Description: Nextflow orchestrator execution wrapper with Slurm monitoring and /
 import subprocess
 import shutil
 import sys
+import re
 from pathlib import Path
 from rich.console import Console
 
@@ -115,8 +116,34 @@ def execute_nextflow(
             console.print(
                 f"\n[bold red]✗ Nextflow failed with exit code {ret}[/bold red]"
             )
+
+            failed_dirs = []
+            if log_file.exists():
+                try:
+                    log_text = log_file.read_text(encoding="utf-8", errors="ignore")
+                    for m in re.findall(r"Work dir:\s*\n\s*(\S+)", log_text):
+                        clean_dir = m.strip()
+                        if clean_dir and clean_dir not in failed_dirs:
+                            failed_dirs.append(clean_dir)
+                except Exception:
+                    pass
+
+            target_scope = (
+                ", ".join(failed_dirs)
+                if (failed_dirs and len(failed_dirs) <= 2)
+                else (
+                    f"{failed_dirs[0]} (and {len(failed_dirs) - 1} more)"
+                    if failed_dirs
+                    else str(scratch_work)
+                )
+            )
+
             console.print(
-                "[dim]Note: Tasks execute in node-local scratch ($SLURM_TMPDIR) and are purged upon exit. Intermediate calculation artifacts do not reside in /shared/work/.[/dim]"
+                f"[dim]Note: Task working directory ({target_scope}) contains strictly Nextflow orchestration\n"
+                f"      metadata and scripts (.command.sh, .command.run, .command.err, .command.log).\n"
+                f"      Intermediate calculation files (e.g. orca_opt.out, matrices, temporary coordinates) NEVER reside here;\n"
+                f"      computations execute exclusively in node-local scratch ($SLURM_TMPDIR) and are purged upon exit.\n"
+                f"      To inspect error diagnostics, refer to the trace printed above or read .command.err in that directory.[/dim]"
             )
             console.print(
                 f"[yellow]Scratch directory {scratch_base} preserved for '-resume'.[/yellow]"
