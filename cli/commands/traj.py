@@ -641,6 +641,12 @@ def run_cluster(
                 )
 
             cluster_pose_name = f"{centroid_frame_name}_{res_clean}_pose"
+            sub_inchikey = parent_match.substance.inchikey
+            pose_dir = cwd / "substances" / sub_inchikey / "poses" / cluster_pose_name
+            pose_dir.mkdir(parents=True, exist_ok=True)
+            dest_p_sdf = pose_dir / f"{res_clean}_pose.sdf"
+            dest_p_mae = pose_dir / f"{res_clean}_pose.mae"
+
             # Transfer MD centroid coordinates onto canonical template preserving true topology
             template_sdf = (
                 Path(parent_match.substance_state.path_sdf).resolve()
