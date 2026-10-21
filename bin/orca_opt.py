@@ -168,7 +168,7 @@ def main():
             writer.write(mol_rdkit)
 
     print(
-        f"✓ Successfully converged ORCA optimization ({args.theory}): {len(opt_coords)} atoms.",
+        f"✓ Successfully converged ORCA optimization ({tmpl_path.stem}): {len(opt_coords)} atoms.",
         flush=True,
     )
 

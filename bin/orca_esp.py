@@ -122,7 +122,7 @@ def main():
 
     run_orca(inp_file, out_file, args.nprocs)
     print(
-        f"✓ Successfully calculated ORCA ESP grid ({args.theory}/{args.basis}): {out_file.name}",
+        f"✓ Successfully calculated ORCA ESP grid ({tmpl_path.stem}): {out_file.name}",
         flush=True,
     )
 
