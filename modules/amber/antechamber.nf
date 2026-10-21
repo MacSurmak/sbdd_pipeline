@@ -11,7 +11,7 @@ process PARAMETRIZE_SUBSTANCE_BCC {
     tuple val(meta), path(base_sdf, stageAs: 'input_base.sdf')
 
     output:
-    tuple val(meta), path("${meta.res_name}_topology.mol2"), path("${meta.res_name}_topology.frcmod"), path(base_sdf), emit: topology
+    tuple val(meta), path("${meta.res_name}_topology.mol2"), path("${meta.res_name}_topology.frcmod"), emit: topology
 
     script:
     """

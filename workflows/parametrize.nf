@@ -45,18 +45,16 @@ workflow PARAMETRIZE_WF {
         ORCA_REFINE_OPT(ORCA_PREOPT.out.preopt_sdf)
         ORCA_ESP_CALC(ORCA_REFINE_OPT.out.refined_sdf)
         FIT_RESP_CHARGES(ORCA_ESP_CALC.out.esp_out)
-        BUILD_TOPOLOGY_GAFF2(FIT_RESP_CHARGES.out.charges)
 
-        ch_topology = BUILD_TOPOLOGY_GAFF2.out.topology.map { meta, mol2, frcmod, refined_sdf ->
-            [ meta, mol2, frcmod ]
-        }
+        ch_build_in = ch_substances.join(FIT_RESP_CHARGES.out.charges, by: 0)
+        BUILD_TOPOLOGY_GAFF2(ch_build_in)
+
+        ch_topology = BUILD_TOPOLOGY_GAFF2.out.topology
     } else if (method == "bcc") {
         PARAMETRIZE_SUBSTANCE_BCC(
             ch_substances
         )
-        ch_topology = PARAMETRIZE_SUBSTANCE_BCC.out.topology.map { meta, mol2, frcmod, base_sdf ->
-            [ meta, mol2, frcmod ]
-        }
+        ch_topology = PARAMETRIZE_SUBSTANCE_BCC.out.topology
     } else {
         error "FATAL: Unsupported parametrization method '${method}' declared in configuration! Must be 'resp' or 'bcc'."
     }
