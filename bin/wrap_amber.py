@@ -33,14 +33,12 @@ def parse_mol2_resname(mol2_file: Path) -> str:
 
 
 def cmd_antechamber(args):
-    import math
     from rdkit import Chem
 
     res_name = args.res_name.strip().upper()[:4]
     if len(res_name) < 3:
         res_name = f"{res_name:<3s}"
 
-    # Standardize input SDF: convert V3000 to strict MDL V2000 and ensure complete 3D hydrogens
     suppl = Chem.SDMolSupplier(str(args.sdf), removeHs=False, sanitize=False)
     mol = next((m for m in suppl if m is not None), None)
     if mol is None:
@@ -51,46 +49,9 @@ def cmd_antechamber(args):
     except Exception:
         mol.UpdatePropertyCache(strict=False)
 
-    # Fail-Fast: verify explicit hydrogens exist from PrepWizard or LigPrep
-    has_hydrogens = any(a.GetAtomicNum() == 1 for a in mol.GetAtoms())
-    if not has_hydrogens:
-        raise ValueError(
-            f"FATAL: Molecule '{args.mol_id}' in {args.sdf} has no explicit hydrogens! "
-            f"Antechamber AM1-BCC charge calculation strictly requires a protonated 3D structure. "
-            f"Structure must be protonated via PrepWizard or LigPrep before parametrization."
-        )
-
-    # Strict Fail-Fast: verify no degenerate coordinates at (0, 0, 0)
-    conf = mol.GetConformer()
-    for idx, atom in enumerate(mol.GetAtoms()):
-        pos = conf.GetAtomPosition(idx)
-        if abs(pos.x) < 1e-4 and abs(pos.y) < 1e-4 and abs(pos.z) < 1e-4:
-            raise ValueError(
-                f"FATAL: Atom {atom.GetSymbol()}{idx+1} in molecule '{args.mol_id}' has degenerate coordinates (0, 0, 0)! "
-                f"Corrupted geometry detected in {args.sdf}. Calculation halted by Fail-Fast law."
-            )
-
-    # Strict Fail-Fast: verify realistic bond lengths
-    for bond in mol.GetBonds():
-        a1 = bond.GetBeginAtom()
-        a2 = bond.GetEndAtom()
-        p1 = conf.GetAtomPosition(a1.GetIdx())
-        p2 = conf.GetAtomPosition(a2.GetIdx())
-        dist = math.sqrt((p1.x - p2.x) ** 2 + (p1.y - p2.y) ** 2 + (p1.z - p2.z) ** 2)
-        if dist < 0.6:
-            raise ValueError(
-                f"FATAL: Unphysical bond clash between {a1.GetSymbol()}{a1.GetIdx()+1} and {a2.GetSymbol()}{a2.GetIdx()+1}: {dist:.3f} Å < 0.6 Å in {args.sdf}"
-            )
-        if (a1.GetAtomicNum() == 1 or a2.GetAtomicNum() == 1) and dist > 1.8:
-            raise ValueError(
-                f"FATAL: Severed hydrogen bond between {a1.GetSymbol()}{a1.GetIdx()+1} and {a2.GetSymbol()}{a2.GetIdx()+1}: {dist:.3f} Å > 1.8 Å in {args.sdf}"
-            )
-
     clean_v2000_sdf = f"{args.mol_id}_v2000.sdf"
     with Chem.SDWriter(clean_v2000_sdf) as writer:
-        writer.SetForceV3000(
-            False
-        )  # Enforce strict MDL V2000 for Antechamber compatibility
+        writer.SetForceV3000(False)
         writer.write(mol)
 
     out_mol2 = f"{args.mol_id}_gaff2.mol2"
