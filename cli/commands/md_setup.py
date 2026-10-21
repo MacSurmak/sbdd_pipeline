@@ -84,7 +84,11 @@ def run_md_setup(
 
         for state in missing_states:
             # Strict Fail-Fast: reference 3D conformer must exist with physical hydrogens from PrepWizard/LigPrep
-            if not state.path_sdf or not Path(state.path_sdf).exists() or Path(state.path_sdf).stat().st_size == 0:
+            if (
+                not state.path_sdf
+                or not Path(state.path_sdf).exists()
+                or Path(state.path_sdf).stat().st_size == 0
+            ):
                 session.close()
                 raise FileNotFoundError(
                     f"FATAL: SubstanceState '{state.state_hash}' has no valid prepared reference SDF: {state.path_sdf}. "
@@ -96,7 +100,9 @@ def run_md_setup(
             m = next((mol for mol in suppl if mol is not None), None)
             if m is None:
                 session.close()
-                raise ValueError(f"FATAL: Could not parse chemical structure from {state_sdf}")
+                raise ValueError(
+                    f"FATAL: Could not parse chemical structure from {state_sdf}"
+                )
 
             if not any(a.GetAtomicNum() == 1 for a in m.GetAtoms()):
                 session.close()
