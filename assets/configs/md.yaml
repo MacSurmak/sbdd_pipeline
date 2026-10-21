@@ -16,6 +16,26 @@ md_simulation:
     restraint_forces: [1000, 500, 250, 100, 50, 10]
     water_names: ["SOL", "Water", "HOH", "WAT", "TIP3", "OPC"]
     ion_names: ["K+", "Cl-", "NA+", "CL-", "NA", "CL", "K", "POT", "CLA", "SOD", "MG", "ZN", "CA", "CAL", "MG2+", "CA2+", "ZN2+"]
+  ligand_parametrization:
+    method: "resp"                     # "resp" (ORCA 6 quantum ESP) or "bcc" (Antechamber AM1-BCC)
+    forcefield: "gaff2"                 # Small molecule force field: gaff or gaff2
+    orca:
+      nprocs: 8                         # Parallel CPU threads (%pal nprocs)
+      maxcore_mb: 4000                  # Per-core RAM allocation in MB (%maxcore)
+      opt_theory: "B3LYP"               # Geometry relaxation functional (prevents vacuum self-collapse)
+      opt_basis: "def2-SVP"             # Geometry relaxation basis set
+      opt_dispersion: "D4"              # Dispersion correction (D3BJ, D4, none)
+      opt_solvent: "CPCM(Water)"        # Implicit solvent model (CPCM(Water), SMD, none)
+      opt_rijcosx: true                 # RIJCOSX approximation for Coulomb and HF exchange
+      opt_maxiter: 200                  # Max geometry optimization cycles
+      scf_convergence: "TightSCF"       # SCF convergence criterion (TightSCF, NormalSCF)
+      scf_maxiter: 250                  # Max SCF iterations
+      esp_theory: "HF"                  # Canonical AMBER charge calibration theory (gas-phase)
+      esp_basis: "6-31G*"               # Canonical AMBER charge calibration basis set
+      esp_density: "Merz-Kollman"       # ESP grid algorithm
+    bcc:
+      scfconv: "1.d-10"
+      grms_tol: 0.0005
   declash:
     cutoff: 0.10
     niter: 300

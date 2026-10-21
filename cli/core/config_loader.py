@@ -441,6 +441,148 @@ def _build_analyze_args(config: Dict[str, Any]) -> list:
     return args
 
 
+def validate_ligand_parametrization_config(config: Dict[str, Any]) -> Dict[str, Any]:
+    """Strict Fail-Fast validation for small molecule charge and forcefield parametrization."""
+    md_cfg = config.get("md_simulation")
+    if not md_cfg:
+        raise ValueError("FATAL: 'md_simulation' section missing in md.yaml!")
+
+    param_cfg = md_cfg.get("ligand_parametrization")
+    if not param_cfg:
+        raise ValueError(
+            "FATAL: 'md_simulation.ligand_parametrization' section missing in md.yaml! "
+            "Parametrization method ('resp' or 'bcc') and target forcefield must be explicitly declared."
+        )
+
+    method = param_cfg.get("method")
+    if not method or method not in ["resp", "bcc"]:
+        raise ValueError(
+            f"FATAL: Invalid or missing 'md_simulation.ligand_parametrization.method': '{method}'. "
+            "Supported methods are 'resp' (ORCA 6 quantum ESP) or 'bcc' (AM1-BCC)."
+        )
+
+    ff = param_cfg.get("forcefield")
+    if not ff or ff not in ["gaff", "gaff2"]:
+        raise ValueError(
+            f"FATAL: Invalid or missing 'md_simulation.ligand_parametrization.forcefield': '{ff}'. "
+            "Supported small molecule force fields are 'gaff' or 'gaff2'."
+        )
+
+    if method == "resp":
+        orca_cfg = param_cfg.get("orca")
+        if not orca_cfg or not isinstance(orca_cfg, dict):
+            raise ValueError(
+                "FATAL: 'md_simulation.ligand_parametrization.orca' section is required when method='resp'!"
+            )
+        required_orca_keys = [
+            "nprocs",
+            "maxcore_mb",
+            "opt_theory",
+            "opt_basis",
+            "opt_dispersion",
+            "opt_solvent",
+            "opt_rijcosx",
+            "opt_maxiter",
+            "scf_convergence",
+            "scf_maxiter",
+            "esp_theory",
+            "esp_basis",
+            "esp_density",
+        ]
+        for k in required_orca_keys:
+            if k not in orca_cfg or orca_cfg[k] is None or orca_cfg[k] == "":
+                raise ValueError(
+                    f"FATAL: Required key 'md_simulation.ligand_parametrization.orca.{k}' is missing or empty in md.yaml!"
+                )
+        if int(orca_cfg["nprocs"]) <= 0:
+            raise ValueError(
+                f"FATAL: orca.nprocs must be a positive integer, got: {orca_cfg['nprocs']}"
+            )
+        if int(orca_cfg["maxcore_mb"]) <= 0:
+            raise ValueError(
+                f"FATAL: orca.maxcore_mb must be a positive integer, got: {orca_cfg['maxcore_mb']}"
+            )
+        if int(orca_cfg["opt_maxiter"]) <= 0:
+            raise ValueError(
+                f"FATAL: orca.opt_maxiter must be a positive integer, got: {orca_cfg['opt_maxiter']}"
+            )
+        if int(orca_cfg["scf_maxiter"]) <= 0:
+            raise ValueError(
+                f"FATAL: orca.scf_maxiter must be a positive integer, got: {orca_cfg['scf_maxiter']}"
+            )
+
+    elif method == "bcc":
+        bcc_cfg = param_cfg.get("bcc")
+        if not bcc_cfg or not isinstance(bcc_cfg, dict):
+            raise ValueError(
+                "FATAL: 'md_simulation.ligand_parametrization.bcc' section is required when method='bcc'!"
+            )
+        required_bcc_keys = ["scfconv", "grms_tol"]
+        for k in required_bcc_keys:
+            if k not in bcc_cfg or bcc_cfg[k] is None or bcc_cfg[k] == "":
+                raise ValueError(
+                    f"FATAL: Required key 'md_simulation.ligand_parametrization.bcc.{k}' is missing or empty in md.yaml!"
+                )
+
+    return param_cfg
+
+
+def _build_parametrize_args(config: Dict[str, Any]) -> list:
+    """Builds Nextflow command line arguments for the parametrization workflow."""
+    param_cfg = validate_ligand_parametrization_config(config)
+    method = param_cfg["method"]
+    ff = param_cfg["forcefield"]
+    args = [
+        "--param_method",
+        method,
+        "--param_ff",
+        ff,
+    ]
+    if method == "resp":
+        orca = param_cfg["orca"]
+        args.extend(
+            [
+                "--orca_nprocs",
+                str(orca["nprocs"]),
+                "--orca_maxcore",
+                str(orca["maxcore_mb"]),
+                "--orca_opt_theory",
+                str(orca["opt_theory"]),
+                "--orca_opt_basis",
+                str(orca["opt_basis"]),
+                "--orca_opt_dispersion",
+                str(orca["opt_dispersion"]),
+                "--orca_opt_solvent",
+                str(orca["opt_solvent"]),
+                "--orca_opt_rijcosx",
+                "true" if orca["opt_rijcosx"] else "false",
+                "--orca_opt_maxiter",
+                str(orca["opt_maxiter"]),
+                "--orca_scf_conv",
+                str(orca["scf_convergence"]),
+                "--orca_scf_maxiter",
+                str(orca["scf_maxiter"]),
+                "--orca_esp_theory",
+                str(orca["esp_theory"]),
+                "--orca_esp_basis",
+                str(orca["esp_basis"]),
+                "--orca_esp_density",
+                str(orca["esp_density"]),
+            ]
+        )
+    elif method == "bcc":
+        bcc = param_cfg["bcc"]
+        args.extend(
+            [
+                "--bcc_scfconv",
+                str(bcc["scfconv"]),
+                "--bcc_grms_tol",
+                str(bcc["grms_tol"]),
+            ]
+        )
+    return args
+
+
 def build_nextflow_args(
     config: Dict[str, Any], project_dir: Path, entrypoint: str
 ) -> list:
@@ -479,6 +621,8 @@ def build_nextflow_args(
         args.extend(_build_analyze_args(config))
     elif entrypoint == "heal":
         pass  # Heal only requires the base project params mapped above
+    elif entrypoint == "parametrize":
+        args.extend(_build_parametrize_args(config))
     else:
         raise ValueError(
             f"FATAL: Unknown routing entrypoint '{entrypoint}'. Cannot build arguments."

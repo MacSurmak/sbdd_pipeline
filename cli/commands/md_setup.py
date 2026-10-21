@@ -75,8 +75,12 @@ def run_md_setup(
 
     # 3. Lazy On-Demand Parametrization: dispatch quantum calculations strictly for missing microstates
     if missing_states:
+        from cli.core.config_loader import validate_ligand_parametrization_config
+
+        param_cfg = validate_ligand_parametrization_config(configs)
+        method_label = "ORCA RESP" if param_cfg["method"] == "resp" else "AM1-BCC"
         console.print(
-            f"[bold cyan]Lazy Parametrization: {len(missing_states)} chemical state(s) require GAFF2/AM1-BCC topology...[/bold cyan]"
+            f"[bold cyan]Lazy Parametrization ({method_label}): {len(missing_states)} chemical state(s) require {param_cfg['forcefield'].upper()} topology...[/bold cyan]"
         )
         param_plan = []
         from rdkit import Chem
@@ -118,6 +122,7 @@ def run_md_setup(
                     "inchikey": state.substance.inchikey,
                     "state_hash": state.state_hash,
                     "charge": state.formal_charge,
+                    "method": param_cfg["method"],
                     "sdf": str(state_sdf),
                 }
             )
@@ -126,14 +131,8 @@ def run_md_setup(
         param_plan_file.write_text(json.dumps(param_plan, indent=2), encoding="utf-8")
         (cwd / "substance_param_receipt.tsv").unlink(missing_ok=True)
 
-        nf_param_args = [
-            "--project_name",
-            configs.get("project", {}).get("name", cwd.name),
-            "--outdir",
-            str(cwd.resolve()),
-            "--param_plan",
-            str(param_plan_file.resolve()),
-        ]
+        nf_param_args = build_nextflow_args(configs, cwd, entrypoint="parametrize")
+        nf_param_args.extend(["--param_plan", str(param_plan_file.resolve())])
         if urgent:
             nf_param_args.extend(["--queue", "urgent"])
 
