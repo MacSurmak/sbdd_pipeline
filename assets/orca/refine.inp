@@ -1,0 +1,8 @@
+! B3LYP D4 def2-SVP RIJCOSX def2/J CPCM(Water) Opt NormalSCF
+%maxcore {MAXCORE}
+%pal nprocs {NPROCS} end
+%geom maxiter 200 end
+%scf maxiter 200 end
+* xyz {CHARGE} {MULT}
+{COORDINATES}
+*

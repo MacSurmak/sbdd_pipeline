@@ -474,27 +474,7 @@ def validate_ligand_parametrization_config(config: Dict[str, Any]) -> Dict[str, 
             raise ValueError(
                 "FATAL: 'md_simulation.ligand_parametrization.orca' section is required when method='resp'!"
             )
-        required_orca_keys = [
-            "nprocs",
-            "maxcore_mb",
-            "preopt_theory",
-            "preopt_basis",
-            "preopt_opt_level",
-            "refine_theory",
-            "refine_basis",
-            "refine_opt_level",
-            "opt_dispersion",
-            "opt_solvent",
-            "opt_rijcosx",
-            "opt_maxiter",
-            "geom_scf_convergence",
-            "geom_scf_maxiter",
-            "esp_theory",
-            "esp_basis",
-            "esp_density",
-            "esp_scf_convergence",
-            "esp_scf_maxiter",
-        ]
+        required_orca_keys = ["nprocs", "maxcore_mb"]
         for k in required_orca_keys:
             if k not in orca_cfg or orca_cfg[k] is None or orca_cfg[k] == "":
                 raise ValueError(
@@ -507,18 +487,6 @@ def validate_ligand_parametrization_config(config: Dict[str, Any]) -> Dict[str, 
         if int(orca_cfg["maxcore_mb"]) <= 0:
             raise ValueError(
                 f"FATAL: orca.maxcore_mb must be a positive integer, got: {orca_cfg['maxcore_mb']}"
-            )
-        if int(orca_cfg["opt_maxiter"]) <= 0:
-            raise ValueError(
-                f"FATAL: orca.opt_maxiter must be a positive integer, got: {orca_cfg['opt_maxiter']}"
-            )
-        if int(orca_cfg["geom_scf_maxiter"]) <= 0:
-            raise ValueError(
-                f"FATAL: orca.geom_scf_maxiter must be a positive integer, got: {orca_cfg['geom_scf_maxiter']}"
-            )
-        if int(orca_cfg["esp_scf_maxiter"]) <= 0:
-            raise ValueError(
-                f"FATAL: orca.esp_scf_maxiter must be a positive integer, got: {orca_cfg['esp_scf_maxiter']}"
             )
 
     elif method == "bcc":
@@ -561,40 +529,6 @@ def _build_parametrize_args(config: Dict[str, Any]) -> list:
                 str(maxcore),
                 "--orca_total_mem_mb",
                 str(total_mem_mb),
-                "--orca_preopt_theory",
-                str(orca["preopt_theory"]),
-                "--orca_preopt_basis",
-                str(orca["preopt_basis"]),
-                "--orca_preopt_opt_level",
-                str(orca["preopt_opt_level"]),
-                "--orca_refine_theory",
-                str(orca["refine_theory"]),
-                "--orca_refine_basis",
-                str(orca["refine_basis"]),
-                "--orca_refine_opt_level",
-                str(orca["refine_opt_level"]),
-                "--orca_opt_dispersion",
-                str(orca["opt_dispersion"]),
-                "--orca_opt_solvent",
-                str(orca["opt_solvent"]),
-                "--orca_opt_rijcosx",
-                "true" if orca["opt_rijcosx"] else "false",
-                "--orca_opt_maxiter",
-                str(orca["opt_maxiter"]),
-                "--orca_geom_scf_conv",
-                str(orca["geom_scf_convergence"]),
-                "--orca_geom_scf_maxiter",
-                str(orca["geom_scf_maxiter"]),
-                "--orca_esp_theory",
-                str(orca["esp_theory"]),
-                "--orca_esp_basis",
-                str(orca["esp_basis"]),
-                "--orca_esp_density",
-                str(orca["esp_density"]),
-                "--orca_esp_scf_conv",
-                str(orca["esp_scf_convergence"]),
-                "--orca_esp_scf_maxiter",
-                str(orca["esp_scf_maxiter"]),
             ]
         )
     elif method == "bcc":

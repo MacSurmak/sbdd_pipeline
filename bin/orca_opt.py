@@ -68,47 +68,25 @@ def run_orca(inp_file: Path, out_file: Path, nprocs: int):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="ORCA Atomic Geometry Optimizer")
+    parser = argparse.ArgumentParser(description="ORCA Atomic Geometry Optimizer via Archetype Template")
+    parser.add_argument("--template", required=True, help="Path to ORCA .inp template file")
     parser.add_argument("--input", required=True, help="Input molecule (.sdf or .xyz)")
     parser.add_argument("--charge", required=True, type=int, help="Formal charge")
     parser.add_argument("--mult", required=True, type=int, help="Spin multiplicity")
-    parser.add_argument("--theory", required=True, help="Functional (e.g. PBE, B3LYP)")
-    parser.add_argument("--basis", required=True, help="Basis set (e.g. def2-SVP)")
-    parser.add_argument("--dispersion", default="", help="Dispersion (e.g. D4)")
-    parser.add_argument("--solvent", default="", help="Solvent (e.g. CPCM(Water))")
-    parser.add_argument(
-        "--rijcosx", action="store_true", help="Enable RIJCOSX approximation"
-    )
-    parser.add_argument(
-        "--opt_level",
-        default="Opt",
-        help="Geometry optimization level (LooseOpt, Opt, TightOpt)",
-    )
-    parser.add_argument(
-        "--maxiter", type=int, required=True, help="Max geometry cycles"
-    )
-    parser.add_argument(
-        "--scf_convergence", required=True, help="SCF convergence (e.g. NormalSCF)"
-    )
-    parser.add_argument(
-        "--scf_maxiter", type=int, required=True, help="Max SCF cycles"
-    )
-    parser.add_argument(
-        "--nprocs", type=int, required=True, help="Processors (%pal nprocs)"
-    )
-    parser.add_argument(
-        "--maxcore_mb", type=int, required=True, help="Per-core RAM in MB"
-    )
+    parser.add_argument("--nprocs", type=int, required=True, help="Processors (%pal nprocs)")
+    parser.add_argument("--maxcore_mb", type=int, required=True, help="Per-core RAM in MB")
     parser.add_argument("--out_xyz", default="", help="Output optimized XYZ file")
     parser.add_argument("--out_sdf", default="", help="Output optimized SDF file")
-    parser.add_argument(
-        "--out_log", default="orca_opt.out", help="Output execution log"
-    )
+    parser.add_argument("--out_log", default="orca_opt.out", help="Output execution log")
     args = parser.parse_args()
 
     in_path = Path(args.input).resolve()
     if not in_path.exists():
         raise FileNotFoundError(f"FATAL: Input file does not exist: {in_path}")
+
+    tmpl_path = Path(args.template).resolve()
+    if not tmpl_path.exists() or tmpl_path.stat().st_size == 0:
+        raise FileNotFoundError(f"FATAL: ORCA template file does not exist or is empty: {tmpl_path}")
 
     atoms_data = []
     mol_rdkit = None
@@ -125,56 +103,28 @@ def main():
             atoms_data.append((elem, pos.x, pos.y, pos.z))
     elif in_path.suffix.lower() == ".xyz":
         lines = in_path.read_text(encoding="utf-8", errors="ignore").splitlines()
-        coord_lines = [l.strip() for l in lines if l.strip() and not l.startswith("#")][
-            2:
-        ]
+        coord_lines = [l.strip() for l in lines if l.strip() and not l.startswith("#")][2:]
         for line in coord_lines:
             parts = line.split()
-            atoms_data.append(
-                (parts[0], float(parts[1]), float(parts[2]), float(parts[3]))
-            )
+            atoms_data.append((parts[0], float(parts[1]), float(parts[2]), float(parts[3])))
     else:
         raise ValueError(f"FATAL: Unsupported input format for ORCA: {in_path.suffix}")
 
-    # Build calculation header supporting both semi-empirical xTB and ab initio DFT
-    is_xtb = "xtb" in args.theory.lower()
-    solv_flag = args.solvent.strip() if args.solvent and args.solvent.lower() != "none" else ""
-
-    if is_xtb:
-        if solv_flag:
-            # In ORCA, xTB requires ALPB, ddCOSMO, or CPCMX instead of standard CPCM/SMD
-            if solv_flag.upper().startswith("CPCM("):
-                solv_flag = "ALPB(" + solv_flag[5:]
-            elif solv_flag.upper().startswith("SMD("):
-                solv_flag = "ALPB(" + solv_flag[4:]
-
-        keyword_line = f"! {args.theory} {solv_flag} {args.opt_level}".strip()
-        inp_lines = [
-            keyword_line,
-            f"%maxcore {args.maxcore_mb}",
-            f"%pal nprocs {args.nprocs} end",
-            f"%geom maxiter {args.maxiter} end",
-            f"* xyz {args.charge} {args.mult}",
-        ]
-    else:
-        rij_flag = "RIJCOSX def2/J" if args.rijcosx else "RI def2/J"
-        disp_flag = args.dispersion if args.dispersion and args.dispersion.lower() != "none" else ""
-        basis_flag = args.basis if args.basis and args.basis.lower() != "none" else ""
-        keyword_line = f"! {args.theory} {disp_flag} {basis_flag} {rij_flag} {solv_flag} {args.opt_level} {args.scf_convergence}".strip()
-        inp_lines = [
-            keyword_line,
-            f"%maxcore {args.maxcore_mb}",
-            f"%pal nprocs {args.nprocs} end",
-            f"%geom maxiter {args.maxiter} end",
-            f"%scf maxiter {args.scf_maxiter} end",
-            f"* xyz {args.charge} {args.mult}",
-        ]
-    for elem, x, y, z in atoms_data:
-        inp_lines.append(f"  {elem:<3s} {x:12.6f} {y:12.6f} {z:12.6f}")
-    inp_lines.append("*\n")
+    # Build input from template with strict placeholder replacement
+    coord_block = "\n".join(
+        f"  {elem:<3s} {x:12.6f} {y:12.6f} {z:12.6f}" for elem, x, y, z in atoms_data
+    )
+    tmpl_text = tmpl_path.read_text(encoding="utf-8")
+    inp_content = (
+        tmpl_text.replace("{NPROCS}", str(args.nprocs))
+        .replace("{MAXCORE}", str(args.maxcore_mb))
+        .replace("{CHARGE}", str(args.charge))
+        .replace("{MULT}", str(args.mult))
+        .replace("{COORDINATES}", coord_block)
+    )
 
     inp_file = Path("orca_opt.inp")
-    inp_file.write_text("\n".join(inp_lines), encoding="utf-8")
+    inp_file.write_text(inp_content, encoding="utf-8")
     out_file = Path(args.out_log)
 
     run_orca(inp_file, out_file, args.nprocs)

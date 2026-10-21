@@ -13,22 +13,13 @@ process ORCA_REFINE_OPT {
     tuple val(meta), path("${meta.res_name}_refined.sdf"), path(metadata_json), emit: refined_sdf
 
     script:
-    def rij_flag = (params.orca_opt_rijcosx.toString().toLowerCase() in ['true', '1', 'yes']) ? "--rijcosx" : ""
     """
     mult=\$(python3 -c "import json; print(json.load(open('${metadata_json}'))['spin_multiplicity'])")
     python3 ${projectDir}/bin/orca_opt.py \\
+        --template "${projectDir}/assets/orca/refine.inp" \\
         --input ${preopt_sdf} \\
         --charge ${meta.charge} \\
         --mult \${mult} \\
-        --theory "${params.orca_refine_theory}" \\
-        --basis "${params.orca_refine_basis}" \\
-        --dispersion "${params.orca_opt_dispersion}" \\
-        --solvent "${params.orca_opt_solvent}" \\
-        --opt_level "${params.orca_refine_opt_level}" \\
-        ${rij_flag} \\
-        --maxiter ${params.orca_opt_maxiter} \\
-        --scf_convergence "${params.orca_geom_scf_conv}" \\
-        --scf_maxiter ${params.orca_geom_scf_maxiter} \\
         --nprocs ${task.cpus} \\
         --maxcore_mb ${params.orca_maxcore} \\
         --out_sdf "${meta.res_name}_refined.sdf" \\

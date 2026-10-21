@@ -1,0 +1,7 @@
+! xTB2 ALPB(Water) Opt
+%maxcore {MAXCORE}
+%pal nprocs {NPROCS} end
+%geom maxiter 200 end
+* xyz {CHARGE} {MULT}
+{COORDINATES}
+*

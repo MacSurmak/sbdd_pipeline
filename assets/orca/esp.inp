@@ -1,0 +1,7 @@
+! HF 6-31G* RESP TightSCF
+%maxcore {MAXCORE}
+%pal nprocs {NPROCS} end
+%scf maxiter 250 end
+* xyz {CHARGE} {MULT}
+{COORDINATES}
+*

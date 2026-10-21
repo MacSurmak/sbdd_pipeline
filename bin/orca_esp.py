@@ -67,27 +67,13 @@ def run_orca(inp_file: Path, out_file: Path, nprocs: int):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="ORCA Single-Point ESP Driver")
+    parser = argparse.ArgumentParser(description="ORCA Single-Point ESP Driver via Archetype Template")
+    parser.add_argument("--template", required=True, help="Path to ORCA .inp template file")
     parser.add_argument(
         "--sdf", required=True, help="Input relaxed molecule structure"
     )
     parser.add_argument("--charge", required=True, type=int, help="Net formal charge")
     parser.add_argument("--mult", required=True, type=int, help="Spin multiplicity")
-    parser.add_argument(
-        "--theory", default="HF", help="ESP Theory level (canonical: HF)"
-    )
-    parser.add_argument(
-        "--basis", default="6-31G*", help="ESP Basis set (canonical: 6-31G*)"
-    )
-    parser.add_argument(
-        "--density", default="Merz-Kollman", help="ESP density algorithm"
-    )
-    parser.add_argument(
-        "--scf_convergence", default="TightSCF", help="SCF convergence criterion"
-    )
-    parser.add_argument(
-        "--scf_maxiter", type=int, default=250, help="Max SCF iterations"
-    )
     parser.add_argument(
         "--nprocs", type=int, required=True, help="Number of CPU cores"
     )
@@ -103,6 +89,10 @@ def main():
     if not in_path.exists() or in_path.stat().st_size == 0:
         raise FileNotFoundError(f"FATAL: Input SDF deliverable not found: {in_path}")
 
+    tmpl_path = Path(args.template).resolve()
+    if not tmpl_path.exists() or tmpl_path.stat().st_size == 0:
+        raise FileNotFoundError(f"FATAL: ORCA template file does not exist or is empty: {tmpl_path}")
+
     suppl = Chem.SDMolSupplier(str(in_path), removeHs=False, sanitize=False)
     mol = next((m for m in suppl if m is not None), None)
     if mol is None:
@@ -113,21 +103,21 @@ def main():
     conf = mol.GetConformer()
     n_atoms = mol.GetNumAtoms()
 
-    inp_lines = [
-        f"! {args.theory} {args.basis} RESP {args.scf_convergence}",
-        f"%maxcore {args.maxcore_mb}",
-        f"%pal nprocs {args.nprocs} end",
-        f"%scf maxiter {args.scf_maxiter} end",
-        f"* xyz {args.charge} {args.mult}",
-    ]
-    for idx in range(n_atoms):
-        pos = conf.GetAtomPosition(idx)
-        elem = mol.GetAtomWithIdx(idx).GetSymbol()
-        inp_lines.append(f"  {elem:<3s} {pos.x:12.6f} {pos.y:12.6f} {pos.z:12.6f}")
-    inp_lines.append("*\n")
+    coord_block = "\n".join(
+        f"  {mol.GetAtomWithIdx(idx).GetSymbol():<3s} {conf.GetAtomPosition(idx).x:12.6f} {conf.GetAtomPosition(idx).y:12.6f} {conf.GetAtomPosition(idx).z:12.6f}"
+        for idx in range(n_atoms)
+    )
+    tmpl_text = tmpl_path.read_text(encoding="utf-8")
+    inp_content = (
+        tmpl_text.replace("{NPROCS}", str(args.nprocs))
+        .replace("{MAXCORE}", str(args.maxcore_mb))
+        .replace("{CHARGE}", str(args.charge))
+        .replace("{MULT}", str(args.mult))
+        .replace("{COORDINATES}", coord_block)
+    )
 
     inp_file = Path("orca_esp.inp")
-    inp_file.write_text("\n".join(inp_lines), encoding="utf-8")
+    inp_file.write_text(inp_content, encoding="utf-8")
     out_file = Path(args.out_log).resolve()
 
     run_orca(inp_file, out_file, args.nprocs)

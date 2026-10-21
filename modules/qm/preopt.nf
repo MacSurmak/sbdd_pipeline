@@ -16,17 +16,10 @@ process ORCA_PREOPT {
     """
     mult=\$(python3 -c "import json; print(json.load(open('${metadata_json}'))['spin_multiplicity'])")
     python3 ${projectDir}/bin/orca_opt.py \\
+        --template "${projectDir}/assets/orca/preopt.inp" \\
         --input ${valid_sdf} \\
         --charge ${meta.charge} \\
         --mult \${mult} \\
-        --theory "${params.orca_preopt_theory}" \\
-        --basis "${params.orca_preopt_basis}" \\
-        --dispersion "${params.orca_opt_dispersion}" \\
-        --solvent "${params.orca_opt_solvent}" \\
-        --opt_level "${params.orca_preopt_opt_level}" \\
-        --maxiter ${params.orca_opt_maxiter} \\
-        --scf_convergence "${params.orca_geom_scf_conv}" \\
-        --scf_maxiter ${params.orca_geom_scf_maxiter} \\
         --nprocs ${task.cpus} \\
         --maxcore_mb ${params.orca_maxcore} \\
         --out_sdf "${meta.res_name}_preopt.sdf" \\
