@@ -22,17 +22,21 @@ md_simulation:
     orca:
       nprocs: 8                         # Parallel CPU threads (%pal nprocs)
       maxcore_mb: 4000                  # Per-core RAM allocation in MB (%maxcore)
-      opt_theory: "B3LYP"               # Geometry relaxation functional (prevents vacuum self-collapse)
-      opt_basis: "def2-SVP"             # Geometry relaxation basis set
+      preopt_theory: "PBE"              # Stage 1A: Fast pure GGA pre-relaxation functional
+      preopt_basis: "def2-SVP"          # Stage 1A: Pre-relaxation basis set
+      refine_theory: "B3LYP"            # Stage 1B: High-level hybrid DFT geometry refinement functional
+      refine_basis: "def2-SVP"          # Stage 1B: Refinement basis set
       opt_dispersion: "D4"              # Dispersion correction (D3BJ, D4, none)
       opt_solvent: "CPCM(Water)"        # Implicit solvent model (CPCM(Water), SMD, none)
       opt_rijcosx: true                 # RIJCOSX approximation for Coulomb and HF exchange
-      opt_maxiter: 200                  # Max geometry optimization cycles
-      scf_convergence: "TightSCF"       # SCF convergence criterion (TightSCF, NormalSCF)
-      scf_maxiter: 250                  # Max SCF iterations
-      esp_theory: "HF"                  # Canonical AMBER charge calibration theory (gas-phase)
-      esp_basis: "6-31G*"               # Canonical AMBER charge calibration basis set
+      opt_maxiter: 200                  # Max geometry optimization cycles per stage
+      geom_scf_convergence: "NormalSCF" # SCF convergence for geometry relaxation (NormalSCF)
+      geom_scf_maxiter: 200             # Max SCF iterations for geometry relaxation
+      esp_theory: "HF"                  # Stage 2: Canonical AMBER charge calibration theory (gas-phase)
+      esp_basis: "6-31G*"               # Stage 2: Canonical AMBER charge calibration basis set
       esp_density: "Merz-Kollman"       # ESP grid algorithm
+      esp_scf_convergence: "TightSCF"   # SCF convergence for ESP single-point evaluation (TightSCF)
+      esp_scf_maxiter: 250              # Max SCF iterations for ESP calculation
     bcc:
       scfconv: "1.d-10"
       grms_tol: 0.0005
