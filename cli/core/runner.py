@@ -141,9 +141,9 @@ def execute_nextflow(
             console.print(
                 f"[dim]Note: Task working directory ({target_scope}) contains strictly Nextflow orchestration\n"
                 f"      metadata and scripts (.command.sh, .command.run, .command.err, .command.log).\n"
-                f"      Intermediate calculation files (e.g. orca_opt.out, matrices, temporary coordinates) NEVER reside here;\n"
+                f"      Intermediate calculation files and logs NEVER reside here;\n"
                 f"      computations execute exclusively in node-local scratch ($SLURM_TMPDIR) and are purged upon exit.\n"
-                f"      To inspect error diagnostics, refer to the trace printed above or read .command.err in that directory.[/dim]"
+                f"      To inspect error diagnostics, refer to the trace printed above or replicate the issue by manually running the command.[/dim]"
             )
             console.print(
                 f"[yellow]Scratch directory {scratch_base} preserved for '-resume'.[/yellow]"
