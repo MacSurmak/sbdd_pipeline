@@ -22,9 +22,9 @@ md_simulation:
     orca:
       nprocs: 8                         # Parallel CPU threads (%pal nprocs)
       maxcore_mb: 4000                  # Per-core RAM allocation in MB (%maxcore)
-      preopt_theory: "PBE"              # Stage 1A: Fast pure GGA pre-relaxation functional
-      preopt_basis: "def2-SVP"          # Stage 1A: Pre-relaxation basis set
-      preopt_opt_level: "LooseOpt"      # Stage 1A: Geometry convergence tolerance (LooseOpt, Opt)
+      preopt_theory: "xTB2"             # Stage 1A: Ultra-fast semi-empirical pre-relaxation functional (xTB2 or PBE)
+      preopt_basis: "none"              # none for xTB, def2-SVP for DFT
+      preopt_opt_level: "Opt"           # Stage 1A: Geometry convergence tolerance (Opt, LooseOpt)
       refine_theory: "B3LYP"            # Stage 1B: High-level hybrid DFT geometry refinement functional
       refine_basis: "def2-SVP"          # Stage 1B: Refinement basis set
       refine_opt_level: "Opt"           # Stage 1B: Geometry convergence tolerance (Opt, TightOpt)

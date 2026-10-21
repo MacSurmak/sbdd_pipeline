@@ -136,19 +136,32 @@ def main():
     else:
         raise ValueError(f"FATAL: Unsupported input format for ORCA: {in_path.suffix}")
 
-    # Build calculation header
-    rij_flag = "RIJCOSX def2/J" if args.rijcosx else "RI def2/J"
-    disp_flag = args.dispersion if args.dispersion.lower() != "none" else ""
-    solv_flag = args.solvent if args.solvent.lower() != "none" else ""
+    # Build calculation header supporting both semi-empirical xTB and ab initio DFT
+    is_xtb = "xtb" in args.theory.lower()
+    solv_flag = args.solvent if args.solvent and args.solvent.lower() != "none" else ""
 
-    inp_lines = [
-        f"! {args.theory} {disp_flag} {args.basis} {rij_flag} {solv_flag} {args.opt_level} {args.scf_convergence}",
-        f"%maxcore {args.maxcore_mb}",
-        f"%pal nprocs {args.nprocs} end",
-        f"%geom maxiter {args.maxiter} end",
-        f"%scf maxiter {args.scf_maxiter} end",
-        f"* xyz {args.charge} {args.mult}",
-    ]
+    if is_xtb:
+        keyword_line = f"! {args.theory} {solv_flag} {args.opt_level}".strip()
+        inp_lines = [
+            keyword_line,
+            f"%maxcore {args.maxcore_mb}",
+            f"%pal nprocs {args.nprocs} end",
+            f"%geom maxiter {args.maxiter} end",
+            f"* xyz {args.charge} {args.mult}",
+        ]
+    else:
+        rij_flag = "RIJCOSX def2/J" if args.rijcosx else "RI def2/J"
+        disp_flag = args.dispersion if args.dispersion and args.dispersion.lower() != "none" else ""
+        basis_flag = args.basis if args.basis and args.basis.lower() != "none" else ""
+        keyword_line = f"! {args.theory} {disp_flag} {basis_flag} {rij_flag} {solv_flag} {args.opt_level} {args.scf_convergence}".strip()
+        inp_lines = [
+            keyword_line,
+            f"%maxcore {args.maxcore_mb}",
+            f"%pal nprocs {args.nprocs} end",
+            f"%geom maxiter {args.maxiter} end",
+            f"%scf maxiter {args.scf_maxiter} end",
+            f"* xyz {args.charge} {args.mult}",
+        ]
     for elem, x, y, z in atoms_data:
         inp_lines.append(f"  {elem:<3s} {x:12.6f} {y:12.6f} {z:12.6f}")
     inp_lines.append("*\n")
