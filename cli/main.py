@@ -260,6 +260,11 @@ def main():
     p_mdsetup.add_argument(
         "--target", help="Setup all raw systems for a specific Target"
     )
+    p_mdsetup.add_argument(
+        "--force",
+        action="store_true",
+        help="Force re-parametrization of chemical states using the configured method (e.g. ORCA RESP)",
+    )
     add_common_wf_args(p_mdsetup)
 
     # 6. md / dynamics
@@ -542,6 +547,7 @@ def main():
         run_md_setup(
             system=args.system,
             target=args.target,
+            force=args.force,
             urgent=args.urgent,
             local=args.local,
             resume=not args.no_resume,

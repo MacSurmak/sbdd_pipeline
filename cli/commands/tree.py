@@ -128,11 +128,16 @@ def print_tree() -> None:
                 q_label = (
                     f"q={st.formal_charge:+d}" if st.formal_charge != 0 else "neutral"
                 )
-                param_status = (
-                    " [bold green]+GAFF2[/bold green]"
-                    if (st.path_mol2 and st.path_frcmod)
-                    else ""
-                )
+                param_status = ""
+                if st.path_mol2 and st.path_frcmod:
+                    # Detect if ORCA RESP was used by inspecting relaxed geometry artifact
+                    mol2_p = Path(st.path_mol2)
+                    opt_sdf = mol2_p.parent / f"{sub.res_name}_opt.sdf"
+                    if opt_sdf.exists():
+                        param_status = " [bold green]+RESP(GAFF2)[/bold green]"
+                    else:
+                        param_status = " [bold green]+BCC(GAFF2)[/bold green]"
+
                 state_node = sub_node.add(
                     f"State: [magenta]{st.state_hash}[/magenta] [{st_color}][{st.state}][/{st_color}] [cyan]({q_label})[/cyan]{param_status} [dim]SMILES: {st.isomeric_smiles}[/dim]"
                 )

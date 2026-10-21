@@ -18,6 +18,7 @@ console = Console()
 def run_md_setup(
     system: str | None = None,
     target: str | None = None,
+    force: bool = False,
     urgent: bool = False,
     local: bool = False,
     resume: bool = True,
@@ -57,9 +58,12 @@ def run_md_setup(
                 if state:
                     unique_states[state.id] = state
 
-    # 2. Check cache: identify microstates lacking GAFF2 / AM1-BCC topology
+    # 2. Check cache: identify microstates lacking GAFF2 topology (or forced re-parametrization)
     missing_states = []
     for state_id, state in unique_states.items():
+        if force:
+            missing_states.append(state)
+            continue
         mol2_ok = (
             state.path_mol2
             and Path(state.path_mol2).exists()
@@ -137,12 +141,13 @@ def run_md_setup(
             nf_param_args.extend(["--queue", "urgent"])
 
         profile_name = "local" if local else "slurm"
+        resume_param = resume and not force
         ret = execute_nextflow(
             "parametrize",
             nf_param_args,
             cwd,
             profile=profile_name,
-            resume=resume,
+            resume=resume_param,
             configs=configs,
         )
         if ret != 0:
