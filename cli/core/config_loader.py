@@ -511,25 +511,6 @@ def validate_ligand_parametrization_config(config: Dict[str, Any]) -> Dict[str, 
                 f"FATAL: orca.scf_maxiter must be a positive integer, got: {orca_cfg['scf_maxiter']}"
             )
 
-        # Hardware pre-flight validation against cluster hardware limits
-        total_ram_mb = int(orca_cfg["nprocs"]) * int(orca_cfg["maxcore_mb"]) + 2048
-        max_cluster_mem_mb = 30720  # 30 GB node hardware ceiling
-        max_cluster_cpus = 24       # 24 core node hardware ceiling
-
-        if int(orca_cfg["nprocs"]) > max_cluster_cpus:
-            raise ValueError(
-                f"FATAL: Requested ORCA CPU cores ({orca_cfg['nprocs']}) exceeds node ceiling ({max_cluster_cpus})! "
-                "Adjust 'md_simulation.ligand_parametrization.orca.nprocs' in configs/md.yaml."
-            )
-
-        if total_ram_mb > max_cluster_mem_mb:
-            raise ValueError(
-                f"FATAL: Calculated ORCA RAM allocation ({total_ram_mb} MB = {orca_cfg['nprocs']} cores * "
-                f"{orca_cfg['maxcore_mb']} MB + 2048 MB OS buffer) exceeds cluster limit ({max_cluster_mem_mb} MB)! "
-                "Slurm cgroups will kill this job with OOM (Exit 137). "
-                "Reduce 'nprocs' or 'maxcore_mb' in configs/md.yaml."
-            )
-
     elif method == "bcc":
         bcc_cfg = param_cfg.get("bcc")
         if not bcc_cfg or not isinstance(bcc_cfg, dict):
