@@ -138,18 +138,15 @@ def main():
 
     # Build calculation header supporting both semi-empirical xTB and ab initio DFT
     is_xtb = "xtb" in args.theory.lower()
+    solv_flag = args.solvent.strip() if args.solvent and args.solvent.lower() != "none" else ""
 
     if is_xtb:
-        if args.solvent and args.solvent.lower() != "none":
-            solv_clean = args.solvent.strip()
+        if solv_flag:
             # In ORCA, xTB requires ALPB, ddCOSMO, or CPCMX instead of standard CPCM/SMD
-            if solv_clean.upper().startswith("CPCM("):
-                solv_clean = "ALPB(" + solv_clean[5:]
-            elif solv_clean.upper().startswith("SMD("):
-                solv_clean = "ALPB(" + solv_clean[4:]
-            solv_flag = solv_clean
-        else:
-            solv_flag = ""
+            if solv_flag.upper().startswith("CPCM("):
+                solv_flag = "ALPB(" + solv_flag[5:]
+            elif solv_flag.upper().startswith("SMD("):
+                solv_flag = "ALPB(" + solv_flag[4:]
 
         keyword_line = f"! {args.theory} {solv_flag} {args.opt_level}".strip()
         inp_lines = [
