@@ -62,6 +62,8 @@ def main():
     comp_base = args.compressibility
     compressibility = f"{comp_base} {comp_base}" if is_mem else comp_base
 
+    disp_corr = "no" if is_mem else "EnerPres"
+
     em_tpl = (tpl_dir / "em.mdp").read_text()
     nvt_tpl = (tpl_dir / "nvt.mdp").read_text()
     npt_tpl = (tpl_dir / "npt.mdp").read_text()
@@ -69,12 +71,14 @@ def main():
 
     # 1. EM: Energy Minimization (Steepest descent with strong restraints)
     em_content = em_tpl.replace("{DEFINE}", "-DPOSRES -DPOSRES_LIG")
+    em_content = em_content.replace("{DISPCORR}", disp_corr)
     (out_dir / "em.mdp").write_text(em_content)
 
     # 2. NVT: Thermalization / Heating
     nvt_content = nvt_tpl.replace("{DEFINE}", "-DPOSRES -DPOSRES_LIG")
     nvt_content = nvt_content.replace("{TC_GRPS}", "PROT_LIG SOL_ION")
     nvt_content = nvt_content.replace("{TEMP}", str(temp))
+    nvt_content = nvt_content.replace("{DISPCORR}", disp_corr)
     (out_dir / "nvt.mdp").write_text(nvt_content)
 
     # 3. NPT Stages & Playlist
@@ -90,6 +94,7 @@ def main():
         npt_relax = npt_relax.replace("{TAU_P}", "2.0")
         npt_relax = npt_relax.replace("{REF_P}", ref_p)
         npt_relax = npt_relax.replace("{COMPRESSIBILITY}", compressibility)
+        npt_relax = npt_relax.replace("{DISPCORR}", disp_corr)
         (out_dir / "npt_relax.mdp").write_text(npt_relax)
 
         # Stage 2: Parrinello-Rahman density equilibration with soft restraints
@@ -102,9 +107,15 @@ def main():
         npt_equil = npt_equil.replace("{TAU_P}", str(args.tau_p))
         npt_equil = npt_equil.replace("{REF_P}", ref_p)
         npt_equil = npt_equil.replace("{COMPRESSIBILITY}", compressibility)
+        npt_equil = npt_equil.replace("{DISPCORR}", disp_corr)
         (out_dir / "npt_equil.mdp").write_text(npt_equil)
 
-        playlist = ["em.mdp", "nvt.mdp", "npt_relax.mdp", "npt_equil.mdp"]
+        playlist = [
+            "minim,em.mdp",
+            "eq,nvt.mdp",
+            "eq,npt_relax.mdp",
+            "eq,npt_equil.mdp",
+        ]
     else:
         # Water/Solvent Relaxation: 2-stage density equilibration to eliminate pressure shock
         # Stage 1: Berendsen relaxation to gently compress solvent to 1.0 g/cm3 without box oscillation
@@ -117,6 +128,7 @@ def main():
         npt_relax = npt_relax.replace("{TAU_P}", "2.0")
         npt_relax = npt_relax.replace("{REF_P}", ref_p)
         npt_relax = npt_relax.replace("{COMPRESSIBILITY}", compressibility)
+        npt_relax = npt_relax.replace("{DISPCORR}", disp_corr)
         (out_dir / "npt_relax.mdp").write_text(npt_relax)
 
         # Stage 2: Parrinello-Rahman true isothermal-isobaric ensemble equilibration
@@ -129,9 +141,15 @@ def main():
         npt_equil = npt_equil.replace("{TAU_P}", str(args.tau_p))
         npt_equil = npt_equil.replace("{REF_P}", ref_p)
         npt_equil = npt_equil.replace("{COMPRESSIBILITY}", compressibility)
+        npt_equil = npt_equil.replace("{DISPCORR}", disp_corr)
         (out_dir / "npt_equil.mdp").write_text(npt_equil)
 
-        playlist = ["em.mdp", "nvt.mdp", "npt_relax.mdp", "npt_equil.mdp"]
+        playlist = [
+            "minim,em.mdp",
+            "eq,nvt.mdp",
+            "eq,npt_relax.mdp",
+            "eq,npt_equil.mdp",
+        ]
 
     # 4. Production Template (Directly synchronized with chunk_size_ns from md.yaml)
     dt_prod = float(args.dt_ps)
@@ -152,6 +170,7 @@ def main():
     prod_content = prod_content.replace("{PCOUPL_TYPE}", pcoupl_type)
     prod_content = prod_content.replace("{REF_P}", ref_p)
     prod_content = prod_content.replace("{COMPRESSIBILITY}", compressibility)
+    prod_content = prod_content.replace("{DISPCORR}", disp_corr)
     (out_dir / "prod.mdp").write_text(prod_content)
 
     # 5. Master Equilibration Playlist

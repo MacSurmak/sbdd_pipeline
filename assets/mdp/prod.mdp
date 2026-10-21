@@ -17,7 +17,7 @@ coulombtype              = PME
 rcoulomb                 = 1.0
 vdwtype                  = Cut-off
 vdw-modifier             = None
-DispCorr                 = EnerPres
+DispCorr                 = {DISPCORR}
 rvdw                     = 1.0
 pbc                      = xyz
 
