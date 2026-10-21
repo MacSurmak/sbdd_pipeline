@@ -248,6 +248,36 @@ def main():
         else ""
     )
 
+    def run_orca_calculation(inp_name: str, out_name: str, desc: str):
+        print(f"[{desc}] Exec: {orca_bin} {inp_name} > {out_name}", flush=True)
+        with open(out_name, "w", encoding="utf-8") as out_f:
+            res = subprocess.run(
+                [orca_bin, inp_name],
+                stdout=out_f,
+                stderr=subprocess.STDOUT,
+                text=True,
+                check=False,
+            )
+        out_path = Path(out_name)
+        if not out_path.exists() or out_path.stat().st_size == 0:
+            print(
+                f"FATAL: {desc} failed to produce output file: {out_name}",
+                file=sys.stderr,
+                flush=True,
+            )
+            sys.exit(res.returncode if res.returncode != 0 else 1)
+
+        log_content = out_path.read_text(encoding="utf-8", errors="ignore")
+        if res.returncode != 0 or "ORCA TERMINATED NORMALLY" not in log_content:
+            tail_lines = "\n".join(log_content.splitlines()[-40:])
+            print(
+                f"FATAL: {desc} terminated abnormally (exit code {res.returncode})!\n"
+                f"--- TAIL OF {out_name} ---\n{tail_lines}",
+                file=sys.stderr,
+                flush=True,
+            )
+            sys.exit(res.returncode if res.returncode != 0 else 1)
+
     opt_inp_lines = [
         f"! {args.opt_theory} {opt_disp_flag} {args.opt_basis} {opt_rijcosx_flag} {opt_solv_flag} Opt {args.scf_convergence}",
         f"%maxcore {args.maxcore_mb}",
@@ -265,7 +295,7 @@ def main():
     opt_inp_lines.append("*\n")
 
     Path("orca_opt.inp").write_text("\n".join(opt_inp_lines), encoding="utf-8")
-    run_cmd([orca_bin, "orca_opt.inp"], desc="ORCA Stage 1: Geometry Optimization")
+    run_orca_calculation("orca_opt.inp", "orca_opt.out", desc="ORCA Stage 1: Geometry Optimization")
 
     opt_xyz_path = Path("orca_opt.xyz")
     if not opt_xyz_path.exists() or opt_xyz_path.stat().st_size == 0:
@@ -309,18 +339,20 @@ def main():
         f"%maxcore {args.maxcore_mb}",
         f"%pal nprocs {args.nprocs} end",
         f"%scf maxiter {args.scf_maxiter} end",
-        f"* xyzfile {args.charge} {mult} orca_opt.xyz\n",
+        f"* xyz {args.charge} {mult}",
     ]
+    for i in range(n_atoms):
+        pos = conf.GetAtomPosition(i)
+        elem = mol.GetAtomWithIdx(i).GetSymbol()
+        esp_inp_lines.append(
+            f"  {elem:<3s} {pos.x:12.6f} {pos.y:12.6f} {pos.z:12.6f}"
+        )
+    esp_inp_lines.append("*\n")
+
     Path("orca_esp.inp").write_text("\n".join(esp_inp_lines), encoding="utf-8")
-    run_cmd(
-        [orca_bin, "orca_esp.inp"], desc="ORCA Stage 2: Gas-Phase Merz-Kollman ESP"
-    )
+    run_orca_calculation("orca_esp.inp", "orca_esp.out", desc="ORCA Stage 2: Gas-Phase Merz-Kollman ESP")
 
     orca_esp_out = Path("orca_esp.out")
-    if not orca_esp_out.exists() or orca_esp_out.stat().st_size == 0:
-        raise FileNotFoundError(
-            "FATAL: ORCA gas-phase ESP calculation failed to produce 'orca_esp.out'!"
-        )
 
     raw_charges = parse_orca_resp_charges(orca_esp_out, n_atoms)
     final_charges = symmetrize_charges(mol, raw_charges, args.charge)
