@@ -3,7 +3,13 @@
  * On-demand chemical substance parametrization workflow supporting ORCA RESP and AM1-BCC
  */
 
-include { PARAMETRIZE_SUBSTANCE_RESP; PARAMETRIZE_SUBSTANCE_BCC } from '../modules/amber/antechamber'
+include { VALIDATE_LIGAND           } from '../modules/qm/validate'
+include { ORCA_PREOPT               } from '../modules/qm/preopt'
+include { ORCA_REFINE_OPT           } from '../modules/qm/refine_opt'
+include { ORCA_ESP_CALC             } from '../modules/qm/esp'
+include { FIT_RESP_CHARGES          } from '../modules/qm/charges'
+include { BUILD_TOPOLOGY_GAFF2      } from '../modules/amber/build_topology'
+include { PARAMETRIZE_SUBSTANCE_BCC } from '../modules/amber/antechamber'
 
 workflow PARAMETRIZE_WF {
     if (!params.param_plan) { error "FATAL: Parameter --param_plan (JSON) is required for on-demand parametrization." }
@@ -34,30 +40,23 @@ workflow PARAMETRIZE_WF {
     def method = params.param_method ? params.param_method.toLowerCase() : "resp"
 
     if (method == "resp") {
-        PARAMETRIZE_SUBSTANCE_RESP(
-            ch_substances,
-            params.param_ff,
-            params.orca_maxcore,
-            params.orca_opt_theory,
-            params.orca_opt_basis,
-            params.orca_opt_dispersion,
-            params.orca_opt_solvent,
-            params.orca_opt_rijcosx,
-            params.orca_opt_maxiter,
-            params.orca_scf_conv,
-            params.orca_scf_maxiter,
-            params.orca_esp_theory,
-            params.orca_esp_basis,
-            params.orca_esp_density
-        )
-        ch_topology = PARAMETRIZE_SUBSTANCE_RESP.out.topology.map { meta, mol2, frcmod, opt_sdf ->
+        VALIDATE_LIGAND(ch_substances)
+        ORCA_PREOPT(VALIDATE_LIGAND.out.validated)
+        ORCA_REFINE_OPT(ORCA_PREOPT.out.preopt_sdf)
+        ORCA_ESP_CALC(ORCA_REFINE_OPT.out.refined_sdf)
+        FIT_RESP_CHARGES(ORCA_ESP_CALC.out.esp_out)
+        BUILD_TOPOLOGY_GAFF2(FIT_RESP_CHARGES.out.charges)
+
+        ch_topology = BUILD_TOPOLOGY_GAFF2.out.topology.map { meta, mol2, frcmod, refined_sdf ->
             [ meta, mol2, frcmod ]
         }
     } else if (method == "bcc") {
         PARAMETRIZE_SUBSTANCE_BCC(
             ch_substances
         )
-        ch_topology = PARAMETRIZE_SUBSTANCE_BCC.out.topology
+        ch_topology = PARAMETRIZE_SUBSTANCE_BCC.out.topology.map { meta, mol2, frcmod, base_sdf ->
+            [ meta, mol2, frcmod ]
+        }
     } else {
         error "FATAL: Unsupported parametrization method '${method}' declared in configuration! Must be 'resp' or 'bcc'."
     }
