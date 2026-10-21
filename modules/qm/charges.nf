@@ -11,7 +11,7 @@ process FIT_RESP_CHARGES {
     tuple val(meta), path(refined_sdf), path(orca_esp_out)
 
     output:
-    tuple val(meta), path(refined_sdf), path("${meta.res_name}_charges.crg"), emit: charges
+    tuple val(meta), path("${meta.res_name}_charges.crg"), emit: charges
 
     script:
     """

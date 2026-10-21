@@ -8,15 +8,15 @@ process BUILD_TOPOLOGY_GAFF2 {
     label 'process_single'
 
     input:
-    tuple val(meta), path(refined_sdf), path(charges_crg)
+    tuple val(meta), path(base_sdf), path(charges_crg)
 
     output:
-    tuple val(meta), path("${meta.res_name}_topology.mol2"), path("${meta.res_name}_topology.frcmod"), path(refined_sdf), emit: topology
+    tuple val(meta), path("${meta.res_name}_topology.mol2"), path("${meta.res_name}_topology.frcmod"), emit: topology
 
     script:
     """
     python3 ${projectDir}/bin/build_gaff2_topology.py \\
-        --sdf ${refined_sdf} \\
+        --sdf ${base_sdf} \\
         --charges ${charges_crg} \\
         --charge ${meta.charge} \\
         --res_name "${meta.res_name}" \\

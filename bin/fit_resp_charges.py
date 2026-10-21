@@ -37,7 +37,8 @@ def parse_orca_resp_charges(orca_out_path: Path, expected_atoms: int) -> list[fl
                     if charges_dict:
                         break
                     continue
-                parts = line_str.split()
+                clean_line = line_str.replace(":", " ")
+                parts = clean_line.split()
                 if len(parts) >= 3 and parts[0].isdigit():
                     idx = int(parts[0])
                     val = float(parts[2])
