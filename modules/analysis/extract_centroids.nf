@@ -21,22 +21,22 @@ process EXTRACT_CENTROIDS {
     """
     python3 ${projectDir}/bin/extract_centroids.py \\
         --struct ${ref_pdb} \\
-        --xtc trajs_*/*.xtc \\
+        --xtc ${xtc_files} \\
         --medoids_json ${medoids_summary} \\
         ${tmpl_arg} \\
         ${lig_arg} \\
         --outdir .
 
-    # Isolated conversion inside Apptainer container wrapper: zero contamination of host Conda
+    # Standardized conversion via containerized Schrödinger wrapper in PATH
     for rec in centroid_*_receptor.pdb; do
         mae="\${rec%.pdb}.mae"
-        /opt/containers/bin/schrodinger run structconvert "\${rec}" "\${mae}"
+        schrodinger run structconvert "\${rec}" "\${mae}"
     done
 
     for sdf in centroid_*_pose.sdf; do
         if [ -f "\${sdf}" ]; then
             mae="\${sdf%.sdf}.mae"
-            /opt/containers/bin/schrodinger run structconvert "\${sdf}" "\${mae}"
+            schrodinger run structconvert "\${sdf}" "\${mae}"
         fi
     done
     """

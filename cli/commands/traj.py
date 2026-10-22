@@ -355,7 +355,7 @@ def run_cluster_promote(manifest_path: str, ranks: list[int]) -> None:
     """
     Promotes specific cluster centroids from an existing manifest into SQLite 3NF
     without re-running Nextflow or MDAnalysis.
-    Guarantees transactional integrity and purges stale ghost centroids.
+    Guarantees transactional integrity via idempotent Upsert, eliminating UNIQUE constraint crashes.
     """
     cwd = Path.cwd()
     session = init_db()
@@ -371,7 +371,7 @@ def run_cluster_promote(manifest_path: str, ranks: list[int]) -> None:
     basins = manifest.get("basins", [])
     task_dir = m_p.parent
 
-    # Read feature metadata from task directory
+    # Read feature metadata directly from JSON: zero brittle string splitting on task_dir.name
     feat_meta_p = task_dir / "feature_meta.json"
     if not feat_meta_p.exists():
         session.close()
@@ -380,7 +380,7 @@ def run_cluster_promote(manifest_path: str, ranks: list[int]) -> None:
     with open(feat_meta_p, "r", encoding="utf-8") as f:
         feat_meta = json.load(f)
 
-    # Read extraction manifest for deterministic small molecule and structure paths
+    # Read extraction manifest for deterministic small molecule paths (zero globbing)
     extract_manifest_p = task_dir / "extracted_manifest.json"
     if not extract_manifest_p.exists():
         session.close()
@@ -391,27 +391,15 @@ def run_cluster_promote(manifest_path: str, ranks: list[int]) -> None:
 
     extracted_by_rank = {int(item["rank"]): item for item in extracted_data}
 
-    # Resolve parent system from directory structure: reports/clusters/<system>/<group>/
+    # Resolve parent system directly from task directory hierarchy
     sys_name = task_dir.parent.name
     sys_obj = session.query(System).filter_by(name=sys_name).first()
     if not sys_obj:
         session.close()
         raise ValueError(f"FATAL: Parent system '{sys_name}' is not registered in SQLite database!")
 
-    eff_cluster = task_dir.name.split("_")[-1]
-    eff_align = "_".join(task_dir.name.split("_")[:-1])
-
-    # Purge stale ghost centroids from previous clustering runs for this system and group
-    stale_frames = session.query(ReceptorFrame).filter(
-        ReceptorFrame.target_id == sys_obj.target_id,
-        ReceptorFrame.parent_frame_id == sys_obj.receptor_frame_id,
-        ReceptorFrame.source_type == "md_centroid",
-        ReceptorFrame.feature_group == eff_cluster,
-    ).all()
-
-    for sf in stale_frames:
-        session.delete(sf)
-    session.flush()
+    eff_align = feat_meta["align_group"]
+    eff_cluster = feat_meta["cluster_group"]
 
     promoted = 0
     all_trajs = session.query(Trajectory).filter_by(system_id=sys_obj.id).all()
@@ -445,30 +433,50 @@ def run_cluster_promote(manifest_path: str, ranks: list[int]) -> None:
         shutil.copy2(src_rec_pdb, dest_rec_pdb)
         shutil.copy2(src_rec_mae, dest_rec_mae)
 
-        frame_entity = ReceptorFrame(
-            target_id=sys_obj.target_id,
-            name=new_frame_name,
-            source_type="md_centroid",
-            parent_frame_id=sys_obj.receptor_frame_id,
-            source_trajectory_id=matched_traj.id if matched_traj else None,
-            feature_group=eff_cluster,
-            align_group=eff_align,
-            dim_reduction_method=feat_meta.get("dim_reduction", "pca"),
-            cluster_rank=rank,
-            population=round(float(b_meta["population_pct"]) / 100.0, 4),
-            compactness_spread=float(b_meta["compactness_spread"]),
-            state="ready",
-            path=str(dest_rec_pdb.resolve()),
-            path_pdb=str(dest_rec_pdb.resolve()),
-            path_mae=str(dest_rec_mae.resolve()),
-        )
-        session.add(frame_entity)
-        session.flush()
+        # Idempotent Upsert for ReceptorFrame: avoids UNIQUE constraint crashes on repeated promotion
+        frame_entity = session.query(ReceptorFrame).filter(
+            ReceptorFrame.target_id == sys_obj.target_id,
+            ReceptorFrame.parent_frame_id == sys_obj.receptor_frame_id,
+            ReceptorFrame.feature_group == eff_cluster,
+            ReceptorFrame.cluster_rank == rank,
+        ).first()
+
+        if not frame_entity:
+            frame_entity = ReceptorFrame(
+                target_id=sys_obj.target_id,
+                name=new_frame_name,
+                source_type="md_centroid",
+                parent_frame_id=sys_obj.receptor_frame_id,
+                source_trajectory_id=matched_traj.id if matched_traj else None,
+                feature_group=eff_cluster,
+                align_group=eff_align,
+                dim_reduction_method=feat_meta.get("dim_reduction", "pca"),
+                cluster_rank=rank,
+                population=round(float(b_meta["population_pct"]) / 100.0, 4),
+                compactness_spread=float(b_meta["compactness_spread"]),
+                state="ready",
+                path=str(dest_rec_pdb.resolve()),
+                path_pdb=str(dest_rec_pdb.resolve()),
+                path_mae=str(dest_rec_mae.resolve()),
+            )
+            session.add(frame_entity)
+            session.flush()
+        else:
+            frame_entity.name = new_frame_name
+            frame_entity.source_trajectory_id = matched_traj.id if matched_traj else None
+            frame_entity.align_group = eff_align
+            frame_entity.dim_reduction_method = feat_meta.get("dim_reduction", "pca")
+            frame_entity.population = round(float(b_meta["population_pct"]) / 100.0, 4)
+            frame_entity.compactness_spread = float(b_meta["compactness_spread"])
+            frame_entity.state = "ready"
+            frame_entity.path = str(dest_rec_pdb.resolve())
+            frame_entity.path_pdb = str(dest_rec_pdb.resolve())
+            frame_entity.path_mae = str(dest_rec_mae.resolve())
 
         centroid_main_pose = None
         centroid_cofactors = []
 
-        # Promote small molecules using deterministic manifest keys (zero globbing)
+        # Promote small molecules using deterministic manifest keys (zero globbing, zero regex)
         for r_code, p_dict in ext_meta.get("poses", {}).items():
             src_p_sdf = Path(p_dict["sdf_path"]).resolve()
             src_p_mae = Path(str(src_p_sdf).replace(".sdf", ".mae")).resolve()
@@ -501,19 +509,33 @@ def run_cluster_promote(manifest_path: str, ranks: list[int]) -> None:
             if src_p_mae.exists():
                 shutil.copy2(src_p_mae, dest_pose_mae)
 
-            p_entity = Pose(
-                substance_state_id=parent_match.substance_state_id,
+            # Idempotent Upsert for Pose
+            p_entity = session.query(Pose).filter_by(
                 receptor_frame_id=frame_entity.id,
                 name=pose_name,
-                res_name=parent_match.res_name,
-                origin="md_cluster",
-                state="ready",
-                path=str(dest_pose_sdf.resolve()),
-                path_sdf=str(dest_pose_sdf.resolve()),
-                path_mae=str(dest_pose_mae.resolve()) if src_p_mae.exists() else None,
-            )
-            session.add(p_entity)
-            session.flush()
+            ).first()
+
+            if not p_entity:
+                p_entity = Pose(
+                    substance_state_id=parent_match.substance_state_id,
+                    receptor_frame_id=frame_entity.id,
+                    name=pose_name,
+                    res_name=parent_match.res_name,
+                    origin="md_cluster",
+                    state="ready",
+                    path=str(dest_pose_sdf.resolve()),
+                    path_sdf=str(dest_pose_sdf.resolve()),
+                    path_mae=str(dest_pose_mae.resolve()) if src_p_mae.exists() else None,
+                )
+                session.add(p_entity)
+                session.flush()
+            else:
+                p_entity.substance_state_id = parent_match.substance_state_id
+                p_entity.res_name = parent_match.res_name
+                p_entity.path = str(dest_pose_sdf.resolve())
+                p_entity.path_sdf = str(dest_pose_sdf.resolve())
+                p_entity.path_mae = str(dest_pose_mae.resolve()) if src_p_mae.exists() else None
+                p_entity.state = "ready"
 
             if is_main:
                 centroid_main_pose = p_entity
@@ -528,16 +550,27 @@ def run_cluster_promote(manifest_path: str, ranks: list[int]) -> None:
         if src_view_pdb.exists():
             shutil.copy2(src_view_pdb, dest_sys_dir / f"{sys_centroid_name}_view.pdb")
 
-        new_sys = System(
-            target_id=sys_obj.target_id,
+        # Idempotent Upsert for System
+        target_sys = session.query(System).filter_by(
             receptor_frame_id=frame_entity.id,
-            pose_id=centroid_main_pose.id if centroid_main_pose else None,
             name=sys_centroid_name,
-            state="raw",
-            origin="md_cluster",
-        )
-        new_sys.cofactors = centroid_cofactors
-        session.add(new_sys)
+        ).first()
+
+        if not target_sys:
+            target_sys = System(
+                target_id=sys_obj.target_id,
+                receptor_frame_id=frame_entity.id,
+                pose_id=centroid_main_pose.id if centroid_main_pose else None,
+                name=sys_centroid_name,
+                state="raw",
+                origin="md_cluster",
+            )
+            target_sys.cofactors = centroid_cofactors
+            session.add(target_sys)
+        else:
+            target_sys.pose_id = centroid_main_pose.id if centroid_main_pose else None
+            target_sys.cofactors = centroid_cofactors
+
         promoted += 1
 
     session.commit()

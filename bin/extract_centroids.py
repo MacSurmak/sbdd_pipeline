@@ -24,11 +24,25 @@ STANDARD_PROTEIN_RESIDUES = {
 WATER_RESIDUES = {"HOH", "WAT", "SOL", "TIP", "TIP3", "TIP4", "W"}
 
 
+def _signed_chiral_volume(conf: Chem.Conformer, center_idx: int, nbr_indices: list[int]) -> float:
+    """Computes signed scalar triple product for 4-coordinate tetrahedral center."""
+    if len(nbr_indices) < 3:
+        return 0.0
+    p0 = conf.GetAtomPosition(center_idx)
+    p1 = conf.GetAtomPosition(nbr_indices[0])
+    p2 = conf.GetAtomPosition(nbr_indices[1])
+    p3 = conf.GetAtomPosition(nbr_indices[2])
+    v1 = np.array([p1.x - p0.x, p1.y - p0.y, p1.z - p0.z])
+    v2 = np.array([p2.x - p0.x, p2.y - p0.y, p2.z - p0.z])
+    v3 = np.array([p3.x - p0.x, p3.y - p0.y, p3.z - p0.z])
+    return float(np.dot(v1, np.cross(v2, v3)))
+
+
 def transfer_coordinates_to_template(template_sdf: Path, raw_mol: Chem.Mol, out_sdf: Path) -> None:
     """
     Transfers exact Cartesian coordinates from MD frame onto canonical SubstanceState template
-    using strict topological graph isomorphism matching.
-    Guarantees that atom serials in PDB do not scramble coordinates across different atom types.
+    using strict topological graph isomorphism matching with chirality and symmetry preservation.
+    Prevents R -> S enantiomer inversion and selects the automorphism that minimizes RMSD.
     """
     suppl = Chem.SDMolSupplier(str(template_sdf), removeHs=False, sanitize=False)
     tmpl_mol = next((m for m in suppl if m is not None), None)
@@ -42,7 +56,19 @@ def transfer_coordinates_to_template(template_sdf: Path, raw_mol: Chem.Mol, out_
             f"FATAL: Atom count mismatch between template ({n_tmpl}) and raw pose ({n_raw}) for {out_sdf.name}!"
         )
 
-    # Build pure topology queries to find unambiguous isomorphism mapping
+    conf_tmpl = tmpl_mol.GetConformer()
+    conf_raw = raw_mol.GetConformer()
+
+    # Identify tetrahedral chiral centers and their neighbors in canonical template
+    chiral_centers = []
+    for atom in tmpl_mol.GetAtoms():
+        nbrs = [nbr.GetIdx() for nbr in atom.GetNeighbors()]
+        if len(nbrs) >= 3:
+            vol = _signed_chiral_volume(conf_tmpl, atom.GetIdx(), nbrs)
+            if abs(vol) > 0.05:  # Non-planar stereocenter
+                chiral_centers.append((atom.GetIdx(), nbrs, np.sign(vol)))
+
+    # Graph isomorphism query without bond order constraints to handle thermal bond elongation in MD
     q_tmpl = Chem.Mol(tmpl_mol)
     q_raw = Chem.Mol(raw_mol)
     for q in (q_tmpl, q_raw):
@@ -60,11 +86,43 @@ def transfer_coordinates_to_template(template_sdf: Path, raw_mol: Chem.Mol, out_
             f"does not match template graph {template_sdf.name}."
         )
 
-    match = matches[0]
-    conf_tmpl = tmpl_mol.GetConformer()
-    conf_raw = raw_mol.GetConformer()
+    best_match = None
+    best_rmsd = float("inf")
 
-    for tmpl_idx, raw_idx in enumerate(match):
+    # Evaluate all automorphisms, discard chiral inversions, and select minimum coordinate deviation
+    for match in matches:
+        # Check chiral volume parity
+        chiral_valid = True
+        for tmpl_center_idx, tmpl_nbrs, expected_sign in chiral_centers:
+            raw_center_idx = match[tmpl_center_idx]
+            raw_nbrs = [match[nbr_idx] for nbr_idx in tmpl_nbrs]
+            raw_vol = _signed_chiral_volume(conf_raw, raw_center_idx, raw_nbrs)
+            if np.sign(raw_vol) != expected_sign and abs(raw_vol) > 0.05:
+                chiral_valid = False
+                break
+
+        if not chiral_valid:
+            continue
+
+        # Compute in-situ Cartesian coordinate deviation for this automorphism
+        sq_dist = 0.0
+        for tmpl_idx, raw_idx in enumerate(match):
+            p_tmpl = conf_tmpl.GetAtomPosition(tmpl_idx)
+            p_raw = conf_raw.GetAtomPosition(raw_idx)
+            sq_dist += (p_tmpl.x - p_raw.x) ** 2 + (p_tmpl.y - p_raw.y) ** 2 + (p_tmpl.z - p_raw.z) ** 2
+        rmsd = np.sqrt(sq_dist / float(n_tmpl))
+
+        if rmsd < best_rmsd:
+            best_rmsd = rmsd
+            best_match = match
+
+    if best_match is None:
+        raise ValueError(
+            f"FATAL: All topological isomorphisms inverted chiral centers for {out_sdf.name}! "
+            "Coordinate transfer aborted by Fail-Fast law."
+        )
+
+    for tmpl_idx, raw_idx in enumerate(best_match):
         pos = conf_raw.GetAtomPosition(raw_idx)
         if abs(pos.x) < 1e-4 and abs(pos.y) < 1e-4 and abs(pos.z) < 1e-4:
             raise ValueError(

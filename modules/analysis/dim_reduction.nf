@@ -10,7 +10,6 @@ process TRAJ_DIM_REDUCTION {
 
     input:
     tuple val(meta), path(ref_pdb), path(xtc_files, stageAs: 'trajs_?/*'), path(ndx_file)
-    val(rep_names)
     val(align_group)
     val(cluster_group)
     val(dim_reduction)
@@ -24,11 +23,11 @@ process TRAJ_DIM_REDUCTION {
     script:
     def lig_arg = meta.ligand ? "--ligand_resname ${meta.ligand}" : ""
     def ndx_arg = (ndx_file && ndx_file.name != 'NO_FILE') ? "--ndx ${ndx_file}" : ""
-    def reps_arg = rep_names instanceof List ? rep_names.join(' ') : rep_names
+    def reps_arg = meta.replicate_names instanceof List ? meta.replicate_names.join(' ') : meta.replicate_names
     """
     python3 ${projectDir}/bin/traj_dim_reduction.py \\
         --struct ${ref_pdb} \\
-        --xtc trajs_*/*.xtc \\
+        --xtc ${xtc_files} \\
         --rep_names ${reps_arg} \\
         ${ndx_arg} \\
         --align_group "${align_group}" \\

@@ -27,7 +27,6 @@ workflow CLUSTER_ENSEMBLE {
     }
     TRAJ_DIM_REDUCTION(
         ch_dim_in,
-        ch_cluster_input.map { meta, ref_pdb, xtcs, ndx, tmpl_sdf -> meta.replicate_names },
         align_group,
         cluster_group,
         dim_reduction,
