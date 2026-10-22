@@ -329,7 +329,7 @@ def _validate_non_scratch_path(target, value, oldvalue, initiator):
     """
     if value:
         val_str = str(value)
-        forbidden_tokens = ["/work/", ".nextflow", "/tmp/", "slurm_tmp", "nfs_scratch"]
+        forbidden_tokens = ["/work/", ".nextflow", "/tmp/", "slurm_tmp", "nfs_scratch", "nxf."]
         for token in forbidden_tokens:
             if token in val_str:
                 col_name = initiator.key if hasattr(initiator, "key") else "path"

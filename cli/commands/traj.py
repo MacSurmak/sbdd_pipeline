@@ -31,6 +31,24 @@ from cli.core.config_loader import (
 
 console = Console()
 
+FORBIDDEN_SCRATCH_TOKENS = ["/work/", ".nextflow", "/tmp/", "slurm_tmp", "nfs_scratch", "nxf."]
+
+
+def assert_permanent_path(path: Path | str, context: str) -> Path:
+    """
+    Absolute assertion barrier preventing ephemeral Nextflow or Slurm scratch paths
+    from entering the CLI runtime, manifests, or SQLite database.
+    """
+    p = Path(path).resolve()
+    p_str = str(p)
+    for token in FORBIDDEN_SCRATCH_TOKENS:
+        if token in p_str:
+            raise AssertionError(
+                f"FATAL SCRATCH LEAKAGE DETECTED in {context}: '{p_str}' contains forbidden ephemeral token '{token}'! "
+                "Only validated, permanent deliverables located in /shared may be processed."
+            )
+    return p
+
 
 def _transfer_coordinates_to_template(
     template_sdf: Path, raw_pose_sdf: Path, out_sdf: Path
@@ -408,10 +426,13 @@ def run_cluster_promote(manifest_path: str, ranks: list[int]) -> None:
             console.print(f"[yellow]Warning: Basin #{rank} not found in manifest deliverables. Skipping.[/yellow]")
             continue
 
-        # Resolve paths strictly inside the canonical published task directory (zero scratch leakage)
-        src_rec_pdb = task_dir / ext_meta["receptor_pdb"]
-        src_rec_mae = task_dir / ext_meta["receptor_pdb"].replace(".pdb", ".mae")
-        src_view_pdb = task_dir / ext_meta["complex_pdb"]
+        # Strip any cached path prefixes using .name and anchor strictly in published task_dir
+        raw_rec_name = Path(ext_meta["receptor_pdb"]).name
+        raw_view_name = Path(ext_meta["complex_pdb"]).name
+
+        src_rec_pdb = assert_permanent_path(task_dir / raw_rec_name, f"Basin #{rank} Source Receptor PDB")
+        src_rec_mae = assert_permanent_path(task_dir / raw_rec_name.replace(".pdb", ".mae"), f"Basin #{rank} Source Receptor MAE")
+        src_view_pdb = assert_permanent_path(task_dir / raw_view_name, f"Basin #{rank} Source Complex PDB")
 
         if not src_rec_pdb.exists() or src_rec_pdb.stat().st_size == 0:
             raise FileNotFoundError(f"FATAL: Centroid receptor PDB missing on disk: {src_rec_pdb}")
@@ -423,11 +444,11 @@ def run_cluster_promote(manifest_path: str, ranks: list[int]) -> None:
         matched_traj = next((t for t in all_trajs if t.replicate == int(src_rep_name.replace("rep_", "")) or t.name == src_rep_name), all_trajs[0] if all_trajs else None)
 
         new_frame_name = f"{sys_obj.name}_{eff_cluster.lower()}_c{rank}"
-        dest_frame_dir = cwd / "targets" / sys_obj.target.name / "frames" / new_frame_name
+        dest_frame_dir = assert_permanent_path(cwd / "targets" / sys_obj.target.name / "frames" / new_frame_name, f"Basin #{rank} Frame Directory")
         dest_frame_dir.mkdir(parents=True, exist_ok=True)
 
-        dest_rec_pdb = dest_frame_dir / "receptor.pdb"
-        dest_rec_mae = dest_frame_dir / "receptor.mae"
+        dest_rec_pdb = assert_permanent_path(dest_frame_dir / "receptor.pdb", f"Basin #{rank} Dest Receptor PDB")
+        dest_rec_mae = assert_permanent_path(dest_frame_dir / "receptor.mae", f"Basin #{rank} Dest Receptor MAE")
         shutil.copy2(src_rec_pdb, dest_rec_pdb)
         shutil.copy2(src_rec_mae, dest_rec_mae)
 
@@ -476,8 +497,9 @@ def run_cluster_promote(manifest_path: str, ranks: list[int]) -> None:
 
         # Promote small molecules using deterministic manifest keys (zero globbing, zero regex)
         for r_code, p_dict in ext_meta.get("poses", {}).items():
-            src_p_sdf = task_dir / p_dict["sdf_path"]
-            src_p_mae = task_dir / p_dict["sdf_path"].replace(".sdf", ".mae")
+            raw_sdf_name = Path(p_dict["sdf_path"]).name
+            src_p_sdf = assert_permanent_path(task_dir / raw_sdf_name, f"Basin #{rank} Small Molecule SDF ({r_code})")
+            src_p_mae = assert_permanent_path(task_dir / raw_sdf_name.replace(".sdf", ".mae"), f"Basin #{rank} Small Molecule MAE ({r_code})")
 
             if not src_p_sdf.exists():
                 raise FileNotFoundError(f"FATAL: Small molecule pose SDF missing: {src_p_sdf}")
@@ -498,11 +520,11 @@ def run_cluster_promote(manifest_path: str, ranks: list[int]) -> None:
 
             sub_inchikey = parent_match.substance.inchikey
             pose_name = f"{new_frame_name}_{r_code}"
-            dest_pose_dir = cwd / "substances" / sub_inchikey / "poses" / pose_name
+            dest_pose_dir = assert_permanent_path(cwd / "substances" / sub_inchikey / "poses" / pose_name, f"Basin #{rank} Pose Directory ({r_code})")
             dest_pose_dir.mkdir(parents=True, exist_ok=True)
 
-            dest_pose_sdf = dest_pose_dir / f"{r_code}_pose.sdf"
-            dest_pose_mae = dest_pose_dir / f"{r_code}_pose.mae"
+            dest_pose_sdf = assert_permanent_path(dest_pose_dir / f"{r_code}_pose.sdf", f"Basin #{rank} Dest Pose SDF ({r_code})")
+            dest_pose_mae = assert_permanent_path(dest_pose_dir / f"{r_code}_pose.mae", f"Basin #{rank} Dest Pose MAE ({r_code})")
             shutil.copy2(src_p_sdf, dest_pose_sdf)
             if src_p_mae.exists():
                 shutil.copy2(src_p_mae, dest_pose_mae)
@@ -795,8 +817,11 @@ def run_cluster(
         if not recommended_ranks and basins:
             recommended_ranks.append(1)
 
-        html_report_path = (m_path.parent / manifest.get("html_report", "")).resolve()
-        pml_session_path = (m_path.parent / manifest.get("pymol_session", "")).resolve()
+        html_report_name = Path(manifest.get("html_report", "")).name
+        pml_session_name = Path(manifest.get("pymol_session", "")).name
+
+        html_report_path = assert_permanent_path(m_path.parent / html_report_name, "Interactive Landscape HTML")
+        pml_session_path = assert_permanent_path(m_path.parent / pml_session_name, "Portable PyMOL Session")
 
         console.print(table)
         console.print(f"📊 [bold cyan]Interactive Landscape (FES):[/bold cyan] {html_report_path}")
