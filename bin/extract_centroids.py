@@ -13,6 +13,7 @@ import sys
 from pathlib import Path
 import MDAnalysis as mda
 from rdkit import Chem
+import numpy as np
 
 
 STANDARD_PROTEIN_RESIDUES = {
