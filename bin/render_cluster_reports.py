@@ -54,12 +54,16 @@ def main():
     parser.add_argument("--labels", required=True, help="Input cluster_labels.npy array")
     parser.add_argument("--medoids_json", required=True, help="Input medoids_summary.json deliverable")
     parser.add_argument("--time_map", required=True, help="Input frame_time_map.json mapping")
+    parser.add_argument("--feature_meta", required=True, help="Input feature_meta.json deliverable")
     parser.add_argument("--temp_k", type=float, default=310.15, help="Simulation temperature in Kelvin")
     parser.add_argument("--outdir", default="reports_out", help="Output directory for reports")
     args = parser.parse_args()
 
     outdir = Path(args.outdir).resolve()
     outdir.mkdir(parents=True, exist_ok=True)
+
+    with open(Path(args.feature_meta).resolve(), "r", encoding="utf-8") as f:
+        feat_meta = json.load(f)
 
     umap_2d = np.load(Path(args.umap).resolve())
     proj = np.load(Path(args.projections).resolve())
@@ -211,10 +215,14 @@ def main():
     manifest = {
         "n_frames": n_frames,
         "n_clusters": len(medoids),
-        "html_report": str(html_path.resolve()),
-        "png_overview": str(png_path.resolve()),
-        "pymol_session": str(pml_path.resolve()),
+        "align_group": feat_meta["align_group"],
+        "cluster_group": feat_meta["cluster_group"],
+        "dim_reduction": feat_meta["dim_reduction"],
+        "html_report": html_path.name,
+        "png_overview": png_path.name,
+        "pymol_session": pml_path.name,
         "basins": medoids,
+        "feature_metadata": feat_meta,
     }
     with open(outdir / "clusters_manifest.json", "w", encoding="utf-8") as f:
         json.dump(manifest, f, indent=2)

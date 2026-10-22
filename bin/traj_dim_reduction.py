@@ -333,11 +333,13 @@ def main():
         json.dump(frame_time_map, f, indent=2)
 
     meta = {
+        "align_group": args.align_group,
+        "cluster_group": args.cluster_group,
+        "dim_reduction": args.dim_reduction,
         "n_frames": n_frames,
         "n_features": n_features,
         "n_align_atoms": len(align_indices),
         "n_cluster_atoms": len(cluster_indices),
-        "dim_reduction": args.dim_reduction,
         "k_components": k,
         "variance_explained": [round(float(v), 4) for v in var_exp[:k]],
     }

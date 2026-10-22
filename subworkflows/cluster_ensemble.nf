@@ -51,10 +51,10 @@ workflow CLUSTER_ENSEMBLE {
 
     // 4. Reporting Stage: FES computation, Plotly HTML, PNG, and PyMOL inspection script
     ch_render_in = ch_cluster_input.map { meta, ref_pdb, xtcs, ndx, tmpl_sdf -> [ meta, ref_pdb ] }
-        .join(TRAJ_DIM_REDUCTION.out.reduced_data.map { meta, proj, umap, eig, time_map, feat_meta -> [ meta, umap, proj, time_map ] }, by: 0)
+        .join(TRAJ_DIM_REDUCTION.out.reduced_data.map { meta, proj, umap, eig, time_map, feat_meta -> [ meta, umap, proj, time_map, feat_meta ] }, by: 0)
         .join(CLUSTER_BASINS.out.basins, by: 0)
-        .map { meta, ref_pdb, umap, proj, time_map, medoids_json, labels ->
-            [ meta, ref_pdb, umap, proj, labels, medoids_json, time_map ]
+        .map { meta, ref_pdb, umap, proj, time_map, feat_meta, medoids_json, labels ->
+            [ meta, ref_pdb, umap, proj, labels, medoids_json, time_map, feat_meta ]
         }
     RENDER_REPORTS(ch_render_in, temp_k)
 

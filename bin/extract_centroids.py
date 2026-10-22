@@ -245,7 +245,7 @@ def main():
             extracted_poses[r_name] = {
                 "res_name": r_name,
                 "is_ligand": is_active_ligand,
-                "sdf_path": str(dest_sdf.resolve()),
+                "sdf_path": dest_sdf.name,
             }
 
         manifest.append({
@@ -254,8 +254,8 @@ def main():
             "medoid_frame": m_frame,
             "medoid_time_ns": stat["medoid_time_ns"],
             "medoid_replicate": stat["medoid_replicate"],
-            "receptor_pdb": str(rec_pdb.resolve()),
-            "complex_pdb": str(view_pdb.resolve()),
+            "receptor_pdb": rec_pdb.name,
+            "complex_pdb": view_pdb.name,
             "poses": extracted_poses,
         })
         print(f"[EXTRACT_CENTROIDS] Centroid #{rank} extracted (frame {m_frame}, {pop_pct}%).", flush=True)

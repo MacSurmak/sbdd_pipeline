@@ -371,16 +371,16 @@ def run_cluster_promote(manifest_path: str, ranks: list[int]) -> None:
     basins = manifest.get("basins", [])
     task_dir = m_p.parent
 
-    # Read feature metadata directly from JSON: zero brittle string splitting on task_dir.name
-    feat_meta_p = task_dir / "feature_meta.json"
-    if not feat_meta_p.exists():
+    # Extract groups directly from the self-contained clusters_manifest.json (zero detached files)
+    eff_align = manifest.get("align_group")
+    eff_cluster = manifest.get("cluster_group")
+    eff_dim = manifest.get("dim_reduction", "pca")
+
+    if not eff_align or not eff_cluster:
         session.close()
-        raise FileNotFoundError(f"FATAL: Feature metadata file missing in {task_dir}!")
+        raise KeyError(f"FATAL: Missing 'align_group' or 'cluster_group' in manifest {m_p}!")
 
-    with open(feat_meta_p, "r", encoding="utf-8") as f:
-        feat_meta = json.load(f)
-
-    # Read extraction manifest for deterministic small molecule paths (zero globbing)
+    # Read extraction manifest for deterministic small molecule paths
     extract_manifest_p = task_dir / "extracted_manifest.json"
     if not extract_manifest_p.exists():
         session.close()
@@ -398,9 +398,6 @@ def run_cluster_promote(manifest_path: str, ranks: list[int]) -> None:
         session.close()
         raise ValueError(f"FATAL: Parent system '{sys_name}' is not registered in SQLite database!")
 
-    eff_align = feat_meta["align_group"]
-    eff_cluster = feat_meta["cluster_group"]
-
     promoted = 0
     all_trajs = session.query(Trajectory).filter_by(system_id=sys_obj.id).all()
 
@@ -411,9 +408,10 @@ def run_cluster_promote(manifest_path: str, ranks: list[int]) -> None:
             console.print(f"[yellow]Warning: Basin #{rank} not found in manifest deliverables. Skipping.[/yellow]")
             continue
 
-        src_rec_pdb = Path(ext_meta["receptor_pdb"]).resolve()
-        src_rec_mae = Path(str(src_rec_pdb).replace(".pdb", ".mae")).resolve()
-        src_view_pdb = Path(ext_meta["complex_pdb"]).resolve()
+        # Resolve paths strictly inside the canonical published task directory (zero scratch leakage)
+        src_rec_pdb = task_dir / ext_meta["receptor_pdb"]
+        src_rec_mae = task_dir / ext_meta["receptor_pdb"].replace(".pdb", ".mae")
+        src_view_pdb = task_dir / ext_meta["complex_pdb"]
 
         if not src_rec_pdb.exists() or src_rec_pdb.stat().st_size == 0:
             raise FileNotFoundError(f"FATAL: Centroid receptor PDB missing on disk: {src_rec_pdb}")
@@ -450,7 +448,7 @@ def run_cluster_promote(manifest_path: str, ranks: list[int]) -> None:
                 source_trajectory_id=matched_traj.id if matched_traj else None,
                 feature_group=eff_cluster,
                 align_group=eff_align,
-                dim_reduction_method=feat_meta.get("dim_reduction", "pca"),
+                dim_reduction_method=eff_dim,
                 cluster_rank=rank,
                 population=round(float(b_meta["population_pct"]) / 100.0, 4),
                 compactness_spread=float(b_meta["compactness_spread"]),
@@ -465,7 +463,7 @@ def run_cluster_promote(manifest_path: str, ranks: list[int]) -> None:
             frame_entity.name = new_frame_name
             frame_entity.source_trajectory_id = matched_traj.id if matched_traj else None
             frame_entity.align_group = eff_align
-            frame_entity.dim_reduction_method = feat_meta.get("dim_reduction", "pca")
+            frame_entity.dim_reduction_method = eff_dim
             frame_entity.population = round(float(b_meta["population_pct"]) / 100.0, 4)
             frame_entity.compactness_spread = float(b_meta["compactness_spread"])
             frame_entity.state = "ready"
@@ -478,8 +476,8 @@ def run_cluster_promote(manifest_path: str, ranks: list[int]) -> None:
 
         # Promote small molecules using deterministic manifest keys (zero globbing, zero regex)
         for r_code, p_dict in ext_meta.get("poses", {}).items():
-            src_p_sdf = Path(p_dict["sdf_path"]).resolve()
-            src_p_mae = Path(str(src_p_sdf).replace(".sdf", ".mae")).resolve()
+            src_p_sdf = task_dir / p_dict["sdf_path"]
+            src_p_mae = task_dir / p_dict["sdf_path"].replace(".sdf", ".mae")
 
             if not src_p_sdf.exists():
                 raise FileNotFoundError(f"FATAL: Small molecule pose SDF missing: {src_p_sdf}")
@@ -797,9 +795,12 @@ def run_cluster(
         if not recommended_ranks and basins:
             recommended_ranks.append(1)
 
+        html_report_path = (m_path.parent / manifest.get("html_report", "")).resolve()
+        pml_session_path = (m_path.parent / manifest.get("pymol_session", "")).resolve()
+
         console.print(table)
-        console.print(f"📊 [bold cyan]Interactive Landscape (FES):[/bold cyan] {manifest.get('html_report')}")
-        console.print(f"🔍 [bold cyan]Portable PyMOL 3D Session:[/bold cyan] pymol {manifest.get('pymol_session')}\n")
+        console.print(f"📊 [bold cyan]Interactive Landscape (FES):[/bold cyan] {html_report_path}")
+        console.print(f"🔍 [bold cyan]Portable PyMOL 3D Session:[/bold cyan] pymol {pml_session_path}\n")
 
         selected_ranks = []
         if eff_auto or not sys.stdin.isatty():
