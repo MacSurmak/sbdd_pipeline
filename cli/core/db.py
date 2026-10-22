@@ -92,6 +92,15 @@ class ReceptorFrame(Base):
     parent_frame_id = Column(
         Integer, ForeignKey("receptor_frames.id", ondelete="SET NULL"), nullable=True
     )
+    source_trajectory_id = Column(
+        Integer, ForeignKey("trajectories.id", ondelete="SET NULL"), nullable=True
+    )
+    feature_group = Column(String(64), nullable=True)  # Selection group for coordinates (e.g. Pocket, Backbone, Ligand)
+    align_group = Column(String(64), nullable=True)    # Basis group for superimposition (e.g. Backbone, C-alpha)
+    dim_reduction_method = Column(String(16), nullable=True)  # 'pca' or 'tica'
+    cluster_rank = Column(Integer, nullable=True)      # Medoid population ranking (1, 2, 3...)
+    population = Column(Float, nullable=True)          # Exact Boltzmann ensemble fraction (0.0 to 1.0)
+    compactness_spread = Column(Float, nullable=True)  # Intra-cluster coordinate spread (Å)
     path = Column(String, nullable=False)  # Canonical primary path
     path_mae = Column(
         String, nullable=True
@@ -102,6 +111,7 @@ class ReceptorFrame(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     target = relationship("Target", back_populates="frames")
+    source_trajectory = relationship("Trajectory", foreign_keys=[source_trajectory_id])
     parent_frame = relationship(
         "ReceptorFrame", remote_side=[id], backref="derived_frames"
     )

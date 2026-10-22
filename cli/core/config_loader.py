@@ -438,7 +438,82 @@ def _build_analyze_args(config: Dict[str, Any]) -> list:
     if salt:
         args.extend(["--md_salt_conc", str(salt)])
 
+    # Validate and append clustering parameters if declared in configuration
+    cluster_cfg = md_cfg.get("clustering")
+    if cluster_cfg:
+        val_cluster = validate_clustering_config(config)
+        args.extend([
+            "--cluster_align_group", str(val_cluster["align_group"]),
+            "--cluster_feature_group", str(val_cluster["cluster_group"]),
+            "--cluster_dim_reduction", str(val_cluster["dim_reduction"]),
+            "--cluster_tica_lag_ns", str(val_cluster["tica_lag_ns"]),
+            "--cluster_variance_cutoff", str(val_cluster["variance_cutoff"]),
+            "--cluster_n_clusters", str(val_cluster["n_clusters"]),
+            "--cluster_pocket_radius", str(val_cluster["pocket_radius"]),
+            "--cluster_min_pop", str(val_cluster["min_cluster_population"]),
+            "--cluster_temp_k", str(val_cluster["temp_k"]),
+            "--cluster_auto_promote", "true" if val_cluster["auto_promote"] else "false",
+        ])
+
     return args
+
+
+def validate_clustering_config(config: Dict[str, Any]) -> Dict[str, Any]:
+    """Strict Fail-Fast validation of conformational landscape clustering parameters."""
+    md_cfg = config.get("md_simulation")
+    if not md_cfg:
+        raise ValueError("FATAL: 'md_simulation' section missing in md.yaml!")
+
+    cluster_cfg = md_cfg.get("clustering")
+    if not cluster_cfg or not isinstance(cluster_cfg, dict):
+        raise ValueError(
+            "FATAL: 'md_simulation.clustering' configuration block is missing or invalid in md.yaml! "
+            "All parameters must be explicitly specified."
+        )
+
+    required_keys = [
+        "align_group",
+        "cluster_group",
+        "dim_reduction",
+        "tica_lag_ns",
+        "variance_cutoff",
+        "n_clusters",
+        "pocket_radius",
+        "min_cluster_population",
+        "temp_k",
+        "auto_promote",
+    ]
+
+    for key in required_keys:
+        if key not in cluster_cfg or cluster_cfg[key] is None or cluster_cfg[key] == "":
+            raise ValueError(
+                f"FATAL: Missing required clustering parameter 'md_simulation.clustering.{key}' in md.yaml! "
+                "Silent fallbacks and default constants are strictly forbidden by architectural law."
+            )
+
+    dim_red = str(cluster_cfg["dim_reduction"]).strip().lower()
+    if dim_red not in ["pca", "tica"]:
+        raise ValueError(
+            f"FATAL: Unsupported dimensionality reduction method '{dim_red}' in md.yaml! "
+            "Must be strictly 'pca' or 'tica'."
+        )
+
+    if int(cluster_cfg["n_clusters"]) < 1:
+        raise ValueError(
+            f"FATAL: 'n_clusters' must be a positive integer >= 1, got: {cluster_cfg['n_clusters']}"
+        )
+
+    if float(cluster_cfg["variance_cutoff"]) <= 0.0 or float(cluster_cfg["variance_cutoff"]) > 1.0:
+        raise ValueError(
+            f"FATAL: 'variance_cutoff' must be a fraction within (0.0, 1.0], got: {cluster_cfg['variance_cutoff']}"
+        )
+
+    if float(cluster_cfg["temp_k"]) <= 0.0:
+        raise ValueError(
+            f"FATAL: 'temp_k' must be a positive absolute temperature in Kelvin, got: {cluster_cfg['temp_k']}"
+        )
+
+    return cluster_cfg
 
 
 def validate_ligand_parametrization_config(config: Dict[str, Any]) -> Dict[str, Any]:
