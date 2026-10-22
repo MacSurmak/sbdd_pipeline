@@ -455,17 +455,23 @@ def validate_ligand_parametrization_config(config: Dict[str, Any]) -> Dict[str, 
         )
 
     method = param_cfg.get("method")
-    if not method or method not in ["resp", "bcc"]:
+    if not method or method not in ["resp", "bcc", "ashgc"]:
         raise ValueError(
             f"FATAL: Invalid or missing 'md_simulation.ligand_parametrization.method': '{method}'. "
-            "Supported methods are 'resp' (ORCA 6 quantum ESP) or 'bcc' (AM1-BCC)."
+            "Supported methods are 'ashgc' (OpenFF GNN), 'resp' (ORCA 6 quantum ESP), or 'bcc' (AM1-BCC)."
         )
 
     ff = param_cfg.get("forcefield")
-    if not ff or ff not in ["gaff", "gaff2"]:
+    valid_forcefields = ["gaff", "gaff2", "openff-2.3.0", "openff-2.2.1", "openff-2.1.0"]
+    if not ff or ff not in valid_forcefields:
         raise ValueError(
             f"FATAL: Invalid or missing 'md_simulation.ligand_parametrization.forcefield': '{ff}'. "
-            "Supported small molecule force fields are 'gaff' or 'gaff2'."
+            f"Supported small molecule force fields are {valid_forcefields}."
+        )
+
+    if method == "ashgc" and not ff.startswith("openff"):
+        raise ValueError(
+            f"FATAL: Charge method 'ashgc' (OpenFF GNN) requires an OpenFF force field, but got '{ff}'!"
         )
 
     if method == "resp":

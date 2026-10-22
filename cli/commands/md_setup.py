@@ -90,7 +90,28 @@ def run_md_setup(
         from rdkit import Chem
         from rdkit.Chem import AllChem
 
+        # Collect distinct cofactor states across systems to allocate ahead-of-time disjoint prefixes
+        cofactor_states = set()
+        for s in raw_systems:
+            for c in s.cofactors:
+                if c.substance.substance_type != "ion" and c.substance_state:
+                    cofactor_states.add(c.substance_state.id)
+        
+        cofactor_order = sorted(list(cofactor_states))
+        # Ahead-of-time safe prefix blocks: active ligand gets '1', cofactors get disjoint immune prefixes
+        cofactor_prefixes = ["6", "8", "0", "J", "Q", "X"]
+
         for state in missing_states:
+            is_cofactor = state.id in cofactor_order
+            if is_cofactor:
+                c_idx = cofactor_order.index(state.id)
+                if c_idx >= len(cofactor_prefixes):
+                    raise OverflowError(
+                        f"FATAL: Exceeded maximum concurrent cofactors ({len(cofactor_prefixes)}) supported by disjoint AMBER namespaces!"
+                    )
+                assigned_prefix = cofactor_prefixes[c_idx]
+            else:
+                assigned_prefix = "1"
             # Strict Fail-Fast: reference 3D conformer must exist with physical hydrogens from PrepWizard/LigPrep
             if (
                 not state.path_sdf
@@ -127,6 +148,8 @@ def run_md_setup(
                     "state_hash": state.state_hash,
                     "charge": state.formal_charge,
                     "method": param_cfg["method"],
+                    "forcefield": param_cfg["forcefield"],
+                    "atom_type_prefix": assigned_prefix,
                     "sdf": str(state_sdf),
                 }
             )

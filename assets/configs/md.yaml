@@ -17,8 +17,8 @@ md_simulation:
     water_names: ["SOL", "Water", "HOH", "WAT", "TIP3", "OPC"]
     ion_names: ["K+", "Cl-", "NA+", "CL-", "NA", "CL", "K", "POT", "CLA", "SOD", "MG", "ZN", "CA", "CAL", "MG2+", "CA2+", "ZN2+"]
   ligand_parametrization:
-    method: "resp"                     # "resp" (ORCA 6 quantum ESP) or "bcc" (Antechamber AM1-BCC)
-    forcefield: "gaff2"                 # Small molecule force field: gaff or gaff2
+    method: "ashgc"                    # "ashgc" (OpenFF GNN), "resp" (ORCA 6 quantum ESP), or "bcc" (Antechamber AM1-BCC)
+    forcefield: "openff-2.3.0"         # Small molecule force field: openff-2.3.0, openff-2.2.1, gaff2, gaff
     orca:
       nprocs: 8                         # Parallel CPU threads (%pal nprocs)
       maxcore_mb: 2000                  # Per-core RAM allocation in MB (%maxcore)
