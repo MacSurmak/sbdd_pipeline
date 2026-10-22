@@ -55,8 +55,11 @@ def main():
     parser.add_argument("--medoids_json", required=True, help="Input medoids_summary.json deliverable")
     parser.add_argument("--time_map", required=True, help="Input frame_time_map.json mapping")
     parser.add_argument("--feature_meta", required=True, help="Input feature_meta.json deliverable")
-    parser.add_argument("--temp_k", type=float, default=310.15, help="Simulation temperature in Kelvin")
-    parser.add_argument("--outdir", default="reports_out", help="Output directory for reports")
+    parser.add_argument("--align_group", required=True, help="Alignment basis group name")
+    parser.add_argument("--cluster_group", required=True, help="Clustering feature group name")
+    parser.add_argument("--dim_reduction", required=True, help="Dimensionality reduction method (pca or tica)")
+    parser.add_argument("--temp_k", type=float, required=True, help="Simulation temperature in Kelvin")
+    parser.add_argument("--outdir", required=True, help="Output directory for reports")
     args = parser.parse_args()
 
     outdir = Path(args.outdir).resolve()
@@ -215,9 +218,9 @@ def main():
     manifest = {
         "n_frames": n_frames,
         "n_clusters": len(medoids),
-        "align_group": feat_meta["align_group"],
-        "cluster_group": feat_meta["cluster_group"],
-        "dim_reduction": feat_meta["dim_reduction"],
+        "align_group": args.align_group,
+        "cluster_group": args.cluster_group,
+        "dim_reduction": args.dim_reduction,
         "html_report": html_path.name,
         "png_overview": png_path.name,
         "pymol_session": pml_path.name,

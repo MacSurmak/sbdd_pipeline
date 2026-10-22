@@ -10,6 +10,9 @@ process RENDER_REPORTS {
 
     input:
     tuple val(meta), path(ref_pdb), path(umap_2d), path(projections), path(cluster_labels), path(medoids_summary), path(frame_time_map), path(feature_meta)
+    val(align_group)
+    val(cluster_group)
+    val(dim_reduction)
     val(temp_k)
 
     output:
@@ -25,6 +28,9 @@ process RENDER_REPORTS {
         --medoids_json ${medoids_summary} \\
         --time_map ${frame_time_map} \\
         --feature_meta ${feature_meta} \\
+        --align_group "${align_group}" \\
+        --cluster_group "${cluster_group}" \\
+        --dim_reduction "${dim_reduction}" \\
         --temp_k ${temp_k} \\
         --outdir .
     """

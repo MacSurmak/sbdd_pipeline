@@ -56,7 +56,7 @@ workflow CLUSTER_ENSEMBLE {
         .map { meta, ref_pdb, umap, proj, time_map, feat_meta, medoids_json, labels ->
             [ meta, ref_pdb, umap, proj, labels, medoids_json, time_map, feat_meta ]
         }
-    RENDER_REPORTS(ch_render_in, temp_k)
+    RENDER_REPORTS(ch_render_in, align_group, cluster_group, dim_reduction, temp_k)
 
     emit:
     manifest = RENDER_REPORTS.out.reports.map { meta, html, png, pml, ref, manifest_json ->
