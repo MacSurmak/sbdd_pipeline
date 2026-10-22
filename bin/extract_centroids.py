@@ -26,8 +26,9 @@ WATER_RESIDUES = {"HOH", "WAT", "SOL", "TIP", "TIP3", "TIP4", "W"}
 
 def transfer_coordinates_to_template(template_sdf: Path, raw_mol: Chem.Mol, out_sdf: Path) -> None:
     """
-    Transfers exact Cartesian coordinates from MD frame onto canonical SubstanceState template.
-    Strictly preserves formal charges, bond orders, aromaticity, and valences.
+    Transfers exact Cartesian coordinates from MD frame onto canonical SubstanceState template
+    using strict topological graph isomorphism matching.
+    Guarantees that atom serials in PDB do not scramble coordinates across different atom types.
     """
     suppl = Chem.SDMolSupplier(str(template_sdf), removeHs=False, sanitize=False)
     tmpl_mol = next((m for m in suppl if m is not None), None)
@@ -38,13 +39,38 @@ def transfer_coordinates_to_template(template_sdf: Path, raw_mol: Chem.Mol, out_
     n_raw = raw_mol.GetNumAtoms()
     if n_tmpl != n_raw:
         raise ValueError(
-            f"FATAL: Atom count mismatch between template ({n_tmpl}) and MD pose ({n_raw}) for {out_sdf.name}!"
+            f"FATAL: Atom count mismatch between template ({n_tmpl}) and raw pose ({n_raw}) for {out_sdf.name}!"
         )
 
+    # Build pure topology queries to find unambiguous isomorphism mapping
+    q_tmpl = Chem.Mol(tmpl_mol)
+    q_raw = Chem.Mol(raw_mol)
+    for q in (q_tmpl, q_raw):
+        for b in q.GetBonds():
+            b.SetBondType(Chem.BondType.SINGLE)
+            b.SetIsAromatic(False)
+        for a in q.GetAtoms():
+            a.SetFormalCharge(0)
+            a.SetIsotope(0)
+
+    matches = q_raw.GetSubstructMatches(q_tmpl, uniquify=False)
+    if not matches:
+        raise ValueError(
+            f"FATAL: Topological graph isomorphism failed! MD frame molecule in {out_sdf.name} "
+            f"does not match template graph {template_sdf.name}."
+        )
+
+    match = matches[0]
     conf_tmpl = tmpl_mol.GetConformer()
     conf_raw = raw_mol.GetConformer()
-    for i in range(n_tmpl):
-        conf_tmpl.SetAtomPosition(i, conf_raw.GetAtomPosition(i))
+
+    for tmpl_idx, raw_idx in enumerate(match):
+        pos = conf_raw.GetAtomPosition(raw_idx)
+        if abs(pos.x) < 1e-4 and abs(pos.y) < 1e-4 and abs(pos.z) < 1e-4:
+            raise ValueError(
+                f"FATAL: Degenerate coordinate (0, 0, 0) detected at atom index {raw_idx} during transfer!"
+            )
+        conf_tmpl.SetAtomPosition(tmpl_idx, pos)
 
     out_sdf.parent.mkdir(parents=True, exist_ok=True)
     with Chem.SDWriter(str(out_sdf)) as writer:
@@ -127,22 +153,27 @@ def main():
             mol_atoms.write(str(raw_pose_pdb))
 
             dest_sdf = outdir / f"centroid_{rank}_{r_name}_pose.sdf"
-            if r_name == active_res and tmpl_sdf_p and tmpl_sdf_p.exists():
-                raw_mol = Chem.MolFromPDBFile(str(raw_pose_pdb), removeHs=False, sanitize=False)
-                if raw_mol:
-                    transfer_coordinates_to_template(tmpl_sdf_p, raw_mol, dest_sdf)
-                else:
-                    dest_sdf.write_text(raw_pose_pdb.read_text(encoding="utf-8"))
+            raw_mol = Chem.MolFromPDBFile(str(raw_pose_pdb), removeHs=False, sanitize=False)
+            if not raw_mol:
+                raise ValueError(
+                    f"FATAL: RDKit failed to parse extracted small molecule '{r_name}' from {raw_pose_pdb.name}!"
+                )
+
+            is_active_ligand = (r_name == active_res)
+            if is_active_ligand and tmpl_sdf_p and tmpl_sdf_p.exists():
+                transfer_coordinates_to_template(tmpl_sdf_p, raw_mol, dest_sdf)
             else:
-                raw_mol = Chem.MolFromPDBFile(str(raw_pose_pdb), removeHs=False, sanitize=False)
-                if raw_mol:
-                    with Chem.SDWriter(str(dest_sdf)) as w:
-                        w.write(raw_mol)
-                else:
-                    dest_sdf.write_text(raw_pose_pdb.read_text(encoding="utf-8"))
+                # Retain coordinates for monoatomic ions or cofactors
+                with Chem.SDWriter(str(dest_sdf)) as w:
+                    w.SetForceV3000(False)
+                    w.write(raw_mol)
 
             raw_pose_pdb.unlink(missing_ok=True)
-            extracted_poses[r_name] = str(dest_sdf.resolve())
+            extracted_poses[r_name] = {
+                "res_name": r_name,
+                "is_ligand": is_active_ligand,
+                "sdf_path": str(dest_sdf.resolve()),
+            }
 
         manifest.append({
             "rank": rank,

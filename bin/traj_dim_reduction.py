@@ -194,15 +194,16 @@ def main():
     )
     parser.add_argument("--struct", required=True, help="Clean reference structure PDB")
     parser.add_argument("--xtc", nargs="+", required=True, help="Clean trajectory XTC file(s)")
+    parser.add_argument("--rep_names", nargs="+", required=True, help="Explicit physical replicate names matching each XTC")
     parser.add_argument("--ndx", default="", help="Optional GROMACS index.ndx file")
     parser.add_argument("--align_group", required=True, help="Basis group for superimposition")
     parser.add_argument("--cluster_group", required=True, help="Feature group for coordinates")
     parser.add_argument("--ligand_resname", default="", help="Ligand residue name (if applicable)")
-    parser.add_argument("--pocket_radius", type=float, default=5.0, help="Pocket radius (Å)")
+    parser.add_argument("--pocket_radius", type=float, required=True, help="Pocket radius (Å)")
     parser.add_argument("--dim_reduction", choices=["pca", "tica"], required=True)
-    parser.add_argument("--tica_lag_ns", type=float, default=2.0, help="Lag time for TICA (ns)")
-    parser.add_argument("--variance_cutoff", type=float, default=0.85, help="Variance cutoff")
-    parser.add_argument("--outdir", default="dim_reduction_out", help="Output directory")
+    parser.add_argument("--tica_lag_ns", type=float, required=True, help="Lag time for TICA (ns)")
+    parser.add_argument("--variance_cutoff", type=float, required=True, help="Variance cutoff fraction")
+    parser.add_argument("--outdir", required=True, help="Output directory")
     args = parser.parse_args()
 
     struct_p = Path(args.struct).resolve()
@@ -246,21 +247,31 @@ def main():
                     raise FileNotFoundError(f"FATAL: Trajectory file missing or empty: {p_xtc}")
                 clean_xtcs.append(p_xtc)
 
-    if not clean_xtcs:
-        raise ValueError("FATAL: No valid trajectory XTC files supplied to dim_reduction!")
+    clean_reps = []
+    for raw_rep in args.rep_names:
+        for r_chunk in str(raw_rep).split():
+            r_c = r_chunk.strip()
+            if r_c:
+                clean_reps.append(r_c)
+
+    if len(clean_xtcs) != len(clean_reps):
+        raise ValueError(
+            f"FATAL: Trajectory files count ({len(clean_xtcs)}) does not match explicit replicate names count ({len(clean_reps)})!"
+        )
 
     coords_list = []
     frame_time_map = []
     global_frame = 0
     dt_ps = None
 
-    for xtc_p in clean_xtcs:
-        rep_name = xtc_p.parent.parent.name if "rep_" in xtc_p.parent.parent.name else xtc_p.stem
+    for xtc_p, rep_name in zip(clean_xtcs, clean_reps):
         u = mda.Universe(str(struct_p), str(xtc_p))
 
+        # Fail-Fast: Never silently skip corrupt or truncated trajectories
         if len(u.trajectory) < 2:
-            print(f"Warning: Trajectory {xtc_p.name} has fewer than 2 frames. Skipping.", file=sys.stderr)
-            continue
+            raise ValueError(
+                f"FATAL: Trajectory {xtc_p.name} for replicate '{rep_name}' has fewer than 2 frames! File is corrupted."
+            )
 
         if dt_ps is None and len(u.trajectory) >= 2:
             dt_ps = float(u.trajectory[1].time - u.trajectory[0].time)
@@ -270,7 +281,7 @@ def main():
             mob_align_com = mob_align.mean(axis=0)
             mob_align_centered = mob_align - mob_align_com
 
-            # Compute in-memory Kabsch rotation matrix without writing temporary files to disk
+            # In-memory Kabsch rotation matrix without writing temporary files to disk
             r_mat, _ = rotation_matrix(mob_align_centered, ref_align_centered)
 
             mob_cluster = u.atoms[cluster_indices].positions

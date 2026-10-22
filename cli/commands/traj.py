@@ -347,6 +347,203 @@ def run_metrics(
     session.close()
 
 
+def run_cluster_promote(manifest_path: str, ranks: list[int]) -> None:
+    """
+    Promotes specific cluster centroids from an existing manifest into SQLite 3NF
+    without re-running Nextflow or MDAnalysis.
+    Guarantees transactional integrity and purges stale ghost centroids.
+    """
+    cwd = Path.cwd()
+    session = init_db()
+    m_p = Path(manifest_path).resolve()
+
+    if not m_p.exists() or m_p.stat().st_size == 0:
+        session.close()
+        raise FileNotFoundError(f"FATAL: Clusters manifest not found at {m_p}!")
+
+    with open(m_p, "r", encoding="utf-8") as f:
+        manifest = json.load(f)
+
+    basins = manifest.get("basins", [])
+    task_dir = m_p.parent
+
+    # Read feature metadata from task directory
+    feat_meta_p = task_dir / "feature_meta.json"
+    if not feat_meta_p.exists():
+        session.close()
+        raise FileNotFoundError(f"FATAL: Feature metadata file missing in {task_dir}!")
+
+    with open(feat_meta_p, "r", encoding="utf-8") as f:
+        feat_meta = json.load(f)
+
+    # Read extraction manifest for deterministic small molecule and structure paths
+    extract_manifest_p = task_dir / "extracted_manifest.json"
+    if not extract_manifest_p.exists():
+        session.close()
+        raise FileNotFoundError(f"FATAL: Extraction manifest missing in {task_dir}!")
+
+    with open(extract_manifest_p, "r", encoding="utf-8") as f:
+        extracted_data = json.load(f)
+
+    extracted_by_rank = {int(item["rank"]): item for item in extracted_data}
+
+    # Resolve parent system from directory structure: reports/clusters/<system>/<group>/
+    sys_name = task_dir.parent.name
+    sys_obj = session.query(System).filter_by(name=sys_name).first()
+    if not sys_obj:
+        session.close()
+        raise ValueError(f"FATAL: Parent system '{sys_name}' is not registered in SQLite database!")
+
+    eff_cluster = task_dir.name.split("_")[-1]
+    eff_align = "_".join(task_dir.name.split("_")[:-1])
+
+    # Purge stale ghost centroids from previous clustering runs for this system and group
+    stale_frames = session.query(ReceptorFrame).filter(
+        ReceptorFrame.target_id == sys_obj.target_id,
+        ReceptorFrame.parent_frame_id == sys_obj.receptor_frame_id,
+        ReceptorFrame.source_type == "md_centroid",
+        ReceptorFrame.feature_group == eff_cluster,
+    ).all()
+
+    for sf in stale_frames:
+        session.delete(sf)
+    session.flush()
+
+    promoted = 0
+    all_trajs = session.query(Trajectory).filter_by(system_id=sys_obj.id).all()
+
+    for rank in sorted(list(set(ranks))):
+        b_meta = next((b for b in basins if int(b["rank"]) == rank), None)
+        ext_meta = extracted_by_rank.get(rank)
+        if not b_meta or not ext_meta:
+            console.print(f"[yellow]Warning: Basin #{rank} not found in manifest deliverables. Skipping.[/yellow]")
+            continue
+
+        src_rec_pdb = Path(ext_meta["receptor_pdb"]).resolve()
+        src_rec_mae = Path(str(src_rec_pdb).replace(".pdb", ".mae")).resolve()
+        src_view_pdb = Path(ext_meta["complex_pdb"]).resolve()
+
+        if not src_rec_pdb.exists() or src_rec_pdb.stat().st_size == 0:
+            raise FileNotFoundError(f"FATAL: Centroid receptor PDB missing on disk: {src_rec_pdb}")
+        if not src_rec_mae.exists() or src_rec_mae.stat().st_size == 0:
+            raise FileNotFoundError(f"FATAL: Centroid receptor MAE missing on disk: {src_rec_mae}")
+
+        # Resolve exact source trajectory record
+        src_rep_name = str(b_meta["medoid_replicate"])
+        matched_traj = next((t for t in all_trajs if t.replicate == int(src_rep_name.replace("rep_", "")) or t.name == src_rep_name), all_trajs[0] if all_trajs else None)
+
+        new_frame_name = f"{sys_obj.name}_{eff_cluster.lower()}_c{rank}"
+        dest_frame_dir = cwd / "targets" / sys_obj.target.name / "frames" / new_frame_name
+        dest_frame_dir.mkdir(parents=True, exist_ok=True)
+
+        dest_rec_pdb = dest_frame_dir / "receptor.pdb"
+        dest_rec_mae = dest_frame_dir / "receptor.mae"
+        shutil.copy2(src_rec_pdb, dest_rec_pdb)
+        shutil.copy2(src_rec_mae, dest_rec_mae)
+
+        frame_entity = ReceptorFrame(
+            target_id=sys_obj.target_id,
+            name=new_frame_name,
+            source_type="md_centroid",
+            parent_frame_id=sys_obj.receptor_frame_id,
+            source_trajectory_id=matched_traj.id if matched_traj else None,
+            feature_group=eff_cluster,
+            align_group=eff_align,
+            dim_reduction_method=feat_meta.get("dim_reduction", "pca"),
+            cluster_rank=rank,
+            population=round(float(b_meta["population_pct"]) / 100.0, 4),
+            compactness_spread=float(b_meta["compactness_spread"]),
+            state="ready",
+            path=str(dest_rec_pdb.resolve()),
+            path_pdb=str(dest_rec_pdb.resolve()),
+            path_mae=str(dest_rec_mae.resolve()),
+        )
+        session.add(frame_entity)
+        session.flush()
+
+        centroid_main_pose = None
+        centroid_cofactors = []
+
+        # Promote small molecules using deterministic manifest keys (zero globbing)
+        for r_code, p_dict in ext_meta.get("poses", {}).items():
+            src_p_sdf = Path(p_dict["sdf_path"]).resolve()
+            src_p_mae = Path(str(src_p_sdf).replace(".sdf", ".mae")).resolve()
+
+            if not src_p_sdf.exists():
+                raise FileNotFoundError(f"FATAL: Small molecule pose SDF missing: {src_p_sdf}")
+
+            parent_match = None
+            is_main = False
+            if sys_obj.pose and r_code == sys_obj.pose.res_name.strip().upper():
+                parent_match = sys_obj.pose
+                is_main = True
+            else:
+                for cof in sys_obj.cofactors:
+                    if r_code == cof.res_name.strip().upper():
+                        parent_match = cof
+                        break
+
+            if not parent_match:
+                continue
+
+            sub_inchikey = parent_match.substance.inchikey
+            pose_name = f"{new_frame_name}_{r_code}"
+            dest_pose_dir = cwd / "substances" / sub_inchikey / "poses" / pose_name
+            dest_pose_dir.mkdir(parents=True, exist_ok=True)
+
+            dest_pose_sdf = dest_pose_dir / f"{r_code}_pose.sdf"
+            dest_pose_mae = dest_pose_dir / f"{r_code}_pose.mae"
+            shutil.copy2(src_p_sdf, dest_pose_sdf)
+            if src_p_mae.exists():
+                shutil.copy2(src_p_mae, dest_pose_mae)
+
+            p_entity = Pose(
+                substance_state_id=parent_match.substance_state_id,
+                receptor_frame_id=frame_entity.id,
+                name=pose_name,
+                res_name=parent_match.res_name,
+                origin="md_cluster",
+                state="ready",
+                path=str(dest_pose_sdf.resolve()),
+                path_sdf=str(dest_pose_sdf.resolve()),
+                path_mae=str(dest_pose_mae.resolve()) if src_p_mae.exists() else None,
+            )
+            session.add(p_entity)
+            session.flush()
+
+            if is_main:
+                centroid_main_pose = p_entity
+            else:
+                centroid_cofactors.append(p_entity)
+
+        # Register distinct System entity with 'sys_' prefix preventing namespace collision
+        sys_centroid_name = f"sys_{new_frame_name}_{sys_obj.pose.substance.name}" if centroid_main_pose else f"sys_{new_frame_name}"
+        dest_sys_dir = cwd / "systems" / sys_centroid_name
+        dest_sys_dir.mkdir(parents=True, exist_ok=True)
+
+        if src_view_pdb.exists():
+            shutil.copy2(src_view_pdb, dest_sys_dir / f"{sys_centroid_name}_view.pdb")
+
+        new_sys = System(
+            target_id=sys_obj.target_id,
+            receptor_frame_id=frame_entity.id,
+            pose_id=centroid_main_pose.id if centroid_main_pose else None,
+            name=sys_centroid_name,
+            state="raw",
+            origin="md_cluster",
+        )
+        new_sys.cofactors = centroid_cofactors
+        session.add(new_sys)
+        promoted += 1
+
+    session.commit()
+    session.close()
+
+    console.print(
+        f"[bold green]✓ Successfully promoted {promoted} centroid conformation(s) into SQLite 3NF![/bold green]"
+    )
+
+
 def run_cluster(
     systems: list[str] | None = None,
     target: str | None = None,
@@ -370,15 +567,14 @@ def run_cluster(
     cwd = Path.cwd()
     session = init_db()
     configs = load_project_configs(cwd)
-    cluster_cfg = configs.get("md_simulation", {}).get("clustering", {})
+    cluster_cfg = validate_clustering_config(configs)
 
-    # Strict parameter resolution: explicit CLI arguments override validated md.yaml configuration
-    eff_align = align_group or cluster_cfg.get("align_group", "Backbone")
-    eff_cluster = cluster_group or cluster_cfg.get("cluster_group", "Pocket")
-    eff_dim = dim_reduction or cluster_cfg.get("dim_reduction", "pca")
-    eff_k = n_clusters or cluster_cfg.get("n_clusters", 3)
-    eff_min_pop = min_population or cluster_cfg.get("min_cluster_population", 5.0)
-    eff_auto = auto or cluster_cfg.get("auto_promote", False)
+    eff_align = align_group if align_group is not None else cluster_cfg["align_group"]
+    eff_cluster = cluster_group if cluster_group is not None else cluster_cfg["cluster_group"]
+    eff_dim = dim_reduction if dim_reduction is not None else cluster_cfg["dim_reduction"]
+    eff_k = n_clusters if n_clusters is not None else cluster_cfg["n_clusters"]
+    eff_min_pop = min_population if min_population is not None else cluster_cfg["min_cluster_population"]
+    eff_auto = auto or cluster_cfg["auto_promote"]
 
     trajs = _query_trajectories(
         session, systems, target, traj_names, target_status="cleaned"
@@ -411,11 +607,11 @@ def run_cluster(
         sys_lookup[sys_obj.name] = (sys_obj, t_list)
 
         clean_xtcs = [str(Path(t.path_clean_xtc).resolve()) for t in t_list]
+        rep_names = [f"rep_{t.replicate}" for t in t_list]
         ref_pdb = str(Path(t_list[0].path_ref_pdb).resolve())
         ndx_path = str(Path(sys_obj.path_ndx).resolve()) if sys_obj.path_ndx and Path(sys_obj.path_ndx).exists() else ""
         lig_code = sys_obj.pose.res_name if sys_obj.pose else ""
 
-        # Fail-Fast validation on pocket definitions
         if eff_cluster.lower() == "pocket" and not lig_code:
             console.print(
                 f"[bold red]FATAL: System '{sys_obj.name}' has no registered ligand pose! "
@@ -433,19 +629,18 @@ def run_cluster(
                 template_sdf = str(Path(sys_obj.pose.path_sdf).resolve())
 
         task_id = f"{sys_obj.name}_{eff_align}_{eff_cluster}"
-        subpath = f"{eff_align}_{eff_cluster}"
 
         plan_list.append({
             "task_id": task_id,
             "system": sys_obj.name,
             "clean_xtcs": clean_xtcs,
+            "replicate_names": rep_names,
             "ref_pdb": ref_pdb,
             "ndx": ndx_path,
             "align_group": eff_align,
             "cluster_group": eff_cluster,
             "ligand": lig_code,
             "template_sdf": template_sdf,
-            "target_subpath": subpath,
         })
 
     plan_file = cwd / "cluster_plan.json"
@@ -456,7 +651,6 @@ def run_cluster(
         f"[bold cyan]Dispatching macro-basin clustering (Align: {eff_align}, Features: {eff_cluster}, K={eff_k})...[/bold cyan]"
     )
 
-    # Clean previous receipt file before Nextflow invocation
     receipt_file = cwd / "cluster_receipt.tsv"
     receipt_file.unlink(missing_ok=True)
 
@@ -492,7 +686,7 @@ def run_cluster(
     if not receipt_file.exists() or receipt_file.stat().st_size == 0:
         session.close()
         raise FileNotFoundError(
-            f"FATAL: Execution receipt {receipt_file} was not emitted by Nextflow. Clustering deliverables missing."
+            f"FATAL: Execution receipt {receipt_file} was not emitted by Nextflow."
         )
 
     receipt_records = []
@@ -510,11 +704,7 @@ def run_cluster(
                     "manifest_path": Path(parts[3]).resolve(),
                 })
 
-    if not receipt_records:
-        session.close()
-        raise ValueError("FATAL: Receipt file is empty or malformed.")
-
-    promoted_total = 0
+    session.close()
 
     for rec_meta in receipt_records:
         sys_name = rec_meta["system"]
@@ -531,10 +721,6 @@ def run_cluster(
             console.print(f"[yellow]Warning: No basins found in manifest for system '{sys_name}'.[/yellow]")
             continue
 
-        sys_obj, t_list = sys_lookup[sys_name]
-        task_dir = m_path.parent
-
-        # Render Rich interactive summary table
         table = Table(
             title=f"Conformational Macro-Basins: {sys_name} [Align: {eff_align}, Features: {eff_cluster}]",
             show_header=True,
@@ -578,7 +764,6 @@ def run_cluster(
         console.print(f"📊 [bold cyan]Interactive Landscape (FES):[/bold cyan] {manifest.get('html_report')}")
         console.print(f"🔍 [bold cyan]Portable PyMOL 3D Session:[/bold cyan] pymol {manifest.get('pymol_session')}\n")
 
-        # Decision flow: Headless auto-promotion vs interactive terminal prompt
         selected_ranks = []
         if eff_auto or not sys.stdin.isatty():
             selected_ranks = recommended_ranks
@@ -590,11 +775,13 @@ def run_cluster(
                 user_choice = input(prompt_msg).strip().lower()
             except (EOFError, KeyboardInterrupt):
                 console.print("\n[yellow]Clustering review canceled by user.[/yellow]")
-                session.close()
                 return
 
             if user_choice in ["c", "cancel"]:
-                console.print(f"[yellow]Cluster deliverables preserved in {task_dir}. Database not modified.[/yellow]")
+                console.print(
+                    f"[yellow]Cluster deliverables preserved in {m_path.parent}. Database not modified.\n"
+                    f"To promote later without re-running MD, use: sbdd traj-cluster-promote --manifest {m_path} --ranks 1,2[/yellow]"
+                )
                 continue
             elif not user_choice:
                 selected_ranks = recommended_ranks
@@ -605,176 +792,8 @@ def run_cluster(
                     console.print("[red]Invalid rank selection. Promotion aborted for this system.[/red]")
                     continue
 
-        if not selected_ranks:
-            console.print("[yellow]Zero basins selected. Skipping promotion.[/yellow]")
-            continue
-
-        # Transactional 3NF registration (Lineage Variant 1)
-        # Centroid deliverables are promoted to canonical project directories without state suffixes in filenames
-        for rank in selected_ranks:
-            b_meta = next((b for b in basins if int(b["rank"]) == rank), None)
-            if not b_meta:
-                console.print(f"[yellow]Warning: Basin #{rank} not found in manifest. Skipping.[/yellow]")
-                continue
-
-            src_rec_pdb = task_dir / f"centroid_{rank}_receptor.pdb"
-            src_view_pdb = task_dir / f"centroid_{rank}_complex.pdb"
-
-            if not src_rec_pdb.exists() or src_rec_pdb.stat().st_size == 0:
-                raise FileNotFoundError(f"FATAL: Medoid receptor structure missing on disk: {src_rec_pdb}")
-
-            # Resolve source trajectory record via replicate name
-            src_rep_name = str(b_meta["medoid_replicate"])
-            matched_traj = next((t for t in t_list if t.replicate == int(src_rep_name.replace("rep_", "")) or t.name == src_rep_name), t_list[0])
-
-            # Canonical clean entity naming (descriptive role without mutable state suffixes)
-            new_frame_name = f"{sys_obj.name}_{eff_cluster.lower()}_c{rank}"
-            dest_frame_dir = cwd / "targets" / sys_obj.target.name / "frames" / new_frame_name
-            dest_frame_dir.mkdir(parents=True, exist_ok=True)
-
-            dest_rec_pdb = dest_frame_dir / "receptor.pdb"
-            shutil.copy2(src_rec_pdb, dest_rec_pdb)
-
-            # Generate or link MAE deliverable for Schrödinger Glide/Prime compatibility
-            dest_rec_mae = dest_frame_dir / "receptor.mae"
-            if shutil.which("structconvert"):
-                subprocess.run(["structconvert", str(dest_rec_pdb), str(dest_rec_mae)], capture_output=True, check=False)
-            if not dest_rec_mae.exists():
-                dest_rec_mae = dest_rec_pdb
-
-            ex_frame = session.query(ReceptorFrame).filter_by(name=new_frame_name).first()
-            if not ex_frame:
-                frame_entity = ReceptorFrame(
-                    target_id=sys_obj.target_id,
-                    name=new_frame_name,
-                    source_type="md_centroid",
-                    parent_frame_id=sys_obj.receptor_frame_id,
-                    source_trajectory_id=matched_traj.id,
-                    feature_group=eff_cluster,
-                    align_group=eff_align,
-                    dim_reduction_method=eff_dim,
-                    cluster_rank=rank,
-                    population=round(float(b_meta["population_pct"]) / 100.0, 4),
-                    compactness_spread=float(b_meta["compactness_spread"]),
-                    state="ready",
-                    path=str(dest_rec_pdb.resolve()),
-                    path_pdb=str(dest_rec_pdb.resolve()),
-                    path_mae=str(dest_rec_mae.resolve()),
-                )
-                session.add(frame_entity)
-                session.flush()
-            else:
-                frame_entity = ex_frame
-                frame_entity.source_trajectory_id = matched_traj.id
-                frame_entity.feature_group = eff_cluster
-                frame_entity.align_group = eff_align
-                frame_entity.dim_reduction_method = eff_dim
-                frame_entity.cluster_rank = rank
-                frame_entity.population = round(float(b_meta["population_pct"]) / 100.0, 4)
-                frame_entity.compactness_spread = float(b_meta["compactness_spread"])
-                frame_entity.state = "ready"
-                frame_entity.path = str(dest_rec_pdb.resolve())
-                frame_entity.path_pdb = str(dest_rec_pdb.resolve())
-                frame_entity.path_mae = str(dest_rec_mae.resolve())
-
-            # Promote small molecule poses preserving chemical graph topology and cofactors
-            centroid_main_pose = None
-            centroid_cofactors = []
-
-            for pose_file in task_dir.glob(f"centroid_{rank}_*_pose.sdf"):
-                # Extract residue name from filename centroid_<rank>_<res>_pose.sdf
-                r_clean = pose_file.name.replace(f"centroid_{rank}_", "").replace("_pose.sdf", "").strip().upper()
-
-                parent_match = None
-                is_main = False
-                if sys_obj.pose and r_clean == sys_obj.pose.res_name.strip().upper():
-                    parent_match = sys_obj.pose
-                    is_main = True
-                else:
-                    for cof in sys_obj.cofactors:
-                        if r_clean == cof.res_name.strip().upper():
-                            parent_match = cof
-                            break
-
-                if not parent_match:
-                    continue
-
-                sub_inchikey = parent_match.substance.inchikey
-                pose_name = f"{new_frame_name}_{r_clean}"
-                dest_pose_dir = cwd / "substances" / sub_inchikey / "poses" / pose_name
-                dest_pose_dir.mkdir(parents=True, exist_ok=True)
-
-                dest_pose_sdf = dest_pose_dir / f"{r_clean}_pose.sdf"
-                shutil.copy2(pose_file, dest_pose_sdf)
-
-                dest_pose_mae = dest_pose_dir / f"{r_clean}_pose.mae"
-                if shutil.which("structconvert"):
-                    subprocess.run(["structconvert", str(dest_pose_sdf), str(dest_pose_mae)], capture_output=True, check=False)
-                if not dest_pose_mae.exists():
-                    dest_pose_mae = None
-
-                ex_p = session.query(Pose).filter_by(name=pose_name).first()
-                if not ex_p:
-                    p_entity = Pose(
-                        substance_state_id=parent_match.substance_state_id,
-                        receptor_frame_id=frame_entity.id,
-                        name=pose_name,
-                        res_name=parent_match.res_name,
-                        origin="md_cluster",
-                        state="ready",
-                        path=str(dest_pose_sdf.resolve()),
-                        path_sdf=str(dest_pose_sdf.resolve()),
-                        path_mae=str(dest_pose_mae.resolve()) if dest_pose_mae else None,
-                    )
-                    session.add(p_entity)
-                    session.flush()
-                else:
-                    p_entity = ex_p
-                    p_entity.substance_state_id = parent_match.substance_state_id
-                    p_entity.path = str(dest_pose_sdf.resolve())
-                    p_entity.path_sdf = str(dest_pose_sdf.resolve())
-                    p_entity.path_mae = str(dest_pose_mae.resolve()) if dest_pose_mae else None
-                    p_entity.state = "ready"
-
-                if is_main:
-                    centroid_main_pose = p_entity
-                else:
-                    centroid_cofactors.append(p_entity)
-
-            # Register derived physical System
-            sys_centroid_name = f"{new_frame_name}_{sys_obj.pose.substance.name}" if centroid_main_pose else new_frame_name
-            dest_sys_dir = cwd / "systems" / sys_centroid_name
-            dest_sys_dir.mkdir(parents=True, exist_ok=True)
-
-            if src_view_pdb.exists():
-                shutil.copy2(src_view_pdb, dest_sys_dir / f"{sys_centroid_name}_view.pdb")
-
-            ex_sys = session.query(System).filter_by(name=sys_centroid_name).first()
-            if not ex_sys:
-                new_sys = System(
-                    target_id=sys_obj.target_id,
-                    receptor_frame_id=frame_entity.id,
-                    pose_id=centroid_main_pose.id if centroid_main_pose else None,
-                    name=sys_centroid_name,
-                    state="raw",
-                    origin="md_cluster",
-                )
-                new_sys.cofactors = centroid_cofactors
-                session.add(new_sys)
-            else:
-                ex_sys.pose_id = centroid_main_pose.id if centroid_main_pose else None
-                ex_sys.state = "raw"
-                ex_sys.cofactors = centroid_cofactors
-
-            promoted_total += 1
-
-    session.commit()
-    session.close()
-
-    console.print(
-        f"\n[bold green]✓ Successfully promoted {promoted_total} centroid conformation(s) into SQLite 3NF as ready ReceptorFrames![/bold green]"
-    )
-    console.print("[dim]Lineage preserved. These frames can now be used for docking via 'sbdd dock'. View with 'sbdd tree'.[/dim]")
+        if selected_ranks:
+            run_cluster_promote(str(m_path), selected_ranks)
 
 
 def run_flag_traj(

@@ -50,14 +50,15 @@ workflow ANALYZE_WF {
         def planList = new groovy.json.JsonSlurperClassic().parseText(planFile.text)
 
         ch_cluster_in = Channel.fromList(planList).map { item ->
-            def align_grp = item.align_group ?: params.cluster_align_group ?: "Backbone"
-            def cluster_grp = item.cluster_group ?: params.cluster_feature_group ?: "Pocket"
+            def align_grp = item.align_group
+            def cluster_grp = item.cluster_group
             def meta = [
                 id: item.task_id,
                 system: item.system,
                 ligand: item.ligand ?: "",
                 align_group: align_grp,
                 cluster_group: cluster_grp,
+                replicate_names: item.replicate_names,
                 project: params.project_name
             ]
             def xtcs = item.clean_xtcs.collect { file(it) }

@@ -9,11 +9,11 @@ process EXTRACT_CENTROIDS {
     label 'process_single'
 
     input:
-    tuple val(meta), path(ref_pdb), path(xtc_files, stageAs: 'trajs/*'), path(medoids_summary), path(template_sdf)
+    tuple val(meta), path(ref_pdb), path(xtc_files, stageAs: 'trajs_?/*'), path(medoids_summary), path(template_sdf)
 
     output:
-    tuple val(meta), path("centroid_*_receptor.pdb"), path("centroid_*_complex.pdb"), path("extracted_manifest.json"), emit: structures
-    tuple val(meta), path("centroid_*_pose.sdf"), emit: poses, optional: true
+    tuple val(meta), path("centroid_*_receptor.pdb"), path("centroid_*_complex.pdb"), path("centroid_*_receptor.mae"), path("extracted_manifest.json"), emit: structures
+    tuple val(meta), path("centroid_*_pose.sdf"), path("centroid_*_pose.mae"), emit: poses, optional: true
 
     script:
     def tmpl_arg = (template_sdf && template_sdf.name != 'NO_FILE') ? "--substance_template_sdf ${template_sdf}" : ""
@@ -21,10 +21,23 @@ process EXTRACT_CENTROIDS {
     """
     python3 ${projectDir}/bin/extract_centroids.py \\
         --struct ${ref_pdb} \\
-        --xtc trajs/*.xtc \\
+        --xtc trajs_*/*.xtc \\
         --medoids_json ${medoids_summary} \\
         ${tmpl_arg} \\
         ${lig_arg} \\
         --outdir .
+
+    # Isolated conversion inside Apptainer container wrapper: zero contamination of host Conda
+    for rec in centroid_*_receptor.pdb; do
+        mae="\${rec%.pdb}.mae"
+        /opt/containers/bin/schrodinger run structconvert "\${rec}" "\${mae}"
+    done
+
+    for sdf in centroid_*_pose.sdf; do
+        if [ -f "\${sdf}" ]; then
+            mae="\${sdf%.sdf}.mae"
+            /opt/containers/bin/schrodinger run structconvert "\${sdf}" "\${mae}"
+        fi
+    done
     """
 }

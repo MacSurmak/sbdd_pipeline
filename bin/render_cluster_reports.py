@@ -19,15 +19,28 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 
-def compute_fes_2d(c1: np.ndarray, c2: np.ndarray, temp_k: float, bins: int = 60):
-    """Computes Delta G(x, y) = -kB * T * ln(P(x, y) / Pmax) in kcal/mol."""
-    kb = 0.001987204  # kcal / (mol * K)
+def compute_fes_2d(c1: np.ndarray, c2: np.ndarray, temp_k: float, bins: int = 80):
+    """
+    Computes physical Delta G(x, y) = -kB * T * ln(P(x, y) / Pmax) in kcal/mol
+    using a continuous Gaussian filter to eliminate pixelated discretization noise.
+    """
+    from scipy.ndimage import gaussian_filter
+
+    kb = 0.001987204  # Boltzmann constant in kcal / (mol * K)
     hist, xedges, yedges = np.histogram2d(c1, c2, bins=bins, density=True)
     hist = hist.T
-    prob = hist / np.max(hist)
+
+    # Apply Gaussian smoothing kernel to obtain physical potential of mean force (PMF)
+    smoothed_hist = gaussian_filter(hist, sigma=1.0)
+    max_val = np.max(smoothed_hist)
+    if max_val <= 0:
+        raise ValueError("FATAL: Maximum probability density for FES is zero!")
+
+    prob = smoothed_hist / max_val
     prob[prob < 1e-6] = 1e-6
     dg = -kb * temp_k * np.log(prob)
     dg -= np.min(dg)
+
     xc = 0.5 * (xedges[:-1] + xedges[1:])
     yc = 0.5 * (yedges[:-1] + yedges[1:])
     return xc, yc, dg

@@ -408,6 +408,14 @@ def main():
     )
     add_common_wf_args(p_cluster)
 
+    # 8.1 traj-cluster-promote (Dedicated, non-blocking cluster promotion command)
+    p_promote = subparsers.add_parser(
+        "traj-cluster-promote",
+        help="Promote specific cluster centroids from an existing manifest into SQLite 3NF without re-running MDAnalysis",
+    )
+    p_promote.add_argument("--manifest", required=True, help="Path to clusters_manifest.json")
+    p_promote.add_argument("--ranks", required=True, help="Comma-separated ranks to promote (e.g. 1, 3)")
+
     # 9. clean
     p_clean = subparsers.add_parser(
         "clean", help="Clean /shared/work scratch directory for current project"
@@ -676,6 +684,13 @@ def main():
             urgent=args.urgent,
             local=args.local,
             resume=not args.no_resume,
+        )
+    elif subcmd == "traj-cluster-promote":
+        from cli.commands.traj import run_cluster_promote
+
+        run_cluster_promote(
+            manifest_path=args.manifest,
+            ranks=[int(x.strip().replace("#", "")) for x in args.ranks.split(",") if x.strip()],
         )
     elif subcmd in ["watch", "progress", "top"]:
         from cli.core.monitor import run_monitor
