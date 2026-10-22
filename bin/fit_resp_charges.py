@@ -107,9 +107,7 @@ def main():
     parser.add_argument(
         "--out_crg", required=True, help="Output vector file of atomic charges (.crg)"
     )
-    parser.add_argument(
-        "--out_sdf", required=True, help="Output charged SDF structure"
-    )
+    parser.add_argument("--out_sdf", required=True, help="Output charged SDF structure")
     args = parser.parse_args()
 
     sdf_path = Path(args.sdf).resolve()

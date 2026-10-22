@@ -173,7 +173,9 @@ def run_monitor(port: int = 8088):
 
                         perf = payload.get("performance", {})
                         # Step rate tracking always follows single-replica physical speed
-                        rep_speed = perf.get("instant_ns_day") or perf.get("cumulative_ns_day")
+                        rep_speed = perf.get("instant_ns_day") or perf.get(
+                            "cumulative_ns_day"
+                        )
                         if rep_speed and dt_ps > 0:
                             task_rate_steps_s[t_id] = rep_speed / (dt_ps * 86.4)
                         else:
@@ -183,7 +185,11 @@ def run_monitor(port: int = 8088):
                         gpu_name = hw_gpu.get("model") or "GPU"
                         if "RTX" in gpu_name:
                             gpu_short = "RTX " + gpu_name.split("RTX")[-1].strip()
-                        elif "Tesla" in gpu_name or "A100" in gpu_name or "H100" in gpu_name:
+                        elif (
+                            "Tesla" in gpu_name
+                            or "A100" in gpu_name
+                            or "H100" in gpu_name
+                        ):
                             gpu_short = gpu_name.split()[-1]
                         else:
                             gpu_short = gpu_name
@@ -202,11 +208,19 @@ def run_monitor(port: int = 8088):
 
                         # Parse formatted throughput (including aggregate for REMD/SWISH)
                         multisim = payload.get("simulation", {}).get("multisim", {})
-                        n_reps = int(multisim.get("replicas") or 1) if multisim.get("enabled") else 1
+                        n_reps = (
+                            int(multisim.get("replicas") or 1)
+                            if multisim.get("enabled")
+                            else 1
+                        )
 
                         if n_reps > 1 and rep_speed:
-                            agg_speed = perf.get("aggregate_instant_ns_day") or (rep_speed * n_reps)
-                            task_speeds[t_id] = f"{rep_speed:>4.1f} ns/d [Agg: {agg_speed:>5.1f} ({n_reps}x)]"
+                            agg_speed = perf.get("aggregate_instant_ns_day") or (
+                                rep_speed * n_reps
+                            )
+                            task_speeds[t_id] = (
+                                f"{rep_speed:>4.1f} ns/d [Agg: {agg_speed:>5.1f} ({n_reps}x)]"
+                            )
                         else:
                             task_speeds[t_id] = payload.get("speed", "-- ns/d")
 

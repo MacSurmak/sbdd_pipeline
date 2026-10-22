@@ -67,16 +67,16 @@ def run_orca(inp_file: Path, out_file: Path, nprocs: int):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="ORCA Single-Point ESP Driver via Archetype Template")
-    parser.add_argument("--template", required=True, help="Path to ORCA .inp template file")
-    parser.add_argument(
-        "--sdf", required=True, help="Input relaxed molecule structure"
+    parser = argparse.ArgumentParser(
+        description="ORCA Single-Point ESP Driver via Archetype Template"
     )
+    parser.add_argument(
+        "--template", required=True, help="Path to ORCA .inp template file"
+    )
+    parser.add_argument("--sdf", required=True, help="Input relaxed molecule structure")
     parser.add_argument("--charge", required=True, type=int, help="Net formal charge")
     parser.add_argument("--mult", required=True, type=int, help="Spin multiplicity")
-    parser.add_argument(
-        "--nprocs", type=int, required=True, help="Number of CPU cores"
-    )
+    parser.add_argument("--nprocs", type=int, required=True, help="Number of CPU cores")
     parser.add_argument(
         "--maxcore_mb", type=int, required=True, help="Per-core RAM allocation in MB"
     )
@@ -91,7 +91,9 @@ def main():
 
     tmpl_path = Path(args.template).resolve()
     if not tmpl_path.exists() or tmpl_path.stat().st_size == 0:
-        raise FileNotFoundError(f"FATAL: ORCA template file does not exist or is empty: {tmpl_path}")
+        raise FileNotFoundError(
+            f"FATAL: ORCA template file does not exist or is empty: {tmpl_path}"
+        )
 
     suppl = Chem.SDMolSupplier(str(in_path), removeHs=False, sanitize=False)
     mol = next((m for m in suppl if m is not None), None)

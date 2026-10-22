@@ -68,16 +68,26 @@ def run_orca(inp_file: Path, out_file: Path, nprocs: int):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="ORCA Atomic Geometry Optimizer via Archetype Template")
-    parser.add_argument("--template", required=True, help="Path to ORCA .inp template file")
+    parser = argparse.ArgumentParser(
+        description="ORCA Atomic Geometry Optimizer via Archetype Template"
+    )
+    parser.add_argument(
+        "--template", required=True, help="Path to ORCA .inp template file"
+    )
     parser.add_argument("--input", required=True, help="Input molecule (.sdf or .xyz)")
     parser.add_argument("--charge", required=True, type=int, help="Formal charge")
     parser.add_argument("--mult", required=True, type=int, help="Spin multiplicity")
-    parser.add_argument("--nprocs", type=int, required=True, help="Processors (%pal nprocs)")
-    parser.add_argument("--maxcore_mb", type=int, required=True, help="Per-core RAM in MB")
+    parser.add_argument(
+        "--nprocs", type=int, required=True, help="Processors (%pal nprocs)"
+    )
+    parser.add_argument(
+        "--maxcore_mb", type=int, required=True, help="Per-core RAM in MB"
+    )
     parser.add_argument("--out_xyz", default="", help="Output optimized XYZ file")
     parser.add_argument("--out_sdf", default="", help="Output optimized SDF file")
-    parser.add_argument("--out_log", default="orca_opt.out", help="Output execution log")
+    parser.add_argument(
+        "--out_log", default="orca_opt.out", help="Output execution log"
+    )
     args = parser.parse_args()
 
     in_path = Path(args.input).resolve()
@@ -86,7 +96,9 @@ def main():
 
     tmpl_path = Path(args.template).resolve()
     if not tmpl_path.exists() or tmpl_path.stat().st_size == 0:
-        raise FileNotFoundError(f"FATAL: ORCA template file does not exist or is empty: {tmpl_path}")
+        raise FileNotFoundError(
+            f"FATAL: ORCA template file does not exist or is empty: {tmpl_path}"
+        )
 
     atoms_data = []
     mol_rdkit = None
@@ -103,10 +115,14 @@ def main():
             atoms_data.append((elem, pos.x, pos.y, pos.z))
     elif in_path.suffix.lower() == ".xyz":
         lines = in_path.read_text(encoding="utf-8", errors="ignore").splitlines()
-        coord_lines = [l.strip() for l in lines if l.strip() and not l.startswith("#")][2:]
+        coord_lines = [l.strip() for l in lines if l.strip() and not l.startswith("#")][
+            2:
+        ]
         for line in coord_lines:
             parts = line.split()
-            atoms_data.append((parts[0], float(parts[1]), float(parts[2]), float(parts[3])))
+            atoms_data.append(
+                (parts[0], float(parts[1]), float(parts[2]), float(parts[3]))
+            )
     else:
         raise ValueError(f"FATAL: Unsupported input format for ORCA: {in_path.suffix}")
 
