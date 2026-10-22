@@ -116,7 +116,7 @@ def run_md_setup(
         )
         cofactor_order = [r[0] for r in cofactor_states_query]
         # Ahead-of-time immune prefix slots: active ligand gets '1' (cap: 310), cofactors get 2-prefix slots (cap: 124)
-        cofactor_prefixes = ["6", "8", "0", "J", "Q", "X"]
+        cofactor_prefixes = ["6", "8", "0", "Q", "U", "Y"]
 
         for state in missing_states:
             is_cofactor = state.id in cofactor_order

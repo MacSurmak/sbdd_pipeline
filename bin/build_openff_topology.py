@@ -21,7 +21,7 @@ AMBER_RESERVED_TYPES: Set[str] = {
     "K", "K+", "Na", "NA", "Cl", "CL", "Cl-", "MG", "ZN", "CA", "C0", "MW", "EP", "LP"
 }
 
-SAFE_PREFIXES = "1234567890JQX"
+SAFE_PREFIXES = "1234567890JQXUWYG"
 ALPHANUMERIC = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 
