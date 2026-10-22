@@ -36,6 +36,16 @@ def allocate_atom_types(n_atoms: int, start_prefix: str) -> List[str]:
     prefixes_needed = math.ceil(n_atoms / base_len)
     start_idx = SAFE_PREFIXES.index(start_prefix)
 
+    # Slot capacity check: primary ligand (prefix '1') allows up to 5 blocks (310 atoms),
+    # secondary components allow up to 2 blocks (124 atoms).
+    max_allowed = 5 if start_prefix == "1" else 2
+    if prefixes_needed > max_allowed:
+        raise OverflowError(
+            f"FATAL: Molecule ({n_atoms} atoms) requires {prefixes_needed} prefix block(s), "
+            f"exceeding allocated slot capacity of {max_allowed} block(s) ({max_allowed * base_len} types)! "
+            f"Execution halted by Fail-Fast law."
+        )
+
     if start_idx + prefixes_needed > len(SAFE_PREFIXES):
         raise OverflowError(
             f"FATAL: Insufficient safe prefixes remaining ({len(SAFE_PREFIXES) - start_idx}) "
@@ -112,6 +122,16 @@ def main():
     except Exception:
         rdmol.UpdatePropertyCache(strict=False)
 
+    # Strict Fail-Fast stereochemistry resolution: perceive 3D coordinates and forbid unassigned centers
+    Chem.AssignStereochemistryFrom3D(rdmol)
+    unassigned = Chem.FindMolChiralCenters(rdmol, includeUnassigned=True)
+    undefined_centers = [idx for idx, tag in unassigned if tag == "?"]
+    if undefined_centers:
+        raise ValueError(
+            f"FATAL: Molecule '{args.res_name}' contains undefined chiral center(s) at atom index(es): {undefined_centers}! "
+            f"Stereochemistry must be fully resolved before parameter assignment."
+        )
+
     # 1. PDB-Lexical atom naming to guarantee 100% identity with merge_complex.py
     pdb_block = Chem.MolToPDBBlock(rdmol)
     canonical_pdb_names = []
@@ -119,7 +139,7 @@ def main():
         if line.startswith(("ATOM", "HETATM")):
             canonical_pdb_names.append(line[12:16].strip())
 
-    mol = Molecule.from_rdkit(rdmol, allow_undefined_stereo=True)
+    mol = Molecule.from_rdkit(rdmol, allow_undefined_stereo=False)
     if len(canonical_pdb_names) != mol.n_atoms:
         raise ValueError(
             f"FATAL: Atom count mismatch between PDB block ({len(canonical_pdb_names)}) and molecule ({mol.n_atoms})!"
@@ -201,7 +221,7 @@ def main():
         a_key = (t1, t2, t3) if t1 <= t3 else (t3, t2, t1)
         angle_params[a_key] = (k_amber, th0)
 
-    # 8. Proper Dihedrals: Fourier series continuation sign convention
+    # 8. Proper Dihedrals: Mathematical symmetric tie-breaking canonicalization
     tors_coll = interchange.collections["ProperTorsions"]
     dihe_params = {}
     for top_key, pot_key in tors_coll.key_map.items():
@@ -213,10 +233,10 @@ def main():
         idivf = int(pot.parameters.get("idivf", 1))
 
         t1, t2, t3, t4 = atom_types[i], atom_types[j], atom_types[k], atom_types[l]
-        d_key = (t1, t2, t3, t4) if (t2, t3) <= (t3, t2) else (t4, t3, t2, t1)
+        d_key = min((t1, t2, t3, t4), (t4, t3, t2, t1))
         dihe_params.setdefault(d_key, []).append((idivf, k_val, phase, period))
 
-    # 9. Improper Dihedrals: Central trivalent hub aligned to AMBER position 3
+    # 9. Improper Dihedrals: Central trivalent hub aligned to position 3 with AMBER energy scaling
     impr_params = {}
     if "ImproperTorsions" in interchange.collections:
         impr_coll = interchange.collections["ImproperTorsions"]
@@ -239,7 +259,12 @@ def main():
             cent_atom = central_cands[0] if len(central_cands) == 1 else quartet[1]
             periph = sorted([a for a in quartet if a != cent_atom])
             t1, t2, t3, t4 = atom_types[periph[0]], atom_types[periph[1]], atom_types[cent_atom], atom_types[periph[2]]
-            impr_params[(t1, t2, t3, t4)] = (k_val, phase, period)
+            # SMIRNOFF specifies trefoil improper energy as average over 3 impropers:
+            # U_trefoil = (1/3) * sum_{i=1}^3 k_openff * (1 + cos(n*phi - phase)) = k_openff * (1 + cos(n*phi - phase)).
+            # AMBER evaluates a single matched improper with U = (K_amber / 2) * (1 + cos(n*phi - phase)).
+            # Therefore, K_amber = 2.0 * k_openff preserves the full out-of-plane restraint barrier.
+            k_amber_impr = k_val * 2.0
+            impr_params[(t1, t2, t3, t4)] = (k_amber_impr, phase, period)
 
     # 10. Write Canonical Mol2
     clean_res = args.res_name[:4].upper()
@@ -273,7 +298,7 @@ def main():
         f.write("@<TRIPOS>SUBSTRUCTURE\n")
         f.write(f"1 {clean_res} 1 TEMP 0 **** **** 0 ROOT\n")
 
-    # 11. Write Canonical AMBER Frcmod
+    # 11. Write Canonical AMBER Frcmod with strict forcefield metadata header
     out_frcmod = Path(args.out_frcmod).resolve()
     out_frcmod.parent.mkdir(parents=True, exist_ok=True)
 

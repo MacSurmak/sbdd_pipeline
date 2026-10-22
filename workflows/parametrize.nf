@@ -56,9 +56,7 @@ workflow PARAMETRIZE_WF {
             PARAMETRIZE_SUBSTANCE_OPENFF(ch_openff_in)
             ch_topology = PARAMETRIZE_SUBSTANCE_OPENFF.out.topology
         } else if (method in ["ashgc", "bcc"]) {
-            ch_dummy_charges = file("${workDir}/NO_CHARGES")
-            ch_dummy_charges.text = ""
-            ch_openff_in = ch_substances.map { meta, sdf -> [ meta, sdf, ch_dummy_charges ] }
+            ch_openff_in = ch_substances.map { meta, sdf -> [ meta, sdf, [] ] }
             PARAMETRIZE_SUBSTANCE_OPENFF(ch_openff_in)
             ch_topology = PARAMETRIZE_SUBSTANCE_OPENFF.out.topology
         } else {

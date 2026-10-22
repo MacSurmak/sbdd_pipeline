@@ -58,7 +58,13 @@ def run_md_setup(
                 if state:
                     unique_states[state.id] = state
 
-    # 2. Check cache: identify microstates lacking GAFF2 topology (or forced re-parametrization)
+    # 2. Check cache: identify microstates lacking valid topology matching target forcefield & method
+    from cli.core.config_loader import validate_ligand_parametrization_config
+
+    param_cfg = validate_ligand_parametrization_config(configs)
+    target_ff = param_cfg["forcefield"].lower()
+    target_method = param_cfg["method"].lower()
+
     missing_states = []
     for state_id, state in unique_states.items():
         if force:
@@ -74,31 +80,42 @@ def run_md_setup(
             and Path(state.path_frcmod).exists()
             and Path(state.path_frcmod).stat().st_size > 0
         )
-        if not (mol2_ok and frcmod_ok):
+        cache_valid = False
+        if mol2_ok and frcmod_ok:
+            frcmod_content = Path(state.path_frcmod).read_text(encoding="utf-8", errors="ignore")
+            is_openff_cached = "OpenFF" in frcmod_content
+            if target_ff.startswith("openff"):
+                ff_match = target_ff in frcmod_content.lower()
+                method_match = f"method: {target_method}" in frcmod_content.lower()
+                cache_valid = is_openff_cached and ff_match and method_match
+            else:
+                cache_valid = not is_openff_cached
+
+        if not cache_valid:
             missing_states.append(state)
 
     # 3. Lazy On-Demand Parametrization: dispatch quantum calculations strictly for missing microstates
     if missing_states:
-        from cli.core.config_loader import validate_ligand_parametrization_config
-
-        param_cfg = validate_ligand_parametrization_config(configs)
-        method_label = "ORCA RESP" if param_cfg["method"] == "resp" else "AM1-BCC"
+        method_label = "ORCA RESP" if param_cfg["method"] == "resp" else ("AshGC GNN" if param_cfg["method"] == "ashgc" else "AM1-BCC")
         console.print(
             f"[bold cyan]Lazy Parametrization ({method_label}): {len(missing_states)} chemical state(s) require {param_cfg['forcefield'].upper()} topology...[/bold cyan]"
         )
         param_plan = []
         from rdkit import Chem
         from rdkit.Chem import AllChem
+        from cli.core.db import system_cofactors
 
-        # Collect distinct cofactor states across systems to allocate ahead-of-time disjoint prefixes
-        cofactor_states = set()
-        for s in raw_systems:
-            for c in s.cofactors:
-                if c.substance.substance_type != "ion" and c.substance_state:
-                    cofactor_states.add(c.substance_state.id)
-        
-        cofactor_order = sorted(list(cofactor_states))
-        # Ahead-of-time safe prefix blocks: active ligand gets '1', cofactors get disjoint immune prefixes
+        # Globally resolve deterministic cofactor / secondary component slots from 3NF database
+        cofactor_states_query = (
+            session.query(SubstanceState.id)
+            .join(Pose, Pose.substance_state_id == SubstanceState.id)
+            .join(system_cofactors, system_cofactors.c.pose_id == Pose.id)
+            .order_by(SubstanceState.id)
+            .distinct()
+            .all()
+        )
+        cofactor_order = [r[0] for r in cofactor_states_query]
+        # Ahead-of-time immune prefix slots: active ligand gets '1' (cap: 310), cofactors get 2-prefix slots (cap: 124)
         cofactor_prefixes = ["6", "8", "0", "J", "Q", "X"]
 
         for state in missing_states:
