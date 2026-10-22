@@ -23,7 +23,11 @@ from cli.core.db import (
 
 import shutil
 from cli.core.runner import execute_nextflow
-from cli.core.config_loader import load_project_configs, build_nextflow_args
+from cli.core.config_loader import (
+    load_project_configs,
+    build_nextflow_args,
+    validate_clustering_config,
+)
 
 console = Console()
 

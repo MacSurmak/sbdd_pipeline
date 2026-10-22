@@ -394,9 +394,62 @@ def init_db(db_path: Path = None, create_if_missing: bool = False):
             f"Run 'sbdd init' to initialize a project workspace first."
         )
 
+def _migrate_schema(engine: Engine) -> None:
+    """
+    Deterministically updates existing SQLite tables to match the latest 3NF ORM model.
+    Runs idempotently on database initialization within an atomic transaction.
+    """
+    with engine.begin() as conn:
+        cursor = conn.exec_driver_sql("PRAGMA table_info(receptor_frames)")
+        existing_cols = {row[1] for row in cursor.fetchall()}
+        if existing_cols:
+            new_columns = [
+                ("source_trajectory_id", "INTEGER REFERENCES trajectories(id) ON DELETE SET NULL"),
+                ("feature_group", "VARCHAR(64)"),
+                ("align_group", "VARCHAR(64)"),
+                ("dim_reduction_method", "VARCHAR(16)"),
+                ("cluster_rank", "INTEGER"),
+                ("population", "FLOAT"),
+                ("compactness_spread", "FLOAT"),
+            ]
+            for col_name, col_def in new_columns:
+                if col_name not in existing_cols:
+                    conn.exec_driver_sql(f"ALTER TABLE receptor_frames ADD COLUMN {col_name} {col_def}")
+
+
+def init_db(db_path: Path = None, create_if_missing: bool = False):
+    """
+    Initializes SQLite connection to the 3NF database.
+    Strictly forbids database operations inside the framework source tree (/shared/sbdd_pipeline).
+    Enforces Fail-Fast if the database does not exist on query/execution commands.
+    """
+    if db_path is None:
+        db_path = Path.cwd() / "sbdd_state.db"
+    else:
+        db_path = Path(db_path).resolve()
+
+    # 1. Absolute barrier: Framework source repository is an immutable monolith
+    if db_path.parent.resolve() == FRAMEWORK_DIR.resolve():
+        raise PermissionError(
+            f"FATAL: Attempted to create or access database inside pipeline codebase: {db_path}!\n"
+            f"The framework repository at {FRAMEWORK_DIR} is an immutable monolith. "
+            f"All SBDD projects must be initialized and executed in dedicated project directories (e.g. /shared/<project_name>)."
+        )
+
+    # 2. Fail-Fast: Refuse to silently spawn ghost databases on read/run commands
+    if not create_if_missing and not db_path.exists():
+        raise FileNotFoundError(
+            f"FATAL: Project database not found at {db_path}!\n"
+            f"Current working directory '{Path.cwd()}' is not an initialized SBDD project. "
+            f"Run 'sbdd init' to initialize a project workspace first."
+        )
+
     engine = create_engine(f"sqlite:///{db_path}")
     if create_if_missing:
         Base.metadata.create_all(engine)
+
+    # 3. Transparently apply schema evolution migrations for existing project databases
+    _migrate_schema(engine)
 
     SessionLocal = sessionmaker(
         autocommit=False, autoflush=False, expire_on_commit=False, bind=engine
