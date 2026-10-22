@@ -3,11 +3,11 @@
  * Independent trajectory analysis workflow (PBC fixing, RMSD, MMPBSA)
  */
 
-include { TRJCONV         } from '../modules/gromacs/trjconv'
-include { MD_METRICS      } from '../modules/gromacs/md_metrics'
-include { GMX_CLUSTER     } from '../modules/gromacs/cluster'
-include { GMX_MMPBSA      } from '../modules/gromacs/mmpbsa'
-include { ANALYZE_MD_TRAJ } from '../subworkflows/analyze_md_traj'
+include { TRJCONV          } from '../modules/gromacs/trjconv'
+include { MD_METRICS       } from '../modules/gromacs/md_metrics'
+include { GMX_MMPBSA       } from '../modules/gromacs/mmpbsa'
+include { ANALYZE_MD_TRAJ  } from '../subworkflows/analyze_md_traj'
+include { CLUSTER_ENSEMBLE } from '../subworkflows/cluster_ensemble'
 
 workflow ANALYZE_WF {
 
@@ -44,25 +44,46 @@ workflow ANALYZE_WF {
         return
     }
 
-    // MODE 2: Ensemble Clustering on Clean Trajectories
+    // MODE 2: Ensemble Clustering on Clean Trajectories (4-Stage Atomic Subworkflow)
     if (params.cluster_plan) {
         def planFile = file(params.cluster_plan)
         def planList = new groovy.json.JsonSlurperClassic().parseText(planFile.text)
 
         ch_cluster_in = Channel.fromList(planList).map { item ->
+            def align_grp = item.align_group ?: params.cluster_align_group ?: "Backbone"
+            def cluster_grp = item.cluster_group ?: params.cluster_feature_group ?: "Pocket"
             def meta = [
                 id: item.task_id,
                 system: item.system,
                 ligand: item.ligand ?: "",
-                max_clusters: item.max_clusters ?: 5,
+                align_group: align_grp,
+                cluster_group: cluster_grp,
                 project: params.project_name
             ]
             def xtcs = item.clean_xtcs.collect { file(it) }
             def ref_pdb = file(item.ref_pdb)
-            [ meta, xtcs, ref_pdb, item.cutoff, item.method, item.dt, item.group ]
+            def ndx_f = item.ndx ? file(item.ndx) : file("${workDir}/NO_FILE")
+            def tmpl_sdf = item.template_sdf ? file(item.template_sdf) : file("${workDir}/NO_FILE")
+            [ meta, ref_pdb, xtcs, ndx_f, tmpl_sdf ]
         }
 
-        GMX_CLUSTER(ch_cluster_in, params.water_names, params.ion_names, params.lipid_names)
+        CLUSTER_ENSEMBLE(
+            ch_cluster_in,
+            params.cluster_align_group ?: "Backbone",
+            params.cluster_feature_group ?: "Pocket",
+            params.cluster_dim_reduction ?: "pca",
+            params.cluster_tica_lag_ns ?: 2.0,
+            params.cluster_variance_cutoff ?: 0.85,
+            params.cluster_pocket_radius ?: 5.0,
+            params.cluster_n_clusters ?: 3,
+            params.cluster_temp_k ?: 310.15
+        )
+
+        // Publish structured receipt mapping system and groups to published manifest
+        CLUSTER_ENSEMBLE.out.manifest.map { meta, manifest_json ->
+            def published_manifest = "${params.outdir}/reports/clusters/${meta.system}/${meta.align_group}_${meta.cluster_group}/${manifest_json.name}"
+            "${meta.system}\t${meta.align_group}\t${meta.cluster_group}\t${published_manifest}"
+        }.collectFile(name: 'cluster_receipt.tsv', storeDir: params.outdir, newLine: true)
 
         return
     }
