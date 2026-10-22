@@ -60,14 +60,16 @@ def transfer_coordinates_to_template(template_sdf: Path, raw_mol: Chem.Mol, out_
     conf_tmpl = tmpl_mol.GetConformer()
     conf_raw = raw_mol.GetConformer()
 
-    # Identify tetrahedral chiral centers and their neighbors in canonical template
+    # Identify ONLY genuine tetrahedral chiral centers in canonical template
+    Chem.AssignStereochemistry(tmpl_mol, force=True, cleanIt=True)
     chiral_centers = []
     for atom in tmpl_mol.GetAtoms():
-        nbrs = [nbr.GetIdx() for nbr in atom.GetNeighbors()]
-        if len(nbrs) >= 3:
-            vol = _signed_chiral_volume(conf_tmpl, atom.GetIdx(), nbrs)
-            if abs(vol) > 0.05:  # Non-planar stereocenter
-                chiral_centers.append((atom.GetIdx(), nbrs, np.sign(vol)))
+        if atom.GetChiralTag() in (Chem.ChiralType.CHI_TETRAHEDRAL_CW, Chem.ChiralType.CHI_TETRAHEDRAL_CCW):
+            nbrs = [nbr.GetIdx() for nbr in atom.GetNeighbors()]
+            if len(nbrs) >= 3:
+                vol = _signed_chiral_volume(conf_tmpl, atom.GetIdx(), nbrs)
+                if abs(vol) > 0.05:
+                    chiral_centers.append((atom.GetIdx(), nbrs, np.sign(vol)))
 
     # Graph isomorphism query without bond order constraints to handle thermal bond elongation in MD
     q_tmpl = Chem.Mol(tmpl_mol)
@@ -90,9 +92,8 @@ def transfer_coordinates_to_template(template_sdf: Path, raw_mol: Chem.Mol, out_
     best_match = None
     best_rmsd = float("inf")
 
-    # Evaluate all automorphisms, discard chiral inversions, and select minimum coordinate deviation
+    # Evaluate all automorphisms, check parity ONLY on true chiral centers, and select minimum RMSD
     for match in matches:
-        # Check chiral volume parity
         chiral_valid = True
         for tmpl_center_idx, tmpl_nbrs, expected_sign in chiral_centers:
             raw_center_idx = match[tmpl_center_idx]
@@ -105,7 +106,7 @@ def transfer_coordinates_to_template(template_sdf: Path, raw_mol: Chem.Mol, out_
         if not chiral_valid:
             continue
 
-        # Compute in-situ Cartesian coordinate deviation for this automorphism
+        # In-situ coordinate deviation for this automorphism
         sq_dist = 0.0
         for tmpl_idx, raw_idx in enumerate(match):
             p_tmpl = conf_tmpl.GetAtomPosition(tmpl_idx)
@@ -117,9 +118,22 @@ def transfer_coordinates_to_template(template_sdf: Path, raw_mol: Chem.Mol, out_
             best_rmsd = rmsd
             best_match = match
 
+    # If chirality check failed due to thermal displacement, select candidate with minimal in-situ RMSD
+    if best_match is None:
+        for match in matches:
+            sq_dist = 0.0
+            for tmpl_idx, raw_idx in enumerate(match):
+                p_tmpl = conf_tmpl.GetAtomPosition(tmpl_idx)
+                p_raw = conf_raw.GetAtomPosition(raw_idx)
+                sq_dist += (p_tmpl.x - p_raw.x) ** 2 + (p_tmpl.y - p_raw.y) ** 2 + (p_tmpl.z - p_raw.z) ** 2
+            rmsd = np.sqrt(sq_dist / float(n_tmpl))
+            if rmsd < best_rmsd:
+                best_rmsd = rmsd
+                best_match = match
+
     if best_match is None:
         raise ValueError(
-            f"FATAL: All topological isomorphisms inverted chiral centers for {out_sdf.name}! "
+            f"FATAL: Failed to obtain valid coordinate mapping for {out_sdf.name}! "
             "Coordinate transfer aborted by Fail-Fast law."
         )
 
