@@ -355,7 +355,7 @@ def main():
     # 8. traj-cluster
     p_cluster = subparsers.add_parser(
         "traj-cluster",
-        help="Cluster clean MD trajectory ensembles and automatically register frames in DB for docking",
+        help="Cluster clean MD trajectory ensembles using PCA/TICA + UMAP macro-basins and register centroids in 3NF DB",
     )
     p_cluster.add_argument(
         "--systems",
@@ -369,34 +369,52 @@ def main():
         "--traj", help="Explicit comma-separated list of Trajectory names"
     )
     p_cluster.add_argument(
-        "--cutoff", type=float, default=0.15, help="RMSD cutoff in nm (default: 0.15)"
+        "--align-group",
+        help="Basis group for coordinate superimposition (default from md.yaml, e.g. Backbone)",
     )
     p_cluster.add_argument(
-        "--dt",
-        type=int,
-        default=100,
-        help="Frame stride in ps to accelerate clustering (default: 100 ps)",
-    )
-    p_cluster.add_argument(
+        "--cluster-group",
         "--group",
-        default="COMPLEX",
-        help="Group for RMSD distance matrix (default: COMPLEX)",
+        dest="cluster_group",
+        help="Feature group for manifold reduction (default from md.yaml, e.g. Pocket, Backbone, Ligand)",
     )
     p_cluster.add_argument(
-        "--method", default="gromos", help="Clustering method (default: gromos)"
+        "--dim-reduction",
+        choices=["pca", "tica"],
+        help="Dimensionality reduction engine: pca or tica (default from md.yaml)",
     )
     p_cluster.add_argument(
-        "--max-clusters",
+        "--n-clusters",
+        "-k",
         type=int,
-        default=5,
-        help="Maximum number of top-populated clusters to retain (default: 5)",
+        help="Number of physical macro-basins to partition (default from md.yaml)",
+    )
+    p_cluster.add_argument(
+        "--min-population",
+        type=float,
+        help="Population threshold (%) for automated CLI recommendation (default from md.yaml)",
+    )
+    p_cluster.add_argument(
+        "--auto",
+        "--yes",
+        dest="auto",
+        action="store_true",
+        help="Headless non-interactive execution: automatically promote recommended clusters into DB",
     )
     p_cluster.add_argument(
         "--force",
         action="store_true",
-        help="Force re-clustering even if active trajectory ensemble has not changed",
+        help="Force re-clustering and bypass Nextflow caching",
     )
     add_common_wf_args(p_cluster)
+
+    # 8.1 traj-cluster-promote (Dedicated, non-blocking cluster promotion command)
+    p_promote = subparsers.add_parser(
+        "traj-cluster-promote",
+        help="Promote specific cluster centroids from an existing manifest into SQLite 3NF without re-running MDAnalysis",
+    )
+    p_promote.add_argument("--manifest", required=True, help="Path to clusters_manifest.json")
+    p_promote.add_argument("--ranks", required=True, help="Comma-separated ranks to promote (e.g. 1, 3)")
 
     # 9. clean
     p_clean = subparsers.add_parser(
@@ -656,15 +674,23 @@ def main():
                 if args.traj
                 else None
             ),
-            cutoff=args.cutoff,
-            dt=args.dt,
-            group=args.group,
-            method=args.method,
-            max_clusters=args.max_clusters,
+            align_group=args.align_group,
+            cluster_group=args.cluster_group,
+            dim_reduction=args.dim_reduction,
+            n_clusters=args.n_clusters,
+            min_population=args.min_population,
+            auto=args.auto,
             force=args.force,
             urgent=args.urgent,
             local=args.local,
             resume=not args.no_resume,
+        )
+    elif subcmd == "traj-cluster-promote":
+        from cli.commands.traj import run_cluster_promote
+
+        run_cluster_promote(
+            manifest_path=args.manifest,
+            ranks=[int(x.strip().replace("#", "")) for x in args.ranks.split(",") if x.strip()],
         )
     elif subcmd in ["watch", "progress", "top"]:
         from cli.core.monitor import run_monitor

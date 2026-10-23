@@ -88,57 +88,14 @@ def read_heavy_atoms_mol(path: Path) -> list:
 def calculate_pair_rmsd(m_ref, m_dock) -> float:
     """
     Computes exact in-situ Cartesian RMSD across all symmetry automorphisms.
-    Preserves validated AssignBondOrdersFromTemplate logic for robust chemistry restoration,
-    but performs isomorphism matching on pure connectivity graphs to seamlessly handle Kekule ring flips.
+    Delegates strictly to canonical Single Source of Truth chem engine in cli.core.chem.
     """
-    n_atoms = m_ref.GetNumAtoms()
-    if n_atoms != m_dock.GetNumAtoms():
-        raise ValueError(
-            f"Atom count mismatch: reference has {n_atoms} heavy atoms, docked pose has {m_dock.GetNumAtoms()}"
-        )
+    framework_dir = Path(__file__).resolve().parent.parent
+    if str(framework_dir) not in sys.path:
+        sys.path.insert(0, str(framework_dir))
 
-    try:
-        m_dock_fixed = AllChem.AssignBondOrdersFromTemplate(m_ref, m_dock)
-    except Exception as e:
-        raise ValueError(
-            f"Topological mismatch: unable to assign reference bonds to dock pose. {e}"
-        )
-
-    # Strip bond orders temporarily just for symmetry mapping to avoid Kekule mismatch on symmetric rings
-    q_ref = Chem.Mol(m_ref)
-    for b in q_ref.GetBonds():
-        b.SetBondType(Chem.BondType.SINGLE)
-        b.SetIsAromatic(False)
-
-    q_dock = Chem.Mol(m_dock_fixed)
-    for b in q_dock.GetBonds():
-        b.SetBondType(Chem.BondType.SINGLE)
-        b.SetIsAromatic(False)
-
-    matches = q_dock.GetSubstructMatches(q_ref, uniquify=False)
-    if not matches:
-        raise ValueError(
-            "Failed to obtain topological substructure isomorphism matches."
-        )
-
-    best_sq_dist = float("inf")
-    conf_ref = m_ref.GetConformer()
-    conf_dock = m_dock_fixed.GetConformer()
-
-    for match in matches:
-        sq_dist = 0.0
-        for i in range(n_atoms):
-            p_ref = conf_ref.GetAtomPosition(i)
-            p_dock = conf_dock.GetAtomPosition(match[i])
-            dx = p_ref.x - p_dock.x
-            dy = p_ref.y - p_dock.y
-            dz = p_ref.z - p_dock.z
-            sq_dist += dx * dx + dy * dy + dz * dz
-
-        if sq_dist < best_sq_dist:
-            best_sq_dist = sq_dist
-
-    return math.sqrt(best_sq_dist / n_atoms)
+    from cli.core.chem import compute_symmetry_rmsd
+    return compute_symmetry_rmsd(m_ref, m_dock)
 
 
 def main():

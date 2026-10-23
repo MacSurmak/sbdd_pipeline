@@ -50,4 +50,15 @@ md_simulation:
     heavy_cutoff: 3.5
     hyd_cutoff: 4.0
     pol_cutoff: 3.4
+  clustering:
+    align_group: "Backbone"             # Basis group for coordinate superimposition (e.g. Backbone, C-alpha)
+    cluster_group: "Pocket"             # Feature group for manifold reduction (e.g. Pocket, Backbone, Ligand)
+    dim_reduction: "pca"                # Dimensionality reduction engine: pca or tica
+    tica_lag_ns: 2.0                    # Lag time for time-lagged cross-correlation in TICA (ns)
+    variance_cutoff: 0.85               # Cumulative variance threshold for top-k component selection
+    n_clusters: 3                       # Default number of physical macro-basins (K-Means)
+    pocket_radius: 5.0                  # Spatial cutoff radius from reference ligand for pocket definition (Å)
+    min_cluster_population: 5.0         # Population cutoff percentage (%) for automated CLI recommendation
+    temp_k: 310.15                      # Simulation temperature for Delta G free energy landscape calculation (K)
+    auto_promote: false                 # Headless non-interactive cluster promotion mode
 

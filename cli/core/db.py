@@ -92,6 +92,15 @@ class ReceptorFrame(Base):
     parent_frame_id = Column(
         Integer, ForeignKey("receptor_frames.id", ondelete="SET NULL"), nullable=True
     )
+    source_trajectory_id = Column(
+        Integer, ForeignKey("trajectories.id", ondelete="SET NULL"), nullable=True
+    )
+    feature_group = Column(String(64), nullable=True)  # Selection group for coordinates (e.g. Pocket, Backbone, Ligand)
+    align_group = Column(String(64), nullable=True)    # Basis group for superimposition (e.g. Backbone, C-alpha)
+    dim_reduction_method = Column(String(16), nullable=True)  # 'pca' or 'tica'
+    cluster_rank = Column(Integer, nullable=True)      # Medoid population ranking (1, 2, 3...)
+    population = Column(Float, nullable=True)          # Exact Boltzmann ensemble fraction (0.0 to 1.0)
+    compactness_spread = Column(Float, nullable=True)  # Intra-cluster coordinate spread (Å)
     path = Column(String, nullable=False)  # Canonical primary path
     path_mae = Column(
         String, nullable=True
@@ -102,6 +111,7 @@ class ReceptorFrame(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     target = relationship("Target", back_populates="frames")
+    source_trajectory = relationship("Trajectory", foreign_keys=[source_trajectory_id])
     parent_frame = relationship(
         "ReceptorFrame", remote_side=[id], backref="derived_frames"
     )
@@ -319,7 +329,7 @@ def _validate_non_scratch_path(target, value, oldvalue, initiator):
     """
     if value:
         val_str = str(value)
-        forbidden_tokens = ["/work/", ".nextflow", "/tmp/", "slurm_tmp", "nfs_scratch"]
+        forbidden_tokens = ["/work/", ".nextflow", "/tmp/", "slurm_tmp", "nfs_scratch", "nxf."]
         for token in forbidden_tokens:
             if token in val_str:
                 col_name = initiator.key if hasattr(initiator, "key") else "path"
@@ -357,11 +367,44 @@ for _model_attr in [
 FRAMEWORK_DIR = Path(__file__).resolve().parent.parent.parent
 
 
+def _migrate_schema(engine: Engine) -> None:
+    """
+    Deterministically updates existing SQLite tables to match the latest 3NF ORM model.
+    Runs idempotently on database initialization within an atomic transaction.
+    """
+    with engine.begin() as conn:
+        cursor = conn.exec_driver_sql("PRAGMA table_info(receptor_frames)")
+        existing_cols = {row[1] for row in cursor.fetchall()}
+        if existing_cols:
+            new_columns = [
+                ("source_trajectory_id", "INTEGER REFERENCES trajectories(id) ON DELETE SET NULL"),
+                ("feature_group", "VARCHAR(64)"),
+                ("align_group", "VARCHAR(64)"),
+                ("dim_reduction_method", "VARCHAR(16)"),
+                ("cluster_rank", "INTEGER"),
+                ("population", "FLOAT"),
+                ("compactness_spread", "FLOAT"),
+            ]
+            for col_name, col_def in new_columns:
+                if col_name not in existing_cols:
+                    conn.exec_driver_sql(f"ALTER TABLE receptor_frames ADD COLUMN {col_name} {col_def}")
+
+
+def get_session(db_path: Path = None):
+    """
+    Returns an active SQLAlchemy session for an existing project database.
+    Strict Fail-Fast law: crashes immediately if sbdd_state.db does not exist.
+    Never creates ghost databases on query or execution commands.
+    """
+    return init_db(db_path=db_path, create_if_missing=False)
+
+
 def init_db(db_path: Path = None, create_if_missing: bool = False):
     """
     Initializes SQLite connection to the 3NF database.
     Strictly forbids database operations inside the framework source tree (/shared/sbdd_pipeline).
     Enforces Fail-Fast if the database does not exist on query/execution commands.
+    create_if_missing=True is strictly permitted only during 'sbdd init'.
     """
     if db_path is None:
         db_path = Path.cwd() / "sbdd_state.db"
@@ -387,6 +430,9 @@ def init_db(db_path: Path = None, create_if_missing: bool = False):
     engine = create_engine(f"sqlite:///{db_path}")
     if create_if_missing:
         Base.metadata.create_all(engine)
+
+    # 3. Transparently apply schema evolution migrations for existing project databases
+    _migrate_schema(engine)
 
     SessionLocal = sessionmaker(
         autocommit=False, autoflush=False, expire_on_commit=False, bind=engine
