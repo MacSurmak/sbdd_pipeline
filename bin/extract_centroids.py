@@ -157,7 +157,15 @@ def main():
             dest_mae = outdir / f"centroid_{rank}_{res_key}_pose.mae"
 
             raw_positions = mol_atoms.positions  # Shape: (N_atoms, 3)
-            mda_elements = [a.name[0] if not a.name[0].isdigit() else a.name[1] for a in mol_atoms]
+            # Rigorous element deduction handling two-letter symbols (Cl, Br, Fe, Mg, Zn)
+            mda_elements = []
+            for a in mol_atoms:
+                if hasattr(a, "element") and a.element and a.element.strip():
+                    mda_elements.append(a.element.strip().capitalize())
+                else:
+                    # Clean PDB atom name: strip digits, take up to 2 characters
+                    clean_name = "".join([c for c in a.name if not c.isdigit()]).strip()
+                    mda_elements.append(clean_name[:2].capitalize() if len(clean_name) >= 2 and clean_name[:2].capitalize() in {"Cl", "Br", "Fe", "Mg", "Zn", "Ca", "Na"} else clean_name[:1].upper())
 
             spec = hetero_by_res.get(r_name)
             is_active_ligand = spec.get("is_ligand", (r_name == active_res)) if spec else (r_name == active_res)
@@ -178,9 +186,14 @@ def main():
                     restored_pose = Chem.Mol(tmpl)
                     restored_pose.GetConformer().SetAtomPosition(0, [float(raw_positions[0][0]), float(raw_positions[0][1]), float(raw_positions[0][2])])
                 else:
-                    restored_pose = Chem.MolFromSmiles(f"[{r_name}]", sanitize=False)
-                    if not restored_pose:
-                        restored_pose = Chem.MolFromSmiles(f"[{r_name.capitalize()}]", sanitize=False)
+                    # Canonical IUPAC symbol mapping for standard MD forcefield ions
+                    ion_smiles_map = {
+                        "CLA": "[Cl-]", "CL": "[Cl-]", "SOD": "[Na+]", "NA": "[Na+]",
+                        "POT": "[K+]", "K": "[K+]", "CAL": "[Ca+2]", "CA": "[Ca+2]",
+                        "MG": "[Mg+2]", "MG2+": "[Mg+2]", "ZN": "[Zn+2]", "ZN2+": "[Zn+2]"
+                    }
+                    smi = ion_smiles_map.get(r_name, f"[{r_name.capitalize()}]")
+                    restored_pose = Chem.MolFromSmiles(smi, sanitize=False)
                     if restored_pose:
                         c_ion = Chem.Conformer(1)
                         c_ion.SetAtomPosition(0, [float(raw_positions[0][0]), float(raw_positions[0][1]), float(raw_positions[0][2])])

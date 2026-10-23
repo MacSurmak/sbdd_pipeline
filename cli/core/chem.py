@@ -243,6 +243,10 @@ def transfer_coordinates_to_template(
                 pos = src_conf.GetAtomPosition(i)
                 res_conf.SetAtomPosition(i, pos)
         else:
+            # Tag original atom indices in template before removing hydrogens to prevent index drift
+            for idx, a in enumerate(tmpl.GetAtoms()):
+                a.SetIntProp("_orig_idx", idx)
+
             tmpl_heavy = Chem.RemoveHs(tmpl, sanitize=False)
             src_heavy = Chem.RemoveHs(src_mol, sanitize=False)
 
@@ -307,10 +311,11 @@ def transfer_coordinates_to_template(
 
             heavy_map = {}
             for t_idx, s_idx in enumerate(best_match):
-                orig_t = tmpl_heavy.GetAtomWithIdx(t_idx).GetIdx()
-                orig_s = src_heavy.GetAtomWithIdx(s_idx).GetIdx()
+                # Retrieve true original index in all-atom tmpl via preserved _orig_idx property
+                orig_t = tmpl_heavy.GetAtomWithIdx(t_idx).GetIntProp("_orig_idx")
+                orig_s = s_idx
                 heavy_map[orig_t] = orig_s
-                pos = src_conf.GetAtomPosition(orig_s)
+                pos = src_h_conf.GetAtomPosition(orig_s)
                 res_conf.SetAtomPosition(orig_t, pos)
 
             if src_n_atoms < tmpl_n_atoms and relax_missing_hydrogens:

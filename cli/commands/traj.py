@@ -529,14 +529,16 @@ def run_cluster_promote(manifest_path: str, ranks: list[int]) -> None:
             if not src_p_sdf.exists():
                 raise FileNotFoundError(f"FATAL: Small molecule pose SDF missing: {src_p_sdf}")
 
+            # Match against database parent by chemical residue name (p_dict["res_name"]), not compound key (r_code)
+            base_res_name = p_dict.get("res_name", r_code).strip().upper()
             parent_match = None
             is_main = False
-            if sys_obj.pose and r_code == sys_obj.pose.res_name.strip().upper():
+            if sys_obj.pose and base_res_name == sys_obj.pose.res_name.strip().upper():
                 parent_match = sys_obj.pose
                 is_main = True
             else:
                 for cof in sys_obj.cofactors:
-                    if r_code == cof.res_name.strip().upper():
+                    if base_res_name == cof.res_name.strip().upper():
                         parent_match = cof
                         break
 

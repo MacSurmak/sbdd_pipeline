@@ -9,7 +9,7 @@ process TRAJ_DIM_REDUCTION {
     label 'process_medium'
 
     input:
-    tuple val(meta), path(ref_pdb), path(xtc_files, stageAs: 'trajs_?/*'), path(ndx_file)
+    tuple val(meta), path(ref_pdb), path(xtc_files, stageAs: 'trajs_*/*'), path(ndx_file)
     val(align_group)
     val(cluster_group)
     val(dim_reduction)
