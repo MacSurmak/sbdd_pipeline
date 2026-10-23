@@ -78,7 +78,6 @@ def main():
         if r_name not in STANDARD_PROTEIN_RESIDUES and r_name not in WATER_RESIDUES:
             small_mol_resnames.add(r_name)
 
-    tmpl_sdf_p = Path(args.substance_template_sdf).resolve() if args.substance_template_sdf else None
     active_res = args.ligand_resname.strip().upper() if args.ligand_resname else ""
 
     # Parse heterogens specification to obtain templates for ALL organic molecules (ligand and cofactors)
