@@ -8,7 +8,6 @@ Extracts pure receptor, complex view, and all individual cofactor/ion poses.
 """
 
 import argparse
-import io
 import json
 import sys
 from pathlib import Path
@@ -16,23 +15,12 @@ import MDAnalysis as mda
 from rdkit import Chem
 import numpy as np
 
-
 # Inject framework root into sys.path to access canonical chem engine
 FRAMEWORK_DIR = Path(__file__).resolve().parent.parent
 if str(FRAMEWORK_DIR) not in sys.path:
     sys.path.insert(0, str(FRAMEWORK_DIR))
 
 from cli.core.chem import transfer_coordinates_to_template
-
-
-class NonClosingStringIO(io.StringIO):
-    """
-    In-memory string stream that preserves its buffer when closed by context managers.
-    Allows MDAnalysis PDBWriter to cleanly finalize CONECT/END records without destroying the buffer.
-    """
-    def close(self):
-        self.flush()
-
 
 STANDARD_PROTEIN_RESIDUES = {
     "ALA", "ARG", "ASN", "ASP", "CYS", "CYX", "GLN", "GLU", "GLY", "HIS",
@@ -168,32 +156,37 @@ def main():
             dest_sdf = outdir / f"centroid_{rank}_{res_key}_pose.sdf"
             dest_mae = outdir / f"centroid_{rank}_{res_key}_pose.mae"
 
-            # Strict in-memory PDB serialization preserving buffer on writer close
-            pdb_stream = NonClosingStringIO()
-            with mda.coordinates.PDB.PDBWriter(pdb_stream) as writer:
-                writer.write(mol_atoms)
-            raw_pdb_block = pdb_stream.getvalue()
-
-            raw_mol = Chem.MolFromPDBBlock(raw_pdb_block, removeHs=False, sanitize=False)
-            if not raw_mol:
-                raise ValueError(f"FATAL: Failed to parse small molecule '{res_key}' from MD coordinates at frame {m_frame}!")
+            raw_positions = mol_atoms.positions  # Shape: (N_atoms, 3)
+            mda_elements = [a.name[0] if not a.name[0].isdigit() else a.name[1] for a in mol_atoms]
 
             spec = hetero_by_res.get(r_name)
             is_active_ligand = spec.get("is_ligand", (r_name == active_res)) if spec else (r_name == active_res)
             is_ion = spec.get("is_ion", False) if spec else False
             tmpl = templates_by_res.get(r_name)
 
-            # Rigorous topological transfer with full automorphism symmetry check
-            # APPLIES IDENTICALLY TO LIGAND AND ALL ORGANIC COFACTORS!
             if tmpl is not None and not is_ion:
+                # Direct in-memory coordinate transfer from NumPy array to pristine topology template
                 restored_pose = transfer_coordinates_to_template(
                     template_mol=tmpl,
-                    source_mol=raw_mol,
+                    source_mol_or_coords=raw_positions,
+                    source_elements=mda_elements,
                     relax_missing_hydrogens=False,
                 )
             else:
-                # Monoatomic ions (MG, ZN, CA, CL) retain raw Cartesian coordinates
-                restored_pose = raw_mol
+                # Monoatomic ions (MG, ZN, CA, CL): assign coordinates directly
+                if tmpl is not None and is_ion:
+                    restored_pose = Chem.Mol(tmpl)
+                    restored_pose.GetConformer().SetAtomPosition(0, [float(raw_positions[0][0]), float(raw_positions[0][1]), float(raw_positions[0][2])])
+                else:
+                    restored_pose = Chem.MolFromSmiles(f"[{r_name}]", sanitize=False)
+                    if not restored_pose:
+                        restored_pose = Chem.MolFromSmiles(f"[{r_name.capitalize()}]", sanitize=False)
+                    if restored_pose:
+                        c_ion = Chem.Conformer(1)
+                        c_ion.SetAtomPosition(0, [float(raw_positions[0][0]), float(raw_positions[0][1]), float(raw_positions[0][2])])
+                        restored_pose.AddConformer(c_ion)
+                    else:
+                        raise ValueError(f"FATAL: Failed to construct ion representation for {r_name}!")
 
             with Chem.SDWriter(str(dest_sdf)) as w:
                 w.SetForceV3000(False)
