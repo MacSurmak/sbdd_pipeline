@@ -8,6 +8,7 @@ Extracts pure receptor, complex view, and all individual cofactor/ion poses.
 """
 
 import argparse
+import io
 import json
 import sys
 from pathlib import Path
@@ -148,7 +149,12 @@ def main():
             dest_sdf = outdir / f"centroid_{rank}_{r_name}_pose.sdf"
             dest_mae = outdir / f"centroid_{rank}_{r_name}_pose.mae"
 
-            raw_pdb_block = mol_atoms.write("pdb")
+            # Strict in-memory PDB serialization without creating temporary files on disk
+            pdb_stream = io.StringIO()
+            with mda.coordinates.PDB.PDBWriter(pdb_stream) as writer:
+                writer.write(mol_atoms)
+            raw_pdb_block = pdb_stream.getvalue()
+
             raw_mol = Chem.MolFromPDBBlock(raw_pdb_block, removeHs=False, sanitize=False)
             if not raw_mol:
                 raise ValueError(f"FATAL: Failed to parse small molecule '{r_name}' from MD coordinates at frame {m_frame}!")
