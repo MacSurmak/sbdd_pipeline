@@ -253,6 +253,37 @@ def cmd_convert_ligand(args):
     st.write(args.out_sdf)
 
 
+def cmd_batch_convert(args):
+    """
+    Executes high-throughput batch structure conversion in memory within a single
+    Schrodinger container instance. Eliminates massive license verification latency.
+    """
+    import json
+    from schrodinger import structure
+
+    manifest_p = Path(args.manifest).resolve()
+    if not manifest_p.exists():
+        print(f"FATAL: Batch convert manifest {manifest_p} not found!", file=sys.stderr)
+        sys.exit(1)
+
+    with open(manifest_p, "r", encoding="utf-8") as f:
+        tasks = json.load(f)
+
+    converted = 0
+    for item in tasks:
+        in_p = Path(item["in_path"]).resolve()
+        out_p = Path(item["out_path"]).resolve()
+        if not in_p.exists() or in_p.stat().st_size == 0:
+            print(f"FATAL: Source structure {in_p} missing or empty for batch conversion!", file=sys.stderr)
+            sys.exit(1)
+
+        st = structure.StructureReader.read(str(in_p))
+        st.write(str(out_p))
+        converted += 1
+
+    print(f"Batch conversion successful: converted {converted} structure(s) in single runtime.")
+
+
 def cmd_prepwizard(args):
     complex_path = Path(args.complex_mae).resolve()
     out_path = Path(args.out_mae).resolve()
@@ -348,7 +379,12 @@ def main():
     p_prep.add_argument("--min_rmsd", required=True)
     p_prep.add_argument("--cap_termini", action="store_true")
 
+    p_batch = subparsers.add_parser("batch_convert")
+    p_batch.add_argument("--manifest", required=True, help="Path to batch_tasks.json")
+
     args = parser.parse_args()
+    if args.subcommand == "batch_convert":
+        cmd_batch_convert(args)
     if args.subcommand == "gridgen":
         cmd_gridgen(args)
     elif args.subcommand == "glide_dock":

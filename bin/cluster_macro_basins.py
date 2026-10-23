@@ -18,6 +18,7 @@ def main():
     parser = argparse.ArgumentParser(description="Partition 2D manifold into macro-basins and identify medoids")
     parser.add_argument("--umap", required=True, help="Input umap_2d.npy array")
     parser.add_argument("--projections", required=True, help="Input projections.npy array")
+    parser.add_argument("--coords", required=True, help="Input aligned_coords.npy array")
     parser.add_argument("--time_map", required=True, help="Input frame_time_map.json mapping")
     parser.add_argument("--n_clusters", type=int, required=True, help="Number of macro-basins (K)")
     parser.add_argument("--out_json", required=True, help="Output medoids_summary.json deliverable")
@@ -26,21 +27,23 @@ def main():
 
     umap_p = Path(args.umap).resolve()
     proj_p = Path(args.projections).resolve()
+    coords_p = Path(args.coords).resolve()
     time_p = Path(args.time_map).resolve()
 
-    if not umap_p.exists() or not proj_p.exists() or not time_p.exists():
+    if not umap_p.exists() or not proj_p.exists() or not coords_p.exists() or not time_p.exists():
         raise FileNotFoundError("FATAL: Required input array(s) or time mapping missing for cluster_macro_basins!")
 
     umap_2d = np.load(umap_p)
     proj = np.load(proj_p)
+    coords = np.load(coords_p)
     with open(time_p, "r", encoding="utf-8") as f:
         time_map = json.load(f)
 
     n_frames = umap_2d.shape[0]
-    if n_frames != proj.shape[0] or n_frames != len(time_map):
+    if n_frames != proj.shape[0] or n_frames != coords.shape[0] or n_frames != len(time_map):
         raise ValueError(
             f"FATAL: Inconsistent sample sizes! UMAP has {n_frames}, Projections has {proj.shape[0]}, "
-            f"Time map has {len(time_map)}"
+            f"Coords has {coords.shape[0]}, Time map has {len(time_map)}"
         )
 
     k = max(1, min(args.n_clusters, n_frames))
@@ -67,12 +70,17 @@ def main():
         for r in unique_reps:
             rep_breakdown[r] = int(np.sum((reps_arr == r) & mask))
 
-        # True medoid: frame minimizing sum of Euclidean distances to all other basin members in PCA space
-        proj_sub = proj[mask]
-        dists = cdist(proj_sub, proj_sub, metric="euclidean")
-        best_local_idx = np.argmin(np.sum(dists, axis=1))
+        # True physical medoid: frame minimizing the sum of Cartesian heavy-atom RMSDs (in Å)
+        # to all other conformations belonging to this macro-basin.
+        coords_sub = coords[mask]
+        n_heavy_atoms = coords_sub.shape[1] // 3
+        
+        # Euclidean distance in Kabsch-aligned 3D coordinate space divided by sqrt(N_atoms)
+        # is the exact in-situ Cartesian RMSD in Angstroms:
+        dists_rmsd = cdist(coords_sub, coords_sub, metric="euclidean") / np.sqrt(float(n_heavy_atoms))
+        best_local_idx = np.argmin(np.sum(dists_rmsd, axis=1))
         medoid_frame = int(orig_indices[best_local_idx])
-        spread = float(np.mean(dists[best_local_idx]))
+        spread = float(np.mean(dists_rmsd[best_local_idx]))
 
         cluster_stats.append({
             "raw_cluster_id": int(cid),

@@ -83,7 +83,7 @@ def resolve_atom_group(
                 f"FATAL: Reference ligand '{ligand_resname}' not found in structure for {desc} pocket definition!"
             )
         ag = u.select_atoms(
-            f"(same residue as (protein and not name H* and around {pocket_radius} resname {ligand_resname}))"
+            f"(same residue as (protein and not name H* and not type H and around {pocket_radius} resname {ligand_resname})) and not name H* and not type H"
         )
         if len(ag) > 0:
             return ag
@@ -114,34 +114,72 @@ def resolve_atom_group(
 
 
 def compute_tica(
-    data: np.ndarray, lag_steps: int, variance_cutoff: float
+    rep_coords_list: list[np.ndarray], lag_steps: int, variance_cutoff: float
 ) -> tuple[np.ndarray, np.ndarray, int]:
     """
-    Computes Time-lagged Independent Component Analysis (TICA).
-    Solves generalized eigenvalue problem: C(tau) * v = lambda * C(0) * v.
+    Computes Time-lagged Independent Component Analysis (TICA) across multi-replicate ensembles.
+    Enforces strict physical boundaries: zero cross-correlation across independent trajectories.
+    Eliminates rank deficiency via SVD whitening before solving standard Hermitian eigensystem.
     """
     from scipy import linalg
 
-    n_samples, n_features = data.shape
-    if n_samples <= lag_steps:
+    total_samples = sum(len(r) for r in rep_coords_list)
+    n_features = rep_coords_list[0].shape[1]
+
+    # Global centroid across all replicates
+    all_coords = np.vstack(rep_coords_list)
+    mean_vec = np.mean(all_coords, axis=0)
+    all_centered = all_coords - mean_vec
+
+    # 1. PCA whitening to eliminate rank deficiency and collinearity in Cartesian coordinates
+    # X = U * S * Vt -> Covariance = (1 / (N - 1)) * V * S^2 * Vt
+    u_mat, s_vals, vt_mat = linalg.svd(all_centered, full_matrices=False)
+    var_all = (s_vals ** 2) / float(max(1, total_samples - 1))
+    sum_var = np.sum(var_all)
+    cum_var = np.cumsum(var_all) / sum_var if sum_var > 0 else np.zeros_like(var_all)
+
+    # Retain components covering variance_cutoff without singular modes (singular value > 1e-4)
+    valid_sing = s_vals > 1e-4
+    m_cand = int(np.searchsorted(cum_var, variance_cutoff) + 1)
+    m_components = max(2, min(m_cand, int(np.sum(valid_sing)), 50, total_samples - 1))
+
+    v_white = vt_mat[:m_components, :].T  # Shape: (n_features, m_components)
+    s_white = s_vals[:m_components]       # Singular values for scaling
+
+    # Whitening operator: transforms coordinates such that C(0) = Identity_M
+    # y = x * V * diag(sqrt(N - 1) / S)
+    white_scale = np.sqrt(float(max(1, total_samples - 1))) / s_white
+    w_operator = v_white * white_scale[np.newaxis, :]
+
+    # 2. Accumulate C(tau) strictly within each individual replicate trajectory
+    c_tau_accum = np.zeros((m_components, m_components), dtype=np.float64)
+    total_tau_pairs = 0
+
+    whitened_reps = []
+    for r_coords in rep_coords_list:
+        if len(r_coords) <= lag_steps:
+            continue
+        r_centered = r_coords - mean_vec
+        r_whitened = np.dot(r_centered, w_operator)
+        whitened_reps.append(r_whitened)
+
+        y_t0 = r_whitened[:-lag_steps]
+        y_tau = r_whitened[lag_steps:]
+        c_tau_accum += np.dot(y_t0.T, y_tau)
+        total_tau_pairs += len(y_t0)
+
+    if total_tau_pairs == 0:
         raise ValueError(
-            f"FATAL: Total trajectory frames ({n_samples}) is smaller than TICA lag steps ({lag_steps})!"
+            f"FATAL: All individual replicates are shorter than TICA lag steps ({lag_steps})! "
+            "Cannot calculate time-lagged cross-correlations."
         )
 
-    mean_vec = np.mean(data, axis=0)
-    centered = data - mean_vec
+    c_tau = c_tau_accum / float(total_tau_pairs)
+    c_tau = 0.5 * (c_tau + c_tau.T)  # Enforce exact physical microscopic reversibility
 
-    x_t0 = centered[:-lag_steps]
-    x_tau = centered[lag_steps:]
-
-    c_0 = np.dot(x_t0.T, x_t0) / float(len(x_t0))
-    c_tau = np.dot(x_t0.T, x_tau) / float(len(x_t0))
-    c_tau = 0.5 * (c_tau + c_tau.T)  # Enforce exact physical time-reversal symmetry
-
-    # Regularization to prevent singularity in high dimensions
-    c_0 += np.eye(n_features) * 1e-6
-
-    eigvals, eigvecs = linalg.eigh(c_tau, c_0)
+    # Since C(0) is strictly Identity_M in whitened space, the generalized problem
+    # C(tau) * v = lambda * C(0) * v reduces to a perfectly conditioned standard eigensystem:
+    eigvals, eigvecs = linalg.eigh(c_tau)
     order = np.argsort(eigvals)[::-1]
     eigvals = eigvals[order]
     eigvecs = eigvecs[:, order]
@@ -150,11 +188,10 @@ def compute_tica(
     sum_vals = np.sum(pos_vals)
     var_exp = (pos_vals / sum_vals) if sum_vals > 0 else pos_vals
 
-    cum_var = np.cumsum(var_exp)
-    k_cand = int(np.searchsorted(cum_var, variance_cutoff) + 1)
-    k = max(2, min(10, k_cand, n_features))
+    k = max(2, min(10, m_components))
+    all_whitened = np.dot(all_centered, w_operator)
+    proj = np.dot(all_whitened, eigvecs[:, :k])
 
-    proj = np.dot(centered, eigvecs[:, :k])
     return proj, var_exp, k
 
 
@@ -163,27 +200,25 @@ def compute_pca(
 ) -> tuple[np.ndarray, np.ndarray, int]:
     """
     Computes Principal Component Analysis (PCA) on Cartesian covariance matrix.
-    Selects top-k components covering >= variance_cutoff of essential dynamics.
+    Utilizes SVD decomposition on centered coordinates to eliminate memory blowups.
     """
+    from scipy import linalg
+
     n_samples, n_features = data.shape
     mean_vec = np.mean(data, axis=0)
     centered = data - mean_vec
 
-    cov = np.cov(centered, rowvar=False)
-    eigvals, eigvecs = np.linalg.eigh(cov)
-
-    order = np.argsort(eigvals)[::-1]
-    eigvals = eigvals[order]
-    eigvecs = eigvecs[:, order]
-
-    pos_vals = np.maximum(eigvals, 0.0)
-    sum_vals = np.sum(pos_vals)
-    var_exp = (pos_vals / sum_vals) if sum_vals > 0 else pos_vals
+    _, s_vals, vt_mat = linalg.svd(centered, full_matrices=False)
+    var_exp = (s_vals ** 2) / float(max(1, n_samples - 1))
+    sum_var = np.sum(var_exp)
+    if sum_var > 0:
+        var_exp = var_exp / sum_var
 
     cum_var = np.cumsum(var_exp)
     k_cand = int(np.searchsorted(cum_var, variance_cutoff) + 1)
-    k = max(2, min(10, k_cand, n_features))
+    k = max(2, min(10, k_cand, n_features, n_samples - 1))
 
+    eigvecs = vt_mat.T
     proj = np.dot(centered, eigvecs[:, :k])
     return proj, var_exp, k
 
@@ -259,7 +294,7 @@ def main():
             f"FATAL: Trajectory files count ({len(clean_xtcs)}) does not match explicit replicate names count ({len(clean_reps)})!"
         )
 
-    coords_list = []
+    coords_by_rep = []
     frame_time_map = []
     global_frame = 0
     dt_ps = None
@@ -267,7 +302,6 @@ def main():
     for xtc_p, rep_name in zip(clean_xtcs, clean_reps):
         u = mda.Universe(str(struct_p), str(xtc_p))
 
-        # Fail-Fast: Never silently skip corrupt or truncated trajectories
         if len(u.trajectory) < 2:
             raise ValueError(
                 f"FATAL: Trajectory {xtc_p.name} for replicate '{rep_name}' has fewer than 2 frames! File is corrupted."
@@ -276,19 +310,18 @@ def main():
         if dt_ps is None and len(u.trajectory) >= 2:
             dt_ps = float(u.trajectory[1].time - u.trajectory[0].time)
 
+        rep_frames_coords = []
         for ts in u.trajectory:
             mob_align = u.atoms[align_indices].positions
             mob_align_com = mob_align.mean(axis=0)
             mob_align_centered = mob_align - mob_align_com
 
-            # In-memory Kabsch rotation matrix without writing temporary files to disk
             r_mat, _ = rotation_matrix(mob_align_centered, ref_align_centered)
-
             mob_cluster = u.atoms[cluster_indices].positions
-            # Apply exact rigid-body transformation onto clustering coordinates
             aligned_cluster = np.dot(mob_cluster - mob_align_com, r_mat.T) + ref_align_com
 
-            coords_list.append(aligned_cluster.reshape(-1))
+            flat_coords = aligned_cluster.reshape(-1)
+            rep_frames_coords.append(flat_coords)
             frame_time_map.append({
                 "global_frame": global_frame,
                 "replicate": rep_name,
@@ -296,17 +329,19 @@ def main():
             })
             global_frame += 1
 
-    coords_matrix = np.array(coords_list, dtype=np.float64)
-    n_frames, n_features = coords_matrix.shape
-    print(f"[DIM_REDUCTION] Assembled matrix: {n_frames} frames × {n_features} features.", flush=True)
+        coords_by_rep.append(np.array(rep_frames_coords, dtype=np.float64))
+
+    all_coords_matrix = np.vstack(coords_by_rep)
+    n_frames, n_features = all_coords_matrix.shape
+    print(f"[DIM_REDUCTION] Assembled matrix: {n_frames} frames × {n_features} features across {len(clean_reps)} replicates.", flush=True)
 
     dt_ns = (dt_ps / 1000.0) if dt_ps and dt_ps > 0 else 0.01
     lag_steps = max(1, int(round(args.tica_lag_ns / dt_ns)))
 
     if args.dim_reduction == "pca":
-        proj, var_exp, k = compute_pca(coords_matrix, args.variance_cutoff)
+        proj, var_exp, k = compute_pca(all_coords_matrix, args.variance_cutoff)
     else:
-        proj, var_exp, k = compute_tica(coords_matrix, lag_steps, args.variance_cutoff)
+        proj, var_exp, k = compute_tica(coords_by_rep, lag_steps, args.variance_cutoff)
 
     print(
         f"[DIM_REDUCTION] {args.dim_reduction.upper()} completed: {k} components selected "
@@ -328,6 +363,7 @@ def main():
     np.save(outdir / "projections.npy", proj)
     np.save(outdir / "umap_2d.npy", umap_2d)
     np.save(outdir / "eigenvalues.npy", var_exp)
+    np.save(outdir / "aligned_coords.npy", all_coords_matrix)
 
     with open(outdir / "frame_time_map.json", "w", encoding="utf-8") as f:
         json.dump(frame_time_map, f, indent=2)

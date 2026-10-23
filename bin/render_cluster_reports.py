@@ -21,8 +21,9 @@ from plotly.subplots import make_subplots
 
 def compute_fes_2d(c1: np.ndarray, c2: np.ndarray, temp_k: float, bins: int = 80):
     """
-    Computes physical Delta G(x, y) = -kB * T * ln(P(x, y) / Pmax) in kcal/mol
-    using a continuous Gaussian filter to eliminate pixelated discretization noise.
+    Computes physical Delta G(x, y) = -kB * T * ln(P(x, y) / Pmax) in kcal/mol.
+    Strictly masks unvisited phase space as NaN to render empty background
+    without generating artificial energy plateaus.
     """
     from scipy.ndimage import gaussian_filter
 
@@ -30,16 +31,19 @@ def compute_fes_2d(c1: np.ndarray, c2: np.ndarray, temp_k: float, bins: int = 80
     hist, xedges, yedges = np.histogram2d(c1, c2, bins=bins, density=True)
     hist = hist.T
 
-    # Apply Gaussian smoothing kernel to obtain physical potential of mean force (PMF)
     smoothed_hist = gaussian_filter(hist, sigma=1.0)
     max_val = np.max(smoothed_hist)
     if max_val <= 0:
         raise ValueError("FATAL: Maximum probability density for FES is zero!")
 
     prob = smoothed_hist / max_val
-    prob[prob < 1e-6] = 1e-6
-    dg = -kb * temp_k * np.log(prob)
-    dg -= np.min(dg)
+    # Strictly mask empty phase space (prob < 1e-4) with NaN
+    empty_mask = prob < 1e-4
+    prob_clean = np.where(empty_mask, np.nan, prob)
+
+    with np.errstate(invalid="ignore"):
+        dg = -kb * temp_k * np.log(prob_clean)
+        dg -= np.nanmin(dg)
 
     xc = 0.5 * (xedges[:-1] + xedges[1:])
     yc = 0.5 * (yedges[:-1] + yedges[1:])
@@ -58,6 +62,8 @@ def main():
     parser.add_argument("--align_group", required=True, help="Alignment basis group name")
     parser.add_argument("--cluster_group", required=True, help="Clustering feature group name")
     parser.add_argument("--dim_reduction", required=True, help="Dimensionality reduction method (pca or tica)")
+    parser.add_argument("--system", required=True, help="Canonical parent system name")
+    parser.add_argument("--extracted_json", required=True, help="Input extracted_manifest.json with structure deliverables")
     parser.add_argument("--temp_k", type=float, required=True, help="Simulation temperature in Kelvin")
     parser.add_argument("--outdir", required=True, help="Output directory for reports")
     args = parser.parse_args()
@@ -215,7 +221,11 @@ def main():
     pml_path = outdir / "inspect_clusters.pml"
     pml_path.write_text("\n".join(pml_lines) + "\n")
 
+    with open(Path(args.extracted_json).resolve(), "r", encoding="utf-8") as ef:
+        extracted_structures = json.load(ef)
+
     manifest = {
+        "system": args.system,
         "n_frames": n_frames,
         "n_clusters": len(medoids),
         "align_group": args.align_group,
@@ -225,6 +235,7 @@ def main():
         "png_overview": png_path.name,
         "pymol_session": pml_path.name,
         "basins": medoids,
+        "structures": extracted_structures,
         "feature_metadata": feat_meta,
     }
     with open(outdir / "clusters_manifest.json", "w", encoding="utf-8") as f:
