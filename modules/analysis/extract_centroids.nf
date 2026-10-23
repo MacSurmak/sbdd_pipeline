@@ -9,21 +9,22 @@ process EXTRACT_CENTROIDS {
     label 'process_single'
 
     input:
-    tuple val(meta), path(ref_pdb), path(xtc_files, stageAs: 'trajs_?/*'), path(medoids_summary), path(template_sdf)
+    tuple val(meta), path(ref_pdb), path(xtc_files, stageAs: 'trajs_?/*'), path(medoids_summary), path(template_sdfs, stageAs: 'templates/*'), val(heterogens_json)
 
     output:
     tuple val(meta), path("extracted_manifest.json"), path("centroid_*_receptor.pdb"), path("centroid_*_complex.pdb"), path("centroid_*_receptor.mae"), path("centroid_*_complex.mae"), emit: structures
     tuple val(meta), path("centroid_*_pose.sdf"), path("centroid_*_pose.mae"), emit: poses, optional: true
 
     script:
-    def tmpl_arg = template_sdf ? "--substance_template_sdf ${template_sdf}" : ""
     def lig_arg = meta.ligand ? "--ligand_resname ${meta.ligand}" : ""
+    def hetero_arg = heterogens_json ? "--heterogens_spec '${heterogens_json}'" : ""
     """
     python3 ${projectDir}/bin/extract_centroids.py \\
         --struct ${ref_pdb} \\
         --xtc ${xtc_files} \\
         --medoids_json ${medoids_summary} \\
-        ${tmpl_arg} \\
+        --templates_dir templates \\
+        ${hetero_arg} \\
         ${lig_arg} \\
         --outdir .
 

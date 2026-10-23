@@ -636,13 +636,41 @@ def run_cluster(
             session.close()
             sys.exit(1)
 
-        template_sdf = ""
-        if sys_obj.pose:
+        # Deterministically collect canonical SubstanceState templates for ALL organic components (ligand + cofactors)
+        heterogens_spec = []
+        template_sdfs = []
+
+        if sys_obj.pose and sys_obj.pose.substance:
+            is_ion = (sys_obj.pose.substance.substance_type == "ion")
             p_state = sys_obj.pose.substance_state
-            if p_state and p_state.path_sdf and Path(p_state.path_sdf).exists():
-                template_sdf = str(Path(p_state.path_sdf).resolve())
-            elif sys_obj.pose.path_sdf and Path(sys_obj.pose.path_sdf).exists():
-                template_sdf = str(Path(sys_obj.pose.path_sdf).resolve())
+            sdf_p = p_state.path_sdf if (p_state and p_state.path_sdf) else sys_obj.pose.path_sdf
+            resolved_sdf = str(Path(sdf_p).resolve()) if (sdf_p and Path(sdf_p).exists() and not is_ion) else ""
+            if resolved_sdf:
+                template_sdfs.append(resolved_sdf)
+
+            heterogens_spec.append({
+                "res_name": sys_obj.pose.res_name.strip().upper(),
+                "is_ligand": True,
+                "is_ion": is_ion,
+                "template_sdf": resolved_sdf,
+            })
+
+        for cof in sys_obj.cofactors:
+            if not cof.substance:
+                continue
+            is_ion = (cof.substance.substance_type == "ion")
+            c_state = cof.substance_state
+            sdf_p = c_state.path_sdf if (c_state and c_state.path_sdf) else cof.path_sdf
+            resolved_sdf = str(Path(sdf_p).resolve()) if (sdf_p and Path(sdf_p).exists() and not is_ion) else ""
+            if resolved_sdf:
+                template_sdfs.append(resolved_sdf)
+
+            heterogens_spec.append({
+                "res_name": cof.res_name.strip().upper(),
+                "is_ligand": False,
+                "is_ion": is_ion,
+                "template_sdf": resolved_sdf,
+            })
 
         task_id = f"{sys_obj.name}_{eff_align}_{eff_cluster}"
 
@@ -656,7 +684,8 @@ def run_cluster(
             "align_group": eff_align,
             "cluster_group": eff_cluster,
             "ligand": lig_code,
-            "template_sdf": template_sdf,
+            "heterogens": heterogens_spec,
+            "template_sdfs": list(set(template_sdfs)),
         })
 
     plan_file = cwd / "cluster_plan.json"

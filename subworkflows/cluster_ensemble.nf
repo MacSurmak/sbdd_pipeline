@@ -10,7 +10,7 @@ include { RENDER_REPORTS     } from '../modules/analysis/render_reports'
 
 workflow CLUSTER_ENSEMBLE {
     take:
-    ch_cluster_input // tuple val(meta), path(ref_pdb), path(xtc_files), path(ndx_file), path(template_sdf)
+    ch_cluster_input // tuple val(meta), path(ref_pdb), path(xtc_files), path(ndx_file), path(template_sdfs), val(heterogens_json)
     align_group
     cluster_group
     dim_reduction
@@ -22,7 +22,7 @@ workflow CLUSTER_ENSEMBLE {
 
     main:
     // 1. Heavy Stage: Stream trajectories and project onto PCA/TICA + UMAP (Cached by Nextflow)
-    ch_dim_in = ch_cluster_input.map { meta, ref_pdb, xtcs, ndx, tmpl_sdf ->
+    ch_dim_in = ch_cluster_input.map { meta, ref_pdb, xtcs, ndx, tmpl_sdfs, hetero_json ->
         [ meta, ref_pdb, xtcs, ndx ]
     }
     TRAJ_DIM_REDUCTION(
@@ -44,14 +44,14 @@ workflow CLUSTER_ENSEMBLE {
     // 3. Coordinate Stage: Direct seek frame extraction of physical medoids and batch MAE conversion
     ch_extract_in = ch_cluster_input
         .join(CLUSTER_BASINS.out.basins, by: 0)
-        .map { meta, ref_pdb, xtcs, ndx, tmpl_sdf, medoids_json, labels ->
-            [ meta, ref_pdb, xtcs, medoids_json, tmpl_sdf ]
+        .map { meta, ref_pdb, xtcs, ndx, tmpl_sdfs, hetero_json, medoids_json, labels ->
+            [ meta, ref_pdb, xtcs, medoids_json, tmpl_sdfs, hetero_json ]
         }
     EXTRACT_CENTROIDS(ch_extract_in)
 
     // 4. Reporting Stage: STRICT LINEAR DEPENDENCY on EXTRACT_CENTROIDS.
     // FES computation, Plotly HTML, PNG, and PyMOL inspection script with Single Source of Truth manifest.
-    ch_render_in = ch_cluster_input.map { meta, ref_pdb, xtcs, ndx, tmpl_sdf -> [ meta, ref_pdb ] }
+    ch_render_in = ch_cluster_input.map { meta, ref_pdb, xtcs, ndx, tmpl_sdfs, hetero_json -> [ meta, ref_pdb ] }
         .join(TRAJ_DIM_REDUCTION.out.reduced_data.map { meta, proj, umap, eig, coords, time_map, feat_meta -> [ meta, umap, proj, time_map, feat_meta ] }, by: 0)
         .join(CLUSTER_BASINS.out.basins, by: 0)
         .join(EXTRACT_CENTROIDS.out.structures.map { meta, ext_json, rec_pdb, comp_pdb, rec_mae, comp_mae -> [ meta, ext_json ] }, by: 0)

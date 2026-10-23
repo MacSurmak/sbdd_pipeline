@@ -64,8 +64,9 @@ workflow ANALYZE_WF {
             def xtcs = item.clean_xtcs.collect { file(it) }
             def ref_pdb = file(item.ref_pdb)
             def ndx_f = item.ndx ? file(item.ndx) : []
-            def tmpl_sdf = item.template_sdf ? file(item.template_sdf) : []
-            [ meta, ref_pdb, xtcs, ndx_f, tmpl_sdf ]
+            def tmpl_sdfs = item.template_sdfs ? item.template_sdfs.collect { file(it) } : []
+            def heterogens_json = groovy.json.JsonOutput.toJson(item.heterogens ?: [])
+            [ meta, ref_pdb, xtcs, ndx_f, tmpl_sdfs, heterogens_json ]
         }
 
         CLUSTER_ENSEMBLE(

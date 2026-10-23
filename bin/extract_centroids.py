@@ -37,7 +37,8 @@ def main():
     parser.add_argument("--struct", required=True, help="Clean reference structure PDB")
     parser.add_argument("--xtc", nargs="+", required=True, help="Clean trajectory XTC file(s)")
     parser.add_argument("--medoids_json", required=True, help="Input medoids_summary.json deliverable")
-    parser.add_argument("--substance_template_sdf", default="", help="Optional active ligand SubstanceState template")
+    parser.add_argument("--heterogens_spec", default="[]", help="JSON string with heterogens specification")
+    parser.add_argument("--templates_dir", default="", help="Directory with staged template SDF files")
     parser.add_argument("--ligand_resname", default="", help="Active ligand residue name")
     parser.add_argument("--outdir", default="centroids_out", help="Output directory for structures")
     args = parser.parse_args()
@@ -80,13 +81,39 @@ def main():
     tmpl_sdf_p = Path(args.substance_template_sdf).resolve() if args.substance_template_sdf else None
     active_res = args.ligand_resname.strip().upper() if args.ligand_resname else ""
 
-    # Pre-load canonical template molecule
-    tmpl_mol = None
-    if tmpl_sdf_p and tmpl_sdf_p.exists():
-        suppl = Chem.SDMolSupplier(str(tmpl_sdf_p), removeHs=False, sanitize=False)
-        tmpl_mol = next((m for m in suppl if m is not None), None)
-        if tmpl_mol is None:
-            raise ValueError(f"FATAL: Could not read canonical template SDF from {tmpl_sdf_p}")
+    # Parse heterogens specification to obtain templates for ALL organic molecules (ligand and cofactors)
+    try:
+        hetero_specs = json.loads(args.heterogens_spec) if args.heterogens_spec else []
+    except Exception as e:
+        raise ValueError(f"FATAL: Failed to parse heterogens specification JSON: {e}")
+
+    hetero_by_res = {item["res_name"].strip().upper(): item for item in hetero_specs if "res_name" in item}
+    tmpl_dir_p = Path(args.templates_dir).resolve() if args.templates_dir else None
+
+    # Pre-load canonical template molecules for all declared organic small molecules
+    templates_by_res = {}
+    for r_code, spec in hetero_by_res.items():
+        if spec.get("is_ion", False):
+            continue  # Monoatomic ions have no bond-order templates
+
+        orig_sdf_str = spec.get("template_sdf", "")
+        cand_paths = []
+        if orig_sdf_str:
+            cand_paths.append(Path(orig_sdf_str).resolve())
+            if tmpl_dir_p and tmpl_dir_p.exists():
+                cand_paths.append(tmpl_dir_p / Path(orig_sdf_str).name)
+
+        found_mol = None
+        for p in cand_paths:
+            if p.exists() and p.stat().st_size > 0:
+                suppl = Chem.SDMolSupplier(str(p), removeHs=False, sanitize=False)
+                found_mol = next((m for m in suppl if m is not None), None)
+                if found_mol:
+                    break
+
+        if found_mol is not None:
+            templates_by_res[r_code] = found_mol
+            print(f"[EXTRACT_CENTROIDS] Loaded pristine topology template for small molecule '{r_code}'.", flush=True)
 
     # Sort medoid frames monotonically for optimal linear seeking
     sorted_medoids = sorted(medoids, key=lambda x: x["medoid_frame"])
@@ -122,21 +149,26 @@ def main():
             dest_sdf = outdir / f"centroid_{rank}_{r_name}_pose.sdf"
             dest_mae = outdir / f"centroid_{rank}_{r_name}_pose.mae"
 
-            # Direct in-memory RDKit molecule construction from MDAnalysis coordinates
             raw_pdb_block = mol_atoms.write("pdb")
             raw_mol = Chem.MolFromPDBBlock(raw_pdb_block, removeHs=False, sanitize=False)
             if not raw_mol:
                 raise ValueError(f"FATAL: Failed to parse small molecule '{r_name}' from MD coordinates at frame {m_frame}!")
 
-            is_active_ligand = (r_name == active_res)
-            if is_active_ligand and tmpl_mol is not None:
-                # Rigorous topological transfer with full automorphism symmetry check
+            spec = hetero_by_res.get(r_name)
+            is_active_ligand = spec.get("is_ligand", (r_name == active_res)) if spec else (r_name == active_res)
+            is_ion = spec.get("is_ion", False) if spec else False
+            tmpl = templates_by_res.get(r_name)
+
+            # Rigorous topological transfer with full automorphism symmetry check
+            # APPLIES IDENTICALLY TO LIGAND AND ALL ORGANIC COFACTORS!
+            if tmpl is not None and not is_ion:
                 restored_pose = transfer_coordinates_to_template(
-                    template_mol=tmpl_mol,
+                    template_mol=tmpl,
                     source_mol=raw_mol,
                     relax_missing_hydrogens=False,
                 )
             else:
+                # Monoatomic ions (MG, ZN, CA, CL) retain raw Cartesian coordinates
                 restored_pose = raw_mol
 
             with Chem.SDWriter(str(dest_sdf)) as w:
@@ -147,6 +179,7 @@ def main():
             extracted_poses[r_name] = {
                 "res_name": r_name,
                 "is_ligand": is_active_ligand,
+                "is_ion": is_ion,
                 "sdf_path": dest_sdf.name,
                 "mae_path": dest_mae.name,
             }
