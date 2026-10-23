@@ -11,6 +11,7 @@ from rich.console import Console
 from rich.table import Table
 from cli.core.db import (
     get_session,
+    init_db,
     Target,
     ReceptorFrame,
     Substance,
@@ -574,7 +575,7 @@ def run_cluster(
     centroids into SQLite 3NF as ready ReceptorFrame entities (Lineage Variant 1).
     """
     cwd = Path.cwd()
-    session = init_db()
+    session = get_session()
     configs = load_project_configs(cwd)
     cluster_cfg = validate_clustering_config(configs)
 
