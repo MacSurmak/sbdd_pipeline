@@ -547,6 +547,7 @@ def run_cluster_promote(manifest_path: str, ranks: list[int]) -> None:
             if src_p_mae.exists():
                 shutil.copy2(src_p_mae, dest_pose_mae)
 
+            # Idempotent Upsert for Pose
             p_entity = session.query(Pose).filter_by(
                 receptor_frame_id=frame_entity.id,
                 name=pose_name,
