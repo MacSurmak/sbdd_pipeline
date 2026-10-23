@@ -12,11 +12,11 @@ process EXTRACT_CENTROIDS {
     tuple val(meta), path(ref_pdb), path(xtc_files, stageAs: 'trajs_?/*'), path(medoids_summary), path(template_sdf)
 
     output:
-    tuple val(meta), path("centroid_*_receptor.pdb"), path("centroid_*_complex.pdb"), path("centroid_*_receptor.mae"), path("extracted_manifest.json"), emit: structures
+    tuple val(meta), path("extracted_manifest.json"), path("centroid_*_receptor.pdb"), path("centroid_*_complex.pdb"), path("centroid_*_receptor.mae"), path("centroid_*_complex.mae"), emit: structures
     tuple val(meta), path("centroid_*_pose.sdf"), path("centroid_*_pose.mae"), emit: poses, optional: true
 
     script:
-    def tmpl_arg = (template_sdf && template_sdf.name != 'NO_FILE') ? "--substance_template_sdf ${template_sdf}" : ""
+    def tmpl_arg = template_sdf ? "--substance_template_sdf ${template_sdf}" : ""
     def lig_arg = meta.ligand ? "--ligand_resname ${meta.ligand}" : ""
     """
     python3 ${projectDir}/bin/extract_centroids.py \\
@@ -27,17 +27,7 @@ process EXTRACT_CENTROIDS {
         ${lig_arg} \\
         --outdir .
 
-    # Standardized conversion via containerized Schrödinger wrapper in PATH
-    for rec in centroid_*_receptor.pdb; do
-        mae="\${rec%.pdb}.mae"
-        schrodinger run structconvert "\${rec}" "\${mae}"
-    done
-
-    for sdf in centroid_*_pose.sdf; do
-        if [ -f "\${sdf}" ]; then
-            mae="\${sdf%.sdf}.mae"
-            schrodinger run structconvert "\${sdf}" "\${mae}"
-        fi
-    done
+    # Batch structure conversion in a single Schrodinger runtime call
+    schrodinger run python3 ${projectDir}/bin/wrap_schrodinger.py batch_convert --manifest batch_convert_tasks.json
     """
 }

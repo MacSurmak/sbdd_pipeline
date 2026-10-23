@@ -367,33 +367,6 @@ for _model_attr in [
 FRAMEWORK_DIR = Path(__file__).resolve().parent.parent.parent
 
 
-def init_db(db_path: Path = None, create_if_missing: bool = False):
-    """
-    Initializes SQLite connection to the 3NF database.
-    Strictly forbids database operations inside the framework source tree (/shared/sbdd_pipeline).
-    Enforces Fail-Fast if the database does not exist on query/execution commands.
-    """
-    if db_path is None:
-        db_path = Path.cwd() / "sbdd_state.db"
-    else:
-        db_path = Path(db_path).resolve()
-
-    # 1. Absolute barrier: Framework source repository is an immutable monolith
-    if db_path.parent.resolve() == FRAMEWORK_DIR.resolve():
-        raise PermissionError(
-            f"FATAL: Attempted to create or access database inside pipeline codebase: {db_path}!\n"
-            f"The framework repository at {FRAMEWORK_DIR} is an immutable monolith. "
-            f"All SBDD projects must be initialized and executed in dedicated project directories (e.g. /shared/<project_name>)."
-        )
-
-    # 2. Fail-Fast: Refuse to silently spawn ghost databases on read/run commands
-    if not create_if_missing and not db_path.exists():
-        raise FileNotFoundError(
-            f"FATAL: Project database not found at {db_path}!\n"
-            f"Current working directory '{Path.cwd()}' is not an initialized SBDD project. "
-            f"Run 'sbdd init' to initialize a project workspace first."
-        )
-
 def _migrate_schema(engine: Engine) -> None:
     """
     Deterministically updates existing SQLite tables to match the latest 3NF ORM model.
@@ -417,11 +390,21 @@ def _migrate_schema(engine: Engine) -> None:
                     conn.exec_driver_sql(f"ALTER TABLE receptor_frames ADD COLUMN {col_name} {col_def}")
 
 
+def get_session(db_path: Path = None):
+    """
+    Returns an active SQLAlchemy session for an existing project database.
+    Strict Fail-Fast law: crashes immediately if sbdd_state.db does not exist.
+    Never creates ghost databases on query or execution commands.
+    """
+    return init_db(db_path=db_path, create_if_missing=False)
+
+
 def init_db(db_path: Path = None, create_if_missing: bool = False):
     """
     Initializes SQLite connection to the 3NF database.
     Strictly forbids database operations inside the framework source tree (/shared/sbdd_pipeline).
     Enforces Fail-Fast if the database does not exist on query/execution commands.
+    create_if_missing=True is strictly permitted only during 'sbdd init'.
     """
     if db_path is None:
         db_path = Path.cwd() / "sbdd_state.db"

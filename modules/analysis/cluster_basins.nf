@@ -9,7 +9,7 @@ process CLUSTER_BASINS {
     label 'process_single'
 
     input:
-    tuple val(meta), path(umap_2d), path(projections), path(frame_time_map)
+    tuple val(meta), path(umap_2d), path(projections), path(aligned_coords), path(frame_time_map)
     val(n_clusters)
 
     output:
@@ -20,6 +20,7 @@ process CLUSTER_BASINS {
     python3 ${projectDir}/bin/cluster_macro_basins.py \\
         --umap ${umap_2d} \\
         --projections ${projections} \\
+        --coords ${aligned_coords} \\
         --time_map ${frame_time_map} \\
         --n_clusters ${n_clusters} \\
         --out_json medoids_summary.json \\

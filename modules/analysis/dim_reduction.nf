@@ -18,11 +18,11 @@ process TRAJ_DIM_REDUCTION {
     val(pocket_radius)
 
     output:
-    tuple val(meta), path("projections.npy"), path("umap_2d.npy"), path("eigenvalues.npy"), path("frame_time_map.json"), path("feature_meta.json"), emit: reduced_data
+    tuple val(meta), path("projections.npy"), path("umap_2d.npy"), path("eigenvalues.npy"), path("aligned_coords.npy"), path("frame_time_map.json"), path("feature_meta.json"), emit: reduced_data
 
     script:
     def lig_arg = meta.ligand ? "--ligand_resname ${meta.ligand}" : ""
-    def ndx_arg = (ndx_file && ndx_file.name != 'NO_FILE') ? "--ndx ${ndx_file}" : ""
+    def ndx_arg = ndx_file ? "--ndx ${ndx_file}" : ""
     def reps_arg = meta.replicate_names instanceof List ? meta.replicate_names.join(' ') : meta.replicate_names
     """
     python3 ${projectDir}/bin/traj_dim_reduction.py \\

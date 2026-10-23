@@ -63,8 +63,8 @@ workflow ANALYZE_WF {
             ]
             def xtcs = item.clean_xtcs.collect { file(it) }
             def ref_pdb = file(item.ref_pdb)
-            def ndx_f = item.ndx ? file(item.ndx) : file("${workDir}/NO_FILE")
-            def tmpl_sdf = item.template_sdf ? file(item.template_sdf) : file("${workDir}/NO_FILE")
+            def ndx_f = item.ndx ? file(item.ndx) : []
+            def tmpl_sdf = item.template_sdf ? file(item.template_sdf) : []
             [ meta, ref_pdb, xtcs, ndx_f, tmpl_sdf ]
         }
 

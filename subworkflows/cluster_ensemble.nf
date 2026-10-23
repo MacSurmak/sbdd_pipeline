@@ -35,13 +35,13 @@ workflow CLUSTER_ENSEMBLE {
         pocket_radius
     )
 
-    // 2. Fast Stage: Partition into K macro-basins in UMAP manifold
-    ch_basins_in = TRAJ_DIM_REDUCTION.out.reduced_data.map { meta, proj, umap, eig, time_map, feat_meta ->
-        [ meta, umap, proj, time_map ]
+    // 2. Fast Stage: Partition into K macro-basins in UMAP manifold and discover physical medoids
+    ch_basins_in = TRAJ_DIM_REDUCTION.out.reduced_data.map { meta, proj, umap, eig, coords, time_map, feat_meta ->
+        [ meta, umap, proj, coords, time_map ]
     }
     CLUSTER_BASINS(ch_basins_in, n_clusters)
 
-    // 3. Coordinate Stage: Direct seek frame extraction of physical medoids
+    // 3. Coordinate Stage: Direct seek frame extraction of physical medoids and batch MAE conversion
     ch_extract_in = ch_cluster_input
         .join(CLUSTER_BASINS.out.basins, by: 0)
         .map { meta, ref_pdb, xtcs, ndx, tmpl_sdf, medoids_json, labels ->
@@ -49,12 +49,14 @@ workflow CLUSTER_ENSEMBLE {
         }
     EXTRACT_CENTROIDS(ch_extract_in)
 
-    // 4. Reporting Stage: FES computation, Plotly HTML, PNG, and PyMOL inspection script
+    // 4. Reporting Stage: STRICT LINEAR DEPENDENCY on EXTRACT_CENTROIDS.
+    // FES computation, Plotly HTML, PNG, and PyMOL inspection script with Single Source of Truth manifest.
     ch_render_in = ch_cluster_input.map { meta, ref_pdb, xtcs, ndx, tmpl_sdf -> [ meta, ref_pdb ] }
-        .join(TRAJ_DIM_REDUCTION.out.reduced_data.map { meta, proj, umap, eig, time_map, feat_meta -> [ meta, umap, proj, time_map, feat_meta ] }, by: 0)
+        .join(TRAJ_DIM_REDUCTION.out.reduced_data.map { meta, proj, umap, eig, coords, time_map, feat_meta -> [ meta, umap, proj, time_map, feat_meta ] }, by: 0)
         .join(CLUSTER_BASINS.out.basins, by: 0)
-        .map { meta, ref_pdb, umap, proj, time_map, feat_meta, medoids_json, labels ->
-            [ meta, ref_pdb, umap, proj, labels, medoids_json, time_map, feat_meta ]
+        .join(EXTRACT_CENTROIDS.out.structures.map { meta, ext_json, rec_pdb, comp_pdb, rec_mae, comp_mae -> [ meta, ext_json ] }, by: 0)
+        .map { meta, ref_pdb, umap, proj, time_map, feat_meta, medoids_json, labels, ext_json ->
+            [ meta, ref_pdb, umap, proj, labels, medoids_json, time_map, feat_meta, ext_json ]
         }
     RENDER_REPORTS(ch_render_in, align_group, cluster_group, dim_reduction, temp_k)
 

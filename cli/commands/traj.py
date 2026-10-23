@@ -10,7 +10,7 @@ from pathlib import Path
 from rich.console import Console
 from rich.table import Table
 from cli.core.db import (
-    init_db,
+    get_session,
     Target,
     ReceptorFrame,
     Substance,
@@ -103,7 +103,7 @@ def run_clean_traj(
     import math
 
     cwd = Path.cwd()
-    session = init_db()
+    session = get_session()
     configs = load_project_configs(cwd)
     trajs = _query_trajectories(
         session, systems, target, traj_names, target_status="raw"
@@ -199,7 +199,7 @@ def run_metrics(
 ) -> None:
     """Calculates RMSD (Protein, Ligand, and Cofactors), RMSF, and Contacts on cleaned trajectories."""
     cwd = Path.cwd()
-    session = init_db()
+    session = get_session()
     trajs = _query_trajectories(
         session, systems, target, traj_names, target_status="cleaned"
     )
@@ -319,7 +319,7 @@ def run_cluster_promote(manifest_path: str, ranks: list[int]) -> None:
     Guarantees transactional integrity via idempotent Upsert, eliminating UNIQUE constraint crashes.
     """
     cwd = Path.cwd()
-    session = init_db()
+    session = get_session()
     m_p = Path(manifest_path).resolve()
 
     if not m_p.exists() or m_p.stat().st_size == 0:
@@ -332,7 +332,17 @@ def run_cluster_promote(manifest_path: str, ranks: list[int]) -> None:
     basins = manifest.get("basins", [])
     task_dir = m_p.parent
 
-    # Extract groups directly from the self-contained clusters_manifest.json (zero detached files)
+    # Single Source of Truth: system name is resolved directly from manifest metadata (zero filesystem heuristics)
+    sys_name = manifest.get("system")
+    if not sys_name:
+        session.close()
+        raise KeyError(f"FATAL: Canonical 'system' metadata missing in clusters manifest {m_p}!")
+
+    sys_obj = session.query(System).filter_by(name=sys_name).first()
+    if not sys_obj:
+        session.close()
+        raise ValueError(f"FATAL: Parent system '{sys_name}' declared in manifest is not registered in SQLite database!")
+
     eff_align = manifest.get("align_group")
     eff_cluster = manifest.get("cluster_group")
     eff_dim = manifest.get("dim_reduction", "pca")
@@ -341,26 +351,19 @@ def run_cluster_promote(manifest_path: str, ranks: list[int]) -> None:
         session.close()
         raise KeyError(f"FATAL: Missing 'align_group' or 'cluster_group' in manifest {m_p}!")
 
-    # Read extraction manifest for deterministic small molecule paths
-    extract_manifest_p = task_dir / "extracted_manifest.json"
-    if not extract_manifest_p.exists():
-        session.close()
-        raise FileNotFoundError(f"FATAL: Extraction manifest missing in {task_dir}!")
-
-    with open(extract_manifest_p, "r", encoding="utf-8") as f:
-        extracted_data = json.load(f)
+    # Prefer embedded structures list from clusters_manifest.json; fallback to extracted_manifest.json if needed
+    extracted_data = manifest.get("structures")
+    if not extracted_data:
+        extract_manifest_p = task_dir / "extracted_manifest.json"
+        if not extract_manifest_p.exists():
+            session.close()
+            raise FileNotFoundError(f"FATAL: Extraction manifest missing in {task_dir}!")
+        with open(extract_manifest_p, "r", encoding="utf-8") as f:
+            extracted_data = json.load(f)
 
     extracted_by_rank = {int(item["rank"]): item for item in extracted_data}
-
-    # Resolve parent system directly from task directory hierarchy
-    sys_name = task_dir.parent.name
-    sys_obj = session.query(System).filter_by(name=sys_name).first()
-    if not sys_obj:
-        session.close()
-        raise ValueError(f"FATAL: Parent system '{sys_name}' is not registered in SQLite database!")
-
-    promoted = 0
     all_trajs = session.query(Trajectory).filter_by(system_id=sys_obj.id).all()
+    promoted = 0
 
     for rank in sorted(list(set(ranks))):
         b_meta = next((b for b in basins if int(b["rank"]) == rank), None)
@@ -369,7 +372,6 @@ def run_cluster_promote(manifest_path: str, ranks: list[int]) -> None:
             console.print(f"[yellow]Warning: Basin #{rank} not found in manifest deliverables. Skipping.[/yellow]")
             continue
 
-        # Strip any cached path prefixes using .name and anchor strictly in published task_dir
         raw_rec_name = Path(ext_meta["receptor_pdb"]).name
         raw_view_name = Path(ext_meta["complex_pdb"]).name
 
@@ -382,11 +384,21 @@ def run_cluster_promote(manifest_path: str, ranks: list[int]) -> None:
         if not src_rec_mae.exists() or src_rec_mae.stat().st_size == 0:
             raise FileNotFoundError(f"FATAL: Centroid receptor MAE missing on disk: {src_rec_mae}")
 
-        # Resolve exact source trajectory record
+        # Strict Fail-Fast trajectory replicate matching (zero silent fallbacks to all_trajs[0])
         src_rep_name = str(b_meta["medoid_replicate"])
-        matched_traj = next((t for t in all_trajs if t.replicate == int(src_rep_name.replace("rep_", "")) or t.name == src_rep_name), all_trajs[0] if all_trajs else None)
+        matched_traj = next(
+            (t for t in all_trajs if t.name == src_rep_name or t.replicate == int(src_rep_name.replace("rep_", ""))),
+            None
+        )
+        if not matched_traj:
+            session.close()
+            raise ValueError(
+                f"FATAL: Source trajectory replicate '{src_rep_name}' for basin #{rank} "
+                f"is not registered in database for system '{sys_obj.name}'!"
+            )
 
-        new_frame_name = f"{sys_obj.name}_{eff_cluster.lower()}_c{rank}"
+        # Canonical naming: ReceptorFrame has clean name '{target}_{cluster_group}_c{rank}'
+        new_frame_name = f"{sys_obj.target.name}_{eff_cluster.lower()}_c{rank}"
         dest_frame_dir = assert_permanent_path(cwd / "targets" / sys_obj.target.name / "frames" / new_frame_name, f"Basin #{rank} Frame Directory")
         dest_frame_dir.mkdir(parents=True, exist_ok=True)
 
@@ -395,7 +407,7 @@ def run_cluster_promote(manifest_path: str, ranks: list[int]) -> None:
         shutil.copy2(src_rec_pdb, dest_rec_pdb)
         shutil.copy2(src_rec_mae, dest_rec_mae)
 
-        # Idempotent Upsert for ReceptorFrame: avoids UNIQUE constraint crashes on repeated promotion
+        # Idempotent Upsert for ReceptorFrame
         frame_entity = session.query(ReceptorFrame).filter(
             ReceptorFrame.target_id == sys_obj.target_id,
             ReceptorFrame.parent_frame_id == sys_obj.receptor_frame_id,
@@ -409,7 +421,7 @@ def run_cluster_promote(manifest_path: str, ranks: list[int]) -> None:
                 name=new_frame_name,
                 source_type="md_centroid",
                 parent_frame_id=sys_obj.receptor_frame_id,
-                source_trajectory_id=matched_traj.id if matched_traj else None,
+                source_trajectory_id=matched_traj.id,
                 feature_group=eff_cluster,
                 align_group=eff_align,
                 dim_reduction_method=eff_dim,
@@ -425,7 +437,7 @@ def run_cluster_promote(manifest_path: str, ranks: list[int]) -> None:
             session.flush()
         else:
             frame_entity.name = new_frame_name
-            frame_entity.source_trajectory_id = matched_traj.id if matched_traj else None
+            frame_entity.source_trajectory_id = matched_traj.id
             frame_entity.align_group = eff_align
             frame_entity.dim_reduction_method = eff_dim
             frame_entity.population = round(float(b_meta["population_pct"]) / 100.0, 4)
@@ -438,7 +450,6 @@ def run_cluster_promote(manifest_path: str, ranks: list[int]) -> None:
         centroid_main_pose = None
         centroid_cofactors = []
 
-        # Promote small molecules using deterministic manifest keys (zero globbing, zero regex)
         for r_code, p_dict in ext_meta.get("poses", {}).items():
             raw_sdf_name = Path(p_dict["sdf_path"]).name
             src_p_sdf = assert_permanent_path(task_dir / raw_sdf_name, f"Basin #{rank} Small Molecule SDF ({r_code})")
@@ -472,7 +483,6 @@ def run_cluster_promote(manifest_path: str, ranks: list[int]) -> None:
             if src_p_mae.exists():
                 shutil.copy2(src_p_mae, dest_pose_mae)
 
-            # Idempotent Upsert for Pose
             p_entity = session.query(Pose).filter_by(
                 receptor_frame_id=frame_entity.id,
                 name=pose_name,
@@ -505,7 +515,7 @@ def run_cluster_promote(manifest_path: str, ranks: list[int]) -> None:
             else:
                 centroid_cofactors.append(p_entity)
 
-        # Register distinct System entity with 'sys_' prefix preventing namespace collision
+        # Single canonical 'sys_' prefix applied once to System entity (no 'sys_sys_...')
         sys_centroid_name = f"sys_{new_frame_name}_{sys_obj.pose.substance.name}" if centroid_main_pose else f"sys_{new_frame_name}"
         dest_sys_dir = cwd / "systems" / sys_centroid_name
         dest_sys_dir.mkdir(parents=True, exist_ok=True)
@@ -513,7 +523,6 @@ def run_cluster_promote(manifest_path: str, ranks: list[int]) -> None:
         if src_view_pdb.exists():
             shutil.copy2(src_view_pdb, dest_sys_dir / f"{sys_centroid_name}_view.pdb")
 
-        # Idempotent Upsert for System
         target_sys = session.query(System).filter_by(
             receptor_frame_id=frame_entity.id,
             name=sys_centroid_name,
@@ -569,12 +578,19 @@ def run_cluster(
     configs = load_project_configs(cwd)
     cluster_cfg = validate_clustering_config(configs)
 
+    # Apply explicit CLI overrides onto configuration dictionary before Nextflow argument construction
     eff_align = align_group if align_group is not None else cluster_cfg["align_group"]
     eff_cluster = cluster_group if cluster_group is not None else cluster_cfg["cluster_group"]
     eff_dim = dim_reduction if dim_reduction is not None else cluster_cfg["dim_reduction"]
     eff_k = n_clusters if n_clusters is not None else cluster_cfg["n_clusters"]
     eff_min_pop = min_population if min_population is not None else cluster_cfg["min_cluster_population"]
     eff_auto = auto or cluster_cfg["auto_promote"]
+
+    configs.setdefault("md_simulation", {}).setdefault("clustering", {})["align_group"] = eff_align
+    configs.setdefault("md_simulation", {}).setdefault("clustering", {})["cluster_group"] = eff_cluster
+    configs.setdefault("md_simulation", {}).setdefault("clustering", {})["dim_reduction"] = eff_dim
+    configs.setdefault("md_simulation", {}).setdefault("clustering", {})["n_clusters"] = eff_k
+    configs.setdefault("md_simulation", {}).setdefault("clustering", {})["min_cluster_population"] = eff_min_pop
 
     trajs = _query_trajectories(
         session, systems, target, traj_names, target_status="cleaned"
@@ -657,11 +673,6 @@ def run_cluster(
     nf_args = build_nextflow_args(configs, cwd, entrypoint="md-analyze")
     nf_args.extend([
         "--cluster_plan", str(plan_file.resolve()),
-        "--cluster_align_group", str(eff_align),
-        "--cluster_feature_group", str(eff_cluster),
-        "--cluster_dim_reduction", str(eff_dim),
-        "--cluster_n_clusters", str(eff_k),
-        "--cluster_min_pop", str(eff_min_pop),
     ])
 
     if urgent:
@@ -809,7 +820,7 @@ def run_flag_traj(
     enable: bool = False,
 ) -> None:
     """Marks a trajectory as drifted, disabled, or cleaned to control inclusion in downstream analysis."""
-    session = init_db()
+    session = get_session()
     traj_name = trajectory
     t_obj = session.query(Trajectory).filter_by(name=traj_name).first()
 
@@ -895,7 +906,7 @@ def run_mmpbsa(
     Automatically queries all cleaned trajectories.
     """
     cwd = Path.cwd()
-    session = init_db()
+    session = get_session()
     trajs = _query_trajectories(
         session, systems, target, traj_names, target_status="cleaned"
     )
