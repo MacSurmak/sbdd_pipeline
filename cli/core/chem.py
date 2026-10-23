@@ -215,13 +215,12 @@ def transfer_coordinates_to_template(
             f"Template: {tmpl_elements} vs Source: {src_elements}"
         )
 
-    # Identify true tetrahedral chiral centers on the template
-    Chem.AssignStereochemistry(tmpl, force=True, cleanIt=True)
+    # Identify true tetrahedral chiral centers directly on tmpl_heavy to guarantee identical atom indexing
+    Chem.AssignStereochemistry(tmpl_heavy, force=True, cleanIt=True)
     chiral_centers = []
     tmpl_heavy_conf = tmpl_heavy.GetConformer()
     for a in tmpl_heavy.GetAtoms():
-        orig_atom = tmpl.GetAtomWithIdx(a.GetIdx())
-        if orig_atom.GetChiralTag() in (Chem.ChiralType.CHI_TETRAHEDRAL_CW, Chem.ChiralType.CHI_TETRAHEDRAL_CCW):
+        if a.GetChiralTag() in (Chem.ChiralType.CHI_TETRAHEDRAL_CW, Chem.ChiralType.CHI_TETRAHEDRAL_CCW):
             nbrs = [nbr.GetIdx() for nbr in a.GetNeighbors()]
             if len(nbrs) >= 3:
                 vol = signed_chiral_volume(tmpl_heavy_conf, a.GetIdx(), nbrs)
@@ -296,8 +295,8 @@ def transfer_coordinates_to_template(
             )
         res_conf.SetAtomPosition(orig_tmpl_idx, pos)
 
-    # Reconstruct/relax missing hydrogens if requested (e.g. for GNINA united-atom poses)
-    if relax_missing_hydrogens and source_mol.GetNumAtoms() == n_src_heavy:
+    # Reconstruct/relax missing hydrogens if requested (e.g. for GNINA united-atom poses lacking non-polar protons)
+    if relax_missing_hydrogens and source_mol.GetNumAtoms() < res_mol.GetNumAtoms():
         # Re-initialize hydrogen 3D positions based on updated heavy atoms
         temp_h_mol = Chem.RemoveHs(res_mol)
         temp_h_mol = Chem.AddHs(temp_h_mol, addCoords=True)

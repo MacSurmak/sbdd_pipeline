@@ -9,7 +9,7 @@ process EXTRACT_CENTROIDS {
     label 'process_single'
 
     input:
-    tuple val(meta), path(ref_pdb), path(xtc_files, stageAs: 'trajs_?/*'), path(medoids_summary), path(template_sdfs, stageAs: 'templates/*'), val(heterogens_json)
+    tuple val(meta), path(ref_pdb), path(xtc_files, stageAs: 'trajs_?/*'), path(medoids_summary), path(template_sdfs), val(heterogens_json)
 
     output:
     tuple val(meta), path("extracted_manifest.json"), path("centroid_*_receptor.pdb"), path("centroid_*_complex.pdb"), path("centroid_*_receptor.mae"), path("centroid_*_complex.mae"), emit: structures

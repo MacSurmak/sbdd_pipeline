@@ -110,6 +110,7 @@ def main():
         cand_paths = []
         if orig_sdf_str:
             cand_paths.append(Path(orig_sdf_str).resolve())
+            cand_paths.append(Path(Path(orig_sdf_str).name).resolve())
             if tmpl_dir_p and tmpl_dir_p.exists():
                 cand_paths.append(tmpl_dir_p / Path(orig_sdf_str).name)
 
@@ -151,13 +152,21 @@ def main():
         batch_convert_tasks.append({"in_path": str(view_pdb), "out_path": str(view_mae)})
 
         extracted_poses = {}
-        for r_name in sorted(list(small_mol_resnames)):
-            mol_atoms = u.select_atoms(f"resname {r_name}")
+        # Iterate over individual small molecule residues to support multiple copies (ions, oligomeric ligands)
+        for res in u.residues:
+            r_name = res.resname.strip().upper()
+            if r_name not in small_mol_resnames:
+                continue
+
+            mol_atoms = res.atoms
             if len(mol_atoms) == 0:
                 continue
 
-            dest_sdf = outdir / f"centroid_{rank}_{r_name}_pose.sdf"
-            dest_mae = outdir / f"centroid_{rank}_{r_name}_pose.mae"
+            # Deterministic residue suffix if multiple copies of the same small molecule exist in the system
+            same_res_count = len(u.select_atoms(f"resname {r_name}").residues)
+            res_key = f"{r_name}_{res.resid}" if same_res_count > 1 else r_name
+            dest_sdf = outdir / f"centroid_{rank}_{res_key}_pose.sdf"
+            dest_mae = outdir / f"centroid_{rank}_{res_key}_pose.mae"
 
             # Strict in-memory PDB serialization preserving buffer on writer close
             pdb_stream = NonClosingStringIO()
@@ -167,7 +176,7 @@ def main():
 
             raw_mol = Chem.MolFromPDBBlock(raw_pdb_block, removeHs=False, sanitize=False)
             if not raw_mol:
-                raise ValueError(f"FATAL: Failed to parse small molecule '{r_name}' from MD coordinates at frame {m_frame}!")
+                raise ValueError(f"FATAL: Failed to parse small molecule '{res_key}' from MD coordinates at frame {m_frame}!")
 
             spec = hetero_by_res.get(r_name)
             is_active_ligand = spec.get("is_ligand", (r_name == active_res)) if spec else (r_name == active_res)
@@ -191,8 +200,9 @@ def main():
                 w.write(restored_pose)
 
             batch_convert_tasks.append({"in_path": str(dest_sdf), "out_path": str(dest_mae)})
-            extracted_poses[r_name] = {
+            extracted_poses[res_key] = {
                 "res_name": r_name,
+                "resid": int(res.resid),
                 "is_ligand": is_active_ligand,
                 "is_ion": is_ion,
                 "sdf_path": dest_sdf.name,

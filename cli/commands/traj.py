@@ -375,6 +375,8 @@ def run_cluster_promote(manifest_path: str, ranks: list[int]) -> None:
             ReceptorFrame.target_id == sys_obj.target_id,
             ReceptorFrame.parent_frame_id == sys_obj.receptor_frame_id,
             ReceptorFrame.feature_group == eff_cluster,
+            ReceptorFrame.align_group == eff_align,
+            ReceptorFrame.dim_reduction_method == eff_dim,
             ReceptorFrame.source_type == "md_centroid",
             ReceptorFrame.cluster_rank.notin_(selected_ranks_set),
         )
@@ -448,8 +450,9 @@ def run_cluster_promote(manifest_path: str, ranks: list[int]) -> None:
                 f"is not registered in database for system '{sys_obj.name}'!"
             )
 
-        # Canonical naming: ReceptorFrame has clean name '{target}_{cluster_group}_c{rank}'
-        new_frame_name = f"{sys_obj.target.name}_{eff_cluster.lower()}_c{rank}"
+        # Canonical naming: ReceptorFrame incorporates parent frame name to eliminate UNIQUE collision across multiple models
+        parent_frame_name = sys_obj.receptor_frame.name
+        new_frame_name = f"{parent_frame_name}_{eff_cluster.lower()}_c{rank}"
         dest_frame_dir = assert_permanent_path(cwd / "targets" / sys_obj.target.name / "frames" / new_frame_name, f"Basin #{rank} Frame Directory")
 
         # If existing frame directory on disk differs from new canonical directory, purge the obsolete one
@@ -457,6 +460,8 @@ def run_cluster_promote(manifest_path: str, ranks: list[int]) -> None:
             ReceptorFrame.target_id == sys_obj.target_id,
             ReceptorFrame.parent_frame_id == sys_obj.receptor_frame_id,
             ReceptorFrame.feature_group == eff_cluster,
+            ReceptorFrame.align_group == eff_align,
+            ReceptorFrame.dim_reduction_method == eff_dim,
             ReceptorFrame.cluster_rank == rank,
         ).first()
         if existing_frame_check and existing_frame_check.path:
@@ -476,6 +481,8 @@ def run_cluster_promote(manifest_path: str, ranks: list[int]) -> None:
             ReceptorFrame.target_id == sys_obj.target_id,
             ReceptorFrame.parent_frame_id == sys_obj.receptor_frame_id,
             ReceptorFrame.feature_group == eff_cluster,
+            ReceptorFrame.align_group == eff_align,
+            ReceptorFrame.dim_reduction_method == eff_dim,
             ReceptorFrame.cluster_rank == rank,
         ).first()
 
@@ -601,7 +608,7 @@ def run_cluster_promote(manifest_path: str, ranks: list[int]) -> None:
                 session.delete(sfs)
 
         # Prune any stale poses previously attached to this frame that do not match the new canonical poses
-        promoted_pose_names = {pose_name} | {f"{new_frame_name}_{r}" for r in ext_meta.get("poses", {}).keys()}
+        promoted_pose_names = {f"{new_frame_name}_{r}" for r in ext_meta.get("poses", {}).keys()}
         stale_frame_poses = session.query(Pose).filter(
             Pose.receptor_frame_id == frame_entity.id,
             Pose.name.notin_(promoted_pose_names),
