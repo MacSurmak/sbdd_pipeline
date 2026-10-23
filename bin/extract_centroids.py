@@ -24,6 +24,16 @@ if str(FRAMEWORK_DIR) not in sys.path:
 
 from cli.core.chem import transfer_coordinates_to_template
 
+
+class NonClosingStringIO(io.StringIO):
+    """
+    In-memory string stream that preserves its buffer when closed by context managers.
+    Allows MDAnalysis PDBWriter to cleanly finalize CONECT/END records without destroying the buffer.
+    """
+    def close(self):
+        self.flush()
+
+
 STANDARD_PROTEIN_RESIDUES = {
     "ALA", "ARG", "ASN", "ASP", "CYS", "CYX", "GLN", "GLU", "GLY", "HIS",
     "HID", "HIE", "HIP", "ILE", "LEU", "LYS", "LYN", "MET", "PHE", "PRO",
@@ -149,8 +159,8 @@ def main():
             dest_sdf = outdir / f"centroid_{rank}_{r_name}_pose.sdf"
             dest_mae = outdir / f"centroid_{rank}_{r_name}_pose.mae"
 
-            # Strict in-memory PDB serialization without creating temporary files on disk
-            pdb_stream = io.StringIO()
+            # Strict in-memory PDB serialization preserving buffer on writer close
+            pdb_stream = NonClosingStringIO()
             with mda.coordinates.PDB.PDBWriter(pdb_stream) as writer:
                 writer.write(mol_atoms)
             raw_pdb_block = pdb_stream.getvalue()
