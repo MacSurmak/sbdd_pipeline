@@ -451,6 +451,19 @@ def run_cluster_promote(manifest_path: str, ranks: list[int]) -> None:
         # Canonical naming: ReceptorFrame has clean name '{target}_{cluster_group}_c{rank}'
         new_frame_name = f"{sys_obj.target.name}_{eff_cluster.lower()}_c{rank}"
         dest_frame_dir = assert_permanent_path(cwd / "targets" / sys_obj.target.name / "frames" / new_frame_name, f"Basin #{rank} Frame Directory")
+
+        # If existing frame directory on disk differs from new canonical directory, purge the obsolete one
+        existing_frame_check = session.query(ReceptorFrame).filter(
+            ReceptorFrame.target_id == sys_obj.target_id,
+            ReceptorFrame.parent_frame_id == sys_obj.receptor_frame_id,
+            ReceptorFrame.feature_group == eff_cluster,
+            ReceptorFrame.cluster_rank == rank,
+        ).first()
+        if existing_frame_check and existing_frame_check.path:
+            old_f_dir = Path(existing_frame_check.path).parent
+            if old_f_dir.exists() and old_f_dir.resolve() != dest_frame_dir.resolve():
+                shutil.rmtree(old_f_dir, ignore_errors=True)
+
         dest_frame_dir.mkdir(parents=True, exist_ok=True)
 
         dest_rec_pdb = assert_permanent_path(dest_frame_dir / "receptor.pdb", f"Basin #{rank} Dest Receptor PDB")
@@ -573,6 +586,31 @@ def run_cluster_promote(manifest_path: str, ranks: list[int]) -> None:
 
         if src_view_pdb.exists():
             shutil.copy2(src_view_pdb, dest_sys_dir / f"{sys_centroid_name}_view.pdb")
+
+        # Prune any stale systems previously attached to this frame that do not match the new canonical name
+        stale_frame_systems = session.query(System).filter(
+            System.receptor_frame_id == frame_entity.id,
+            System.name != sys_centroid_name,
+        ).all()
+        for sfs in stale_frame_systems:
+            if not sfs.trajectories:
+                sfs_dir = cwd / "systems" / sfs.name
+                if sfs_dir.exists():
+                    shutil.rmtree(sfs_dir, ignore_errors=True)
+                session.delete(sfs)
+
+        # Prune any stale poses previously attached to this frame that do not match the new canonical poses
+        promoted_pose_names = {pose_name} | {f"{new_frame_name}_{r}" for r in ext_meta.get("poses", {}).keys()}
+        stale_frame_poses = session.query(Pose).filter(
+            Pose.receptor_frame_id == frame_entity.id,
+            Pose.name.notin_(promoted_pose_names),
+        ).all()
+        for sfp in stale_frame_poses:
+            if sfp.path:
+                sfp_dir = Path(sfp.path).parent
+                if sfp_dir.exists() and sfp_dir.name == sfp.name:
+                    shutil.rmtree(sfp_dir, ignore_errors=True)
+            session.delete(sfp)
 
         target_sys = session.query(System).filter_by(
             receptor_frame_id=frame_entity.id,
@@ -722,6 +760,12 @@ def run_cluster(
                 "is_ion": is_ion,
                 "template_sdf": resolved_sdf,
             })
+
+        # Purge obsolete centroid deliverables from previous runs with higher K before dispatching
+        dest_reports_dir = cwd / "reports" / "clusters" / sys_obj.name / f"{eff_align}_{eff_cluster}"
+        if dest_reports_dir.exists():
+            for stale_file in dest_reports_dir.glob("centroid_*"):
+                stale_file.unlink(missing_ok=True)
 
         task_id = f"{sys_obj.name}_{eff_align}_{eff_cluster}"
 
