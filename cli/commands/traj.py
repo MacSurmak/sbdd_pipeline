@@ -365,8 +365,58 @@ def run_cluster_promote(manifest_path: str, ranks: list[int]) -> None:
     extracted_by_rank = {int(item["rank"]): item for item in extracted_data}
     all_trajs = session.query(Trajectory).filter_by(system_id=sys_obj.id).all()
     promoted = 0
+    selected_ranks_set = set(ranks)
 
-    for rank in sorted(list(set(ranks))):
+    # Generic Lineage Invariant: query all existing centroids belonging to this exact ensemble lineage.
+    # Any centroid whose rank is not in the newly selected set is obsolete and must be pruned.
+    stale_centroids = (
+        session.query(ReceptorFrame)
+        .filter(
+            ReceptorFrame.target_id == sys_obj.target_id,
+            ReceptorFrame.parent_frame_id == sys_obj.receptor_frame_id,
+            ReceptorFrame.feature_group == eff_cluster,
+            ReceptorFrame.source_type == "md_centroid",
+            ReceptorFrame.cluster_rank.notin_(selected_ranks_set),
+        )
+        .all()
+    )
+
+    for stale in stale_centroids:
+        # Fail-Fast dependency guard: prevent accidental destruction of heavy downstream MD trajectories
+        for s in stale.systems:
+            if s.trajectories:
+                session.close()
+                raise ValueError(
+                    f"FATAL: Cannot prune obsolete centroid frame '{stale.name}' (rank {stale.cluster_rank}): "
+                    f"system '{s.name}' has computed MD trajectories in database! "
+                    "Manually resolve or retain this rank."
+                )
+
+        # Synchronously purge physical disk deliverables for frame, poses, and systems
+        if stale.path:
+            f_dir = Path(stale.path).parent
+            if f_dir.exists() and f_dir.name == stale.name:
+                shutil.rmtree(f_dir, ignore_errors=True)
+
+        for p in stale.poses:
+            if p.path:
+                p_dir = Path(p.path).parent
+                if p_dir.exists() and p_dir.name == p.name:
+                    shutil.rmtree(p_dir, ignore_errors=True)
+
+        for s in stale.systems:
+            s_dir = cwd / "systems" / s.name
+            if s_dir.exists():
+                shutil.rmtree(s_dir, ignore_errors=True)
+
+        console.print(
+            f"[yellow]Pruned obsolete centroid frame '{stale.name}' (rank {stale.cluster_rank} not in {sorted(list(selected_ranks_set))}) and purged disk artifacts.[/yellow]"
+        )
+        session.delete(stale)
+
+    session.flush()
+
+    for rank in sorted(list(selected_ranks_set)):
         b_meta = next((b for b in basins if int(b["rank"]) == rank), None)
         ext_meta = extracted_by_rank.get(rank)
         if not b_meta or not ext_meta:
