@@ -141,3 +141,243 @@ def get_microstate_identity(source: str | Path) -> Tuple[str, str, str, str, str
         isomeric_smiles,
         formal_charge,
     )
+
+
+def signed_chiral_volume(conf, center_idx: int, nbr_indices: list[int]) -> float:
+    """
+    Computes signed scalar triple product for a 4-coordinate tetrahedral center:
+    V = (v1 - v0) . [(v2 - v0) x (v3 - v0)]
+    Enforces strict mathematical invariant for R/S stereochemical parity validation.
+    """
+    import numpy as np
+
+    if len(nbr_indices) < 3:
+        return 0.0
+    p0 = conf.GetAtomPosition(center_idx)
+    p1 = conf.GetAtomPosition(nbr_indices[0])
+    p2 = conf.GetAtomPosition(nbr_indices[1])
+    p3 = conf.GetAtomPosition(nbr_indices[2])
+    v1 = np.array([p1.x - p0.x, p1.y - p0.y, p1.z - p0.z], dtype=np.float64)
+    v2 = np.array([p2.x - p0.x, p2.y - p0.y, p2.z - p0.z], dtype=np.float64)
+    v3 = np.array([p3.x - p0.x, p3.y - p0.y, p3.z - p0.z], dtype=np.float64)
+    return float(np.dot(v1, np.cross(v2, v3)))
+
+
+def transfer_coordinates_to_template(
+    template_mol,
+    source_mol,
+    relax_missing_hydrogens: bool = False,
+):
+    """
+    Universal Single Source of Truth for Chemical Topology Restoration & Coordinate Transfer.
+    
+    Architectural Contract:
+    - Coordinates are taken strictly from source_mol (e.g. docked pose, MD frame).
+    - Physical topology (bond orders, formal charges, stereochemistry, valences) is taken
+      strictly and immutably from template_mol (canonical SubstanceState).
+    - Evaluates all topological symmetry automorphisms (handling 180 deg benzene ring flips,
+      carboxylate/phosphate oxygen permutations) to select the minimum in-situ heavy-atom RMSD.
+    - Validates tetrahedral stereocenter parity via signed chiral volume (Scalar Triple Product).
+      Fail-Fast: crashes immediately with fatal ValueError if chirality is inverted.
+    - If relax_missing_hydrogens is True (e.g. for GNINA united-atom poses lacking protons),
+      heavy atoms are held strictly rigid with infinite force constants (Fixed Points) while
+      newly constructed hydrogens are relaxed in the force field (MMFF94 / UFF).
+    """
+    from rdkit import Chem
+    from rdkit.Chem import AllChem
+    import numpy as np
+
+    if template_mol is None or source_mol is None:
+        raise ValueError("FATAL: transfer_coordinates_to_template received None for template or source molecule!")
+
+    tmpl = Chem.Mol(template_mol)
+    tmpl_conf = tmpl.GetConformer()
+    src_conf = source_mol.GetConformer()
+
+    tmpl_heavy = Chem.RemoveHs(tmpl, sanitize=False)
+    src_heavy = Chem.RemoveHs(source_mol, sanitize=False)
+
+    n_tmpl_heavy = tmpl_heavy.GetNumAtoms()
+    n_src_heavy = src_heavy.GetNumAtoms()
+
+    if n_tmpl_heavy != n_src_heavy:
+        raise ValueError(
+            f"FATAL: Heavy atom count mismatch during coordinate transfer! "
+            f"Template has {n_tmpl_heavy} heavy atoms, source has {n_src_heavy}."
+        )
+
+    # Element frequency verification
+    tmpl_elements = sorted([a.GetAtomicNum() for a in tmpl_heavy.GetAtoms()])
+    src_elements = sorted([a.GetAtomicNum() for a in src_heavy.GetAtoms()])
+    if tmpl_elements != src_elements:
+        raise ValueError(
+            f"FATAL: Chemical element composition mismatch between template and source molecule! "
+            f"Template: {tmpl_elements} vs Source: {src_elements}"
+        )
+
+    # Identify true tetrahedral chiral centers on the template
+    Chem.AssignStereochemistry(tmpl, force=True, cleanIt=True)
+    chiral_centers = []
+    tmpl_heavy_conf = tmpl_heavy.GetConformer()
+    for a in tmpl_heavy.GetAtoms():
+        orig_atom = tmpl.GetAtomWithIdx(a.GetIdx())
+        if orig_atom.GetChiralTag() in (Chem.ChiralType.CHI_TETRAHEDRAL_CW, Chem.ChiralType.CHI_TETRAHEDRAL_CCW):
+            nbrs = [nbr.GetIdx() for nbr in a.GetNeighbors()]
+            if len(nbrs) >= 3:
+                vol = signed_chiral_volume(tmpl_heavy_conf, a.GetIdx(), nbrs)
+                if abs(vol) > 0.05:
+                    chiral_centers.append((a.GetIdx(), nbrs, np.sign(vol)))
+
+    # Pure connectivity queries without bond orders to resolve Kekule and thermal bond strain issues
+    q_tmpl = Chem.Mol(tmpl_heavy)
+    q_src = Chem.Mol(src_heavy)
+    for q in (q_tmpl, q_src):
+        for b in q.GetBonds():
+            b.SetBondType(Chem.BondType.SINGLE)
+            b.SetIsAromatic(False)
+        for a in q.GetAtoms():
+            a.SetFormalCharge(0)
+            a.SetIsotope(0)
+
+    matches = q_src.GetSubstructMatches(q_tmpl, uniquify=False)
+    if not matches:
+        raise ValueError(
+            "FATAL: Topological graph isomorphism failed! "
+            "Source molecule connectivity does not match template graph."
+        )
+
+    src_heavy_conf = src_heavy.GetConformer()
+    best_match = None
+    best_sq_dist = float("inf")
+
+    # Evaluate all symmetry automorphisms and enforce strict chiral parity
+    for match in matches:
+        chiral_valid = True
+        for tmpl_center, tmpl_nbrs, expected_sign in chiral_centers:
+            src_center = match[tmpl_center]
+            src_nbrs = [match[n] for n in tmpl_nbrs]
+            src_vol = signed_chiral_volume(src_heavy_conf, src_center, src_nbrs)
+            if np.sign(src_vol) != expected_sign and abs(src_vol) > 0.05:
+                chiral_valid = False
+                break
+
+        if not chiral_valid:
+            continue
+
+        sq_dist = 0.0
+        for tmpl_idx, src_idx in enumerate(match):
+            p_t = tmpl_heavy_conf.GetAtomPosition(tmpl_idx)
+            p_s = src_heavy_conf.GetAtomPosition(src_idx)
+            sq_dist += (p_t.x - p_s.x) ** 2 + (p_t.y - p_s.y) ** 2 + (p_t.z - p_s.z) ** 2
+
+        if sq_dist < best_sq_dist:
+            best_sq_dist = sq_dist
+            best_match = match
+
+    # Fail-Fast: Zero tolerance for stereochemical inversion
+    if best_match is None:
+        raise ValueError(
+            "FATAL: Stereochemical parity check failed across all topological automorphisms! "
+            "Tetrahedral center inversion detected. Execution aborted by Fail-Fast law."
+        )
+
+    # Create destination molecule as pristine clone of canonical template
+    res_mol = Chem.Mol(tmpl)
+    res_conf = res_mol.GetConformer()
+
+    # Map heavy atom coordinates onto result conformer
+    for tmpl_heavy_idx, src_heavy_idx in enumerate(best_match):
+        orig_tmpl_idx = tmpl_heavy.GetAtomWithIdx(tmpl_heavy_idx).GetIdx()
+        orig_src_idx = src_heavy.GetAtomWithIdx(src_heavy_idx).GetIdx()
+        pos = src_conf.GetAtomPosition(orig_src_idx)
+        if abs(pos.x) < 1e-4 and abs(pos.y) < 1e-4 and abs(pos.z) < 1e-4:
+            raise ValueError(
+                f"FATAL: Degenerate coordinate (0, 0, 0) detected at atom index {orig_src_idx} during transfer!"
+            )
+        res_conf.SetAtomPosition(orig_tmpl_idx, pos)
+
+    # Reconstruct/relax missing hydrogens if requested (e.g. for GNINA united-atom poses)
+    if relax_missing_hydrogens and source_mol.GetNumAtoms() == n_src_heavy:
+        # Re-initialize hydrogen 3D positions based on updated heavy atoms
+        temp_h_mol = Chem.RemoveHs(res_mol)
+        temp_h_mol = Chem.AddHs(temp_h_mol, addCoords=True)
+
+        mp = AllChem.MMFFGetMoleculeProperties(temp_h_mol)
+        ff = AllChem.MMFFGetMoleculeForceField(temp_h_mol, mp) if mp else AllChem.UFFGetMoleculeForceField(temp_h_mol)
+        if not ff:
+            raise ValueError("FATAL: Could not build force field (MMFF/UFF) to relax missing hydrogens!")
+
+        # Hold all heavy atoms strictly rigid; relax only protons
+        for atom in temp_h_mol.GetAtoms():
+            if atom.GetAtomicNum() != 1:
+                ff.AddFixedPoint(atom.GetIdx())
+        ff.Minimize(maxIts=500)
+
+        temp_conf = temp_h_mol.GetConformer()
+        for atom in res_mol.GetAtoms():
+            if atom.GetAtomicNum() == 1:
+                h_pos = temp_conf.GetAtomPosition(atom.GetIdx())
+                res_conf.SetAtomPosition(atom.GetIdx(), h_pos)
+
+    # Validate that no atom in final molecule has degenerate coordinates
+    for i in range(res_mol.GetNumAtoms()):
+        p = res_conf.GetAtomPosition(i)
+        if abs(p.x) < 1e-4 and abs(p.y) < 1e-4 and abs(p.z) < 1e-4:
+            sym = res_mol.GetAtomWithIdx(i).GetSymbol()
+            raise ValueError(f"FATAL: Transferred molecule contains degenerate coordinate (0, 0, 0) at atom {sym}{i+1}!")
+
+    # Preserve essential metadata properties
+    for prop in source_mol.GetPropNames():
+        res_mol.SetProp(prop, source_mol.GetProp(prop))
+    if source_mol.HasProp("_Name"):
+        res_mol.SetProp("_Name", source_mol.GetProp("_Name"))
+
+    return res_mol
+
+
+def compute_symmetry_rmsd(template_mol, target_mol) -> float:
+    """
+    Computes exact in-situ heavy-atom RMSD across all symmetry automorphisms.
+    Single Source of Truth implementation matching transfer_coordinates_to_template.
+    """
+    from rdkit import Chem
+    import numpy as np
+
+    tmpl_heavy = Chem.RemoveHs(template_mol, sanitize=False)
+    target_heavy = Chem.RemoveHs(target_mol, sanitize=False)
+
+    n_atoms = tmpl_heavy.GetNumAtoms()
+    if n_atoms != target_heavy.GetNumAtoms():
+        raise ValueError(
+            f"FATAL: Atom count mismatch for RMSD: template has {n_atoms}, target has {target_heavy.GetNumAtoms()}"
+        )
+
+    q_tmpl = Chem.Mol(tmpl_heavy)
+    q_target = Chem.Mol(target_heavy)
+    for q in (q_tmpl, q_target):
+        for b in q.GetBonds():
+            b.SetBondType(Chem.BondType.SINGLE)
+            b.SetIsAromatic(False)
+        for a in q.GetAtoms():
+            a.SetFormalCharge(0)
+            a.SetIsotope(0)
+
+    matches = q_target.GetSubstructMatches(q_tmpl, uniquify=False)
+    if not matches:
+        raise ValueError("FATAL: Failed to obtain topological isomorphism matches for RMSD calculation!")
+
+    conf_tmpl = tmpl_heavy.GetConformer()
+    conf_target = target_heavy.GetConformer()
+    best_sq_dist = float("inf")
+
+    for match in matches:
+        sq_dist = 0.0
+        for tmpl_idx, target_idx in enumerate(match):
+            p_t = conf_tmpl.GetAtomPosition(tmpl_idx)
+            p_tgt = conf_target.GetAtomPosition(target_idx)
+            sq_dist += (p_t.x - p_tgt.x) ** 2 + (p_t.y - p_tgt.y) ** 2 + (p_t.z - p_tgt.z) ** 2
+
+        if sq_dist < best_sq_dist:
+            best_sq_dist = sq_dist
+
+    return float(np.sqrt(best_sq_dist / float(n_atoms)))

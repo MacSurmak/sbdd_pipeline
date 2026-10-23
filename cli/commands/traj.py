@@ -50,63 +50,6 @@ def assert_permanent_path(path: Path | str, context: str) -> Path:
     return p
 
 
-def _transfer_coordinates_to_template(
-    template_sdf: Path, raw_pose_sdf: Path, out_sdf: Path
-) -> None:
-    """
-    Transfers exact Cartesian coordinates from MD centroid structure onto the
-    canonical, validated chemical graph template of the parent SubstanceState.
-    Preserves 100% of the true bond orders, formal charges, stereochemistry,
-    and valences without any heuristic re-assignment or valence guessing.
-    """
-    from rdkit import Chem
-
-    suppl_tmpl = Chem.SDMolSupplier(str(template_sdf), removeHs=False, sanitize=False)
-    tmpl_mol = next((m for m in suppl_tmpl if m is not None), None)
-
-    suppl_raw = Chem.SDMolSupplier(str(raw_pose_sdf), removeHs=False, sanitize=False)
-    raw_mol = next((m for m in suppl_raw if m is not None), None)
-
-    if not tmpl_mol or not raw_mol:
-        raise ValueError(
-            f"FATAL: Could not parse chemical structure from template {template_sdf} or MD pose {raw_pose_sdf}"
-        )
-
-    n_tmpl = tmpl_mol.GetNumAtoms()
-    n_raw = raw_mol.GetNumAtoms()
-    if n_tmpl != n_raw:
-        raise ValueError(
-            f"FATAL: Atom count mismatch between template {template_sdf.name} ({n_tmpl} atoms) "
-            f"and MD centroid pose {raw_pose_sdf.name} ({n_raw} atoms)! Topology cannot be preserved."
-        )
-
-    for i in range(n_tmpl):
-        s_tmpl = tmpl_mol.GetAtomWithIdx(i).GetSymbol()
-        s_raw = raw_mol.GetAtomWithIdx(i).GetSymbol()
-        if s_tmpl != s_raw:
-            raise ValueError(
-                f"FATAL: Element mismatch at atom index {i}: template has {s_tmpl}, MD pose has {s_raw}!"
-            )
-
-    conf_tmpl = tmpl_mol.GetConformer()
-    conf_raw = raw_mol.GetConformer()
-    for i in range(n_tmpl):
-        conf_tmpl.SetAtomPosition(i, conf_raw.GetAtomPosition(i))
-
-    for i in range(n_tmpl):
-        pos = conf_tmpl.GetAtomPosition(i)
-        if abs(pos.x) < 1e-4 and abs(pos.y) < 1e-4 and abs(pos.z) < 1e-4:
-            raise ValueError(
-                f"FATAL: Atom {tmpl_mol.GetAtomWithIdx(i).GetSymbol()}{i+1} has degenerate coordinates (0, 0, 0)!"
-            )
-
-    tmpl_mol.SetProp("_Name", out_sdf.stem)
-    tmpl_mol.SetProp("s_m_title", out_sdf.stem)
-
-    with Chem.SDWriter(str(out_sdf)) as writer:
-        writer.write(tmpl_mol)
-
-
 def _query_trajectories(
     session,
     systems: list[str] | None = None,
