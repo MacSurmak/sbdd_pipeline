@@ -7,6 +7,8 @@ Enforces stream cleaning in worker scratch without raw file duplication on disk.
 import json
 import sys
 import shutil
+import re
+import subprocess
 from pathlib import Path
 import numpy as np
 import pandas as pd
@@ -31,6 +33,7 @@ from cli.core.config_loader import (
     load_project_configs,
     build_nextflow_args,
     validate_clustering_config,
+    validate_analysis_sampling_config,
 )
 
 console = Console()
@@ -863,7 +866,6 @@ def run_stratify(
     Projects independent MM-PBSA measurements Delta_G(t) onto conformational macro-basins C(t).
     Calculates basin free energy moments, overall Boltzmann aggregate, and updates SQLite 3NF.
     """
-    import subprocess
     cwd = Path.cwd()
     session = get_session()
 
