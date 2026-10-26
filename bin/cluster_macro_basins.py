@@ -93,6 +93,13 @@ def main():
     if algo == "hierarchical":
         from sklearn.cluster import AgglomerativeClustering
 
+        if n_frames > 15000:
+            raise ValueError(
+                f"FATAL: Hierarchical clustering requires evaluating a full pairwise distance matrix (N x N), "
+                f"which requires {((n_frames**2)*8)/1e9:.1f} GB RAM for {n_frames} frames! "
+                "Use algorithm='hdbscan' (density on 2D UMAP) or algorithm='auto_kmeans' for massive multi-replica ensembles."
+            )
+
         # Exact pairwise Cartesian RMSD in Ångströms
         dists = cdist(coords, coords, metric="euclidean") / np.sqrt(float(n_heavy_atoms))
         agg = AgglomerativeClustering(
@@ -137,7 +144,7 @@ def main():
         raw_unique_cids = [0]
         labels = np.zeros(n_frames, dtype=np.int32)
 
-    # First pass: identify initial medoids for genuine basins
+    # First pass: identify initial medoids for genuine basins in O(N) memory
     initial_stats = []
     for cid in raw_unique_cids:
         mask = (labels == cid)
@@ -147,27 +154,30 @@ def main():
         orig_indices = np.where(mask)[0]
         coords_sub = coords[mask]
 
-        dists_rmsd = cdist(coords_sub, coords_sub, metric="euclidean") / np.sqrt(float(n_heavy_atoms))
-        best_local_idx = np.argmin(np.sum(dists_rmsd, axis=1))
+        # In Kabsch-aligned Cartesian space, Fréchet centroid minimizes variance in O(N) memory:
+        mean_coords = np.mean(coords_sub, axis=0)
+        dists_to_mean = np.linalg.norm(coords_sub - mean_coords, axis=1) / np.sqrt(float(n_heavy_atoms))
+        best_local_idx = int(np.argmin(dists_to_mean))
         medoid_frame = int(orig_indices[best_local_idx])
-        spread = float(np.mean(dists_rmsd[best_local_idx]))
+        spread = float(np.mean(dists_to_mean))
         initial_stats.append({
             "cid": cid,
             "medoid_frame": medoid_frame,
             "spread": spread,
         })
 
-    # Zero Discard: Reassign noise frames (-1) to the nearest medoid by Cartesian heavy-atom RMSD
+    # Zero Discard: Vectorized reassignment of noise frames (-1) to the nearest medoid (O(N_noise * K) memory)
     noise_mask = (labels == -1)
     if np.any(noise_mask) and len(initial_stats) > 0:
         noise_indices = np.where(noise_mask)[0]
         medoid_frames = [s["medoid_frame"] for s in initial_stats]
         medoid_coords = coords[medoid_frames]
-        for n_idx in noise_indices:
-            pt = coords[n_idx : n_idx + 1]
-            dists_to_medoids = cdist(pt, medoid_coords, metric="euclidean")[0] / np.sqrt(float(n_heavy_atoms))
-            best_basin_idx = int(np.argmin(dists_to_medoids))
-            labels[n_idx] = initial_stats[best_basin_idx]["cid"]
+        noise_coords = coords[noise_indices]
+
+        dists_to_medoids = cdist(noise_coords, medoid_coords, metric="euclidean") / np.sqrt(float(n_heavy_atoms))
+        best_basin_indices = np.argmin(dists_to_medoids, axis=1)
+        for idx, n_idx in enumerate(noise_indices):
+            labels[n_idx] = initial_stats[best_basin_indices[idx]]["cid"]
 
     # Final pass: exact 100% population accounting across all non-noise basins
     cluster_stats = []
@@ -185,10 +195,11 @@ def main():
             rep_breakdown[r] = int(np.sum((reps_arr == r) & mask))
 
         coords_sub = coords[mask]
-        dists_rmsd = cdist(coords_sub, coords_sub, metric="euclidean") / np.sqrt(float(n_heavy_atoms))
-        best_local_idx = np.argmin(np.sum(dists_rmsd, axis=1))
+        mean_coords = np.mean(coords_sub, axis=0)
+        dists_to_mean = np.linalg.norm(coords_sub - mean_coords, axis=1) / np.sqrt(float(n_heavy_atoms))
+        best_local_idx = int(np.argmin(dists_to_mean))
         medoid_frame = int(orig_indices[best_local_idx])
-        spread = float(np.mean(dists_rmsd[best_local_idx]))
+        spread = float(np.mean(dists_to_mean))
 
         cluster_stats.append({
             "raw_cluster_id": int(cid),

@@ -6,7 +6,7 @@
 
 process CLUSTER_BASINS {
     tag "${meta.id}"
-    label 'process_single'
+    label 'process_medium'
 
     input:
     tuple val(meta), path(umap_2d), path(projections), path(aligned_coords), path(frame_time_map)
