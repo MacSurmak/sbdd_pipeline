@@ -293,6 +293,21 @@ def main():
     )
     add_common_wf_args(p_mmpbsa)
 
+    # 7.5 traj-stratify (Conformation-conditioned MM-PBSA energy stratification)
+    p_strat = subparsers.add_parser(
+        "traj-stratify",
+        help="Stratify independent MM-PBSA evaluations across conformational macro-basins and compute Boltzmann total",
+    )
+    p_strat.add_argument(
+        "--system", help="Physical system name to stratify (e.g. sys_RY12_clean_KVR)"
+    )
+    p_strat.add_argument(
+        "--clustering", help="Explicit name of the ClusteringRun to stratify against"
+    )
+    p_strat.add_argument(
+        "--temp-k", type=float, help="Simulation temperature in Kelvin (default from DB)"
+    )
+
     # 7. md-analyze
     p_mda = subparsers.add_parser(
         "md-analyze", help="Run trajectory PBC fix, metrics, and MM-PBSA"
@@ -667,6 +682,14 @@ def main():
             urgent=args.urgent,
             local=args.local,
             resume=not args.no_resume,
+        )
+    elif subcmd == "traj-stratify":
+        from cli.commands.traj import run_stratify
+
+        run_stratify(
+            system=args.system,
+            clustering=args.clustering,
+            temp_k=args.temp_k,
         )
     elif subcmd == "traj-metrics":
         from cli.commands.traj import run_metrics
