@@ -71,9 +71,11 @@ workflow ANALYZE_WF {
         CLUSTER_ENSEMBLE(
             ch_cluster_in,
             params.cluster_align_group ?: "Backbone",
-            params.cluster_feature_group ?: "Pocket",
-            params.cluster_dim_reduction ?: "pca",
+            params.cluster_feature_group ?: "Ligand",
+            params.cluster_dim_reduction ?: "tica",
             params.cluster_algorithm ?: "hdbscan",
+            params.cluster_start_ns ?: 1.0,
+            params.cluster_sample_interval_ps ?: 500.0,
             params.cluster_tica_lag_ns ?: 2.0,
             params.cluster_variance_cutoff ?: 0.85,
             params.cluster_pocket_radius ?: 5.0,

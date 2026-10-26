@@ -52,9 +52,11 @@ md_simulation:
     pol_cutoff: 3.4
   clustering:
     align_group: "Backbone"             # Basis group for coordinate superimposition (e.g. Backbone, C-alpha)
-    cluster_group: "Pocket"             # Feature group for manifold reduction (e.g. Pocket, Backbone, Ligand)
-    dim_reduction: "pca"                # Dimensionality reduction engine: pca or tica
+    cluster_group: "Ligand"             # Feature group for manifold reduction (e.g. Pocket, Backbone, Ligand, 'Pocket + Ligand')
+    dim_reduction: "tica"               # Dimensionality reduction engine: tica or pca
     algorithm: "hdbscan"                # Clustering algorithm: hdbscan (density), hierarchical (RMSD cutoff), auto_kmeans, kmeans
+    start_ns: 1.0                       # Start buffer identical to MM-PBSA (ns)
+    sample_interval_ps: 500.0           # Autocorrelation sampling stride identical to MM-PBSA (ps)
     rmsd_cutoff: 1.5                    # Heavy-atom RMSD distance threshold for hierarchical clustering (Å)
     tica_lag_ns: 2.0                    # Lag time for time-lagged cross-correlation in TICA (ns)
     variance_cutoff: 0.85               # Cumulative variance threshold for top-k component selection

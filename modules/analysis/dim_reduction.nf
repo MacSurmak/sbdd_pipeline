@@ -13,6 +13,8 @@ process TRAJ_DIM_REDUCTION {
     val(align_group)
     val(cluster_group)
     val(dim_reduction)
+    val(start_ns)
+    val(sample_interval_ps)
     val(tica_lag_ns)
     val(variance_cutoff)
     val(pocket_radius)
@@ -33,6 +35,8 @@ process TRAJ_DIM_REDUCTION {
         --align_group "${align_group}" \\
         --cluster_group "${cluster_group}" \\
         ${lig_arg} \\
+        --start_ns ${start_ns} \\
+        --sample_interval_ps ${sample_interval_ps} \\
         --pocket_radius ${pocket_radius} \\
         --dim_reduction ${dim_reduction} \\
         --tica_lag_ns ${tica_lag_ns} \\

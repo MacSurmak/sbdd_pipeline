@@ -81,8 +81,12 @@ def main():
                     "FATAL: Neither 'sklearn.cluster.HDBSCAN' nor 'hdbscan' module is available in environment!"
                 )
 
+        # True multidimensional phase space clustering: execute HDBSCAN on k-D TICA/PCA coordinates!
+        # UMAP 2D is reserved strictly as a visual canvas.
+        k_components = min(proj.shape[1], 6)
+        print(f"[CLUSTER_BASINS] HDBSCAN partitioning in {k_components}-dimensional TICA/PCA manifold...", flush=True)
         clusterer = HDBSCAN(min_cluster_size=min_size, min_samples=min_size, metric="euclidean")
-        labels = clusterer.fit_predict(umap_2d)
+        labels = clusterer.fit_predict(proj[:, :k_components])
 
         # Fallback if density was completely uniform and only noise was returned
         valid_cids = sorted([c for c in set(labels) if c >= 0])
@@ -113,26 +117,28 @@ def main():
     if algo == "auto_kmeans":
         from sklearn.metrics import silhouette_score
 
+        k_components = min(proj.shape[1], 6)
         max_k = min(8, max(2, n_frames // min_size))
         best_k = 2
         best_score = -1.0
 
         for k_cand in range(2, max_k + 1):
             km = KMeans(n_clusters=k_cand, n_init=10, random_state=42)
-            c_labels = km.fit_predict(umap_2d)
-            score = silhouette_score(umap_2d, c_labels)
+            c_labels = km.fit_predict(proj[:, :k_components])
+            score = silhouette_score(proj[:, :k_components], c_labels)
             if score > best_score:
                 best_score = score
                 best_k = k_cand
 
-        print(f"[CLUSTER_BASINS] Auto-K evaluated [2..{max_k}]: selected optimal K={best_k} (Silhouette={best_score:.3f})", flush=True)
+        print(f"[CLUSTER_BASINS] Auto-K evaluated [2..{max_k}]: selected optimal K={best_k} in {k_components}D TICA space (Silhouette={best_score:.3f})", flush=True)
         kmeans = KMeans(n_clusters=best_k, n_init=30, random_state=42)
-        labels = kmeans.fit_predict(umap_2d)
+        labels = kmeans.fit_predict(proj[:, :k_components])
 
     elif algo == "kmeans":
         k = max(1, min(args.n_clusters, n_frames))
+        k_components = min(proj.shape[1], 6)
         kmeans = KMeans(n_clusters=k, n_init=30, random_state=42)
-        labels = kmeans.fit_predict(umap_2d)
+        labels = kmeans.fit_predict(proj[:, :k_components])
 
     reps_list = [item["replicate"] for item in time_map]
     time_list = [item["time_ns"] for item in time_map]

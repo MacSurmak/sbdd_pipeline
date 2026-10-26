@@ -15,6 +15,8 @@ workflow CLUSTER_ENSEMBLE {
     cluster_group
     dim_reduction
     algorithm
+    start_ns
+    sample_interval_ps
     tica_lag_ns
     variance_cutoff
     pocket_radius
@@ -24,12 +26,14 @@ workflow CLUSTER_ENSEMBLE {
     temp_k
 
     main:
-    // 1. Heavy Stage: Stream trajectories and project onto PCA/TICA + UMAP
+    // 1. Unified Slicing Stage: Stream and downsample trajectories synchronized with MM-PBSA
     TRAJ_DIM_REDUCTION(
         ch_cluster_input,
         align_group,
         cluster_group,
         dim_reduction,
+        start_ns,
+        sample_interval_ps,
         tica_lag_ns,
         variance_cutoff,
         pocket_radius

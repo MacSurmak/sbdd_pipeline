@@ -240,6 +240,8 @@ def main():
     parser.add_argument("--ligand_resname", default="", help="Ligand residue name (if applicable)")
     parser.add_argument("--pocket_radius", type=float, required=True, help="Pocket radius (Å)")
     parser.add_argument("--dim_reduction", choices=["pca", "tica"], required=True)
+    parser.add_argument("--start_ns", type=float, default=1.0, help="Start buffer identical to MM-PBSA (ns)")
+    parser.add_argument("--sample_interval_ps", type=float, default=500.0, help="Sampling interval identical to MM-PBSA (ps)")
     parser.add_argument("--tica_lag_ns", type=float, required=True, help="Lag time for TICA (ns)")
     parser.add_argument("--variance_cutoff", type=float, required=True, help="Variance cutoff fraction")
     parser.add_argument("--outdir", required=True, help="Output directory")
@@ -312,17 +314,27 @@ def main():
 
     for xtc_p, rep_name in zip(clean_xtcs, clean_reps):
         u = mda.Universe(str(struct_p), str(xtc_p))
+        total_raw_frames = len(u.trajectory)
 
-        if len(u.trajectory) < 2:
+        if total_raw_frames < 2:
             raise ValueError(
                 f"FATAL: Trajectory {xtc_p.name} for replicate '{rep_name}' has fewer than 2 frames! File is corrupted."
             )
 
-        if dt_ps is None and len(u.trajectory) >= 2:
+        if dt_ps is None:
             dt_ps = float(u.trajectory[1].time - u.trajectory[0].time)
+            if dt_ps <= 0:
+                raise ValueError(f"FATAL: Non-physical trajectory timestamp interval: dt={dt_ps} ps!")
+
+        # Calculate exact start and stride frames matching MM-PBSA
+        start_frame = min(total_raw_frames, max(1, int(round(args.start_ns * 1000.0 / dt_ps)) + 1))
+        step_frames = max(1, int(round(args.sample_interval_ps / dt_ps)))
+
+        # Native MDAnalysis trajectory stream slicing without loading intermediate frames
+        trajectory_slice = u.trajectory[start_frame - 1 : : step_frames]
 
         rep_frames_coords = []
-        for ts in u.trajectory:
+        for ts in trajectory_slice:
             mob_align = u.atoms[align_indices].positions
             mob_align_com = mob_align.mean(axis=0)
             mob_align_centered = mob_align - mob_align_com
@@ -344,10 +356,17 @@ def main():
 
     all_coords_matrix = np.vstack(coords_by_rep)
     n_frames, n_features = all_coords_matrix.shape
-    print(f"[DIM_REDUCTION] Assembled matrix: {n_frames} frames × {n_features} features across {len(clean_reps)} replicates.", flush=True)
+    dt_effective_ps = float(args.sample_interval_ps)
+    dt_effective_ns = dt_effective_ps / 1000.0
 
-    dt_ns = (dt_ps / 1000.0) if dt_ps and dt_ps > 0 else 0.01
-    lag_steps = max(1, int(round(args.tica_lag_ns / dt_ns)))
+    print(
+        f"[DIM_REDUCTION] Unified sampling synchronized with MM-PBSA: start={args.start_ns} ns, "
+        f"interval={args.sample_interval_ps} ps.\n"
+        f"  - Assembled matrix: {n_frames} frames ({len(coords_by_rep[0])} frames/rep) × {n_features} features across {len(clean_reps)} replicates.",
+        flush=True,
+    )
+
+    lag_steps = max(1, int(round(args.tica_lag_ns / dt_effective_ns)))
 
     if args.dim_reduction == "pca":
         proj, var_exp, k = compute_pca(all_coords_matrix, args.variance_cutoff)
