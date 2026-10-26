@@ -355,7 +355,7 @@ def main():
     # 8. traj-cluster
     p_cluster = subparsers.add_parser(
         "traj-cluster",
-        help="Cluster clean MD trajectory ensembles using PCA/TICA + UMAP macro-basins and register centroids in 3NF DB",
+        help="Cluster clean MD trajectory ensembles using PCA/TICA + UMAP macro-basins (Preview by default)",
     )
     p_cluster.add_argument(
         "--systems",
@@ -376,7 +376,7 @@ def main():
         "--cluster-group",
         "--group",
         dest="cluster_group",
-        help="Feature group for manifold reduction (default from md.yaml, e.g. Pocket, Backbone, Ligand)",
+        help="Feature group for manifold reduction (e.g. Pocket, Backbone, Ligand, 'Pocket + Ligand')",
     )
     p_cluster.add_argument(
         "--dim-reduction",
@@ -384,22 +384,46 @@ def main():
         help="Dimensionality reduction engine: pca or tica (default from md.yaml)",
     )
     p_cluster.add_argument(
+        "--algorithm",
+        choices=["hdbscan", "hierarchical", "auto_kmeans", "kmeans"],
+        help="Clustering algorithm (default from md.yaml: hdbscan)",
+    )
+    p_cluster.add_argument(
+        "--rmsd-cutoff",
+        type=float,
+        help="Heavy-atom RMSD distance threshold in Å for hierarchical clustering (default: 1.5)",
+    )
+    p_cluster.add_argument(
         "--n-clusters",
         "-k",
         type=int,
-        help="Number of physical macro-basins to partition (default from md.yaml)",
+        help="Number of physical macro-basins to partition (strictly for kmeans)",
     )
     p_cluster.add_argument(
         "--min-population",
         type=float,
-        help="Population threshold (%) for automated CLI recommendation (default from md.yaml)",
+        help="Population threshold (%) for automated basin recommendation (default: 5.0)",
+    )
+    p_cluster.add_argument(
+        "--name",
+        help="Explicit identifier for the ClusteringRun record in database",
+    )
+    p_cluster.add_argument(
+        "--save",
+        action="store_true",
+        help="Commit analytical clustering run and frame labeling into SQLite 3NF",
+    )
+    p_cluster.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Cleanly overwrite an existing ClusteringRun of the same name in database",
     )
     p_cluster.add_argument(
         "--auto",
         "--yes",
         dest="auto",
         action="store_true",
-        help="Headless non-interactive execution: automatically promote recommended clusters into DB",
+        help="Headless non-interactive execution: automatically save clustering run into DB",
     )
     p_cluster.add_argument(
         "--force",
@@ -408,13 +432,17 @@ def main():
     )
     add_common_wf_args(p_cluster)
 
-    # 8.1 traj-cluster-promote (Dedicated, non-blocking cluster promotion command)
-    p_promote = subparsers.add_parser(
-        "traj-cluster-promote",
-        help="Promote specific cluster centroids from an existing manifest into SQLite 3NF without re-running MDAnalysis",
+    # 8.1 traj-extract-medoids (On-demand extraction of 3D receptor structures for docking)
+    p_extract = subparsers.add_parser(
+        "traj-extract-medoids",
+        help="Extract 3D physical medoid receptor structures from a saved ClusteringRun for ensemble docking",
     )
-    p_promote.add_argument("--manifest", required=True, help="Path to clusters_manifest.json")
-    p_promote.add_argument("--ranks", required=True, help="Comma-separated ranks to promote (e.g. 1, 3)")
+    p_extract.add_argument(
+        "--clustering", required=True, help="Name of the ClusteringRun in database"
+    )
+    p_extract.add_argument(
+        "--ranks", help="Comma-separated ranks to extract as ReceptorFrames (default: all)"
+    )
 
     # 9. clean
     p_clean = subparsers.add_parser(
@@ -677,20 +705,25 @@ def main():
             align_group=args.align_group,
             cluster_group=args.cluster_group,
             dim_reduction=args.dim_reduction,
+            algorithm=args.algorithm,
             n_clusters=args.n_clusters,
+            rmsd_cutoff=args.rmsd_cutoff,
             min_population=args.min_population,
+            name=args.name,
+            save=args.save,
+            overwrite=args.overwrite,
             auto=args.auto,
             force=args.force,
             urgent=args.urgent,
             local=args.local,
             resume=not args.no_resume,
         )
-    elif subcmd == "traj-cluster-promote":
-        from cli.commands.traj import run_cluster_promote
+    elif subcmd == "traj-extract-medoids":
+        from cli.commands.traj import run_extract_medoids
 
-        run_cluster_promote(
-            manifest_path=args.manifest,
-            ranks=[int(x.strip().replace("#", "")) for x in args.ranks.split(",") if x.strip()],
+        run_extract_medoids(
+            clustering=args.clustering,
+            ranks=args.ranks,
         )
     elif subcmd in ["watch", "progress", "top"]:
         from cli.core.monitor import run_monitor
