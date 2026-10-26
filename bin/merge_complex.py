@@ -8,6 +8,13 @@ import argparse
 import sys
 from pathlib import Path
 
+# Add project root to sys.path for canonical chem imports
+FRAMEWORK_DIR = Path(__file__).resolve().parent.parent
+if str(FRAMEWORK_DIR) not in sys.path:
+    sys.path.insert(0, str(FRAMEWORK_DIR))
+
+from cli.core.chem import transfer_coordinates_to_template
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -23,6 +30,11 @@ def main():
         "--lig_resname",
         default=None,
         help="Strict PDB residue name for ligand (strictly for holo systems)",
+    )
+    parser.add_argument(
+        "--lig_template",
+        default=None,
+        help="Canonical SubstanceState template SDF for active ligand",
     )
     parser.add_argument(
         "--ion_sdfs",
@@ -47,6 +59,12 @@ def main():
         nargs="*",
         default=[],
         help="Residue names corresponding to cofactor SDFs",
+    )
+    parser.add_argument(
+        "--cofactor_templates",
+        nargs="*",
+        default=[],
+        help="Canonical SubstanceState template SDFs for cofactors",
     )
     parser.add_argument("--out_pdb", required=True, help="Output complex PDB")
     args = parser.parse_args()
@@ -134,7 +152,12 @@ def main():
     from rdkit import Chem
 
     # 2. Helper to append small molecule residues with unique chains and TER cards
-    def _append_small_molecule(sdf_path_str: str, resname: str, is_ion: bool = False):
+    def _append_small_molecule(
+        sdf_path_str: str,
+        resname: str,
+        is_ion: bool = False,
+        template_sdf_str: str = None,
+    ):
         nonlocal max_res_seq
         p_sdf = Path(sdf_path_str)
         if not p_sdf.exists() or p_sdf.stat().st_size == 0:
@@ -167,7 +190,6 @@ def main():
             res_code = f"{res_code:<3s}"
 
         if is_ion:
-            # Deterministic, non-heuristic branch: entity is strictly an ion from SSOT DB
             if mol.GetNumAtoms() != 1:
                 print(
                     f"FATAL: Ion entity '{resname}' in {p_sdf.name} contains {mol.GetNumAtoms()} atoms! "
@@ -180,7 +202,6 @@ def main():
             pos = conf.GetAtomPosition(0)
             elem = mol.GetAtomWithIdx(0).GetSymbol().upper()
             clean_atom = res_code.strip()
-            # Standard PDB column 13-16 alignment strictly matching user-declared ion name
             formatted_atom = (
                 f" {clean_atom:<3s}" if len(clean_atom) < 4 else f"{clean_atom:<4s}"
             )
@@ -190,7 +211,18 @@ def main():
             )
             out_lines.append(new_line)
         else:
-            # Organic ligand or cofactor: preserve RDKit atom names matching Antechamber GAFF2 mol2
+            # Deterministic Topology Isomorphism: transfer coordinates onto canonical template
+            if template_sdf_str and Path(template_sdf_str).exists():
+                tmpl_suppl = Chem.SDMolSupplier(template_sdf_str, removeHs=False, sanitize=False)
+                tmpl_mol = next((m for m in tmpl_suppl if m is not None), None)
+                if not tmpl_mol:
+                    raise ValueError(f"FATAL: Could not read template molecule from {template_sdf_str}")
+                mol = transfer_coordinates_to_template(
+                    template_mol=tmpl_mol,
+                    source_mol=mol,
+                    relax_missing_hydrogens=False,
+                )
+
             pdb_block = Chem.MolToPDBBlock(mol)
             for line in pdb_block.splitlines():
                 if line.startswith(("ATOM", "HETATM")):
@@ -201,17 +233,29 @@ def main():
 
         out_lines.append("TER")
 
-    # Append active ligand if present (strictly organic)
+    # Append active ligand if present
     if args.lig_sdf:
-        _append_small_molecule(args.lig_sdf, args.lig_resname, is_ion=False)
+        _append_small_molecule(
+            args.lig_sdf,
+            args.lig_resname,
+            is_ion=False,
+            template_sdf_str=args.lig_template,
+        )
 
-    # Append ions (strictly typed from DB SSOT)
+    # Append ions
     for i_sdf, i_res in zip(args.ion_sdfs, args.ion_resnames):
         _append_small_molecule(i_sdf, i_res, is_ion=True)
 
-    # Append organic cofactors (strictly typed from DB SSOT)
-    for c_sdf, c_res in zip(args.cofactor_sdfs, args.cofactor_resnames):
-        _append_small_molecule(c_sdf, c_res, is_ion=False)
+    # Append organic cofactors
+    cof_tmpls = args.cofactor_templates or []
+    for idx, (c_sdf, c_res) in enumerate(zip(args.cofactor_sdfs, args.cofactor_resnames)):
+        c_tmpl = cof_tmpls[idx] if idx < len(cof_tmpls) else None
+        _append_small_molecule(
+            c_sdf,
+            c_res,
+            is_ion=False,
+            template_sdf_str=c_tmpl,
+        )
 
     out_lines.extend(topology_lines)
     out_lines.append("END")

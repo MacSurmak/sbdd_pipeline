@@ -42,8 +42,8 @@ workflow SETUP_MD_SYSTEM {
 
     main:
     // 1. Clean merge of standardized apo protein with strictly typed ligands, ions, and cofactors
-    ch_merge_in = ch_targets.map { meta, rec_pdb, lig_sdf, ion_sdfs, cofactor_sdfs, mol2s, frcmods ->
-        [ meta, rec_pdb, lig_sdf, ion_sdfs, cofactor_sdfs ]
+    ch_merge_in = ch_targets.map { meta, rec_pdb, lig_sdf, ion_sdfs, cofactor_sdfs, mol2s, frcmods, lig_tmpl, cof_tmpls ->
+        [ meta, rec_pdb, lig_sdf, ion_sdfs, cofactor_sdfs, lig_tmpl, cof_tmpls ]
     }
 
     MERGE_PDB(ch_merge_in)

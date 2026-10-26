@@ -21,6 +21,7 @@ process PUBLISH_MD_SYSTEM {
     cp -L "${top}" "${meta.id}_topol.top"
     cp -L "${ndx}" "${meta.id}_index.ndx"
     cp -L "${dry_prmtop}" "${meta.id}_complex_dry.prmtop"
+    python3 -c "import parmed as pmd; s = pmd.load_file('${dry_prmtop}'); s.save('${meta.id}_complex_dry.top', format='gromacs', overwrite=True)"
     """
 }
 
@@ -40,12 +41,14 @@ workflow MD_SETUP_WF {
         ]
         def rec_pdb = file(target.rec_pdb).toAbsolutePath()
         def lig_sdf = target.lig_sdf ? file(target.lig_sdf).toAbsolutePath() : []
+        def lig_tmpl = target.lig_template_sdf ? file(target.lig_template_sdf).toAbsolutePath() : []
         def ion_sdfs = target.ion_sdfs ? target.ion_sdfs.collect { file(it).toAbsolutePath() } : []
         def cofactor_sdfs = target.cofactor_sdfs ? target.cofactor_sdfs.collect { file(it).toAbsolutePath() } : []
+        def cofactor_tmpls = target.cofactor_template_sdfs ? target.cofactor_template_sdfs.collect { file(it).toAbsolutePath() } : []
         def mol2s = target.mol2_paths.collect { file(it).toAbsolutePath() }
         def frcmods = target.frcmod_paths.collect { file(it).toAbsolutePath() }
 
-        [ meta, rec_pdb, lig_sdf, ion_sdfs, cofactor_sdfs, mol2s, frcmods ]
+        [ meta, rec_pdb, lig_sdf, ion_sdfs, cofactor_sdfs, mol2s, frcmods, lig_tmpl, cofactor_tmpls ]
     }
 
     SETUP_MD_SYSTEM(
@@ -79,9 +82,9 @@ workflow MD_SETUP_WF {
 
     PUBLISH_MD_SYSTEM(SETUP_MD_SYSTEM.out.system_ready)
 
-    PUBLISH_MD_SYSTEM.out.map { meta, gro, top, ndx, posre, dry_prmtop ->
+    PUBLISH_MD_SYSTEM.out.map { meta, gro, top, ndx, posre, dry_prmtop, dry_top ->
         def sys_dir = file("${params.outdir}/systems/${meta.id}/md_topology").toAbsolutePath()
         def posre_list = posre instanceof List ? posre.collect { "${sys_dir}/${it.name}" }.join(',') : "${sys_dir}/${posre.name}"
-        "${meta.id}\t${sys_dir}/${gro.name}\t${sys_dir}/${top.name}\t${sys_dir}/${ndx.name}\t${posre_list}\t${sys_dir}/${dry_prmtop.name}\n"
+        "${meta.id}\t${sys_dir}/${gro.name}\t${sys_dir}/${top.name}\t${sys_dir}/${ndx.name}\t${posre_list}\t${sys_dir}/${dry_top.name}\n"
     }.collectFile(name: 'md_setup_receipt.tsv', storeDir: params.outdir)
 }
