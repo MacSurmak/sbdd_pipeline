@@ -2,7 +2,14 @@ mmpbsa:
   enabled: true
   start_ns: 1.0                      # Initial solvent relaxation buffer before sampling (ns)
   sample_interval_ps: 500.0          # Statistical independence interval based on autocorrelation time (ps)
-  per_residue_decomp: true           # Enable per-residue binding energy decomposition
+  per_residue_decomp: false          # Enable per-residue binding energy decomposition
   temperature: 310.15
   salt_conc: 0.15
+  method: "auto"                     # Options: auto (PB for membrane, GB for water), gb, or pb
+  solvation:
+    gb_model: 2                      # 2 = Onufriev-Bashford-Case (OBC2)
+    pb_fillratio: 1.25               # Finite-difference grid scaling factor
+    pb_radii: "mbondi3"              # Continuum atomic radii set
+    emem: 7.0                        # Membrane core dielectric constant
+    indi: 4.0                        # Solute internal dielectric constant
 

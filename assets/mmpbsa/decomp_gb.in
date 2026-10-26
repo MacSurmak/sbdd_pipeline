@@ -1,0 +1,14 @@
+&general
+sys_name = "{SYS_NAME}",
+startframe = {START_FRAME},
+interval = {STEP_FRAMES},
+temperature = {TEMP}
+/
+&gb
+igb = {IGB},
+saltcon = {SALT_CONC}
+/
+&decomp
+idecomp = {IDECOMP},
+dec_verbose = 0
+/

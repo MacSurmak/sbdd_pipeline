@@ -1128,10 +1128,68 @@ def run_mmpbsa(
         "md-analyze", nf_args, cwd, profile=profile_name, resume=resume, configs=configs
     )
     if ret_code != 0:
+        session.close()
         console.print("[bold red]Nextflow MM-PBSA failed.[/bold red]")
         sys.exit(ret_code)
 
-    console.print(
-        "\n[bold green]✓ MM-PBSA calculations completed successfully![/bold green]"
-    )
+    # Synchronize and register clean DELTA free energies into SQLite 3NF
+    reports_dir = cwd / "reports" / "mmpbsa"
+    import pandas as pd
+    from cli.core.db import MmpbsaRun
+
+    registered_runs = 0
+    for item in plan_list:
+        sys_name = item["rec_id"]
+        sys_obj = session.query(System).filter_by(name=sys_name).first()
+        if not sys_obj:
+            continue
+
+        sys_reps = sorted([d for d in reports_dir.glob("*") if sys_name in d.name and d.is_dir()])
+        all_frames_dg = []
+        rep_means = []
+
+        for r_dir in sys_reps:
+            csv_f = r_dir / "thermodynamics_mmpbsa_pb.csv"
+            if not csv_f.exists() or csv_f.stat().st_size == 0:
+                continue
+            try:
+                df = pd.read_csv(csv_f)
+                target_col = next((c for c in df.columns if "TOTAL" in c.upper()), df.columns[-1])
+                vals = pd.to_numeric(df[target_col], errors="coerce").dropna().values
+                if len(vals) > 0:
+                    rep_means.append(float(np.mean(vals)))
+                    all_frames_dg.extend(vals)
+            except Exception:
+                continue
+
+        if rep_means:
+            sys_mean = float(np.mean(all_frames_dg))
+            sys_sem = float(np.std(rep_means) / np.sqrt(len(rep_means)))
+            consolidated_csv = reports_dir / f"{sys_name}_consolidated_mmpbsa.csv"
+            pd.DataFrame({"Delta_G": all_frames_dg}).to_csv(consolidated_csv, index=False)
+
+            ex_run = session.query(MmpbsaRun).filter_by(system_id=sys_obj.id).first()
+            if not ex_run:
+                m_run = MmpbsaRun(
+                    system_id=sys_obj.id,
+                    start_ns=float(configs.get("mmpbsa", {}).get("start_ns", 1.0)),
+                    sample_interval_ps=float(configs.get("mmpbsa", {}).get("sample_interval_ps", 500.0)),
+                    temperature=float(configs.get("mmpbsa", {}).get("temperature", 310.15)),
+                    salt_conc=float(configs.get("mmpbsa", {}).get("salt_conc", 0.15)),
+                    path_csv=str(consolidated_csv.resolve()),
+                    delta_g_overall_mean=round(sys_mean, 3),
+                    delta_g_overall_sem=round(sys_sem, 3),
+                )
+                session.add(m_run)
+            else:
+                ex_run.delta_g_overall_mean = round(sys_mean, 3)
+                ex_run.delta_g_overall_sem = round(sys_sem, 3)
+                ex_run.path_csv = str(consolidated_csv.resolve())
+            registered_runs += 1
+
+    session.commit()
     session.close()
+
+    console.print(
+        f"\n[bold green]✓ MM-PBSA calculations completed! Registered thermodynamic profiles for {registered_runs} System(s) in SQLite 3NF.[/bold green]"
+    )

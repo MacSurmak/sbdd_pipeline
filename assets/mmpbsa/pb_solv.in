@@ -1,0 +1,18 @@
+&general
+sys_name = "{SYS_NAME}",
+startframe = {START_FRAME},
+interval = {STEP_FRAMES},
+temperature = {TEMP}
+/
+&pb
+memopt = 0,
+indi = {INDI},
+istrng = {SALT_CONC},
+radiopt = 0,
+fillratio = {FILL_RATIO},
+ipb = {IPB},
+inp = {INP},
+bcopt = 10,
+cutfd = 7.0,
+cutnb = 99.0
+/

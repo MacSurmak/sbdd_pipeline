@@ -423,6 +423,11 @@ def _build_analyze_args(config: Dict[str, Any]) -> list:
             "--mmpbsa_start_ns", str(val_mmpbsa["start_ns"]),
             "--mmpbsa_sample_interval_ps", str(val_mmpbsa["sample_interval_ps"]),
             "--per_residue_decomp", "true" if val_mmpbsa["per_residue_decomp"] else "false",
+            "--mmpbsa_method", str(val_mmpbsa["method"]),
+            "--mmpbsa_gb_model", str(val_mmpbsa["gb_model"]),
+            "--mmpbsa_emem", str(val_mmpbsa["emem"]),
+            "--mmpbsa_indi", str(val_mmpbsa["indi"]),
+            "--mmpbsa_fillratio", str(val_mmpbsa["pb_fillratio"]),
         ])
 
     prod = md_cfg.get("production", {})
@@ -477,6 +482,16 @@ def validate_mmpbsa_config(config: Dict[str, Any]) -> Dict[str, Any]:
 
     if float(mmpbsa_cfg["temperature"]) <= 0.0:
         raise ValueError(f"FATAL: 'temperature' must be positive Kelvin, got: {mmpbsa_cfg['temperature']}")
+
+    method = str(mmpbsa_cfg.get("method", "auto")).strip().lower()
+    if method not in ["auto", "gb", "pb"]:
+        raise ValueError(f"FATAL: Invalid mmpbsa.method: '{method}'. Must be 'auto', 'gb', or 'pb'.")
+
+    solv = mmpbsa_cfg.get("solvation", {})
+    mmpbsa_cfg["gb_model"] = int(solv.get("gb_model", 2))
+    mmpbsa_cfg["pb_fillratio"] = float(solv.get("pb_fillratio", 1.25))
+    mmpbsa_cfg["emem"] = float(solv.get("emem", 7.0))
+    mmpbsa_cfg["indi"] = float(solv.get("indi", 4.0))
 
     return mmpbsa_cfg
 

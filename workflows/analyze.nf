@@ -129,15 +129,23 @@ workflow ANALYZE_WF {
             [ meta, file(item.clean_xtc), file(item.ref_pdb), file(item.dry_prmtop), file(item.clean_ndx) ]
         }
 
+        ch_templates = file(params.mmpbsa_templates)
+
         GMX_MMPBSA(
             ch_mmpbsa_in,
+            ch_templates,
             params.mmpbsa_start_ns,
             params.mmpbsa_sample_interval_ps,
             params.md_temperature,
             params.md_salt_conc,
             params.membrane,
             params.membrane_thickness,
-            params.per_residue_decomp
+            params.per_residue_decomp,
+            params.mmpbsa_method ?: "auto",
+            params.mmpbsa_gb_model ?: 2,
+            params.mmpbsa_emem ?: 7.0,
+            params.mmpbsa_indi ?: 4.0,
+            params.mmpbsa_fillratio ?: 1.25
         )
         return
     }

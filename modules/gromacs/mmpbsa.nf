@@ -10,6 +10,7 @@ process GMX_MMPBSA {
 
     input:
     tuple val(meta), path(clean_xtc), path(ref_pdb), path(topol_top), path(index_ndx)
+    path(templates_dir)
     val(start_ns)
     val(sample_interval_ps)
     val(temp)
@@ -17,6 +18,11 @@ process GMX_MMPBSA {
     val(is_membrane)
     val(membrane_thickness)
     val(decomp)
+    val(method)
+    val(gb_model)
+    val(emem)
+    val(indi)
+    val(fillratio)
 
     output:
     tuple val(meta), path("thermodynamics_mmpbsa_pb.csv"), path("thermodynamics_mmpbsa_pb.dat"), emit: pb_results
@@ -32,10 +38,16 @@ process GMX_MMPBSA {
         --topol ${topol_top} \\
         --ndx ${index_ndx} \\
         --ligand "${meta.ligand}" \\
+        --templates_dir "${templates_dir}" \\
         --start_ns ${start_ns} \\
         --sample_interval_ps ${sample_interval_ps} \\
         --temp ${temp} \\
         --salt_conc ${salt_conc} \\
+        --method "${method}" \\
+        --gb_model ${gb_model} \\
+        --emem ${emem} \\
+        --indi ${indi} \\
+        --fillratio ${fillratio} \\
         --cpus ${task.cpus} \\
         ${mem_arg} \\
         ${dec_arg}

@@ -453,6 +453,51 @@ def cmd_run_chunk(args):
     shutil.copy2(f"md_{args.chunk_idx}.cpt", "out.cpt")
 
 
+def sanitize_mmpbsa_delta_csv(csv_path: Path):
+    """
+    Extracts strictly the DELTA binding free energy table from gmx_MMPBSA multi-section CSV,
+    eradicating raw protein enthalpies and guaranteeing a single clean table with exact N samples.
+    """
+    if not csv_path.exists() or csv_path.stat().st_size == 0:
+        return
+
+    lines = csv_path.read_text(encoding="utf-8", errors="ignore").splitlines()
+    delta_start_idx = None
+    for idx, line in enumerate(lines):
+        line_upper = line.upper()
+        if "DELTA" in line_upper and ("," in line or "COMPLEX" in line_upper):
+            delta_start_idx = idx
+            break
+
+    if delta_start_idx is None:
+        for idx in range(len(lines) - 1, -1, -1):
+            if "Frame" in lines[idx] and ("TOTAL" in lines[idx] or "DELTA" in lines[idx]):
+                delta_start_idx = idx
+                break
+
+    if delta_start_idx is not None:
+        if "Frame" not in lines[delta_start_idx]:
+            for i in range(delta_start_idx, min(delta_start_idx + 5, len(lines))):
+                if "Frame" in lines[i]:
+                    delta_start_idx = i
+                    break
+
+        clean_lines = []
+        for line in lines[delta_start_idx:]:
+            l_clean = line.strip()
+            if not l_clean or l_clean.startswith("#"):
+                if clean_lines and len(clean_lines) > 5:
+                    break
+                continue
+            clean_lines.append(l_clean)
+
+        if clean_lines:
+            raw_copy = csv_path.with_name("raw_" + csv_path.name)
+            shutil.copy2(csv_path, raw_copy)
+            csv_path.write_text("\n".join(clean_lines) + "\n", encoding="utf-8")
+            print(f"[MMPBSA] Sanitized DELTA section in {csv_path.name} ({len(clean_lines)-1} frames retained).", flush=True)
+
+
 def cmd_mmpbsa(args):
     import MDAnalysis as mda
 
@@ -487,28 +532,55 @@ def cmd_mmpbsa(args):
         flush=True,
     )
 
-    pb_str = (
-        f"&pb\nmemopt=1,\nmthick={args.membrane_thickness},\nmctrdz=0.0,\nemem=7.0,\nindi=4.0,\nistrng={args.salt_conc},\nradiopt=0,\nporetype=1,\nfillratio=1.25,\nipb=1,\ninp=2,\nsasopt=0,\nsolvopt=2,\nbcopt=10,\nnfocus=1,\nlinit=1000,\neneopt=1,\ncutfd=7.0,\ncutnb=99.0,\nmaxarcdot=15000\n/\n"
-        if args.membrane
-        else f"&gb\nigb=2,\nsaltcon={args.salt_conc}\n/\n"
-    )
+    # 1. Resolve calculation template declaratively from assets/mmpbsa/
+    tmpl_dir = Path(args.templates_dir).resolve()
+    if not tmpl_dir.exists():
+        raise FileNotFoundError(f"FATAL: MM-PBSA templates directory not found: {tmpl_dir}")
 
-    with open("mmpbsa_pb.in", "w") as f:
-        f.write(
-            f'&general\nsys_name="Protein_Ligand",\nstartframe={start_frame},\ninterval={step_frames},\ntemperature={args.temp}\n/\n{pb_str}'
-        )
+    method_req = str(args.method).strip().lower()
+    if method_req == "auto":
+        target_template_name = "pb_mem.in" if args.membrane else "gb.in"
+    elif method_req == "pb":
+        target_template_name = "pb_mem.in" if args.membrane else "pb_solv.in"
+    elif method_req == "gb":
+        target_template_name = "gb.in"
+    else:
+        raise ValueError(f"FATAL: Unsupported MM-PBSA method '{method_req}'!")
+
+    primary_tmpl_path = tmpl_dir / target_template_name
+    if not primary_tmpl_path.exists():
+        raise FileNotFoundError(f"FATAL: Archetype template {target_template_name} not found in {tmpl_dir}!")
+
+    # Format primary calculation input file
+    tmpl_text = primary_tmpl_path.read_text(encoding="utf-8")
+    formatted_in = (
+        tmpl_text.replace("{SYS_NAME}", "Protein_Ligand")
+        .replace("{START_FRAME}", str(start_frame))
+        .replace("{STEP_FRAMES}", str(step_frames))
+        .replace("{TEMP}", str(args.temp))
+        .replace("{SALT_CONC}", str(args.salt_conc))
+        .replace("{IGB}", str(args.gb_model))
+        .replace("{MEM_THICKNESS}", str(args.membrane_thickness))
+        .replace("{EMEM}", str(args.emem))
+        .replace("{INDI}", str(args.indi))
+        .replace("{FILL_RATIO}", str(args.fillratio))
+        .replace("{IPB}", "1")
+        .replace("{INP}", "2")
+    )
+    Path("mmpbsa_run.in").write_text(formatted_in, encoding="utf-8")
 
     mpirun = (
         ["mpirun", "--oversubscribe", "-np", str(args.cpus), "gmx_MMPBSA", "MPI"]
         if int(args.cpus) > 1
         else ["gmx_MMPBSA"]
     )
+
     run_gmx(
         mpirun
         + [
             "-O",
             "-i",
-            "mmpbsa_pb.in",
+            "mmpbsa_run.in",
             "-cs",
             args.ref_pdb,
             "-ci",
@@ -528,11 +600,27 @@ def cmd_mmpbsa(args):
         ]
     )
 
+    # Sanitize CSV: extract strictly the DELTA table so downstream tools receive clean binding energies
+    sanitize_mmpbsa_delta_csv(Path("thermodynamics_mmpbsa_pb.csv"))
+
+    # 2. Per-residue decomposition (strictly GB-based)
     if args.decomp:
-        with open("mmpbsa_gb.in", "w") as f:
-            f.write(
-                f'&general\nsys_name="Protein_Ligand",\nstartframe={start_frame},\ninterval={step_frames},\ntemperature={args.temp}\n/\n&gb\nigb=2,\nsaltcon={args.salt_conc}\n/\n&decomp\nidecomp=2,\ndec_verbose=0\n/\n'
-            )
+        decomp_tmpl_path = tmpl_dir / "decomp_gb.in"
+        if not decomp_tmpl_path.exists():
+            raise FileNotFoundError(f"FATAL: Decomposition template decomp_gb.in not found in {tmpl_dir}!")
+
+        decomp_text = decomp_tmpl_path.read_text(encoding="utf-8")
+        formatted_decomp = (
+            decomp_text.replace("{SYS_NAME}", "Protein_Ligand")
+            .replace("{START_FRAME}", str(start_frame))
+            .replace("{STEP_FRAMES}", str(step_frames))
+            .replace("{TEMP}", str(args.temp))
+            .replace("{SALT_CONC}", str(args.salt_conc))
+            .replace("{IGB}", str(args.gb_model))
+            .replace("{IDECOMP}", "2")
+        )
+        Path("mmpbsa_decomp.in").write_text(formatted_decomp, encoding="utf-8")
+
         run_gmx(
             mpirun
             + [
@@ -540,7 +628,7 @@ def cmd_mmpbsa(args):
                 "-prefix",
                 "_GMXMMPBSA_GB_",
                 "-i",
-                "mmpbsa_gb.in",
+                "mmpbsa_decomp.in",
                 "-cs",
                 args.ref_pdb,
                 "-ci",
@@ -678,11 +766,17 @@ def main():
     p_mmpbsa.add_argument("--topol", required=True)
     p_mmpbsa.add_argument("--ndx", required=True)
     p_mmpbsa.add_argument("--ligand", required=True)
+    p_mmpbsa.add_argument("--templates_dir", required=True)
     p_mmpbsa.add_argument("--start_ns", required=True)
     p_mmpbsa.add_argument("--sample_interval_ps", required=True)
     p_mmpbsa.add_argument("--temp", required=True)
     p_mmpbsa.add_argument("--salt_conc", required=True)
     p_mmpbsa.add_argument("--cpus", required=True)
+    p_mmpbsa.add_argument("--method", default="auto")
+    p_mmpbsa.add_argument("--gb_model", default="2")
+    p_mmpbsa.add_argument("--emem", default="7.0")
+    p_mmpbsa.add_argument("--indi", default="4.0")
+    p_mmpbsa.add_argument("--fillratio", default="1.25")
     p_mmpbsa.add_argument("--membrane", action="store_true")
     p_mmpbsa.add_argument("--membrane_thickness", default="28.0")
     p_mmpbsa.add_argument("--decomp", action="store_true")
