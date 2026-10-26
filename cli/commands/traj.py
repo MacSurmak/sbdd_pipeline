@@ -6,7 +6,10 @@ Enforces stream cleaning in worker scratch without raw file duplication on disk.
 
 import json
 import sys
+import shutil
 from pathlib import Path
+import numpy as np
+import pandas as pd
 from rich.console import Console
 from rich.table import Table
 from cli.core.db import (
@@ -19,10 +22,8 @@ from cli.core.db import (
     Pose,
     System,
     Trajectory,
+    MmpbsaRun,
 )
-
-
-import shutil
 from cli.core.runner import execute_nextflow
 from cli.core.config_loader import (
     load_project_configs,
@@ -1132,60 +1133,100 @@ def run_mmpbsa(
         console.print("[bold red]Nextflow MM-PBSA failed.[/bold red]")
         sys.exit(ret_code)
 
-    # Synchronize and register clean DELTA free energies into SQLite 3NF
+    # Synchronize and register clean DELTA free energies into SQLite 3NF with strict Fail-Fast validation
     reports_dir = cwd / "reports" / "mmpbsa"
-    import pandas as pd
-    from cli.core.db import MmpbsaRun
+    if not reports_dir.exists():
+        session.close()
+        raise FileNotFoundError(
+            f"FATAL: Reports directory not found at {reports_dir}. MM-PBSA output delivery failed."
+        )
 
     registered_runs = 0
     for item in plan_list:
         sys_name = item["rec_id"]
         sys_obj = session.query(System).filter_by(name=sys_name).first()
         if not sys_obj:
-            continue
+            session.close()
+            raise ValueError(
+                f"FATAL: Target System '{sys_name}' declared in plan is not registered in SQLite database!"
+            )
 
         sys_reps = sorted([d for d in reports_dir.glob("*") if sys_name in d.name and d.is_dir()])
+        if not sys_reps:
+            session.close()
+            raise FileNotFoundError(
+                f"FATAL: No replicate output directories found for system '{sys_name}' in {reports_dir}!"
+            )
+
         all_frames_dg = []
         rep_means = []
 
         for r_dir in sys_reps:
             csv_f = r_dir / "thermodynamics_mmpbsa_pb.csv"
             if not csv_f.exists() or csv_f.stat().st_size == 0:
-                continue
-            try:
-                df = pd.read_csv(csv_f)
-                target_col = next((c for c in df.columns if "TOTAL" in c.upper()), df.columns[-1])
-                vals = pd.to_numeric(df[target_col], errors="coerce").dropna().values
-                if len(vals) > 0:
-                    rep_means.append(float(np.mean(vals)))
-                    all_frames_dg.extend(vals)
-            except Exception:
-                continue
-
-        if rep_means:
-            sys_mean = float(np.mean(all_frames_dg))
-            sys_sem = float(np.std(rep_means) / np.sqrt(len(rep_means)))
-            consolidated_csv = reports_dir / f"{sys_name}_consolidated_mmpbsa.csv"
-            pd.DataFrame({"Delta_G": all_frames_dg}).to_csv(consolidated_csv, index=False)
-
-            ex_run = session.query(MmpbsaRun).filter_by(system_id=sys_obj.id).first()
-            if not ex_run:
-                m_run = MmpbsaRun(
-                    system_id=sys_obj.id,
-                    start_ns=float(configs.get("mmpbsa", {}).get("start_ns", 1.0)),
-                    sample_interval_ps=float(configs.get("mmpbsa", {}).get("sample_interval_ps", 500.0)),
-                    temperature=float(configs.get("mmpbsa", {}).get("temperature", 310.15)),
-                    salt_conc=float(configs.get("mmpbsa", {}).get("salt_conc", 0.15)),
-                    path_csv=str(consolidated_csv.resolve()),
-                    delta_g_overall_mean=round(sys_mean, 3),
-                    delta_g_overall_sem=round(sys_sem, 3),
+                session.close()
+                raise FileNotFoundError(
+                    f"FATAL: Missing or empty MM-PBSA deliverable for replicate in {r_dir}!"
                 )
-                session.add(m_run)
-            else:
-                ex_run.delta_g_overall_mean = round(sys_mean, 3)
-                ex_run.delta_g_overall_sem = round(sys_sem, 3)
-                ex_run.path_csv = str(consolidated_csv.resolve())
-            registered_runs += 1
+
+            df = pd.read_csv(csv_f)
+            target_col = next((c for c in df.columns if "TOTAL" in c.upper()), None)
+            if not target_col:
+                session.close()
+                raise KeyError(
+                    f"FATAL: Required 'TOTAL' or 'DELTA TOTAL' column missing in {csv_f}! "
+                    f"Available columns: {list(df.columns)}"
+                )
+
+            numeric_vals = pd.to_numeric(df[target_col], errors="coerce").dropna().values
+            if len(numeric_vals) == 0:
+                session.close()
+                raise ValueError(
+                    f"FATAL: Zero valid numeric energy values extracted from column '{target_col}' in {csv_f}!"
+                )
+
+            rep_mean = float(np.mean(numeric_vals))
+            rep_means.append(rep_mean)
+            all_frames_dg.extend(numeric_vals.tolist())
+
+        if not rep_means:
+            session.close()
+            raise ValueError(
+                f"FATAL: Failed to extract any valid replicate energy means for system '{sys_name}'!"
+            )
+
+        sys_mean = float(np.mean(all_frames_dg))
+        # Evaluate standard error across replicate means (accounting for between-replicate variance)
+        if len(rep_means) > 1:
+            sys_sem = float(np.std(rep_means, ddof=1) / np.sqrt(len(rep_means)))
+        else:
+            sys_sem = float(np.std(all_frames_dg, ddof=1) / np.sqrt(len(all_frames_dg)))
+
+        consolidated_csv = reports_dir / f"{sys_name}_consolidated_mmpbsa.csv"
+        pd.DataFrame({"Delta_G": all_frames_dg}).to_csv(consolidated_csv, index=False)
+
+        ex_run = session.query(MmpbsaRun).filter_by(system_id=sys_obj.id).first()
+        if not ex_run:
+            m_run = MmpbsaRun(
+                system_id=sys_obj.id,
+                start_ns=float(configs.get("mmpbsa", {}).get("start_ns", 1.0)),
+                sample_interval_ps=float(configs.get("mmpbsa", {}).get("sample_interval_ps", 500.0)),
+                temperature=float(configs.get("mmpbsa", {}).get("temperature", 310.15)),
+                salt_conc=float(configs.get("mmpbsa", {}).get("salt_conc", 0.15)),
+                path_csv=str(consolidated_csv.resolve()),
+                delta_g_overall_mean=round(sys_mean, 3),
+                delta_g_overall_sem=round(sys_sem, 3),
+            )
+            session.add(m_run)
+        else:
+            ex_run.start_ns = float(configs.get("mmpbsa", {}).get("start_ns", 1.0))
+            ex_run.sample_interval_ps = float(configs.get("mmpbsa", {}).get("sample_interval_ps", 500.0))
+            ex_run.temperature = float(configs.get("mmpbsa", {}).get("temperature", 310.15))
+            ex_run.salt_conc = float(configs.get("mmpbsa", {}).get("salt_conc", 0.15))
+            ex_run.delta_g_overall_mean = round(sys_mean, 3)
+            ex_run.delta_g_overall_sem = round(sys_sem, 3)
+            ex_run.path_csv = str(consolidated_csv.resolve())
+        registered_runs += 1
 
     session.commit()
     session.close()
