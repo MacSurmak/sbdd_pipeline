@@ -63,7 +63,7 @@ def main():
     parser.add_argument("--cluster_group", required=True, help="Clustering feature group name")
     parser.add_argument("--dim_reduction", required=True, help="Dimensionality reduction method (pca or tica)")
     parser.add_argument("--system", required=True, help="Canonical parent system name")
-    parser.add_argument("--extracted_json", required=True, help="Input extracted_manifest.json with structure deliverables")
+    parser.add_argument("--extracted_json", default="", help="Optional extracted_manifest.json with structure deliverables")
     parser.add_argument("--temp_k", type=float, required=True, help="Simulation temperature in Kelvin")
     parser.add_argument("--outdir", required=True, help="Output directory for reports")
     args = parser.parse_args()
@@ -221,8 +221,10 @@ def main():
     pml_path = outdir / "inspect_clusters.pml"
     pml_path.write_text("\n".join(pml_lines) + "\n")
 
-    with open(Path(args.extracted_json).resolve(), "r", encoding="utf-8") as ef:
-        extracted_structures = json.load(ef)
+    extracted_structures = []
+    if args.extracted_json and Path(args.extracted_json).exists() and Path(args.extracted_json).stat().st_size > 0:
+        with open(Path(args.extracted_json).resolve(), "r", encoding="utf-8") as ef:
+            extracted_structures = json.load(ef)
 
     manifest = {
         "system": args.system,

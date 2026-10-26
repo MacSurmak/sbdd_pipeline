@@ -10,7 +10,10 @@ process CLUSTER_BASINS {
 
     input:
     tuple val(meta), path(umap_2d), path(projections), path(aligned_coords), path(frame_time_map)
+    val(algorithm)
     val(n_clusters)
+    val(rmsd_cutoff)
+    val(min_pop)
 
     output:
     tuple val(meta), path("medoids_summary.json"), path("cluster_labels.npy"), emit: basins
@@ -22,7 +25,10 @@ process CLUSTER_BASINS {
         --projections ${projections} \\
         --coords ${aligned_coords} \\
         --time_map ${frame_time_map} \\
+        --algorithm "${algorithm}" \\
         --n_clusters ${n_clusters} \\
+        --rmsd_cutoff ${rmsd_cutoff} \\
+        --min_cluster_fraction \$(python3 -c "print(float(${min_pop}) / 100.0)") \\
         --out_json medoids_summary.json \\
         --out_labels cluster_labels.npy
     """

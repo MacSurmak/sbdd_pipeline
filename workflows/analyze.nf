@@ -45,7 +45,7 @@ workflow ANALYZE_WF {
         return
     }
 
-    // MODE 2: Ensemble Clustering on Clean Trajectories (4-Stage Atomic Subworkflow)
+    // MODE 2: Ensemble Clustering on Clean Trajectories (Analytical Subworkflow)
     if (params.cluster_plan) {
         def planFile = file(params.cluster_plan)
         def planList = new groovy.json.JsonSlurperClassic().parseText(planFile.text)
@@ -65,9 +65,7 @@ workflow ANALYZE_WF {
             def xtcs = item.clean_xtcs.collect { file(it) }
             def ref_pdb = file(item.ref_pdb)
             def ndx_f = item.ndx ? file(item.ndx) : []
-            def tmpl_sdfs = item.template_sdfs ? item.template_sdfs.collect { file(it) } : []
-            def heterogens_json = groovy.json.JsonOutput.toJson(item.heterogens ?: [])
-            [ meta, ref_pdb, xtcs, ndx_f, tmpl_sdfs, heterogens_json ]
+            [ meta, ref_pdb, xtcs, ndx_f ]
         }
 
         CLUSTER_ENSEMBLE(
@@ -75,10 +73,13 @@ workflow ANALYZE_WF {
             params.cluster_align_group ?: "Backbone",
             params.cluster_feature_group ?: "Pocket",
             params.cluster_dim_reduction ?: "pca",
+            params.cluster_algorithm ?: "hdbscan",
             params.cluster_tica_lag_ns ?: 2.0,
             params.cluster_variance_cutoff ?: 0.85,
             params.cluster_pocket_radius ?: 5.0,
             params.cluster_n_clusters ?: 3,
+            params.cluster_rmsd_cutoff ?: 1.5,
+            params.cluster_min_pop ?: 5.0,
             params.cluster_temp_k ?: 310.15
         )
 

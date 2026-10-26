@@ -446,6 +446,8 @@ def _build_analyze_args(config: Dict[str, Any]) -> list:
             "--cluster_align_group", str(val_cluster["align_group"]),
             "--cluster_feature_group", str(val_cluster["cluster_group"]),
             "--cluster_dim_reduction", str(val_cluster["dim_reduction"]),
+            "--cluster_algorithm", str(val_cluster["algorithm"]),
+            "--cluster_rmsd_cutoff", str(val_cluster["rmsd_cutoff"]),
             "--cluster_tica_lag_ns", str(val_cluster["tica_lag_ns"]),
             "--cluster_variance_cutoff", str(val_cluster["variance_cutoff"]),
             "--cluster_n_clusters", str(val_cluster["n_clusters"]),
@@ -513,9 +515,9 @@ def validate_clustering_config(config: Dict[str, Any]) -> Dict[str, Any]:
         "align_group",
         "cluster_group",
         "dim_reduction",
+        "algorithm",
         "tica_lag_ns",
         "variance_cutoff",
-        "n_clusters",
         "pocket_radius",
         "min_cluster_population",
         "temp_k",
@@ -536,7 +538,22 @@ def validate_clustering_config(config: Dict[str, Any]) -> Dict[str, Any]:
             "Must be strictly 'pca' or 'tica'."
         )
 
-    if int(cluster_cfg["n_clusters"]) < 1:
+    algo = str(cluster_cfg["algorithm"]).strip().lower()
+    if algo not in ["hdbscan", "hierarchical", "auto_kmeans", "kmeans"]:
+        raise ValueError(
+            f"FATAL: Unsupported clustering algorithm '{algo}' in md.yaml! "
+            "Must be strictly 'hdbscan', 'hierarchical', 'auto_kmeans', or 'kmeans'."
+        )
+
+    cluster_cfg.setdefault("rmsd_cutoff", 1.5)
+    cluster_cfg.setdefault("n_clusters", 3)
+
+    if algo == "hierarchical" and float(cluster_cfg["rmsd_cutoff"]) <= 0.0:
+        raise ValueError(
+            f"FATAL: 'rmsd_cutoff' must be positive for hierarchical clustering, got: {cluster_cfg['rmsd_cutoff']}"
+        )
+
+    if algo in ["kmeans", "auto_kmeans"] and int(cluster_cfg["n_clusters"]) < 1:
         raise ValueError(
             f"FATAL: 'n_clusters' must be a positive integer >= 1, got: {cluster_cfg['n_clusters']}"
         )

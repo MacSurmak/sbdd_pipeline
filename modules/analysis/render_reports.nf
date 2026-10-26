@@ -9,7 +9,7 @@ process RENDER_REPORTS {
     label 'process_single'
 
     input:
-    tuple val(meta), path(ref_pdb), path(umap_2d), path(projections), path(cluster_labels), path(medoids_summary), path(frame_time_map), path(feature_meta), path(extracted_json)
+    tuple val(meta), path(ref_pdb), path(umap_2d), path(projections), path(cluster_labels), path(medoids_summary), path(frame_time_map), path(feature_meta)
     val(align_group)
     val(cluster_group)
     val(dim_reduction)
@@ -27,7 +27,6 @@ process RENDER_REPORTS {
         --projections ${projections} \\
         --labels ${cluster_labels} \\
         --medoids_json ${medoids_summary} \\
-        --extracted_json ${extracted_json} \\
         --time_map ${frame_time_map} \\
         --feature_meta ${feature_meta} \\
         --align_group "${align_group}" \\
