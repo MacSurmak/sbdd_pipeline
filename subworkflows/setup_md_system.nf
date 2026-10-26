@@ -50,7 +50,7 @@ workflow SETUP_MD_SYSTEM {
 
     // 1b. Deterministically build dry AMBER complex topology strictly for MM-PBSA
     ch_dry_in = MERGE_PDB.out.complex_pdb
-        .join(ch_targets.map { meta, rec_pdb, lig_sdf, ion_sdfs, cofactor_sdfs, mol2s, frcmods -> [meta, mol2s, frcmods] })
+        .join(ch_targets.map { meta, rec_pdb, lig_sdf, ion_sdfs, cofactor_sdfs, mol2s, frcmods, lig_tmpl, cof_tmpls -> [meta, mol2s, frcmods] })
     TLEAP_DRY(
         ch_dry_in,
         water_leaprc,
@@ -79,7 +79,7 @@ workflow SETUP_MD_SYSTEM {
 
     // 3. tLEaP topology building
     ch_tleap_in = ch_tleap_pdb
-        .join(ch_targets.map { meta, rec_pdb, lig_sdf, ion_sdfs, cofactor_sdfs, mol2s, frcmods -> [meta, mol2s, frcmods] })
+        .join(ch_targets.map { meta, rec_pdb, lig_sdf, ion_sdfs, cofactor_sdfs, mol2s, frcmods, lig_tmpl, cof_tmpls -> [meta, mol2s, frcmods] })
         .map { meta, pdb, mol2s, frcmods ->
             [ meta, pdb, mol2s, frcmods ]
         }
