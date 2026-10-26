@@ -294,21 +294,16 @@ def run_md_setup(
                 mol2_paths.append(str(Path(c_mol2).resolve()))
                 frcmod_paths.append(str(Path(c_frcmod).resolve()))
 
-        lig_tmpl = str(Path(s.pose.substance_state.path_sdf).resolve()) if (s.pose and s.pose.substance_state and s.pose.substance_state.path_sdf) else None
-        cof_tmpls = [str(Path(c.substance_state.path_sdf).resolve()) for c in s.cofactors if c.substance_state and c.substance.substance_type != "ion" and c.substance_state.path_sdf]
-
         plan_list.append(
             {
                 "id": s.name,
                 "rec_pdb": str(rec_pdb),
                 "lig_sdf": lig_sdf,
                 "lig_resname": lig_resname,
-                "lig_template_sdf": lig_tmpl,
                 "ion_sdfs": ion_sdfs,
                 "ion_resnames": ion_resnames,
                 "cofactor_sdfs": cofactor_sdfs,
                 "cofactor_resnames": cofactor_resnames,
-                "cofactor_template_sdfs": cof_tmpls,
                 "mol2_paths": mol2_paths,
                 "frcmod_paths": frcmod_paths,
             }

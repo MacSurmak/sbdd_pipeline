@@ -41,14 +41,12 @@ workflow MD_SETUP_WF {
         ]
         def rec_pdb = file(target.rec_pdb).toAbsolutePath()
         def lig_sdf = target.lig_sdf ? file(target.lig_sdf).toAbsolutePath() : []
-        def lig_tmpl = target.lig_template_sdf ? file(target.lig_template_sdf).toAbsolutePath() : []
         def ion_sdfs = target.ion_sdfs ? target.ion_sdfs.collect { file(it).toAbsolutePath() } : []
         def cofactor_sdfs = target.cofactor_sdfs ? target.cofactor_sdfs.collect { file(it).toAbsolutePath() } : []
-        def cofactor_tmpls = target.cofactor_template_sdfs ? target.cofactor_template_sdfs.collect { file(it).toAbsolutePath() } : []
         def mol2s = target.mol2_paths.collect { file(it).toAbsolutePath() }
         def frcmods = target.frcmod_paths.collect { file(it).toAbsolutePath() }
 
-        [ meta, rec_pdb, lig_sdf, ion_sdfs, cofactor_sdfs, mol2s, frcmods, lig_tmpl, cofactor_tmpls ]
+        [ meta, rec_pdb, lig_sdf, ion_sdfs, cofactor_sdfs, mol2s, frcmods ]
     }
 
     SETUP_MD_SYSTEM(

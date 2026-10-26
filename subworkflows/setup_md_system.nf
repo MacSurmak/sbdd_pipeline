@@ -42,15 +42,15 @@ workflow SETUP_MD_SYSTEM {
 
     main:
     // 1. Clean merge of standardized apo protein with strictly typed ligands, ions, and cofactors
-    ch_merge_in = ch_targets.map { meta, rec_pdb, lig_sdf, ion_sdfs, cofactor_sdfs, mol2s, frcmods, lig_tmpl, cof_tmpls ->
-        [ meta, rec_pdb, lig_sdf, ion_sdfs, cofactor_sdfs, lig_tmpl, cof_tmpls ]
+    ch_merge_in = ch_targets.map { meta, rec_pdb, lig_sdf, ion_sdfs, cofactor_sdfs, mol2s, frcmods ->
+        [ meta, rec_pdb, lig_sdf, ion_sdfs, cofactor_sdfs ]
     }
 
     MERGE_PDB(ch_merge_in)
 
     // 1b. Deterministically build dry AMBER complex topology strictly for MM-PBSA
     ch_dry_in = MERGE_PDB.out.complex_pdb
-        .join(ch_targets.map { meta, rec_pdb, lig_sdf, ion_sdfs, cofactor_sdfs, mol2s, frcmods, lig_tmpl, cof_tmpls -> [meta, mol2s, frcmods] })
+        .join(ch_targets.map { meta, rec_pdb, lig_sdf, ion_sdfs, cofactor_sdfs, mol2s, frcmods -> [meta, mol2s, frcmods] })
     TLEAP_DRY(
         ch_dry_in,
         water_leaprc,
@@ -79,7 +79,7 @@ workflow SETUP_MD_SYSTEM {
 
     // 3. tLEaP topology building
     ch_tleap_in = ch_tleap_pdb
-        .join(ch_targets.map { meta, rec_pdb, lig_sdf, ion_sdfs, cofactor_sdfs, mol2s, frcmods, lig_tmpl, cof_tmpls -> [meta, mol2s, frcmods] })
+        .join(ch_targets.map { meta, rec_pdb, lig_sdf, ion_sdfs, cofactor_sdfs, mol2s, frcmods -> [meta, mol2s, frcmods] })
         .map { meta, pdb, mol2s, frcmods ->
             [ meta, pdb, mol2s, frcmods ]
         }

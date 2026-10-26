@@ -32,11 +32,6 @@ def main():
         help="Strict PDB residue name for ligand (strictly for holo systems)",
     )
     parser.add_argument(
-        "--lig_template",
-        default=None,
-        help="Canonical SubstanceState template SDF for active ligand",
-    )
-    parser.add_argument(
         "--ion_sdfs",
         nargs="*",
         default=[],
@@ -59,12 +54,6 @@ def main():
         nargs="*",
         default=[],
         help="Residue names corresponding to cofactor SDFs",
-    )
-    parser.add_argument(
-        "--cofactor_templates",
-        nargs="*",
-        default=[],
-        help="Canonical SubstanceState template SDFs for cofactors",
     )
     parser.add_argument("--out_pdb", required=True, help="Output complex PDB")
     args = parser.parse_args()
@@ -233,29 +222,17 @@ def main():
 
         out_lines.append("TER")
 
-    # Append active ligand if present
+    # Append active ligand if present (strictly organic)
     if args.lig_sdf:
-        _append_small_molecule(
-            args.lig_sdf,
-            args.lig_resname,
-            is_ion=False,
-            template_sdf_str=args.lig_template,
-        )
+        _append_small_molecule(args.lig_sdf, args.lig_resname, is_ion=False)
 
-    # Append ions
+    # Append ions (strictly typed from DB SSOT)
     for i_sdf, i_res in zip(args.ion_sdfs, args.ion_resnames):
         _append_small_molecule(i_sdf, i_res, is_ion=True)
 
-    # Append organic cofactors
-    cof_tmpls = args.cofactor_templates or []
-    for idx, (c_sdf, c_res) in enumerate(zip(args.cofactor_sdfs, args.cofactor_resnames)):
-        c_tmpl = cof_tmpls[idx] if idx < len(cof_tmpls) else None
-        _append_small_molecule(
-            c_sdf,
-            c_res,
-            is_ion=False,
-            template_sdf_str=c_tmpl,
-        )
+    # Append organic cofactors (strictly typed from DB SSOT)
+    for c_sdf, c_res in zip(args.cofactor_sdfs, args.cofactor_resnames):
+        _append_small_molecule(c_sdf, c_res, is_ion=False)
 
     out_lines.extend(topology_lines)
     out_lines.append("END")
