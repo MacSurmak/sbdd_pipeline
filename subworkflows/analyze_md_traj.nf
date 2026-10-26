@@ -9,8 +9,8 @@ include { GMX_MMPBSA } from '../modules/gromacs/mmpbsa'
 workflow ANALYZE_MD_TRAJ {
     take:
     ch_traj_clean      // channel: [ val(meta), path(clean_xtc), path(ref_pdb), path(topol), path(ndx) ]
-    start_ns           // val: 20.0
-    step_frames        // val: 40
+    start_ns           // val: 1.0
+    sample_interval_ps // val: 500.0
     temperature        // val: 310.15
     salt_conc          // val: 0.15
     is_membrane        // val: true/false
@@ -28,7 +28,7 @@ workflow ANALYZE_MD_TRAJ {
     GMX_MMPBSA(
         ch_traj_clean,
         start_ns,
-        step_frames,
+        sample_interval_ps,
         temperature,
         salt_conc,
         is_membrane,

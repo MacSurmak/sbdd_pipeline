@@ -131,7 +131,7 @@ workflow ANALYZE_WF {
         GMX_MMPBSA(
             ch_mmpbsa_in,
             params.mmpbsa_start_ns,
-            params.mmpbsa_step_frames,
+            params.mmpbsa_sample_interval_ps,
             params.md_temperature,
             params.md_salt_conc,
             params.membrane,
@@ -176,7 +176,7 @@ workflow ANALYZE_WF {
     ANALYZE_MD_TRAJ(
         ch_analyze_in,
         params.mmpbsa_start_ns,
-        params.mmpbsa_step_frames,
+        params.mmpbsa_sample_interval_ps,
         params.md_temperature,
         params.md_salt_conc,
         params.membrane,

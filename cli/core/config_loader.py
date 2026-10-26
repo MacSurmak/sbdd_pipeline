@@ -418,17 +418,12 @@ def _build_analyze_args(config: Dict[str, Any]) -> list:
 
     mmpbsa_cfg = config.get("mmpbsa", {})
     if mmpbsa_cfg.get("enabled"):
-        if "start_ns" in mmpbsa_cfg:
-            args.extend(["--mmpbsa_start_ns", str(mmpbsa_cfg["start_ns"])])
-        if "step_frames" in mmpbsa_cfg:
-            args.extend(["--mmpbsa_step_frames", str(mmpbsa_cfg["step_frames"])])
-        if "per_residue_decomp" in mmpbsa_cfg:
-            args.extend(
-                [
-                    "--per_residue_decomp",
-                    "true" if mmpbsa_cfg["per_residue_decomp"] else "false",
-                ]
-            )
+        val_mmpbsa = validate_mmpbsa_config(config)
+        args.extend([
+            "--mmpbsa_start_ns", str(val_mmpbsa["start_ns"]),
+            "--mmpbsa_sample_interval_ps", str(val_mmpbsa["sample_interval_ps"]),
+            "--per_residue_decomp", "true" if val_mmpbsa["per_residue_decomp"] else "false",
+        ])
 
     prod = md_cfg.get("production", {})
     temp = prod.get("temperature") or mmpbsa_cfg.get("temperature")
@@ -456,6 +451,34 @@ def _build_analyze_args(config: Dict[str, Any]) -> list:
         ])
 
     return args
+
+
+def validate_mmpbsa_config(config: Dict[str, Any]) -> Dict[str, Any]:
+    """Strict Fail-Fast validation of MM-PBSA thermodynamic parameters."""
+    mmpbsa_cfg = config.get("mmpbsa")
+    if not mmpbsa_cfg or not isinstance(mmpbsa_cfg, dict):
+        raise ValueError("FATAL: 'mmpbsa' configuration block is missing or invalid in mmpbsa.yaml!")
+
+    required_keys = ["start_ns", "sample_interval_ps", "temperature", "salt_conc", "per_residue_decomp"]
+    for key in required_keys:
+        if key not in mmpbsa_cfg or mmpbsa_cfg[key] is None or mmpbsa_cfg[key] == "":
+            raise ValueError(
+                f"FATAL: Missing required parameter 'mmpbsa.{key}' in mmpbsa.yaml! "
+                "Silent fallbacks and default constants are strictly forbidden by architectural law."
+            )
+
+    if float(mmpbsa_cfg["start_ns"]) < 0.0:
+        raise ValueError(f"FATAL: 'start_ns' must be non-negative, got: {mmpbsa_cfg['start_ns']}")
+
+    if float(mmpbsa_cfg["sample_interval_ps"]) <= 0.0:
+        raise ValueError(
+            f"FATAL: 'sample_interval_ps' must be a positive physical interval, got: {mmpbsa_cfg['sample_interval_ps']}"
+        )
+
+    if float(mmpbsa_cfg["temperature"]) <= 0.0:
+        raise ValueError(f"FATAL: 'temperature' must be positive Kelvin, got: {mmpbsa_cfg['temperature']}")
+
+    return mmpbsa_cfg
 
 
 def validate_clustering_config(config: Dict[str, Any]) -> Dict[str, Any]:

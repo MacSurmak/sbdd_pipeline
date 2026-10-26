@@ -1,7 +1,7 @@
 mmpbsa:
   enabled: true
-  start_ns: 20.0                     # Sample after RMSD equilibration plateau (ns)
-  step_frames: 40                    # Stride interval for trajectory frame sampling
+  start_ns: 1.0                      # Initial solvent relaxation buffer before sampling (ns)
+  sample_interval_ps: 500.0          # Statistical independence interval based on autocorrelation time (ps)
   per_residue_decomp: true           # Enable per-residue binding energy decomposition
   temperature: 310.15
   salt_conc: 0.15

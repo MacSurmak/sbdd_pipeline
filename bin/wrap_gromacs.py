@@ -439,10 +439,34 @@ def cmd_mmpbsa(args):
 
     u = mda.Universe(args.ref_pdb, args.clean_xtc)
     n_frames = len(u.trajectory)
-    dt_ns = (
-        (u.trajectory[1].time - u.trajectory[0].time) / 1000.0 if n_frames > 1 else 0.01
-    )
+    if n_frames < 2:
+        raise ValueError(
+            f"FATAL: Trajectory {args.clean_xtc} has fewer than 2 frames ({n_frames}). Cannot evaluate autocorrelation or sampling stride!"
+        )
+
+    dt_ps = float(u.trajectory[1].time - u.trajectory[0].time)
+    if dt_ps <= 0:
+        raise ValueError(
+            f"FATAL: Non-physical trajectory timestamp interval detected: dt = {dt_ps} ps in {args.clean_xtc}"
+        )
+
+    dt_ns = dt_ps / 1000.0
+    sample_interval_ps = float(args.sample_interval_ps)
+    if sample_interval_ps < dt_ps:
+        raise ValueError(
+            f"FATAL: Requested MM-PBSA sample_interval_ps ({sample_interval_ps:.2f} ps) is smaller than trajectory "
+            f"frame recording interval ({dt_ps:.2f} ps)! Cannot sample faster than trajectory frequency."
+        )
+
+    step_frames = max(1, int(round(sample_interval_ps / dt_ps)))
     start_frame = min(n_frames, max(1, int(round(float(args.start_ns) / dt_ns)) + 1))
+
+    actual_interval_ps = step_frames * dt_ps
+    print(
+        f"[MMPBSA] Sampling setup: dt_traj={dt_ps:.2f} ps, target_interval={sample_interval_ps:.2f} ps, "
+        f"step_frames={step_frames} (actual_interval={actual_interval_ps:.2f} ps), start_frame={start_frame}/{n_frames}",
+        flush=True,
+    )
 
     pb_str = (
         f"&pb\nmemopt=1,\nmthick={args.membrane_thickness},\nmctrdz=0.0,\nemem=7.0,\nindi=4.0,\nistrng={args.salt_conc},\nradiopt=0,\nporetype=1,\nfillratio=1.25,\nipb=1,\ninp=2,\nsasopt=0,\nsolvopt=2,\nbcopt=10,\nnfocus=1,\nlinit=1000,\neneopt=1,\ncutfd=7.0,\ncutnb=99.0,\nmaxarcdot=15000\n/\n"
@@ -452,7 +476,7 @@ def cmd_mmpbsa(args):
 
     with open("mmpbsa_pb.in", "w") as f:
         f.write(
-            f'&general\nsys_name="Protein_Ligand",\nstartframe={start_frame},\ninterval={args.step_frames},\ntemperature={args.temp}\n/\n{pb_str}'
+            f'&general\nsys_name="Protein_Ligand",\nstartframe={start_frame},\ninterval={step_frames},\ntemperature={args.temp}\n/\n{pb_str}'
         )
 
     mpirun = (
@@ -488,7 +512,7 @@ def cmd_mmpbsa(args):
     if args.decomp:
         with open("mmpbsa_gb.in", "w") as f:
             f.write(
-                f'&general\nsys_name="Protein_Ligand",\nstartframe={start_frame},\ninterval={args.step_frames},\ntemperature={args.temp}\n/\n&gb\nigb=2,\nsaltcon={args.salt_conc}\n/\n&decomp\nidecomp=2,\ndec_verbose=0\n/\n'
+                f'&general\nsys_name="Protein_Ligand",\nstartframe={start_frame},\ninterval={step_frames},\ntemperature={args.temp}\n/\n&gb\nigb=2,\nsaltcon={args.salt_conc}\n/\n&decomp\nidecomp=2,\ndec_verbose=0\n/\n'
             )
         run_gmx(
             mpirun
@@ -634,7 +658,7 @@ def main():
     p_mmpbsa.add_argument("--ndx", required=True)
     p_mmpbsa.add_argument("--ligand", required=True)
     p_mmpbsa.add_argument("--start_ns", required=True)
-    p_mmpbsa.add_argument("--step_frames", required=True)
+    p_mmpbsa.add_argument("--sample_interval_ps", required=True)
     p_mmpbsa.add_argument("--temp", required=True)
     p_mmpbsa.add_argument("--salt_conc", required=True)
     p_mmpbsa.add_argument("--cpus", required=True)

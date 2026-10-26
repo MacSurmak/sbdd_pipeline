@@ -11,7 +11,7 @@ process GMX_MMPBSA {
     input:
     tuple val(meta), path(clean_xtc), path(ref_pdb), path(topol_top), path(index_ndx)
     val(start_ns)
-    val(step_frames)
+    val(sample_interval_ps)
     val(temp)
     val(salt_conc)
     val(is_membrane)
@@ -33,7 +33,7 @@ process GMX_MMPBSA {
         --ndx ${index_ndx} \\
         --ligand "${meta.ligand}" \\
         --start_ns ${start_ns} \\
-        --step_frames ${step_frames} \\
+        --sample_interval_ps ${sample_interval_ps} \\
         --temp ${temp} \\
         --salt_conc ${salt_conc} \\
         --cpus ${task.cpus} \\
