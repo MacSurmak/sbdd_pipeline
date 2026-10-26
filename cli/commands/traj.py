@@ -1158,9 +1158,11 @@ def run_mmpbsa(
             f"FATAL: Reports directory not found at {reports_dir}. MM-PBSA output delivery failed."
         )
 
+    # Deduplicate systems: an MmpbsaRun represents the aggregate ensemble of a System, not individual replicates
+    unique_sys_names = sorted(list(set(item["rec_id"] for item in plan_list)))
     registered_runs = 0
-    for item in plan_list:
-        sys_name = item["rec_id"]
+
+    for sys_name in unique_sys_names:
         sys_obj = session.query(System).filter_by(name=sys_name).first()
         if not sys_obj:
             session.close()
@@ -1222,12 +1224,16 @@ def run_mmpbsa(
         consolidated_csv = reports_dir / f"{sys_name}_consolidated_mmpbsa.csv"
         pd.DataFrame({"Delta_G": all_frames_dg}).to_csv(consolidated_csv, index=False)
 
+        val_sampling = validate_analysis_sampling_config(configs)
+        eff_start_ns = float(val_sampling["start_ns"])
+        eff_interval_ps = float(val_sampling["sample_interval_ps"])
+
         ex_run = session.query(MmpbsaRun).filter_by(system_id=sys_obj.id).first()
         if not ex_run:
             m_run = MmpbsaRun(
                 system_id=sys_obj.id,
-                start_ns=float(configs.get("mmpbsa", {}).get("start_ns", 1.0)),
-                sample_interval_ps=float(configs.get("mmpbsa", {}).get("sample_interval_ps", 500.0)),
+                start_ns=eff_start_ns,
+                sample_interval_ps=eff_interval_ps,
                 temperature=float(configs.get("mmpbsa", {}).get("temperature", 310.15)),
                 salt_conc=float(configs.get("mmpbsa", {}).get("salt_conc", 0.15)),
                 path_csv=str(consolidated_csv.resolve()),
@@ -1236,13 +1242,15 @@ def run_mmpbsa(
             )
             session.add(m_run)
         else:
-            ex_run.start_ns = float(configs.get("mmpbsa", {}).get("start_ns", 1.0))
-            ex_run.sample_interval_ps = float(configs.get("mmpbsa", {}).get("sample_interval_ps", 500.0))
+            ex_run.start_ns = eff_start_ns
+            ex_run.sample_interval_ps = eff_interval_ps
             ex_run.temperature = float(configs.get("mmpbsa", {}).get("temperature", 310.15))
             ex_run.salt_conc = float(configs.get("mmpbsa", {}).get("salt_conc", 0.15))
             ex_run.delta_g_overall_mean = round(sys_mean, 3)
             ex_run.delta_g_overall_sem = round(sys_sem, 3)
             ex_run.path_csv = str(consolidated_csv.resolve())
+
+        session.flush()
         registered_runs += 1
 
     session.commit()
