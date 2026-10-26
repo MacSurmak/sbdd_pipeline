@@ -13,7 +13,7 @@ process PUBLISH_MD_SYSTEM {
     tuple val(meta), path(gro), path(top), path(ndx), path(posre), path(dry_prmtop)
 
     output:
-    tuple val(meta), path("${meta.id}_step3.gro"), path("${meta.id}_topol.top"), path("${meta.id}_index.ndx"), path("posre_*.itp", includeInputs: true), path("${meta.id}_complex_dry.prmtop")
+    tuple val(meta), path("${meta.id}_step3.gro"), path("${meta.id}_topol.top"), path("${meta.id}_index.ndx"), path("posre_*.itp", includeInputs: true), path("${meta.id}_complex_dry.prmtop"), path("${meta.id}_complex_dry.top")
 
     script:
     """
