@@ -15,6 +15,9 @@ from cli.core.db import (
     Pose,
     System,
     Trajectory,
+    ClusteringRun,
+    TrajectoryCluster,
+    MmpbsaRun,
 )
 
 console = Console()
@@ -100,6 +103,49 @@ def print_tree() -> None:
                             tr_branch.add(
                                 f"[magenta]{t.name}[/magenta] [{t_color}]({t.status})[/{t_color}] - {t.length_ns} ns"
                             )
+
+                    # MM-PBSA Runs under system
+                    mmpbsa_runs = (
+                        session.query(MmpbsaRun)
+                        .filter_by(system_id=s.id)
+                        .order_by(MmpbsaRun.created_at)
+                        .all()
+                    )
+                    if mmpbsa_runs:
+                        mmpbsa_branch = sys_node.add("[bold magenta]MM-PBSA Thermodynamic Runs[/bold magenta]")
+                        for m_run in mmpbsa_runs:
+                            boltz_str = (
+                                f", Boltzmann ΔG={m_run.delta_g_boltzmann_total:.2f} kcal/mol"
+                                if m_run.delta_g_boltzmann_total is not None
+                                else ""
+                            )
+                            mmpbsa_branch.add(
+                                f"[magenta]Run #{m_run.id}[/magenta]: [green]ΔG={m_run.delta_g_overall_mean:.2f} ± {m_run.delta_g_overall_sem:.2f} kcal/mol[/green]"
+                                f"{boltz_str} [dim](interval={m_run.sample_interval_ps} ps, T={m_run.temperature} K)[/dim]"
+                            )
+
+                    # Clustering Runs under system
+                    c_runs = (
+                        session.query(ClusteringRun)
+                        .filter_by(system_id=s.id)
+                        .order_by(ClusteringRun.created_at)
+                        .all()
+                    )
+                    if c_runs:
+                        c_branch = sys_node.add("[bold cyan]Conformational Clusterings[/bold cyan]")
+                        for cr in c_runs:
+                            cr_node = c_branch.add(
+                                f"[cyan]{cr.name}[/cyan] [dim]({cr.algorithm}, {cr.feature_group} on {cr.align_group}, {len(cr.clusters)} basins)[/dim]"
+                            )
+                            for cl in cr.clusters:
+                                dg_str = (
+                                    f" -> [bold green]ΔG={cl.delta_g_mean:.2f} ± {cl.delta_g_sem:.2f} kcal/mol[/bold green]"
+                                    if cl.delta_g_mean is not None
+                                    else ""
+                                )
+                                cr_node.add(
+                                    f"Basin #{cl.cluster_rank} ({cl.population_fraction * 100:.1f}%, {cl.frame_count} frames, medoid: {cl.medoid_replicate}@{cl.medoid_time_ns:.1f}ns){dg_str}"
+                                )
 
     # 2. Chemical Substances, Microstates & Their 3D Poses
     substances = (

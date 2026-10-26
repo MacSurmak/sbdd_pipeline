@@ -285,6 +285,12 @@ class System(Base):
     trajectories = relationship(
         "Trajectory", back_populates="system", cascade="all, delete-orphan"
     )
+    clustering_runs = relationship(
+        "ClusteringRun", back_populates="system", cascade="all, delete-orphan"
+    )
+    mmpbsa_runs = relationship(
+        "MmpbsaRun", back_populates="system", cascade="all, delete-orphan"
+    )
 
     @property
     def environment_dict(self) -> dict:
@@ -320,6 +326,97 @@ class Trajectory(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     system = relationship("System", back_populates="trajectories")
+
+
+class ClusteringRun(Base):
+    """
+    Analytical partitioning of trajectory phase space into conformational macro-basins.
+    Independent of 3D frame generation: stores manifold parameters and label assignments.
+    """
+
+    __tablename__ = "clustering_runs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    system_id = Column(
+        Integer, ForeignKey("systems.id", ondelete="CASCADE"), nullable=False
+    )
+    name = Column(String, unique=True, index=True, nullable=False)
+    feature_group = Column(String(64), nullable=False)  # Ligand, Pocket, Backbone
+    align_group = Column(String(64), nullable=False)    # Backbone, C-alpha
+    algorithm = Column(String(32), nullable=False)      # hdbscan, hierarchical, auto_kmeans, kmeans
+    dim_reduction = Column(String(16), nullable=False)  # pca, tica, none
+    parameters = Column(Text, default="{}", nullable=False)
+    path_labels = Column(String, nullable=False)        # Validated path to cluster_labels.npy
+    path_time_map = Column(String, nullable=False)      # Validated path to frame_time_map.json
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    system = relationship("System", back_populates="clustering_runs")
+    clusters = relationship(
+        "TrajectoryCluster", back_populates="clustering_run", cascade="all, delete-orphan"
+    )
+
+    @property
+    def parameters_dict(self) -> dict:
+        if not self.parameters:
+            return {}
+        return json.loads(self.parameters)
+
+    @parameters_dict.setter
+    def parameters_dict(self, val: dict):
+        self.parameters = json.dumps(val if val is not None else {})
+
+
+class TrajectoryCluster(Base):
+    """
+    Specific conformational macro-basin identified within a ClusteringRun.
+    Stores geometric population, medoid information, and stratified thermodynamic energies.
+    """
+
+    __tablename__ = "trajectory_clusters"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    clustering_run_id = Column(
+        Integer, ForeignKey("clustering_runs.id", ondelete="CASCADE"), nullable=False
+    )
+    cluster_index = Column(Integer, nullable=False)     # Internal index (0, 1, 2...)
+    cluster_rank = Column(Integer, nullable=False)      # Population rank (1 = major basin, 2...)
+    population_fraction = Column(Float, nullable=False) # Fraction of trajectory frames (0.0 to 1.0)
+    frame_count = Column(Integer, nullable=False)       # Exact frame count in basin
+    medoid_replicate = Column(String(64), nullable=False)
+    medoid_frame = Column(Integer, nullable=False)
+    medoid_time_ns = Column(Float, nullable=False)
+    compactness_spread = Column(Float, nullable=False)  # Mean RMSD spread to medoid (Å)
+    delta_g_mean = Column(Float, nullable=True)         # Stratified MM-PBSA mean (kcal/mol)
+    delta_g_sem = Column(Float, nullable=True)          # Standard error of mean
+    delta_g_std = Column(Float, nullable=True)          # Standard deviation
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    clustering_run = relationship("ClusteringRun", back_populates="clusters")
+
+
+class MmpbsaRun(Base):
+    """
+    Thermodynamic binding free energy evaluation across trajectory replicates.
+    Stores independent sampling interval (tau_corr) and overall/Boltzmann energies.
+    """
+
+    __tablename__ = "mmpbsa_runs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    system_id = Column(
+        Integer, ForeignKey("systems.id", ondelete="CASCADE"), nullable=False
+    )
+    start_ns = Column(Float, nullable=False)
+    sample_interval_ps = Column(Float, nullable=False)
+    temperature = Column(Float, nullable=False)
+    salt_conc = Column(Float, nullable=False)
+    path_csv = Column(String, nullable=False)           # Consolidated samples CSV
+    delta_g_overall_mean = Column(Float, nullable=False)
+    delta_g_overall_sem = Column(Float, nullable=False)
+    delta_g_boltzmann_total = Column(Float, nullable=True) # Boltzmann weighted across clusters
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    system = relationship("System", back_populates="mmpbsa_runs")
 
 
 def _validate_non_scratch_path(target, value, oldvalue, initiator):
@@ -360,6 +457,9 @@ for _model_attr in [
     Trajectory.path_tpr,
     Trajectory.path_clean_xtc,
     Trajectory.path_ref_pdb,
+    ClusteringRun.path_labels,
+    ClusteringRun.path_time_map,
+    MmpbsaRun.path_csv,
 ]:
     event.listen(_model_attr, "set", _validate_non_scratch_path)
 
@@ -388,6 +488,16 @@ def _migrate_schema(engine: Engine) -> None:
             for col_name, col_def in new_columns:
                 if col_name not in existing_cols:
                     conn.exec_driver_sql(f"ALTER TABLE receptor_frames ADD COLUMN {col_name} {col_def}")
+
+    # Idempotently instantiate newly declared 3NF analytical tables
+    Base.metadata.create_all(
+        engine,
+        tables=[
+            ClusteringRun.__table__,
+            TrajectoryCluster.__table__,
+            MmpbsaRun.__table__,
+        ],
+    )
 
 
 def get_session(db_path: Path = None):

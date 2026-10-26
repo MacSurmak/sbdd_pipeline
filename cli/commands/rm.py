@@ -13,6 +13,9 @@ from cli.core.db import (
     Pose,
     System,
     Trajectory,
+    ClusteringRun,
+    TrajectoryCluster,
+    MmpbsaRun,
 )
 
 console = Console()
@@ -61,6 +64,15 @@ def remove_entity(name: str) -> None:
         if traj:
             session.delete(traj)
             console.print(f"[bold green]✓ Deleted Trajectory '{name}'.[/bold green]")
+            deleted = True
+
+    if not deleted:
+        c_run = session.query(ClusteringRun).filter_by(name=name).first()
+        if c_run:
+            session.delete(c_run)
+            console.print(
+                f"[bold green]✓ Deleted ClusteringRun '{name}' and associated clusters (CASCADE).[/bold green]"
+            )
             deleted = True
 
     if not deleted:
