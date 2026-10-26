@@ -9,13 +9,19 @@ include { GMX_MMPBSA } from '../modules/gromacs/mmpbsa'
 workflow ANALYZE_MD_TRAJ {
     take:
     ch_traj_clean      // channel: [ val(meta), path(clean_xtc), path(ref_pdb), path(topol), path(ndx) ]
+    templates_dir      // path: assets/mmpbsa
     start_ns           // val: 1.0
     sample_interval_ps // val: 500.0
     temperature        // val: 310.15
     salt_conc          // val: 0.15
     is_membrane        // val: true/false
     membrane_thickness // val: 28.0
-    per_res_decomp     // val: true
+    per_res_decomp     // val: true/false
+    method             // val: "auto", "gb", "pb"
+    gb_model           // val: 2
+    emem               // val: 7.0
+    indi               // val: 4.0
+    fillratio          // val: 1.25
 
     main:
     // 1. Calculate structural metrics
@@ -27,13 +33,19 @@ workflow ANALYZE_MD_TRAJ {
     // 2. Run MM-PBSA free energy calculation
     GMX_MMPBSA(
         ch_traj_clean,
+        templates_dir,
         start_ns,
         sample_interval_ps,
         temperature,
         salt_conc,
         is_membrane,
         membrane_thickness,
-        per_res_decomp
+        per_res_decomp,
+        method,
+        gb_model,
+        emem,
+        indi,
+        fillratio
     )
 
     emit:
