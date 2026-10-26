@@ -6,6 +6,7 @@
 include { MERGE_PDB         } from '../modules/amber/merge_pdb'
 include { PACKMOL_MEMGEN    } from '../modules/membrane/packmol'
 include { TLEAP             } from '../modules/amber/tleap'
+include { TLEAP_DRY         } from '../modules/amber/tleap'
 include { PARMED            } from '../modules/amber/parmed'
 include { DECLASH           } from '../modules/membrane/declash'
 include { NDX_POSRE         } from '../modules/gromacs/ndx_posre'
@@ -46,6 +47,18 @@ workflow SETUP_MD_SYSTEM {
     }
 
     MERGE_PDB(ch_merge_in)
+
+    // 1b. Deterministically build dry AMBER complex topology strictly for MM-PBSA
+    ch_dry_in = MERGE_PDB.out.complex_pdb
+        .join(ch_targets.map { meta, rec_pdb, lig_sdf, ion_sdfs, cofactor_sdfs, mol2s, frcmods -> [meta, mol2s, frcmods] })
+    TLEAP_DRY(
+        ch_dry_in,
+        water_leaprc,
+        ss_cutoff,
+        protein_ff,
+        gaff_ff,
+        lipid_ff
+    )
 
     // 2. Membrane Assembly or Solvation
     if (is_membrane.toString() == 'true') {
@@ -110,9 +123,11 @@ workflow SETUP_MD_SYSTEM {
     ch_ndx_in = ch_final_gro.join(PARMED.out.gmx_system.map { meta, topol, gro -> [ meta, topol ] })
     NDX_POSRE(ch_ndx_in, restraints_fc, water_names, ion_names, lipid_names)
 
-    ch_system_ready = ch_final_gro.join(NDX_POSRE.out.restraints)
-        .map { meta, gro, ndx, topol, posre_files ->
-            [ meta, gro, topol, ndx, posre_files ]
+    ch_system_ready = ch_final_gro
+        .join(NDX_POSRE.out.restraints)
+        .join(TLEAP_DRY.out.dry_amber.map { meta, dry_prmtop, dry_inpcrd -> [meta, dry_prmtop] })
+        .map { meta, gro, ndx, topol, posre_files, dry_prmtop ->
+            [ meta, gro, topol, ndx, posre_files, dry_prmtop ]
         }
 
     emit:

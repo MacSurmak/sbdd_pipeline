@@ -219,6 +219,25 @@ def cmd_trjconv(args):
         input_str=f"{args.pbc_extract}\n",
     )
 
+    if hasattr(args, "out_ndx") and args.out_ndx:
+        run_gmx(["gmx", "make_ndx", "-f", args.out_pdb, "-o", args.out_ndx], input_str="q\n")
+        if hasattr(args, "ligand") and args.ligand:
+            subprocess.run(
+                [
+                    sys.executable,
+                    f"{Path(__file__).parent}/gromacs_ndx_fixer.py",
+                    "--ndx",
+                    args.out_ndx,
+                    "--pdb",
+                    args.out_pdb,
+                    "--ligand",
+                    args.ligand,
+                    "--action",
+                    "add_mmpbsa_groups",
+                ],
+                check=True,
+            )
+
     for tmp in ["pbc_whole.xtc", "pbc_centered.xtc", "scratch_concat.xtc"]:
         if Path(tmp).exists():
             Path(tmp).unlink()
@@ -495,8 +514,8 @@ def cmd_mmpbsa(args):
             "-ci",
             args.ndx,
             "-cg",
-            "Protein",
-            args.ligand,
+            "MMPBSA_REC",
+            "MMPBSA_LIG",
             "-ct",
             args.clean_xtc,
             "-cp",
@@ -527,8 +546,8 @@ def cmd_mmpbsa(args):
                 "-ci",
                 args.ndx,
                 "-cg",
-                "Protein",
-                args.ligand,
+                "MMPBSA_REC",
+                "MMPBSA_LIG",
                 "-ct",
                 args.clean_xtc,
                 "-cp",
@@ -624,6 +643,8 @@ def main():
     p_trjconv.add_argument("--pbc_extract", required=True)
     p_trjconv.add_argument("--out_xtc", required=True)
     p_trjconv.add_argument("--out_pdb", required=True)
+    p_trjconv.add_argument("--out_ndx", default="")
+    p_trjconv.add_argument("--ligand", default="")
     p_trjconv.add_argument("--water_names", required=True)
     p_trjconv.add_argument("--ion_names", required=True)
     p_trjconv.add_argument("--lipid_names", required=True)

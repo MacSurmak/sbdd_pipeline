@@ -10,16 +10,17 @@ process PUBLISH_MD_SYSTEM {
     publishDir path: { "${params.outdir}/systems/${meta.id}/md_topology" }, mode: 'copy'
 
     input:
-    tuple val(meta), path(gro), path(top), path(ndx), path(posre)
+    tuple val(meta), path(gro), path(top), path(ndx), path(posre), path(dry_prmtop)
 
     output:
-    tuple val(meta), path("${meta.id}_step3.gro"), path("${meta.id}_topol.top"), path("${meta.id}_index.ndx"), path("posre_*.itp", includeInputs: true)
+    tuple val(meta), path("${meta.id}_step3.gro"), path("${meta.id}_topol.top"), path("${meta.id}_index.ndx"), path("posre_*.itp", includeInputs: true), path("${meta.id}_complex_dry.prmtop")
 
     script:
     """
     cp -L "${gro}" "${meta.id}_step3.gro"
     cp -L "${top}" "${meta.id}_topol.top"
     cp -L "${ndx}" "${meta.id}_index.ndx"
+    cp -L "${dry_prmtop}" "${meta.id}_complex_dry.prmtop"
     """
 }
 
@@ -78,9 +79,9 @@ workflow MD_SETUP_WF {
 
     PUBLISH_MD_SYSTEM(SETUP_MD_SYSTEM.out.system_ready)
 
-    PUBLISH_MD_SYSTEM.out.map { meta, gro, top, ndx, posre ->
+    PUBLISH_MD_SYSTEM.out.map { meta, gro, top, ndx, posre, dry_prmtop ->
         def sys_dir = file("${params.outdir}/systems/${meta.id}/md_topology").toAbsolutePath()
         def posre_list = posre instanceof List ? posre.collect { "${sys_dir}/${it.name}" }.join(',') : "${sys_dir}/${posre.name}"
-        "${meta.id}\t${sys_dir}/${gro.name}\t${sys_dir}/${top.name}\t${sys_dir}/${ndx.name}\t${posre_list}\n"
+        "${meta.id}\t${sys_dir}/${gro.name}\t${sys_dir}/${top.name}\t${sys_dir}/${ndx.name}\t${posre_list}\t${sys_dir}/${dry_prmtop.name}\n"
     }.collectFile(name: 'md_setup_receipt.tsv', storeDir: params.outdir)
 }

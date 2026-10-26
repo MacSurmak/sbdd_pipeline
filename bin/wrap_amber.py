@@ -95,6 +95,47 @@ def cmd_antechamber(args):
     )
 
 
+def cmd_tleap_dry(args):
+    """Generates pristine, un-solvated AMBER topology of the complex strictly for MM-PBSA."""
+    subprocess.run(
+        [
+            sys.executable,
+            f"{Path(__file__).parent}/amber_cap_fixer.py",
+            args.complex_pdb,
+            "complex_clean.pdb",
+            "--bonds_out",
+            "apply_bonds.in",
+            "--ss_cutoff",
+            str(args.ss_cutoff),
+            "--water_names",
+            "WAT,HOH,SOL,TIP3,OPC",
+        ],
+        check=True,
+    )
+
+    with open("tleap_dry.in", "w") as f:
+        f.write(
+            f"source {args.protein_ff}\nsource {args.gaff_ff}\nsource {args.lipid_ff}\nsource {args.water_leaprc}\n"
+        )
+        for m in args.mol2s:
+            res_code = parse_mol2_resname(Path(m))
+            f.write(f"{res_code} = loadmol2 {m}\n")
+        for m in args.frcmods:
+            f.write(f"loadAmberParams {m}\n")
+        f.write(
+            'addPdbResMap { {"Zn2+" "ZN"} {"Ca2+" "CA"} {"Mg2+" "MG"} {"Na+" "NA"} {"K+" "K"} {"Cl-" "CL"} }\n'
+        )
+        f.write('addPdbAtomMap { {"HZ" "HZ3"} }\n')
+        f.write("complex = loadPdb complex_clean.pdb\n")
+        f.write("set default PBRadii mbondi3\nsource apply_bonds.in\n")
+        f.write("charge complex\n")
+        f.write(
+            "saveAmberParm complex complex_dry.prmtop complex_dry.inpcrd\nsavepdb complex complex_dry_tleap.pdb\nquit\n"
+        )
+
+    run_cmd(["tleap", "-f", "tleap_dry.in"])
+
+
 def cmd_tleap(args):
     subprocess.run(
         [
@@ -226,11 +267,23 @@ def main():
     p_tleap.add_argument("--frcmods", nargs="*", default=[])
     p_tleap.add_argument("--membrane", action="store_true")
 
+    p_dry = subparsers.add_parser("tleap_dry")
+    p_dry.add_argument("--complex_pdb", required=True)
+    p_dry.add_argument("--water_leaprc", required=True)
+    p_dry.add_argument("--ss_cutoff", required=True)
+    p_dry.add_argument("--protein_ff", required=True)
+    p_dry.add_argument("--gaff_ff", required=True)
+    p_dry.add_argument("--lipid_ff", required=True)
+    p_dry.add_argument("--mol2s", nargs="*", default=[])
+    p_dry.add_argument("--frcmods", nargs="*", default=[])
+
     args = parser.parse_args()
     if args.subcommand == "antechamber":
         cmd_antechamber(args)
     elif args.subcommand == "tleap":
         cmd_tleap(args)
+    elif args.subcommand == "tleap_dry":
+        cmd_tleap_dry(args)
 
 
 if __name__ == "__main__":

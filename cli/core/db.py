@@ -274,6 +274,7 @@ class System(Base):
     path_gro = Column(String, nullable=True)  # Prepared canonical coordinate file
     path_top = Column(String, nullable=True)  # Prepared canonical topology file
     path_ndx = Column(String, nullable=True)  # Prepared canonical index file
+    path_dry_prmtop = Column(String, nullable=True)  # Validated AMBER dry complex topology for MM-PBSA
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     target = relationship("Target", back_populates="systems")
@@ -453,6 +454,7 @@ for _model_attr in [
     System.path_gro,
     System.path_top,
     System.path_ndx,
+    System.path_dry_prmtop,
     Trajectory.raw_dir,
     Trajectory.path_tpr,
     Trajectory.path_clean_xtc,
@@ -488,6 +490,11 @@ def _migrate_schema(engine: Engine) -> None:
             for col_name, col_def in new_columns:
                 if col_name not in existing_cols:
                     conn.exec_driver_sql(f"ALTER TABLE receptor_frames ADD COLUMN {col_name} {col_def}")
+
+        cursor_sys = conn.exec_driver_sql("PRAGMA table_info(systems)")
+        existing_sys_cols = {row[1] for row in cursor_sys.fetchall()}
+        if existing_sys_cols and "path_dry_prmtop" not in existing_sys_cols:
+            conn.exec_driver_sql("ALTER TABLE systems ADD COLUMN path_dry_prmtop VARCHAR")
 
     # Idempotently instantiate newly declared 3NF analytical tables
     Base.metadata.create_all(

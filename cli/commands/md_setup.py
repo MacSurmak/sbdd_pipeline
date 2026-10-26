@@ -345,12 +345,13 @@ def run_md_setup(
         if not line.strip():
             continue
         parts = line.split("\t")
-        if len(parts) == 5:
+        if len(parts) >= 6:
+            sys_id, gro, top, ndx, posre_str, dry_prmtop = parts[:6]
+            posre_files = posre_str.split(",") if posre_str else []
+        elif len(parts) == 5:
             sys_id, gro, top, ndx, posre_str = parts
             posre_files = posre_str.split(",") if posre_str else []
-        elif len(parts) == 4:
-            sys_id, gro, top, ndx = parts
-            posre_files = []
+            dry_prmtop = None
         else:
             continue
 
@@ -359,6 +360,8 @@ def run_md_setup(
             s.path_gro = gro
             s.path_top = top
             s.path_ndx = ndx
+            if dry_prmtop:
+                s.path_dry_prmtop = dry_prmtop
 
             env = s.environment_dict
             env["posre_files"] = posre_files

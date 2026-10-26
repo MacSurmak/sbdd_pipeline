@@ -16,9 +16,10 @@ process TRJCONV {
     val(lipid_names)
 
     output:
-    tuple val(meta), path("trajectory_clean.xtc"), path("complex_ref.pdb"), emit: clean_traj
+    tuple val(meta), path("trajectory_clean.xtc"), path("complex_ref.pdb"), path("complex_clean.ndx"), emit: clean_traj
 
     script:
+    def lig_arg = meta.ligand ? "--ligand ${meta.ligand}" : ""
     """
     python3 ${projectDir}/bin/wrap_gromacs.py trjconv \\
         --xtcs inputs/*.xtc \\
@@ -27,6 +28,8 @@ process TRJCONV {
         --pbc_extract ${pbc_extract} \\
         --out_xtc trajectory_clean.xtc \\
         --out_pdb complex_ref.pdb \\
+        --out_ndx complex_clean.ndx \\
+        ${lig_arg} \\
         --water_names "${water_names}" \\
         --ion_names "${ion_names}" \\
         --lipid_names "${lipid_names}"

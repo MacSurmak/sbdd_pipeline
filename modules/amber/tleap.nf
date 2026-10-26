@@ -47,3 +47,34 @@ process TLEAP {
         ${mem_arg}
     """
 }
+
+process TLEAP_DRY {
+    tag "${meta.id}"
+    label 'process_single'
+
+    input:
+    tuple val(meta), path(complex_dry_pdb), path(mol2s), path(frcmods)
+    val(water_leaprc)
+    val(ss_cutoff)
+    val(protein_ff)
+    val(gaff_ff)
+    val(lipid_ff)
+
+    output:
+    tuple val(meta), path("complex_dry.prmtop"), path("complex_dry.inpcrd"), emit: dry_amber
+
+    script:
+    def mol2_arg = (mol2s && mol2s.size() > 0) ? "--mol2s ${mol2s}" : ""
+    def frcmod_arg = (frcmods && frcmods.size() > 0) ? "--frcmods ${frcmods}" : ""
+    """
+    python3 ${projectDir}/bin/wrap_amber.py tleap_dry \\
+        --complex_pdb ${complex_dry_pdb} \\
+        --water_leaprc ${water_leaprc} \\
+        --ss_cutoff ${ss_cutoff} \\
+        --protein_ff ${protein_ff} \\
+        --gaff_ff ${gaff_ff} \\
+        --lipid_ff ${lipid_ff} \\
+        ${mol2_arg} \\
+        ${frcmod_arg}
+    """
+}

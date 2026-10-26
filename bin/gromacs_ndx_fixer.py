@@ -30,6 +30,45 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from utils.gmx_helpers import parse_ndx, write_ndx_group, ensure_complex_ndx_group
 
 
+def add_mmpbsa_groups(ndx_path: Path, pdb_path: Path, ligand_name: str):
+    """
+    Creates [ MMPBSA_LIG ] and [ MMPBSA_REC ] in clean index.ndx without heuristics.
+    MMPBSA_LIG: strictly atoms of the active ligand.
+    MMPBSA_REC: all other atoms in the dry complex (Protein + Cofactors + Ions).
+    MMPBSA_REC + MMPBSA_LIG == COMPLEX.
+    """
+    import MDAnalysis as mda
+
+    if not ligand_name or not ligand_name.strip():
+        raise ValueError("FATAL: ligand_name must be explicitly provided for MM-PBSA groups!")
+
+    u = mda.Universe(str(pdb_path))
+    lig_res = ligand_name.strip().upper()
+    lig_atoms = u.select_atoms(f"resname {lig_res}")
+    if len(lig_atoms) == 0:
+        raise ValueError(
+            f"FATAL: Ligand residue '{lig_res}' not found in {pdb_path.name}! Cannot form MMPBSA_LIG group."
+        )
+
+    all_atoms = u.atoms
+    rec_atoms = all_atoms - lig_atoms
+    if len(rec_atoms) == 0:
+        raise ValueError(
+            f"FATAL: MMPBSA_REC group is empty! Protein/receptor atoms missing in {pdb_path.name}."
+        )
+
+    lig_ids = [int(a.id) for a in lig_atoms]
+    rec_ids = [int(a.id) for a in rec_atoms]
+
+    with open(ndx_path, "a") as f:
+        write_ndx_group(f, "MMPBSA_LIG", lig_ids)
+        write_ndx_group(f, "MMPBSA_REC", rec_ids)
+
+    logging.info(
+        f"Injected [ MMPBSA_LIG ] ({len(lig_ids)} atoms) and [ MMPBSA_REC ] ({len(rec_ids)} atoms) into {ndx_path}"
+    )
+
+
 def add_pocket_group(ndx_path: Path, pdb_path: Path, ligand_name: str):
     """Selects protein residues within 5.0 A of ligand plus ligand itself."""
     import MDAnalysis as mda
@@ -304,7 +343,7 @@ if __name__ == "__main__":
     parser.add_argument("--ligand", default="")
     parser.add_argument(
         "--action",
-        choices=["add_groups", "generate_posre", "ensure_complex", "add_pocket"],
+        choices=["add_groups", "generate_posre", "ensure_complex", "add_pocket", "add_mmpbsa_groups"],
         required=True,
     )
     parser.add_argument("--orgs", default="")
@@ -349,3 +388,7 @@ if __name__ == "__main__":
         )
     elif args.action == "add_pocket":
         add_pocket_group(Path(args.ndx), Path(args.pdb), args.ligand)
+    elif args.action == "add_mmpbsa_groups":
+        if not args.pdb:
+            raise ValueError("FATAL: --pdb is strictly required for add_mmpbsa_groups")
+        add_mmpbsa_groups(Path(args.ndx), Path(args.pdb), args.ligand)

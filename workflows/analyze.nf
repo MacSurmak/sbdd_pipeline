@@ -21,6 +21,7 @@ workflow ANALYZE_WF {
                 id: item.name,
                 rec_id: item.rec_id,
                 rep: item.rep,
+                ligand: item.ligand ?: "",
                 clean_dir: item.clean_dir,
                 project: params.project_name
             ]
@@ -37,8 +38,8 @@ workflow ANALYZE_WF {
             params.lipid_names
         )
 
-        TRJCONV.out.clean_traj.map { meta, clean_xtc, ref_pdb ->
-            "${meta.id}\t${clean_xtc.name}\t${ref_pdb.name}"
+        TRJCONV.out.clean_traj.map { meta, clean_xtc, ref_pdb, clean_ndx ->
+            "${meta.id}\t${clean_xtc.name}\t${ref_pdb.name}\t${clean_ndx.name}"
         }.collectFile(name: 'clean_receipt.tsv', storeDir: params.outdir, newLine: true)
 
         return
@@ -125,7 +126,7 @@ workflow ANALYZE_WF {
                 ligand: item.ligand ?: "",
                 project: params.project_name
             ]
-            [ meta, file(item.clean_xtc), file(item.ref_pdb), file(item.topol), file(item.ndx) ]
+            [ meta, file(item.clean_xtc), file(item.ref_pdb), file(item.dry_prmtop), file(item.clean_ndx) ]
         }
 
         GMX_MMPBSA(

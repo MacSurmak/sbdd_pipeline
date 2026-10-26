@@ -133,6 +133,7 @@ def run_clean_traj(
         chunks = [raw_dir / f"md_{i}.xtc" for i in range(1, expected_chunks + 1)]
 
         clean_dir = raw_dir.parent / "clean"
+        lig_code = t.system.pose.res_name if (t.system and t.system.pose) else ""
         plan_list.append(
             {
                 "name": t.name,
@@ -140,6 +141,7 @@ def run_clean_traj(
                 "rep": t.replicate,
                 "xtcs": [str(c.resolve()) for c in chunks],
                 "tpr": str(Path(t.path_tpr).resolve()),
+                "ligand": lig_code,
                 "clean_dir": str(clean_dir.resolve()),
             }
         )
@@ -1058,21 +1060,32 @@ def run_mmpbsa(
             continue
 
         sys_obj = t.system
-        if not sys_obj.path_top or not sys_obj.path_ndx:
+        if not sys_obj.pose:
+            session.close()
             raise ValueError(
-                f"FATAL: System '{sys_obj.name}' has no registered topology paths in database! "
-                "Run 'sbdd md-setup' first."
+                f"FATAL: System '{sys_obj.name}' is an Apo system (no ligand pose registered). "
+                "MM-PBSA binding free energy requires a Holo system with a bound ligand!"
             )
 
-        topol_path = Path(sys_obj.path_top).resolve()
-        ndx_path = Path(sys_obj.path_ndx).resolve()
-
-        if not topol_path.exists() or not ndx_path.exists():
+        if not sys_obj.path_dry_prmtop or not Path(sys_obj.path_dry_prmtop).exists():
+            session.close()
             raise FileNotFoundError(
-                f"FATAL: GROMACS topology files missing on disk for '{sys_obj.name}': {topol_path} / {ndx_path}"
+                f"FATAL: System '{sys_obj.name}' is missing dry AMBER topology (path_dry_prmtop)! "
+                "Run 'sbdd md-setup --force' to compile dry complex topology."
             )
 
-        lig_code = sys_obj.pose.substance.name if sys_obj.pose else ""
+        dry_prmtop_path = Path(sys_obj.path_dry_prmtop).resolve()
+        clean_dir = Path(t.path_clean_xtc).parent
+        clean_ndx_path = clean_dir / "complex_clean.ndx"
+
+        if not clean_ndx_path.exists():
+            session.close()
+            raise FileNotFoundError(
+                f"FATAL: Clean index file '{clean_ndx_path}' not found for trajectory '{t.name}'. "
+                "Trajectory must be cleaned with updated pipeline. Run 'sbdd traj-clean'."
+            )
+
+        lig_code = sys_obj.pose.res_name
 
         plan_list.append(
             {
@@ -1081,8 +1094,8 @@ def run_mmpbsa(
                 "rep": t.replicate,
                 "clean_xtc": str(Path(t.path_clean_xtc).resolve()),
                 "ref_pdb": str(Path(t.path_ref_pdb).resolve()),
-                "topol": str(topol_path),
-                "ndx": str(ndx_path),
+                "clean_ndx": str(clean_ndx_path.resolve()),
+                "dry_prmtop": str(dry_prmtop_path),
                 "ligand": lig_code,
             }
         )
