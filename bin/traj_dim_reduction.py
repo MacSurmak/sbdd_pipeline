@@ -20,6 +20,10 @@ except ImportError:
     print("FATAL: umap-learn is required in current environment.", file=sys.stderr)
     sys.exit(1)
 
+# Add current script directory to sys.path to import local utilities
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from utils.atom_selection import AtomSelectionParser
+
 
 def parse_ndx(ndx_path: Path) -> dict[str, list[int]]:
     """Parses standard GROMACS NDX file into dictionary of group_name -> 0-based atom indices."""
@@ -251,12 +255,15 @@ def main():
     ndx_groups = parse_ndx(Path(args.ndx).resolve()) if args.ndx and Path(args.ndx).exists() else {}
 
     ref_u = mda.Universe(str(struct_p))
-    ref_align_atoms = resolve_atom_group(
-        ref_u, args.align_group, ndx_groups, args.ligand_resname, args.pocket_radius, "Alignment"
+    selection_parser = AtomSelectionParser(
+        universe=ref_u,
+        ligand_resname=args.ligand_resname,
+        pocket_radius=args.pocket_radius,
+        ndx_groups=ndx_groups,
     )
-    ref_cluster_atoms = resolve_atom_group(
-        ref_u, args.cluster_group, ndx_groups, args.ligand_resname, args.pocket_radius, "Clustering Feature"
-    )
+
+    ref_align_atoms = selection_parser.parse(args.align_group, desc="Alignment Basis")
+    ref_cluster_atoms = selection_parser.parse(args.cluster_group, desc="Clustering Feature")
 
     ref_align_pos = ref_align_atoms.positions.copy()
     ref_align_com = ref_align_pos.mean(axis=0)
@@ -265,10 +272,14 @@ def main():
     align_indices = ref_align_atoms.indices
     cluster_indices = ref_cluster_atoms.indices
 
+    unique_resnames = sorted(list(set(str(r) for r in ref_cluster_atoms.resnames)))
+    res_summary = ", ".join(unique_resnames[:8]) + ("..." if len(unique_resnames) > 8 else "")
+
     print(
         f"[DIM_REDUCTION] Reference loaded: {struct_p.name}\n"
         f"  - Alignment Group ('{args.align_group}'): {len(align_indices)} atoms\n"
-        f"  - Feature Group ('{args.cluster_group}'): {len(cluster_indices)} atoms",
+        f"  - Feature Group ('{args.cluster_group}'): {len(cluster_indices)} heavy atoms across "
+        f"{len(unique_resnames)} residues ({res_summary})",
         flush=True,
     )
 
@@ -376,6 +387,9 @@ def main():
         "n_features": n_features,
         "n_align_atoms": len(align_indices),
         "n_cluster_atoms": len(cluster_indices),
+        "cluster_atom_indices": [int(x) for x in cluster_indices],
+        "cluster_atom_names": [str(a.name) for a in ref_cluster_atoms],
+        "cluster_resnames": unique_resnames,
         "k_components": k,
         "variance_explained": [round(float(v), 4) for v in var_exp[:k]],
     }
