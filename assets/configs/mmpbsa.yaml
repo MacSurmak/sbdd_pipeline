@@ -1,7 +1,5 @@
 mmpbsa:
   enabled: true
-  start_ns: 1.0                      # Initial solvent relaxation buffer before sampling (ns)
-  sample_interval_ps: 500.0          # Statistical independence interval based on autocorrelation time (ps)
   per_residue_decomp: false          # Enable per-residue binding energy decomposition
   temperature: 310.15
   salt_conc: 0.15

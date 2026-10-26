@@ -416,12 +416,16 @@ def _build_analyze_args(config: Dict[str, Any]) -> list:
         args.extend(["--membrane", "false"])
         args.extend(["--lipid_names", ""])
 
+    val_sampling = validate_analysis_sampling_config(config)
+    args.extend([
+        "--analysis_start_ns", str(val_sampling["start_ns"]),
+        "--analysis_sample_interval_ps", str(val_sampling["sample_interval_ps"]),
+    ])
+
     mmpbsa_cfg = config.get("mmpbsa", {})
     if mmpbsa_cfg.get("enabled"):
         val_mmpbsa = validate_mmpbsa_config(config)
         args.extend([
-            "--mmpbsa_start_ns", str(val_mmpbsa["start_ns"]),
-            "--mmpbsa_sample_interval_ps", str(val_mmpbsa["sample_interval_ps"]),
             "--per_residue_decomp", "true" if val_mmpbsa["per_residue_decomp"] else "false",
             "--mmpbsa_method", str(val_mmpbsa["method"]),
             "--mmpbsa_gb_model", str(val_mmpbsa["gb_model"]),
@@ -447,8 +451,6 @@ def _build_analyze_args(config: Dict[str, Any]) -> list:
             "--cluster_feature_group", str(val_cluster["cluster_group"]),
             "--cluster_dim_reduction", str(val_cluster["dim_reduction"]),
             "--cluster_algorithm", str(val_cluster["algorithm"]),
-            "--cluster_start_ns", str(val_cluster["start_ns"]),
-            "--cluster_sample_interval_ps", str(val_cluster["sample_interval_ps"]),
             "--cluster_rmsd_cutoff", str(val_cluster["rmsd_cutoff"]),
             "--cluster_tica_lag_ns", str(val_cluster["tica_lag_ns"]),
             "--cluster_variance_cutoff", str(val_cluster["variance_cutoff"]),
@@ -462,27 +464,61 @@ def _build_analyze_args(config: Dict[str, Any]) -> list:
     return args
 
 
+def validate_analysis_sampling_config(config: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Central Single Source of Truth validation for trajectory sampling stride.
+    Guarantees that MM-PBSA, Clustering, and Stratification share an identical time grid.
+    """
+    sampling_cfg = config.get("analysis_sampling") or config.get("md_simulation", {}).get("analysis_sampling")
+
+    if not sampling_cfg or not isinstance(sampling_cfg, dict):
+        # Legacy tolerance check: inspect mmpbsa section if present
+        m_cfg = config.get("mmpbsa", {})
+        if "start_ns" in m_cfg and "sample_interval_ps" in m_cfg:
+            sampling_cfg = {"start_ns": m_cfg["start_ns"], "sample_interval_ps": m_cfg["sample_interval_ps"]}
+        else:
+            raise ValueError(
+                "FATAL SSOT VIOLATION: Missing required 'analysis_sampling' configuration block in md.yaml!\n"
+                "Both MM-PBSA and Clustering must derive their sampling stride from this single source of truth."
+            )
+
+    required_keys = ["start_ns", "sample_interval_ps"]
+    for key in required_keys:
+        if key not in sampling_cfg or sampling_cfg[key] is None or sampling_cfg[key] == "":
+            raise ValueError(
+                f"FATAL: Missing required parameter 'analysis_sampling.{key}' in md.yaml! "
+                "Silent fallbacks are strictly forbidden by architectural law."
+            )
+
+    start_ns = float(sampling_cfg["start_ns"])
+    interval_ps = float(sampling_cfg["sample_interval_ps"])
+
+    if start_ns < 0.0:
+        raise ValueError(f"FATAL: 'analysis_sampling.start_ns' must be non-negative, got: {start_ns}")
+    if interval_ps <= 0.0:
+        raise ValueError(f"FATAL: 'analysis_sampling.sample_interval_ps' must be positive, got: {interval_ps}")
+
+    return {"start_ns": start_ns, "sample_interval_ps": interval_ps}
+
+
 def validate_mmpbsa_config(config: Dict[str, Any]) -> Dict[str, Any]:
     """Strict Fail-Fast validation of MM-PBSA thermodynamic parameters."""
     mmpbsa_cfg = config.get("mmpbsa")
     if not mmpbsa_cfg or not isinstance(mmpbsa_cfg, dict):
         raise ValueError("FATAL: 'mmpbsa' configuration block is missing or invalid in mmpbsa.yaml!")
 
-    required_keys = ["start_ns", "sample_interval_ps", "temperature", "salt_conc", "per_residue_decomp"]
+    # Inherit single source of truth for trajectory sampling
+    sampling = validate_analysis_sampling_config(config)
+    mmpbsa_cfg["start_ns"] = sampling["start_ns"]
+    mmpbsa_cfg["sample_interval_ps"] = sampling["sample_interval_ps"]
+
+    required_keys = ["temperature", "salt_conc", "per_residue_decomp"]
     for key in required_keys:
         if key not in mmpbsa_cfg or mmpbsa_cfg[key] is None or mmpbsa_cfg[key] == "":
             raise ValueError(
                 f"FATAL: Missing required parameter 'mmpbsa.{key}' in mmpbsa.yaml! "
                 "Silent fallbacks and default constants are strictly forbidden by architectural law."
             )
-
-    if float(mmpbsa_cfg["start_ns"]) < 0.0:
-        raise ValueError(f"FATAL: 'start_ns' must be non-negative, got: {mmpbsa_cfg['start_ns']}")
-
-    if float(mmpbsa_cfg["sample_interval_ps"]) <= 0.0:
-        raise ValueError(
-            f"FATAL: 'sample_interval_ps' must be a positive physical interval, got: {mmpbsa_cfg['sample_interval_ps']}"
-        )
 
     if float(mmpbsa_cfg["temperature"]) <= 0.0:
         raise ValueError(f"FATAL: 'temperature' must be positive Kelvin, got: {mmpbsa_cfg['temperature']}")
@@ -513,13 +549,16 @@ def validate_clustering_config(config: Dict[str, Any]) -> Dict[str, Any]:
             "All parameters must be explicitly specified."
         )
 
+    # Inherit single source of truth for trajectory sampling
+    sampling = validate_analysis_sampling_config(config)
+    cluster_cfg["start_ns"] = sampling["start_ns"]
+    cluster_cfg["sample_interval_ps"] = sampling["sample_interval_ps"]
+
     required_keys = [
         "align_group",
         "cluster_group",
         "dim_reduction",
         "algorithm",
-        "start_ns",
-        "sample_interval_ps",
         "tica_lag_ns",
         "variance_cutoff",
         "pocket_radius",

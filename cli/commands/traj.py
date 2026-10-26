@@ -338,6 +338,12 @@ def save_clustering_to_db(
     eff_dim = manifest.get("dim_reduction", "pca")
     eff_algo = manifest.get("algorithm", "hdbscan")
 
+    # Single Source of Truth sampling provenance
+    configs = load_project_configs(Path.cwd())
+    val_sampling = validate_analysis_sampling_config(configs)
+    start_ns = float(val_sampling["start_ns"])
+    interval_ps = float(val_sampling["sample_interval_ps"])
+
     # Deterministic run naming: e.g. sys_RY12_Pocket_hdbscan
     clean_group_tag = re.sub(r"[^a-zA-Z0-9_]", "_", eff_cluster).strip("_")
     run_name = custom_name.strip() if custom_name else f"{sys_obj.name}_{clean_group_tag}_{eff_algo}"
@@ -369,6 +375,8 @@ def save_clustering_to_db(
         align_group=eff_align,
         algorithm=eff_algo,
         dim_reduction=eff_dim,
+        start_ns=start_ns,
+        sample_interval_ps=interval_ps,
         parameters_dict=manifest.get("feature_metadata", {}),
         path_labels=str(labels_p.resolve()),
         path_time_map=str(time_map_p.resolve()),
@@ -938,6 +946,19 @@ def run_stratify(
                 f"You must explicitly specify which clustering to stratify against via '--clustering <name>'.\n"
                 f"Available choices: {avail_names}"
             )
+
+    # 3b. Strict SSOT Provenance Verification between MM-PBSA and Clustering grids
+    if (
+        abs(float(m_run.start_ns) - float(target_c_run.start_ns)) > 1e-3
+        or abs(float(m_run.sample_interval_ps) - float(target_c_run.sample_interval_ps)) > 1e-3
+    ):
+        session.close()
+        raise ValueError(
+            f"FATAL SSOT PROVENANCE CONFLICT: MM-PBSA was evaluated with start={m_run.start_ns} ns, "
+            f"interval={m_run.sample_interval_ps} ps, but ClusteringRun '{target_c_run.name}' was "
+            f"evaluated with start={target_c_run.start_ns} ns, interval={target_c_run.sample_interval_ps} ps!\n"
+            "Cannot stratify across divergent time grids without violating scientific integrity."
+        )
 
     # 4. Prepare Paths and Invoke Stratification Engine
     mmpbsa_reports_dir = cwd / "reports" / "mmpbsa"

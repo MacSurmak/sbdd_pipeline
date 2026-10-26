@@ -346,6 +346,8 @@ class ClusteringRun(Base):
     align_group = Column(String(64), nullable=False)    # Backbone, C-alpha
     algorithm = Column(String(32), nullable=False)      # hdbscan, hierarchical, auto_kmeans, kmeans
     dim_reduction = Column(String(16), nullable=False)  # pca, tica, none
+    start_ns = Column(Float, nullable=False, default=1.0)
+    sample_interval_ps = Column(Float, nullable=False, default=500.0)
     parameters = Column(Text, default="{}", nullable=False)
     path_labels = Column(String, nullable=False)        # Validated path to cluster_labels.npy
     path_time_map = Column(String, nullable=False)      # Validated path to frame_time_map.json
@@ -505,6 +507,15 @@ def _migrate_schema(engine: Engine) -> None:
             MmpbsaRun.__table__,
         ],
     )
+
+    with engine.begin() as conn:
+        cursor_c = conn.exec_driver_sql("PRAGMA table_info(clustering_runs)")
+        existing_c_cols = {row[1] for row in cursor_c.fetchall()}
+        if existing_c_cols:
+            if "start_ns" not in existing_c_cols:
+                conn.exec_driver_sql("ALTER TABLE clustering_runs ADD COLUMN start_ns FLOAT DEFAULT 1.0")
+            if "sample_interval_ps" not in existing_c_cols:
+                conn.exec_driver_sql("ALTER TABLE clustering_runs ADD COLUMN sample_interval_ps FLOAT DEFAULT 500.0")
 
 
 def get_session(db_path: Path = None):

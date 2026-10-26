@@ -68,14 +68,17 @@ workflow ANALYZE_WF {
             [ meta, ref_pdb, xtcs, ndx_f ]
         }
 
+        def sampling_start = params.analysis_start_ns ?: params.cluster_start_ns ?: 1.0
+        def sampling_interval = params.analysis_sample_interval_ps ?: params.cluster_sample_interval_ps ?: 500.0
+
         CLUSTER_ENSEMBLE(
             ch_cluster_in,
             params.cluster_align_group ?: "Backbone",
             params.cluster_feature_group ?: "Ligand",
             params.cluster_dim_reduction ?: "tica",
             params.cluster_algorithm ?: "hdbscan",
-            params.cluster_start_ns ?: 1.0,
-            params.cluster_sample_interval_ps ?: 500.0,
+            sampling_start,
+            sampling_interval,
             params.cluster_tica_lag_ns ?: 2.0,
             params.cluster_variance_cutoff ?: 0.85,
             params.cluster_pocket_radius ?: 5.0,
@@ -134,11 +137,14 @@ workflow ANALYZE_WF {
 
         ch_templates = file(params.mmpbsa_templates)
 
+        def mmpbsa_start = params.analysis_start_ns ?: params.mmpbsa_start_ns ?: 1.0
+        def mmpbsa_interval = params.analysis_sample_interval_ps ?: params.mmpbsa_sample_interval_ps ?: 500.0
+
         GMX_MMPBSA(
             ch_mmpbsa_in,
             ch_templates,
-            params.mmpbsa_start_ns,
-            params.mmpbsa_sample_interval_ps,
+            mmpbsa_start,
+            mmpbsa_interval,
             params.md_temperature,
             params.md_salt_conc,
             params.membrane,

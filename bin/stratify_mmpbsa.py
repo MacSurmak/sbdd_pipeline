@@ -106,39 +106,40 @@ def main():
     # 2. Load MM-PBSA samples
     rep_energies = load_replicate_mmpbsa(mmpbsa_dir, system_name)
 
-    # 3. Exact 1:1 Bijective Alignment (Both pipelines sampled at identical time points)
+    # 3. Exact 1:1 Bijective Intersection (Zero Heuristics: Failure on Mismatched Grids)
     stratified_samples = []
     for rep_key, df_e in rep_energies.items():
-        df_c_rep = df_coords[df_coords["replicate"] == rep_key].sort_values("time_ns").reset_index(drop=True)
+        df_c_rep = df_coords[df_coords["replicate"] == rep_key].copy()
         if df_c_rep.empty:
-            continue
+            raise KeyError(
+                f"FATAL SSOT INTEGRITY VIOLATION: Replicate '{rep_key}' present in MM-PBSA "
+                "was not found in clustering coordinate map!"
+            )
 
-        n_traj_frames = len(df_c_rep)
-        n_energy_samples = len(df_e)
+        df_e_rep = df_e.copy()
+        # Canonical timestamp key rounded to integration picosecond tolerance
+        df_e_rep["join_time"] = df_e_rep["energy_frame"].astype(float) if "energy_frame" in df_e_rep else np.arange(len(df_e_rep))
+        df_c_rep["join_time"] = df_c_rep["time_ns"].round(3)
 
-        # Exact 1:1 match verification
-        if n_traj_frames == n_energy_samples:
-            for s_idx in range(n_energy_samples):
-                stratified_samples.append({
-                    "replicate": rep_key,
-                    "time_ns": float(df_c_rep.at[s_idx, "time_ns"]),
-                    "cluster_id": int(df_c_rep.at[s_idx, "cluster_id"]),
-                    "delta_g": float(df_e.iloc[s_idx]["delta_g"]),
-                })
-        else:
-            # Deterministic nearest-timestamp alignment if counts differ slightly due to final frame cutoff
-            c_times = df_c_rep["time_ns"].values
-            c_labels = df_c_rep["cluster_id"].values
-            for _, row in df_e.iterrows():
-                e_val = float(row["delta_g"])
-                s_idx = int(row["sample_idx"])
-                target_idx = min(n_traj_frames - 1, max(0, s_idx))
-                stratified_samples.append({
-                    "replicate": rep_key,
-                    "time_ns": float(c_times[target_idx]),
-                    "cluster_id": int(c_labels[target_idx]),
-                    "delta_g": e_val,
-                })
+        n_c = len(df_c_rep)
+        n_e = len(df_e_rep)
+
+        # Exact 1:1 length assertion
+        if n_c != n_e:
+            raise ValueError(
+                f"FATAL DATA INTEGRITY VIOLATION for {rep_key}: MM-PBSA evaluated {n_e} samples, "
+                f"but clustering evaluated {n_c} frames! Sampling strides have diverged. "
+                "Both processes must derive their grid strictly from 'analysis_sampling' in md.yaml."
+            )
+
+        df_c_sorted = df_c_rep.sort_values("time_ns").reset_index(drop=True)
+        for idx in range(n_e):
+            stratified_samples.append({
+                "replicate": rep_key,
+                "time_ns": float(df_c_sorted.at[idx, "time_ns"]),
+                "cluster_id": int(df_c_sorted.at[idx, "cluster_id"]),
+                "delta_g": float(df_e_rep.iloc[idx]["delta_g"]),
+            })
 
     if not stratified_samples:
         raise ValueError("FATAL: Point-to-State projection produced zero valid intersections!")
