@@ -43,24 +43,24 @@ def parse_args():
         "--temp_k", type=float, default=310.15, help="Simulation temperature in Kelvin"
     )
     parser.add_argument(
-        "--paradigm", default="adaptive_zscore", help="Plateau detection paradigm"
+        "--paradigm", required=True, help="Plateau detection paradigm"
     )
     parser.add_argument(
-        "--smoothing_tau_ns", type=float, default=0.5, help="Zero-phase EMA decay time (ns)"
+        "--smoothing_tau_ns", type=float, required=True, help="Zero-phase EMA decay time (ns)"
     )
     parser.add_argument(
-        "--significance_z_crit", type=float, default=2.0, help="Adaptive Z-score threshold"
+        "--significance_z_crit", type=float, required=True, help="Adaptive Z-score threshold"
     )
     parser.add_argument(
-        "--dilation_buffer_ns", type=float, default=0.4, help="Dilation buffer (+/- delta in ns)"
+        "--dilation_buffer_ns", type=float, required=True, help="Dilation buffer (+/- delta in ns)"
     )
     parser.add_argument(
-        "--min_dwell_ns", type=float, default=5.0, help="Minimum plateau duration (ns)"
+        "--min_dwell_ns", type=float, required=True, help="Minimum plateau duration (ns)"
     )
     parser.add_argument(
         "--enforce_cluster_continuity",
         action="store_true",
-        default=True,
+        default=False,
         help="Split plateau if manifold cluster changes",
     )
     parser.add_argument(
@@ -574,7 +574,9 @@ def main():
 
     line_trans = plt.Line2D([0], [0], color="red", alpha=0.3, lw=4.0)
     custom_lines.append(line_trans)
-    legend_labels.append("Excluded Transition Buffer (0% Leakage)")
+    legend_labels.append(
+        f"Excluded Non-Equilibrium Transition (|Δμ| ≥ {args.significance_z_crit}σ or τ < {args.min_dwell_ns} ns)"
+    )
 
     fig.legend(
         custom_lines,

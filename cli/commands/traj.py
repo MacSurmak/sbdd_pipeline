@@ -958,8 +958,8 @@ def run_stratify(
     cwd = Path.cwd()
     session = get_session()
     configs = load_project_configs(cwd)
-    cluster_cfg = configs.get("md_simulation", {}).get("clustering", {})
-    plateau_cfg = cluster_cfg.get("plateau_detection", {})
+    cluster_cfg = validate_clustering_config(configs)
+    plateau_cfg = cluster_cfg["plateau_detection"]
 
     target_systems = []
     if system and not all_systems:
@@ -1061,15 +1061,15 @@ def run_stratify(
             "--temp_k",
             str(effective_temp),
             "--paradigm",
-            str(plateau_cfg.get("paradigm", "adaptive_zscore")),
+            str(plateau_cfg["paradigm"]),
             "--smoothing_tau_ns",
-            str(plateau_cfg.get("smoothing_tau_ns", 0.5)),
+            str(plateau_cfg["smoothing_tau_ns"]),
             "--significance_z_crit",
-            str(plateau_cfg.get("significance_z_crit", 2.0)),
+            str(plateau_cfg["significance_z_crit"]),
             "--dilation_buffer_ns",
-            str(plateau_cfg.get("dilation_buffer_ns", 0.4)),
+            str(plateau_cfg["dilation_buffer_ns"]),
             "--min_dwell_ns",
-            str(plateau_cfg.get("min_dwell_ns", 5.0)),
+            str(plateau_cfg["min_dwell_ns"]),
             "--out_json",
             str(out_json.resolve()),
             "--out_plot",
@@ -1077,7 +1077,7 @@ def run_stratify(
             "--out_timeseries",
             str(out_ts.resolve()),
         ]
-        if plateau_cfg.get("enforce_cluster_continuity", True):
+        if plateau_cfg["enforce_cluster_continuity"]:
             cmd.append("--enforce_cluster_continuity")
 
         res = subprocess.run(cmd, capture_output=True, text=True)

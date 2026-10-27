@@ -659,22 +659,46 @@ def validate_clustering_config(config: Dict[str, Any]) -> Dict[str, Any]:
             f"FATAL: 'temp_k' must be a positive absolute temperature in Kelvin, got: {cluster_cfg['temp_k']}"
         )
 
-    plateau_cfg = cluster_cfg.get("plateau_detection", {})
-    if plateau_cfg and plateau_cfg.get("enabled", True):
-        p_paradigm = str(plateau_cfg.get("paradigm", "adaptive_zscore")).strip().lower()
-        valid_paradigms = ["adaptive_zscore", "macro_step", "running_range", "inverted_vel"]
-        if p_paradigm not in valid_paradigms:
+    plateau_cfg = cluster_cfg.get("plateau_detection")
+    if not plateau_cfg or not isinstance(plateau_cfg, dict):
+        raise ValueError(
+            "FATAL CONFIGURATION ERROR: Missing required configuration section "
+            "'md_simulation.clustering.plateau_detection' in configs/md.yaml!\n"
+            "Fallbacks and default values are strictly forbidden by Fail-Fast law. "
+            "Declare 'plateau_detection' explicitly in configs/md.yaml under 'clustering'."
+        )
+
+    required_plateau_keys = [
+        "enabled",
+        "paradigm",
+        "smoothing_tau_ns",
+        "significance_z_crit",
+        "dilation_buffer_ns",
+        "min_dwell_ns",
+        "enforce_cluster_continuity",
+    ]
+    for p_key in required_plateau_keys:
+        if p_key not in plateau_cfg or plateau_cfg[p_key] is None or plateau_cfg[p_key] == "":
             raise ValueError(
-                f"FATAL: Invalid plateau_detection.paradigm: '{p_paradigm}'. Must be one of {valid_paradigms}."
+                f"FATAL CONFIGURATION ERROR: Missing required parameter 'md_simulation.clustering.plateau_detection.{p_key}' "
+                "in configs/md.yaml! All parameters must be explicitly specified."
             )
-        if float(plateau_cfg.get("smoothing_tau_ns", 0.5)) <= 0.0:
-            raise ValueError("FATAL: plateau_detection.smoothing_tau_ns must be positive!")
-        if float(plateau_cfg.get("significance_z_crit", 2.0)) <= 0.0:
-            raise ValueError("FATAL: plateau_detection.significance_z_crit must be positive!")
-        if float(plateau_cfg.get("dilation_buffer_ns", 0.4)) < 0.0:
-            raise ValueError("FATAL: plateau_detection.dilation_buffer_ns must be non-negative!")
-        if float(plateau_cfg.get("min_dwell_ns", 5.0)) <= 0.0:
-            raise ValueError("FATAL: plateau_detection.min_dwell_ns must be positive!")
+
+    p_paradigm = str(plateau_cfg["paradigm"]).strip().lower()
+    valid_paradigms = ["adaptive_zscore", "macro_step", "running_range", "inverted_vel"]
+    if p_paradigm not in valid_paradigms:
+        raise ValueError(
+            f"FATAL: Invalid plateau_detection.paradigm: '{p_paradigm}'. Must be one of {valid_paradigms}."
+        )
+
+    if float(plateau_cfg["smoothing_tau_ns"]) <= 0.0:
+        raise ValueError("FATAL: plateau_detection.smoothing_tau_ns must be positive!")
+    if float(plateau_cfg["significance_z_crit"]) <= 0.0:
+        raise ValueError("FATAL: plateau_detection.significance_z_crit must be positive!")
+    if float(plateau_cfg["dilation_buffer_ns"]) < 0.0:
+        raise ValueError("FATAL: plateau_detection.dilation_buffer_ns must be non-negative!")
+    if float(plateau_cfg["min_dwell_ns"]) <= 0.0:
+        raise ValueError("FATAL: plateau_detection.min_dwell_ns must be positive!")
 
     return cluster_cfg
 
