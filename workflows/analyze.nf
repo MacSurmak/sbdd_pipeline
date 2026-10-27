@@ -53,12 +53,14 @@ workflow ANALYZE_WF {
         ch_cluster_in = Channel.fromList(planList).map { item ->
             def align_grp = item.align_group
             def cluster_grp = item.cluster_group
+            def clean_cluster_tag = cluster_grp.replaceAll(/[^a-zA-Z0-9_]/, '_')
             def meta = [
                 id: item.task_id,
                 system: item.system,
                 ligand: item.ligand ?: "",
                 align_group: align_grp,
                 cluster_group: cluster_grp,
+                cluster_group_tag: clean_cluster_tag,
                 replicate_names: item.replicate_names,
                 project: params.project_name
             ]
@@ -90,7 +92,8 @@ workflow ANALYZE_WF {
 
         // Publish structured receipt mapping system and groups to published manifest
         CLUSTER_ENSEMBLE.out.manifest.map { meta, manifest_json ->
-            def published_manifest = "${params.outdir}/reports/clusters/${meta.system}/${meta.align_group}_${meta.cluster_group}/${manifest_json.name}"
+            def clean_tag = meta.cluster_group_tag ?: meta.cluster_group.replaceAll(/[^a-zA-Z0-9_]/, '_')
+            def published_manifest = "${params.outdir}/reports/clusters/${meta.system}/${meta.align_group}_${clean_tag}/${manifest_json.name}"
             "${meta.system}\t${meta.align_group}\t${meta.cluster_group}\t${published_manifest}"
         }.collectFile(name: 'cluster_receipt.tsv', storeDir: params.outdir, newLine: true)
 

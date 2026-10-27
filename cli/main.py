@@ -302,6 +302,11 @@ def main():
         "--system", help="Physical system name to stratify (e.g. sys_RY12_clean_KVR)"
     )
     p_strat.add_argument(
+        "--all",
+        action="store_true",
+        help="Stratify all eligible systems in the database",
+    )
+    p_strat.add_argument(
         "--clustering", help="Explicit name of the ClusteringRun to stratify against"
     )
     p_strat.add_argument(
@@ -691,6 +696,7 @@ def main():
 
         run_stratify(
             system=args.system,
+            all_systems=args.all,
             clustering=args.clustering,
             temp_k=args.temp_k,
         )

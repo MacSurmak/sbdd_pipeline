@@ -129,14 +129,14 @@ def main():
         )
         labels = clusterer.fit_predict(proj[:, :k_components])
 
-        # Fallback if density was completely uniform and only noise was returned
+        # Strict Fail-Fast: refuse silent algorithm fallback when density is uniform
         valid_cids = sorted([c for c in set(labels) if c >= 0])
         if not valid_cids:
-            print(
-                "[CLUSTER_BASINS] Warning: HDBSCAN found 0 distinct clusters. Falling back to auto_kmeans...",
-                flush=True,
+            raise RuntimeError(
+                f"FATAL: HDBSCAN failed to resolve any dense conformational clusters "
+                f"(all frames assigned as noise -1 at min_cluster_size={min_size}). "
+                "Execution halted by Fail-Fast law. Adjust min_cluster_fraction or select a geometric algorithm."
             )
-            algo = "auto_kmeans"
 
     if algo == "hierarchical":
         from sklearn.cluster import AgglomerativeClustering
@@ -196,8 +196,10 @@ def main():
 
     raw_unique_cids = sorted([c for c in set(labels) if c >= 0])
     if not raw_unique_cids:
-        raw_unique_cids = [0]
-        labels = np.zeros(n_frames, dtype=np.int32)
+        raise RuntimeError(
+            "FATAL: Clustering produced zero valid non-noise clusters! "
+            "Execution halted by Fail-Fast law."
+        )
 
     # First pass: identify initial medoids for genuine basins in O(N) memory
     initial_stats = []

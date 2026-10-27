@@ -66,3 +66,11 @@ md_simulation:
     min_cluster_population: 5.0         # Population cutoff percentage (%) for automated basin recommendation
     temp_k: 310.15                      # Simulation temperature for Delta G free energy landscape calculation (K)
     auto_promote: false                 # Headless non-interactive cluster promotion mode
+    plateau_detection:
+      enabled: true
+      paradigm: "adaptive_zscore"        # Options: adaptive_zscore, macro_step, running_range, inverted_vel
+      smoothing_tau_ns: 0.5              # Zero-phase EMA decay time (ns)
+      significance_z_crit: 2.0           # Transition threshold in units of thermal sigma
+      dilation_buffer_ns: 0.4            # Transition buffer (+/- delta in ns)
+      min_dwell_ns: 5.0                  # Minimum plateau duration (ns)
+      enforce_cluster_continuity: true   # Split plateau if manifold cluster changes

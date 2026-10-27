@@ -659,6 +659,23 @@ def validate_clustering_config(config: Dict[str, Any]) -> Dict[str, Any]:
             f"FATAL: 'temp_k' must be a positive absolute temperature in Kelvin, got: {cluster_cfg['temp_k']}"
         )
 
+    plateau_cfg = cluster_cfg.get("plateau_detection", {})
+    if plateau_cfg and plateau_cfg.get("enabled", True):
+        p_paradigm = str(plateau_cfg.get("paradigm", "adaptive_zscore")).strip().lower()
+        valid_paradigms = ["adaptive_zscore", "macro_step", "running_range", "inverted_vel"]
+        if p_paradigm not in valid_paradigms:
+            raise ValueError(
+                f"FATAL: Invalid plateau_detection.paradigm: '{p_paradigm}'. Must be one of {valid_paradigms}."
+            )
+        if float(plateau_cfg.get("smoothing_tau_ns", 0.5)) <= 0.0:
+            raise ValueError("FATAL: plateau_detection.smoothing_tau_ns must be positive!")
+        if float(plateau_cfg.get("significance_z_crit", 2.0)) <= 0.0:
+            raise ValueError("FATAL: plateau_detection.significance_z_crit must be positive!")
+        if float(plateau_cfg.get("dilation_buffer_ns", 0.4)) < 0.0:
+            raise ValueError("FATAL: plateau_detection.dilation_buffer_ns must be non-negative!")
+        if float(plateau_cfg.get("min_dwell_ns", 5.0)) <= 0.0:
+            raise ValueError("FATAL: plateau_detection.min_dwell_ns must be positive!")
+
     return cluster_cfg
 
 

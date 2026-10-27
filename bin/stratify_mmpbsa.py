@@ -43,6 +43,27 @@ def parse_args():
         "--temp_k", type=float, default=310.15, help="Simulation temperature in Kelvin"
     )
     parser.add_argument(
+        "--paradigm", default="adaptive_zscore", help="Plateau detection paradigm"
+    )
+    parser.add_argument(
+        "--smoothing_tau_ns", type=float, default=0.5, help="Zero-phase EMA decay time (ns)"
+    )
+    parser.add_argument(
+        "--significance_z_crit", type=float, default=2.0, help="Adaptive Z-score threshold"
+    )
+    parser.add_argument(
+        "--dilation_buffer_ns", type=float, default=0.4, help="Dilation buffer (+/- delta in ns)"
+    )
+    parser.add_argument(
+        "--min_dwell_ns", type=float, default=5.0, help="Minimum plateau duration (ns)"
+    )
+    parser.add_argument(
+        "--enforce_cluster_continuity",
+        action="store_true",
+        default=True,
+        help="Split plateau if manifold cluster changes",
+    )
+    parser.add_argument(
         "--out_json", default="stratification_summary.json", help="Output summary JSON"
     )
     parser.add_argument(
@@ -50,7 +71,139 @@ def parse_args():
         default="stratified_rmsd_plot.png",
         help="Output multi-replica plot PNG",
     )
+    parser.add_argument(
+        "--out_timeseries",
+        default="stratified_timeseries.tsv",
+        help="Output stratified timeseries TSV",
+    )
     return parser.parse_args()
+
+
+def zero_phase_ema(y: np.ndarray, times: np.ndarray, decay_ns: float) -> np.ndarray:
+    """Forward-backward zero-phase exponential moving average filter."""
+    n = len(y)
+    if n < 3 or decay_ns <= 0.0:
+        return y.copy()
+    dt = (times[-1] - times[0]) / float(max(1, n - 1))
+    alpha = 1.0 - np.exp(-dt / float(decay_ns))
+
+    fwd = np.empty(n, dtype=np.float64)
+    fwd[0] = y[0]
+    for i in range(1, n):
+        fwd[i] = alpha * y[i] + (1.0 - alpha) * fwd[i - 1]
+
+    bwd = np.empty(n, dtype=np.float64)
+    bwd[-1] = fwd[-1]
+    for i in range(n - 2, -1, -1):
+        bwd[i] = alpha * fwd[i] + (1.0 - alpha) * bwd[i + 1]
+
+    return bwd
+
+
+def compute_replicate_mad(rmsd: np.ndarray, smoothed: np.ndarray) -> float:
+    """Computes median absolute deviation estimate of high-frequency thermal noise."""
+    res = rmsd - smoothed
+    med = float(np.median(res))
+    mad = float(np.median(np.abs(res - med)))
+    return max(0.04, 1.4826 * mad)
+
+
+def detect_plateaus_exclusion(
+    times: np.ndarray,
+    rmsd: np.ndarray,
+    cluster_arr: np.ndarray,
+    paradigm: str,
+    tau_ns: float,
+    z_crit: float,
+    buffer_ns: float,
+    min_dwell_ns: float,
+    enforce_cluster: bool,
+) -> tuple[np.ndarray, np.ndarray, float]:
+    """
+    Exclusion-First plateau gating:
+    Identifies non-equilibrium transition jumps, applies morphological dilation buffer (+/- delta),
+    and validates remaining quiescent intervals with minimum dwell time and cluster continuity.
+    """
+    n = len(times)
+    dt = (times[-1] - times[0]) / float(max(1, n - 1))
+    smoothed = zero_phase_ema(rmsd, times, tau_ns)
+    sigma_thermal = compute_replicate_mad(rmsd, smoothed)
+
+    trans_spikes = np.zeros(n, dtype=np.uint8)
+
+    if paradigm in ["adaptive_zscore", "macro_step"]:
+        effective_step_thresh = (z_crit * sigma_thermal) if paradigm == "adaptive_zscore" else z_crit
+        stride = max(1, int(round(0.20 / dt)))
+        sub_n = n // stride
+        if sub_n > 4:
+            sub_means = []
+            sub_idxs = []
+            for k in range(sub_n):
+                s = k * stride
+                e = min(n, (k + 1) * stride)
+                sub_means.append(float(np.mean(smoothed[s:e])))
+                sub_idxs.append(s)
+
+            lookahead = max(1, int(round(2.0 / 0.20)))
+            for k in range(lookahead, len(sub_means) - lookahead):
+                delta_mu = abs(sub_means[k + lookahead] - sub_means[k - lookahead])
+                if delta_mu >= effective_step_thresh:
+                    center_pt = sub_idxs[k]
+                    trans_spikes[center_pt] = 1
+    elif paradigm == "running_range":
+        w_pts = max(5, int(round(6.0 / dt)))
+        half_w = w_pts // 2
+        for i in range(half_w, n - half_w, 2):
+            val_range = np.max(smoothed[i - half_w : i + half_w + 1]) - np.min(smoothed[i - half_w : i + half_w + 1])
+            if val_range >= z_crit:
+                trans_spikes[i] = 1
+    else:
+        # Inverted velocity spike
+        grad = np.gradient(smoothed, times)
+        vel = np.abs(grad)
+        trans_spikes[vel >= z_crit] = 1
+
+    # Morphological dilation buffer (+/- delta)
+    buf_pts = int(round(buffer_ns / dt))
+    excluded_mask = np.zeros(n, dtype=np.uint8)
+    if buf_pts > 0:
+        spike_indices = np.where(trans_spikes == 1)[0]
+        for s_idx in spike_indices:
+            s = max(0, s_idx - buf_pts)
+            e = min(n, s_idx + buf_pts + 1)
+            excluded_mask[s:e] = 1
+    else:
+        excluded_mask = trans_spikes.copy()
+
+    # Plateau candidate is complement
+    candidate_plateau = np.where(excluded_mask == 0, 1, 0).astype(np.uint8)
+    final_plateau_mask = np.zeros(n, dtype=np.uint8)
+
+    in_run = False
+    start_idx = 0
+    for i in range(n + 1):
+        val = candidate_plateau[i] if i < n else 0
+        if not in_run and val == 1:
+            in_run = True
+            start_idx = i
+        elif in_run and val == 0:
+            in_run = False
+            end_idx = i
+            if (times[end_idx - 1] - times[start_idx]) >= min_dwell_ns:
+                if enforce_cluster and len(cluster_arr) == n:
+                    c_run_start = start_idx
+                    curr_c = cluster_arr[start_idx]
+                    for k in range(start_idx + 1, end_idx + 1):
+                        next_c = cluster_arr[k] if k < end_idx else -999
+                        if next_c != curr_c:
+                            if (times[k - 1] - times[c_run_start]) >= min_dwell_ns:
+                                final_plateau_mask[c_run_start:k] = 1
+                            c_run_start = k
+                            curr_c = next_c
+                else:
+                    final_plateau_mask[start_idx:end_idx] = 1
+
+    return final_plateau_mask, smoothed, sigma_thermal
 
 
 def load_replicate_mmpbsa(
@@ -280,49 +433,55 @@ def main():
 
     for idx, r_key in enumerate(unique_reps):
         ax = axes_flat[idx]
+        r_times_f, r_vals_f = replicate_full_rmsd[r_key]
+        _, sm_vals_f = replicate_smoothed[r_key]
+        _, p_mask_f = replicate_plateau_masks[r_key]
+
         df_c_r = df_coords[df_coords["replicate"] == r_key].sort_values("time_ns")
-        times = df_c_r["time_ns"].values
-        c_ids = df_c_r["cluster_id"].values
+        c_times = df_c_r["time_ns"].values
+        c_labels = df_c_r["cluster_id"].values
+        nearest_idx = np.clip(np.searchsorted(c_times, r_times_f, side="left"), 0, len(c_labels) - 1)
+        cluster_assigned = c_labels[nearest_idx]
 
-        # Locate clean RMSD table for this replicate if available
-        m_num = re.search(r"(\d+)", r_key)
-        rep_num = m_num.group(1) if m_num else "1"
-        rmsd_file = metrics_base / f"rep_{rep_num}" / "metrics" / "rmsd.csv"
+        # 1. Shaded excluded transition regions (Red)
+        in_t = False
+        t_start = 0
+        for i in range(len(r_times_f) + 1):
+            val = p_mask_f[i] if i < len(r_times_f) else 1
+            if not in_t and val == 0:
+                in_t = True
+                t_start = i
+            elif in_t and val == 1:
+                in_t = False
+                ax.axvspan(r_times_f[t_start], r_times_f[i - 1], color="red", alpha=0.15, lw=0)
 
-        has_rmsd = False
-        if rmsd_file.exists():
-            try:
-                df_rmsd = pd.read_csv(rmsd_file)
-                lig_col = next((c for c in df_rmsd.columns if "LIG" in c.upper()), None)
-                if lig_col and len(df_rmsd) >= len(times) // 2:
-                    y_vals = np.interp(times, df_rmsd["Time_ns"], df_rmsd[lig_col])
-                    y_label = "Ligand RMSD (Å)"
-                    has_rmsd = True
-            except Exception:
-                pass
+        # 2. Raw RMSD line in background (Muted Gray)
+        ax.plot(r_times_f, r_vals_f, color="#666677", lw=0.6, alpha=0.5)
 
-        if not has_rmsd:
-            # Fallback: plot instantaneous Delta G values for this replicate
-            sub_e = df_strat[df_strat["replicate"] == r_key]
-            times = sub_e["time_ns"].values
-            y_vals = sub_e["delta_g"].values
-            c_ids = sub_e["cluster_id"].values
-            y_label = "ΔG (kcal/mol)"
+        # 3. Active Plateau runs colored by cluster
+        in_p = False
+        p_start = 0
+        for i in range(len(r_times_f) + 1):
+            val = p_mask_f[i] if i < len(r_times_f) else 0
+            if not in_p and val == 1:
+                in_p = True
+                p_start = i
+            elif in_p and val == 0:
+                in_p = False
+                p_end = i
+                c_id = cluster_assigned[p_start]
+                col = color_map.get(c_id, "#00e5ff")
+                ax.plot(r_times_f[p_start:p_end], sm_vals_f[p_start:p_end], color=col, lw=2.4)
 
-        if len(times) > 1 and len(y_vals) > 1:
-            points = np.array([times, y_vals]).T.reshape(-1, 1, 2)
-            segments = np.concatenate([points[:-1], points[1:]], axis=1)
-            seg_colors = [color_map.get(cid, "gray") for cid in c_ids[:-1]]
+        # 4. Excluded transition smooth line (Dashed)
+        ax.plot(r_times_f[p_mask_f == 0], sm_vals_f[p_mask_f == 0], color="#ff5252", lw=1.2, ls=":", alpha=0.7)
 
-            lc = LineCollection(segments, colors=seg_colors, linewidth=1.8)
-            ax.add_collection(lc)
-            ax.set_xlim(times.min(), times.max())
-            ax.set_ylim(
-                min(0.0, float(np.min(y_vals)) * 0.9), float(np.max(y_vals)) * 1.1
-            )
-
+        ax.set_xlim(r_times_f.min(), r_times_f.max())
+        ax.set_ylim(0.0, max(6.0, float(np.max(r_vals_f)) * 1.15))
         ax.set_title(f"{r_key}", fontsize=10, fontweight="bold")
-        ax.grid(True, linestyle=":", alpha=0.5)
+        ax.grid(True, linestyle=":", alpha=0.4)
+
+    y_label = "Ligand RMSD (Å)"
 
     # Hide unused subplot panels
     for j in range(n_reps, len(axes_flat)):
@@ -334,13 +493,17 @@ def main():
     for c_stat in cluster_results:
         cid = c_stat["cluster_id"]
         c_col = color_map[cid]
-        line = plt.Line2D([0], [0], color=c_col, lw=2.5)
+        line = plt.Line2D([0], [0], color=c_col, lw=2.8)
         lbl = (
             f"Basin #{cid}: ΔG = {c_stat['delta_g_mean']:.2f} ± {c_stat['delta_g_sem']:.2f} kcal/mol "
-            f"({c_stat['population_fraction']*100:.1f}%)"
+            f"({c_stat['population_fraction']*100:.1f}%, {c_stat['plateau_samples']}/{c_stat['total_samples']} pts)"
         )
         custom_lines.append(line)
         legend_labels.append(lbl)
+
+    line_trans = plt.Line2D([0], [0], color="red", alpha=0.3, lw=4.0)
+    custom_lines.append(line_trans)
+    legend_labels.append("Excluded Transition Buffer (0% Leakage)")
 
     fig.legend(
         custom_lines,

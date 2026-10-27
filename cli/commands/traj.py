@@ -946,6 +946,7 @@ def run_md_analyze(
 
 def run_stratify(
     system: str | None = None,
+    all_systems: bool = False,
     clustering: str | None = None,
     temp_k: float | None = None,
 ) -> None:
@@ -956,109 +957,35 @@ def run_stratify(
     """
     cwd = Path.cwd()
     session = get_session()
+    configs = load_project_configs(cwd)
+    cluster_cfg = configs.get("md_simulation", {}).get("clustering", {})
+    plateau_cfg = cluster_cfg.get("plateau_detection", {})
 
-    # 1. Resolve Target System
-    if system:
+    target_systems = []
+    if system and not all_systems:
         sys_obj = session.query(System).filter_by(name=system).first()
         if not sys_obj:
             session.close()
             raise ValueError(f"FATAL: System '{system}' not found in database!")
+        target_systems = [sys_obj]
     else:
-        # Check available systems with both MmpbsaRun and ClusteringRun
-        systems_with_both = (
+        # Default behavior or --all: process all systems that have both MmpbsaRun and ClusteringRun
+        target_systems = (
             session.query(System)
             .filter(System.mmpbsa_runs.any(), System.clustering_runs.any())
+            .order_by(System.name)
             .all()
         )
-        if len(systems_with_both) == 1:
-            sys_obj = systems_with_both[0]
-        elif len(systems_with_both) == 0:
+        if not target_systems:
             session.close()
             raise FileNotFoundError(
                 "FATAL: No physical Systems found having both MM-PBSA and Clustering runs! "
                 "Execute 'sbdd traj-mmpbsa' and 'sbdd traj-cluster --save' first."
             )
-        else:
-            avail = [s.name for s in systems_with_both]
-            session.close()
-            raise ValueError(
-                f"FATAL: Multiple systems eligible for stratification. Specify target system via '--system <name>'! "
-                f"Available: {avail}"
-            )
 
-    # 2. Resolve MmpbsaRun
-    m_run = (
-        session.query(MmpbsaRun)
-        .filter_by(system_id=sys_obj.id)
-        .order_by(MmpbsaRun.created_at.desc())
-        .first()
+    console.print(
+        f"[bold cyan]Stratifying free energy across {len(target_systems)} physical system(s)...[/bold cyan]\n"
     )
-    if not m_run:
-        session.close()
-        raise FileNotFoundError(
-            f"FATAL: No MM-PBSA runs registered for system '{sys_obj.name}'. Run 'sbdd traj-mmpbsa' first!"
-        )
-
-    # 3. Resolve ClusteringRun (Fail-Fast: strictly forbid guessing if multiple exist)
-    c_runs = (
-        session.query(ClusteringRun)
-        .filter_by(system_id=sys_obj.id)
-        .order_by(ClusteringRun.created_at.desc())
-        .all()
-    )
-    if not c_runs:
-        session.close()
-        raise FileNotFoundError(
-            f"FATAL: No ClusteringRun registered for system '{sys_obj.name}'. "
-            "Run 'sbdd traj-cluster --save' to register analytical state partitioning first!"
-        )
-
-    if clustering:
-        target_c_run = next(
-            (cr for cr in c_runs if cr.name == clustering.strip()), None
-        )
-        if not target_c_run:
-            avail_names = [cr.name for cr in c_runs]
-            session.close()
-            raise ValueError(
-                f"FATAL: ClusteringRun '{clustering}' not found for system '{sys_obj.name}'! "
-                f"Available runs: {avail_names}"
-            )
-    else:
-        if len(c_runs) == 1:
-            target_c_run = c_runs[0]
-            console.print(
-                f"[dim]Defaulting to single registered ClusteringRun: '{target_c_run.name}'[/dim]"
-            )
-        else:
-            avail_names = [cr.name for cr in c_runs]
-            session.close()
-            raise ValueError(
-                f"FATAL: System '{sys_obj.name}' has {len(c_runs)} distinct clustering runs registered! "
-                f"You must explicitly specify which clustering to stratify against via '--clustering <name>'.\n"
-                f"Available choices: {avail_names}"
-            )
-
-    # 3b. Strict SSOT Provenance Verification between MM-PBSA and Clustering grids
-    if (
-        abs(float(m_run.start_ns) - float(target_c_run.start_ns)) > 1e-3
-        or abs(float(m_run.sample_interval_ps) - float(target_c_run.sample_interval_ps))
-        > 1e-3
-    ):
-        session.close()
-        raise ValueError(
-            f"FATAL SSOT PROVENANCE CONFLICT: MM-PBSA was evaluated with start={m_run.start_ns} ns, "
-            f"interval={m_run.sample_interval_ps} ps, but ClusteringRun '{target_c_run.name}' was "
-            f"evaluated with start={target_c_run.start_ns} ns, interval={target_c_run.sample_interval_ps} ps!\n"
-            "Cannot stratify across divergent time grids without violating scientific integrity."
-        )
-
-    # 4. Prepare Paths and Invoke Stratification Engine
-    mmpbsa_reports_dir = cwd / "reports" / "mmpbsa"
-    task_dir = Path(target_c_run.path_labels).parent
-    out_json = task_dir / "stratification_summary.json"
-    out_plot = task_dir / f"{target_c_run.name}_stratified_rmsd.png"
-    effective_temp = float(temp_k if temp_k is not None else m_run.temperature)
 
     stratify_bin = (
         Path(__file__).resolve().parent.parent.parent / "bin" / "stratify_mmpbsa.py"
@@ -1069,95 +996,145 @@ def run_stratify(
             f"FATAL: Stratification worker not found at {stratify_bin}"
         )
 
-    cmd = [
-        sys.executable,
-        str(stratify_bin.resolve()),
-        "--system",
-        sys_obj.name,
-        "--labels",
-        str(target_c_run.path_labels),
-        "--time_map",
-        str(target_c_run.path_time_map),
-        "--mmpbsa_dir",
-        str(mmpbsa_reports_dir.resolve()),
-        "--metrics_dir",
-        str((cwd / "md_runs" / sys_obj.name).resolve()),
-        "--temp_k",
-        str(effective_temp),
-        "--out_json",
-        str(out_json.resolve()),
-        "--out_plot",
-        str(out_plot.resolve()),
-    ]
+    mmpbsa_reports_dir = cwd / "reports" / "mmpbsa"
 
-    console.print(
-        f"[bold cyan]Stratifying free energy of '{sys_obj.name}' against clustering '{target_c_run.name}' (T={effective_temp} K)...[/bold cyan]"
-    )
-    res = subprocess.run(cmd, capture_output=True, text=True)
-    if res.returncode != 0:
-        session.close()
-        raise RuntimeError(
-            f"FATAL: Stratification failed with exit code {res.returncode}:\n{res.stderr}\n{res.stdout}"
+    for sys_obj in target_systems:
+        m_run = (
+            session.query(MmpbsaRun)
+            .filter_by(system_id=sys_obj.id)
+            .order_by(MmpbsaRun.created_at.desc())
+            .first()
         )
+        if not m_run:
+            console.print(f"[yellow]Skipping '{sys_obj.name}': no MM-PBSA runs registered.[/yellow]")
+            continue
 
-    if not out_json.exists():
-        session.close()
-        raise FileNotFoundError(
-            f"FATAL: Stratification manifest was not emitted: {out_json}"
+        c_runs = (
+            session.query(ClusteringRun)
+            .filter_by(system_id=sys_obj.id)
+            .order_by(ClusteringRun.created_at.desc())
+            .all()
         )
+        if not c_runs:
+            console.print(f"[yellow]Skipping '{sys_obj.name}': no ClusteringRun registered.[/yellow]")
+            continue
 
-    # 5. Synchronize Moment Estimates into SQLite 3NF
-    with open(out_json, "r", encoding="utf-8") as f:
-        strat_data = json.load(f)
+        if clustering and len(target_systems) == 1:
+            target_c_run = next((cr for cr in c_runs if cr.name == clustering.strip()), None)
+            if not target_c_run:
+                session.close()
+                raise ValueError(f"FATAL: ClusteringRun '{clustering}' not found for '{sys_obj.name}'!")
+        else:
+            target_c_run = c_runs[0]
+            console.print(f"[dim]System '{sys_obj.name}': using ClusteringRun '{target_c_run.name}'[/dim]")
 
-    boltz_total = float(strat_data["boltzmann_total_delta_g"])
-    m_run.delta_g_boltzmann_total = boltz_total
+        # Provenance verification
+        if (
+            abs(float(m_run.start_ns) - float(target_c_run.start_ns)) > 1e-3
+            or abs(float(m_run.sample_interval_ps) - float(target_c_run.sample_interval_ps)) > 1e-3
+        ):
+            session.close()
+            raise ValueError(
+                f"FATAL SSOT PROVENANCE CONFLICT for '{sys_obj.name}': MM-PBSA grid ({m_run.start_ns} ns, {m_run.sample_interval_ps} ps) "
+                f"diverges from ClusteringRun ({target_c_run.start_ns} ns, {target_c_run.sample_interval_ps} ps)!"
+            )
 
-    cluster_stats_map = {
-        item["cluster_id"]: item for item in strat_data.get("clusters", [])
-    }
-    for tc in target_c_run.clusters:
-        if tc.cluster_index in cluster_stats_map:
-            c_info = cluster_stats_map[tc.cluster_index]
-            tc.delta_g_mean = float(c_info["delta_g_mean"])
-            tc.delta_g_sem = float(c_info["delta_g_sem"])
-            tc.delta_g_std = float(c_info["delta_g_std"])
+        task_dir = Path(target_c_run.path_labels).parent
+        out_json = task_dir / "stratification_summary.json"
+        out_plot = task_dir / f"{target_c_run.name}_stratified_rmsd.png"
+        out_ts = task_dir / "stratified_timeseries.tsv"
+        effective_temp = float(temp_k if temp_k is not None else m_run.temperature)
 
-    session.commit()
+        cmd = [
+            sys.executable,
+            str(stratify_bin.resolve()),
+            "--system",
+            sys_obj.name,
+            "--labels",
+            str(target_c_run.path_labels),
+            "--time_map",
+            str(target_c_run.path_time_map),
+            "--mmpbsa_dir",
+            str(mmpbsa_reports_dir.resolve()),
+            "--metrics_dir",
+            str((cwd / "md_runs" / sys_obj.name).resolve()),
+            "--temp_k",
+            str(effective_temp),
+            "--paradigm",
+            str(plateau_cfg.get("paradigm", "adaptive_zscore")),
+            "--smoothing_tau_ns",
+            str(plateau_cfg.get("smoothing_tau_ns", 0.5)),
+            "--significance_z_crit",
+            str(plateau_cfg.get("significance_z_crit", 2.0)),
+            "--dilation_buffer_ns",
+            str(plateau_cfg.get("dilation_buffer_ns", 0.4)),
+            "--min_dwell_ns",
+            str(plateau_cfg.get("min_dwell_ns", 5.0)),
+            "--out_json",
+            str(out_json.resolve()),
+            "--out_plot",
+            str(out_plot.resolve()),
+            "--out_timeseries",
+            str(out_ts.resolve()),
+        ]
+        if plateau_cfg.get("enforce_cluster_continuity", True):
+            cmd.append("--enforce_cluster_continuity")
+
+        res = subprocess.run(cmd, capture_output=True, text=True)
+        if res.returncode != 0:
+            session.close()
+            raise RuntimeError(
+                f"FATAL: Stratification failed for '{sys_obj.name}':\n{res.stderr}\n{res.stdout}"
+            )
+
+        with open(out_json, "r", encoding="utf-8") as f:
+            strat_data = json.load(f)
+
+        boltz_total = float(strat_data["boltzmann_total_delta_g"])
+        m_run.delta_g_boltzmann_total = boltz_total
+
+        cluster_stats_map = {item["cluster_id"]: item for item in strat_data.get("clusters", [])}
+        for tc in target_c_run.clusters:
+            if tc.cluster_index in cluster_stats_map:
+                c_info = cluster_stats_map[tc.cluster_index]
+                tc.delta_g_mean = float(c_info["delta_g_mean"])
+                tc.delta_g_sem = float(c_info["delta_g_sem"])
+                tc.delta_g_std = float(c_info["delta_g_std"])
+
+        session.commit()
+
+        table = Table(
+            title=f"Conformation-Conditioned Free Energy Stratification: {target_c_run.name}",
+            show_header=True,
+        )
+        table.add_column("Basin", style="bold cyan", justify="center")
+        table.add_column("Plateau Pts", justify="right")
+        table.add_column("Total Pts", justify="right")
+        table.add_column("Population", justify="right")
+        table.add_column("ΔG Mean ± SEM (kcal/mol)", style="bold green", justify="center")
+        table.add_column("Std Dev (kcal/mol)", justify="right")
+
+        for c_info in strat_data.get("clusters", []):
+            table.add_row(
+                f"Basin #{c_info['cluster_id']}",
+                str(c_info["plateau_samples"]),
+                str(c_info["total_samples"]),
+                f"{c_info['population_fraction']*100:.1f}%",
+                f"{c_info['delta_g_mean']:.2f} ± {c_info['delta_g_sem']:.2f}",
+                f"{c_info['delta_g_std']:.2f}",
+            )
+
+        console.print(table)
+        console.print(
+            f"═══════════════════════════════════════════════════════════════════════════\n"
+            f" [bold magenta]{sys_obj.name} (Boltzmann ΔG_total):[/bold magenta] [bold green]{boltz_total:.2f} kcal/mol[/bold green]\n"
+            f"═══════════════════════════════════════════════════════════════════════════"
+        )
+        console.print(f"📈 [dim]Plot:[/dim] {out_plot}")
+        console.print(f"📊 [dim]Timeseries:[/dim] {out_ts}\n")
+
     session.close()
-
-    # 6. Render Terminal Summary Table
-    table = Table(
-        title=f"Conformation-Conditioned Free Energy Stratification: {target_c_run.name}",
-        show_header=True,
-    )
-    table.add_column("Basin", style="bold cyan", justify="center")
-    table.add_column("Samples", justify="right")
-    table.add_column("Population", justify="right")
-    table.add_column("ΔG Mean ± SEM (kcal/mol)", style="bold green", justify="center")
-    table.add_column("Std Dev (Å/kcal)", justify="right")
-
-    for c_info in strat_data.get("clusters", []):
-        table.add_row(
-            f"Basin #{c_info['cluster_id']}",
-            str(c_info["sample_count"]),
-            f"{c_info['population_fraction']*100:.1f}%",
-            f"{c_info['delta_g_mean']:.2f} ± {c_info['delta_g_sem']:.2f}",
-            f"{c_info['delta_g_std']:.2f}",
-        )
-
-    console.print(table)
-    console.print(
-        f"═══════════════════════════════════════════════════════════════════════════\n"
-        f" [bold magenta]MACROSCOPIC ENSEMBLE NUMBER (Boltzmann ΔG_total):[/bold magenta] [bold green]{boltz_total:.2f} kcal/mol[/bold green]\n"
-        f"═══════════════════════════════════════════════════════════════════════════"
-    )
-    console.print(
-        f"📈 [bold cyan]Multi-Replica Color-Coded Trajectory Plot:[/bold cyan] {out_plot}"
-    )
-    console.print(
-        f"✓ Stratified thermodynamics atomically synchronized with SQLite 3NF database.\n"
-    )
+    console.print("[bold green]✓ All requested systems successfully stratified and synchronized with SQLite 3NF.[/bold green]")
 
 
 def run_mmpbsa(
