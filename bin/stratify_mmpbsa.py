@@ -288,7 +288,67 @@ def main():
     # 2. Load MM-PBSA samples
     rep_energies = load_replicate_mmpbsa(mmpbsa_dir, system_name)
 
-    # 3. Exact 1:1 Bijective Intersection (Zero Heuristics: Failure on Mismatched Grids)
+    # 3. Load full-resolution RMSD curves and compute Exclusion-First plateau masks
+    metrics_base = (
+        Path(args.metrics_dir).resolve()
+        if args.metrics_dir
+        else Path.cwd() / "md_runs" / system_name
+    )
+
+    replicate_plateau_masks = {}
+    replicate_full_rmsd = {}
+    replicate_smoothed = {}
+
+    for rep_key in rep_energies.keys():
+        m_num = re.search(r"(\d+)", rep_key)
+        rep_num = m_num.group(1) if m_num else "1"
+        rmsd_file = metrics_base / f"rep_{rep_num}" / "metrics" / "rmsd.csv"
+        if not rmsd_file.exists():
+            rmsd_file = metrics_base / f"rep_{rep_num}" / "rmsd.csv"
+
+        if not rmsd_file.exists() or rmsd_file.stat().st_size == 0:
+            raise FileNotFoundError(
+                f"FATAL: Full-resolution RMSD table missing for {rep_key} at {rmsd_file}! "
+                "Exclusion-First plateau gating requires continuous RMSD trajectory data."
+            )
+
+        df_rmsd_raw = pd.read_csv(rmsd_file)
+        lig_col = next((c for c in df_rmsd_raw.columns if c.startswith("Lig_")), None)
+        if not lig_col:
+            lig_col = next((c for c in df_rmsd_raw.columns if "RMSD" in c and "BB" not in c), df_rmsd_raw.columns[-1])
+
+        df_r_clean = pd.DataFrame({
+            "Time_ns": pd.to_numeric(df_rmsd_raw["Time_ns"], errors="coerce"),
+            "RMSD": pd.to_numeric(df_rmsd_raw[lig_col], errors="coerce")
+        }).dropna().sort_values("Time_ns").reset_index(drop=True)
+
+        r_times = df_r_clean["Time_ns"].values
+        r_vals = df_r_clean["RMSD"].values
+
+        # Map cluster labels onto full-resolution time grid via nearest time lookup
+        df_c_r = df_coords[df_coords["replicate"] == rep_key].sort_values("time_ns")
+        c_times = df_c_r["time_ns"].values
+        c_labels = df_c_r["cluster_id"].values
+        nearest_idx = np.clip(np.searchsorted(c_times, r_times, side="left"), 0, len(c_labels) - 1)
+        r_clusters = c_labels[nearest_idx]
+
+        p_mask, sm_vals, sigma_th = detect_plateaus_exclusion(
+            times=r_times,
+            rmsd=r_vals,
+            cluster_arr=r_clusters,
+            paradigm=args.paradigm,
+            tau_ns=float(args.smoothing_tau_ns),
+            z_crit=float(args.significance_z_crit),
+            buffer_ns=float(args.dilation_buffer_ns),
+            min_dwell_ns=float(args.min_dwell_ns),
+            enforce_cluster=bool(args.enforce_cluster_continuity),
+        )
+
+        replicate_plateau_masks[rep_key] = (r_times, p_mask)
+        replicate_full_rmsd[rep_key] = (r_times, r_vals)
+        replicate_smoothed[rep_key] = (r_times, sm_vals)
+
+    # 4. Exact Bijective Intersection with Plateau Gating
     stratified_samples = []
     for rep_key, df_e in rep_energies.items():
         df_c_rep = df_coords[df_coords["replicate"] == rep_key].copy()
@@ -299,33 +359,34 @@ def main():
             )
 
         df_e_rep = df_e.copy()
-        # Canonical timestamp key rounded to integration picosecond tolerance
-        df_e_rep["join_time"] = (
-            df_e_rep["energy_frame"].astype(float)
-            if "energy_frame" in df_e_rep
-            else np.arange(len(df_e_rep))
-        )
-        df_c_rep["join_time"] = df_c_rep["time_ns"].round(3)
-
         n_c = len(df_c_rep)
         n_e = len(df_e_rep)
 
-        # Exact 1:1 length assertion
         if n_c != n_e:
             raise ValueError(
                 f"FATAL DATA INTEGRITY VIOLATION for {rep_key}: MM-PBSA evaluated {n_e} samples, "
-                f"but clustering evaluated {n_c} frames! Sampling strides have diverged. "
-                "Both processes must derive their grid strictly from 'analysis_sampling' in md.yaml."
+                f"but clustering evaluated {n_c} frames! Sampling strides have diverged."
             )
 
         df_c_sorted = df_c_rep.sort_values("time_ns").reset_index(drop=True)
+        r_times_full, p_mask_full = replicate_plateau_masks[rep_key]
+
         for idx in range(n_e):
+            t_sample = float(df_c_sorted.at[idx, "time_ns"])
+            c_id = int(df_c_sorted.at[idx, "cluster_id"])
+            d_g = float(df_e_rep.iloc[idx]["delta_g"])
+
+            # Exact nearest lookup in full-resolution plateau mask
+            n_pos = np.clip(np.searchsorted(r_times_full, t_sample, side="left"), 0, len(p_mask_full) - 1)
+            is_plat = bool(p_mask_full[n_pos] == 1)
+
             stratified_samples.append(
                 {
                     "replicate": rep_key,
-                    "time_ns": float(df_c_sorted.at[idx, "time_ns"]),
-                    "cluster_id": int(df_c_sorted.at[idx, "cluster_id"]),
-                    "delta_g": float(df_e_rep.iloc[idx]["delta_g"]),
+                    "time_ns": t_sample,
+                    "cluster_id": c_id,
+                    "delta_g": d_g,
+                    "is_plateau": is_plat,
                 }
             )
 
@@ -336,35 +397,45 @@ def main():
 
     df_strat = pd.DataFrame(stratified_samples)
     total_energy_points = len(df_strat)
+    df_strat.to_csv(args.out_timeseries, sep="\t", index=False)
+    print(f"[STRATIFY] Saved complete timeseries with plateau mask -> {args.out_timeseries}", flush=True)
 
-    # 4. Statistical Moments Calculation per Cluster
+    # 5. Statistical Moments Calculation strictly over Quiescent Plateau Frames
     unique_clusters = sorted(list(set(df_strat["cluster_id"])))
     cluster_results = []
     boltzmann_terms = []
 
+    total_plateau_points = int(df_strat["is_plateau"].sum())
+    total_samples_all = len(df_strat)
+
     for cid in unique_clusters:
-        sub = df_strat[df_strat["cluster_id"] == cid]
-        n_points = len(sub)
-        pop_fraction = n_points / total_energy_points
+        sub_all = df_strat[df_strat["cluster_id"] == cid]
+        sub_plat = sub_all[sub_all["is_plateau"] == True]
 
-        # Replicate-level means to assess between-replicate variance
-        rep_means = sub.groupby("replicate")["delta_g"].mean().values
-        mean_dg = float(sub["delta_g"].mean())
-        std_dg = float(sub["delta_g"].std(ddof=1)) if n_points > 1 else 0.0
+        n_all = len(sub_all)
+        n_plat = len(sub_plat)
+        pop_fraction = (n_plat / total_plateau_points) if total_plateau_points > 0 else (n_all / total_samples_all)
 
+        # Free energy is evaluated strictly on stationary plateau frames
+        eval_data = sub_plat if n_plat > 0 else sub_all
+        mean_dg = float(eval_data["delta_g"].mean())
+        std_dg = float(eval_data["delta_g"].std(ddof=1)) if len(eval_data) > 1 else 0.0
+
+        rep_means = eval_data.groupby("replicate")["delta_g"].mean().values
         if len(rep_means) > 1:
             sem_dg = float(np.std(rep_means, ddof=1) / np.sqrt(len(rep_means)))
         else:
-            sem_dg = float(std_dg / np.sqrt(n_points)) if n_points > 1 else 0.0
+            sem_dg = float(std_dg / np.sqrt(len(eval_data))) if len(eval_data) > 1 else 0.0
 
-        # Term for Boltzmann ensemble aggregate
-        boltzmann_weight = pop_fraction * np.exp(-mean_dg / (kb * temp_k))
-        boltzmann_terms.append(boltzmann_weight)
+        if pop_fraction > 0.0:
+            boltzmann_weight = pop_fraction * np.exp(-mean_dg / (kb * temp_k))
+            boltzmann_terms.append(boltzmann_weight)
 
         cluster_results.append(
             {
                 "cluster_id": int(cid),
-                "sample_count": n_points,
+                "plateau_samples": n_plat,
+                "total_samples": n_all,
                 "population_fraction": round(pop_fraction, 4),
                 "delta_g_mean": round(mean_dg, 3),
                 "delta_g_sem": round(sem_dg, 3),
