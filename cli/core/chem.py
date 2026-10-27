@@ -172,7 +172,7 @@ def transfer_coordinates_to_template(
 ):
     """
     Universal Single Source of Truth for Chemical Topology Restoration & Coordinate Transfer.
-    
+
     Supports two distinct physical input modalities:
     1. NumPy Array (N, 3): Direct in-memory coordinates from MD simulation frames (MDAnalysis).
        Executes 0.01 ms direct index transfer with element verification and built-in physical bond gating.
@@ -189,7 +189,9 @@ def transfer_coordinates_to_template(
 
     src = source_mol_or_coords if source_mol_or_coords is not None else source_mol
     if template_mol is None or src is None:
-        raise ValueError("FATAL: transfer_coordinates_to_template received None for template or source!")
+        raise ValueError(
+            "FATAL: transfer_coordinates_to_template received None for template or source!"
+        )
 
     tmpl = Chem.Mol(template_mol)
     tmpl_n_atoms = tmpl.GetNumAtoms()
@@ -202,7 +204,9 @@ def transfer_coordinates_to_template(
     if isinstance(src, (np.ndarray, list)):
         coords = np.asarray(src, dtype=np.float64)
         if coords.ndim != 2 or coords.shape[1] != 3:
-            raise ValueError(f"FATAL: Expected coordinate array of shape (N, 3), got: {coords.shape}")
+            raise ValueError(
+                f"FATAL: Expected coordinate array of shape (N, 3), got: {coords.shape}"
+            )
 
         if coords.shape[0] != tmpl_n_atoms:
             raise ValueError(
@@ -223,7 +227,9 @@ def transfer_coordinates_to_template(
         for i in range(tmpl_n_atoms):
             p = coords[i]
             if abs(p[0]) < 1e-4 and abs(p[1]) < 1e-4 and abs(p[2]) < 1e-4:
-                raise ValueError(f"FATAL: Degenerate coordinate (0, 0, 0) detected at atom index {i}!")
+                raise ValueError(
+                    f"FATAL: Degenerate coordinate (0, 0, 0) detected at atom index {i}!"
+                )
             res_conf.SetAtomPosition(i, [float(p[0]), float(p[1]), float(p[2])])
 
     # -------------------------------------------------------------------------
@@ -236,7 +242,7 @@ def transfer_coordinates_to_template(
 
         tmpl_elements = [a.GetSymbol().upper() for a in tmpl.GetAtoms()]
         src_elements = [a.GetSymbol().upper() for a in src_mol.GetAtoms()]
-        direct_possible = (src_n_atoms == tmpl_n_atoms and tmpl_elements == src_elements)
+        direct_possible = src_n_atoms == tmpl_n_atoms and tmpl_elements == src_elements
 
         if direct_possible and not relax_missing_hydrogens:
             for i in range(tmpl_n_atoms):
@@ -253,13 +259,18 @@ def transfer_coordinates_to_template(
             n_tmpl_h = tmpl_heavy.GetNumAtoms()
             n_src_h = src_heavy.GetNumAtoms()
             if n_tmpl_h != n_src_h:
-                raise ValueError(f"FATAL: Heavy atom count mismatch: template={n_tmpl_h}, source={n_src_h}")
+                raise ValueError(
+                    f"FATAL: Heavy atom count mismatch: template={n_tmpl_h}, source={n_src_h}"
+                )
 
             Chem.AssignStereochemistry(tmpl_heavy, force=True, cleanIt=True)
             chiral_centers = []
             tmpl_h_conf = tmpl_heavy.GetConformer()
             for a in tmpl_heavy.GetAtoms():
-                if a.GetChiralTag() in (Chem.ChiralType.CHI_TETRAHEDRAL_CW, Chem.ChiralType.CHI_TETRAHEDRAL_CCW):
+                if a.GetChiralTag() in (
+                    Chem.ChiralType.CHI_TETRAHEDRAL_CW,
+                    Chem.ChiralType.CHI_TETRAHEDRAL_CCW,
+                ):
                     nbrs = [nbr.GetIdx() for nbr in a.GetNeighbors()]
                     if len(nbrs) >= 3:
                         vol = signed_chiral_volume(tmpl_h_conf, a.GetIdx(), nbrs)
@@ -278,7 +289,9 @@ def transfer_coordinates_to_template(
 
             matches = q_src.GetSubstructMatches(q_tmpl, uniquify=False)
             if not matches:
-                raise ValueError("FATAL: Topological isomorphism failed between template and source molecule!")
+                raise ValueError(
+                    "FATAL: Topological isomorphism failed between template and source molecule!"
+                )
 
             src_h_conf = src_heavy.GetConformer()
             best_match = None
@@ -300,14 +313,18 @@ def transfer_coordinates_to_template(
                 for t_i, s_i in enumerate(match):
                     pt = tmpl_h_conf.GetAtomPosition(t_i)
                     ps = src_h_conf.GetAtomPosition(s_i)
-                    sq_dist += (pt.x - ps.x)**2 + (pt.y - ps.y)**2 + (pt.z - ps.z)**2
+                    sq_dist += (
+                        (pt.x - ps.x) ** 2 + (pt.y - ps.y) ** 2 + (pt.z - ps.z) ** 2
+                    )
 
                 if sq_dist < best_sq_dist:
                     best_sq_dist = sq_dist
                     best_match = match
 
             if best_match is None:
-                raise ValueError("FATAL: Stereochemical parity check failed! Inversion of chiral center detected.")
+                raise ValueError(
+                    "FATAL: Stereochemical parity check failed! Inversion of chiral center detected."
+                )
 
             heavy_map = {}
             for t_idx, s_idx in enumerate(best_match):
@@ -322,7 +339,11 @@ def transfer_coordinates_to_template(
                 temp_h = Chem.RemoveHs(res_mol)
                 temp_h = Chem.AddHs(temp_h, addCoords=True)
                 mp = AllChem.MMFFGetMoleculeProperties(temp_h)
-                ff = AllChem.MMFFGetMoleculeForceField(temp_h, mp) if mp else AllChem.UFFGetMoleculeForceField(temp_h)
+                ff = (
+                    AllChem.MMFFGetMoleculeForceField(temp_h, mp)
+                    if mp
+                    else AllChem.UFFGetMoleculeForceField(temp_h)
+                )
                 if ff:
                     for a in temp_h.GetAtoms():
                         if a.GetAtomicNum() != 1:
@@ -331,10 +352,20 @@ def transfer_coordinates_to_template(
 
                 temp_c = temp_h.GetConformer()
                 for orig_t, orig_s in heavy_map.items():
-                    tmpl_hs = [nbr.GetIdx() for nbr in tmpl.GetAtomWithIdx(orig_t).GetNeighbors() if nbr.GetAtomicNum() == 1]
-                    temp_hs = [nbr.GetIdx() for nbr in temp_h.GetAtomWithIdx(orig_t).GetNeighbors() if nbr.GetAtomicNum() == 1]
+                    tmpl_hs = [
+                        nbr.GetIdx()
+                        for nbr in tmpl.GetAtomWithIdx(orig_t).GetNeighbors()
+                        if nbr.GetAtomicNum() == 1
+                    ]
+                    temp_hs = [
+                        nbr.GetIdx()
+                        for nbr in temp_h.GetAtomWithIdx(orig_t).GetNeighbors()
+                        if nbr.GetAtomicNum() == 1
+                    ]
                     for k in range(min(len(tmpl_hs), len(temp_hs))):
-                        res_conf.SetAtomPosition(tmpl_hs[k], temp_c.GetAtomPosition(temp_hs[k]))
+                        res_conf.SetAtomPosition(
+                            tmpl_hs[k], temp_c.GetAtomPosition(temp_hs[k])
+                        )
 
             for prop in src_mol.GetPropNames():
                 res_mol.SetProp(prop, src_mol.GetProp(prop))
@@ -342,7 +373,9 @@ def transfer_coordinates_to_template(
                 res_mol.SetProp("_Name", src_mol.GetProp("_Name"))
 
     else:
-        raise TypeError(f"FATAL: Unsupported source type: {type(src)}. Expected Chem.Mol or numpy array.")
+        raise TypeError(
+            f"FATAL: Unsupported source type: {type(src)}. Expected Chem.Mol or numpy array."
+        )
 
     # -------------------------------------------------------------------------
     # FAIL-FAST PHYSICAL BARRIER: Strict Validation of Covalent Bond Lengths
@@ -351,7 +384,9 @@ def transfer_coordinates_to_template(
         a1, a2 = bond.GetBeginAtom(), bond.GetEndAtom()
         p1 = res_conf.GetAtomPosition(a1.GetIdx())
         p2 = res_conf.GetAtomPosition(a2.GetIdx())
-        dist = float(np.sqrt((p1.x - p2.x)**2 + (p1.y - p2.y)**2 + (p1.z - p2.z)**2))
+        dist = float(
+            np.sqrt((p1.x - p2.x) ** 2 + (p1.y - p2.y) ** 2 + (p1.z - p2.z) ** 2)
+        )
 
         if a1.GetAtomicNum() == 1 or a2.GetAtomicNum() == 1:
             if dist > 1.35 or dist < 0.80:
@@ -402,7 +437,9 @@ def compute_symmetry_rmsd(template_mol, target_mol) -> float:
 
     matches = q_target.GetSubstructMatches(q_tmpl, uniquify=False)
     if not matches:
-        raise ValueError("FATAL: Failed to obtain topological isomorphism matches for RMSD calculation!")
+        raise ValueError(
+            "FATAL: Failed to obtain topological isomorphism matches for RMSD calculation!"
+        )
 
     conf_tmpl = tmpl_heavy.GetConformer()
     conf_target = target_heavy.GetConformer()
@@ -413,7 +450,9 @@ def compute_symmetry_rmsd(template_mol, target_mol) -> float:
         for tmpl_idx, target_idx in enumerate(match):
             p_t = conf_tmpl.GetAtomPosition(tmpl_idx)
             p_tgt = conf_target.GetAtomPosition(target_idx)
-            sq_dist += (p_t.x - p_tgt.x) ** 2 + (p_t.y - p_tgt.y) ** 2 + (p_t.z - p_tgt.z) ** 2
+            sq_dist += (
+                (p_t.x - p_tgt.x) ** 2 + (p_t.y - p_tgt.y) ** 2 + (p_t.z - p_tgt.z) ** 2
+            )
 
         if sq_dist < best_sq_dist:
             best_sq_dist = sq_dist

@@ -14,11 +14,70 @@ from typing import Dict, List, Set, Tuple
 
 AMBER_RESERVED_TYPES: Set[str] = {
     # ff19SB & standard protein / nucleic
-    "C", "CA", "CB", "CC", "CD", "CK", "CM", "CN", "CQ", "CR", "CT", "CV", "CW", "CX", "CY", "CZ", "C*",
-    "H", "H1", "H2", "H3", "H4", "H5", "HA", "HC", "HN", "HO", "HP", "HS", "HW", "HX", "HY",
-    "N", "NA", "NB", "NC", "NT", "NY", "N2", "N3", "N*", "O", "O2", "OH", "OS", "OW", "S", "SH", "P",
+    "C",
+    "CA",
+    "CB",
+    "CC",
+    "CD",
+    "CK",
+    "CM",
+    "CN",
+    "CQ",
+    "CR",
+    "CT",
+    "CV",
+    "CW",
+    "CX",
+    "CY",
+    "CZ",
+    "C*",
+    "H",
+    "H1",
+    "H2",
+    "H3",
+    "H4",
+    "H5",
+    "HA",
+    "HC",
+    "HN",
+    "HO",
+    "HP",
+    "HS",
+    "HW",
+    "HX",
+    "HY",
+    "N",
+    "NA",
+    "NB",
+    "NC",
+    "NT",
+    "NY",
+    "N2",
+    "N3",
+    "N*",
+    "O",
+    "O2",
+    "OH",
+    "OS",
+    "OW",
+    "S",
+    "SH",
+    "P",
     # Standard Ions & Water
-    "K", "K+", "Na", "NA", "Cl", "CL", "Cl-", "MG", "ZN", "CA", "C0", "MW", "EP", "LP"
+    "K",
+    "K+",
+    "Na",
+    "NA",
+    "Cl",
+    "CL",
+    "Cl-",
+    "MG",
+    "ZN",
+    "CA",
+    "C0",
+    "MW",
+    "EP",
+    "LP",
 }
 
 SAFE_PREFIXES = "1234567890JQXUWYG"
@@ -72,7 +131,9 @@ def allocate_atom_types(n_atoms: int, start_prefix: str) -> List[str]:
 def load_external_crg_charges(charges_path: Path, expected_atoms: int) -> List[float]:
     """Loads flat float vector of atomic partial charges."""
     if not charges_path.exists() or charges_path.stat().st_size == 0:
-        raise FileNotFoundError(f"FATAL: Charges file not found or empty: {charges_path}")
+        raise FileNotFoundError(
+            f"FATAL: Charges file not found or empty: {charges_path}"
+        )
 
     charges = []
     for line in charges_path.read_text(encoding="utf-8").splitlines():
@@ -94,10 +155,20 @@ def main():
     parser.add_argument("--sdf", required=True, help="Input relaxed 3D structure SDF")
     parser.add_argument("--charge", required=True, type=int, help="Net formal charge")
     parser.add_argument("--res_name", required=True, help="Residue name (3-4 chars)")
-    parser.add_argument("--forcefield", default="openff-2.3.0.offxml", help="OpenFF force field file")
-    parser.add_argument("--charge_method", required=True, choices=["ashgc", "resp", "bcc"])
-    parser.add_argument("--charges", default=None, help="External charges vector file (.crg)")
-    parser.add_argument("--prefix", default="1", help="Safe namespace starting prefix (from SAFE_PREFIXES)")
+    parser.add_argument(
+        "--forcefield", default="openff-2.3.0.offxml", help="OpenFF force field file"
+    )
+    parser.add_argument(
+        "--charge_method", required=True, choices=["ashgc", "resp", "bcc"]
+    )
+    parser.add_argument(
+        "--charges", default=None, help="External charges vector file (.crg)"
+    )
+    parser.add_argument(
+        "--prefix",
+        default="1",
+        help="Safe namespace starting prefix (from SAFE_PREFIXES)",
+    )
     parser.add_argument("--out_mol2", required=True, help="Output mol2 path")
     parser.add_argument("--out_frcmod", required=True, help="Output frcmod path")
     args = parser.parse_args()
@@ -151,11 +222,16 @@ def main():
     # 3. Partial charge assignment
     if args.charge_method == "resp":
         if not args.charges:
-            raise ValueError("FATAL: --charges (.crg) is strictly required when charge_method='resp'!")
+            raise ValueError(
+                "FATAL: --charges (.crg) is strictly required when charge_method='resp'!"
+            )
         charges_f = load_external_crg_charges(Path(args.charges).resolve(), mol.n_atoms)
         mol.partial_charges = charges_f * unit.elementary_charge
     elif args.charge_method == "ashgc":
-        if not any(isinstance(t, NAGLToolkitWrapper) for t in GLOBAL_TOOLKIT_REGISTRY.registered_toolkits):
+        if not any(
+            isinstance(t, NAGLToolkitWrapper)
+            for t in GLOBAL_TOOLKIT_REGISTRY.registered_toolkits
+        ):
             if NAGLToolkitWrapper.is_available():
                 GLOBAL_TOOLKIT_REGISTRY.register_toolkit(NAGLToolkitWrapper)
         NAGLToolkitWrapper().assign_partial_charges(
@@ -174,7 +250,11 @@ def main():
         )
 
     # 4. Resolve SMIRNOFF potentials via Interchange
-    ff_name = args.forcefield if args.forcefield.endswith(".offxml") else f"{args.forcefield}.offxml"
+    ff_name = (
+        args.forcefield
+        if args.forcefield.endswith(".offxml")
+        else f"{args.forcefield}.offxml"
+    )
     ff = ForceField(ff_name)
     interchange = ff.create_interchange(mol.to_topology())
 
@@ -253,12 +333,19 @@ def main():
             phase = float(pot.parameters["phase"].m_as("degree"))
 
             central_cands = [
-                a for a in quartet
-                if sum(bool(other in adjacency[a]) for other in quartet if other != a) == 3
+                a
+                for a in quartet
+                if sum(bool(other in adjacency[a]) for other in quartet if other != a)
+                == 3
             ]
             cent_atom = central_cands[0] if len(central_cands) == 1 else quartet[1]
             periph = sorted([a for a in quartet if a != cent_atom])
-            t1, t2, t3, t4 = atom_types[periph[0]], atom_types[periph[1]], atom_types[cent_atom], atom_types[periph[2]]
+            t1, t2, t3, t4 = (
+                atom_types[periph[0]],
+                atom_types[periph[1]],
+                atom_types[cent_atom],
+                atom_types[periph[2]],
+            )
             # SMIRNOFF specifies trefoil improper energy as average over 3 impropers:
             # U_trefoil = (1/3) * sum_{i=1}^3 k_openff * (1 + cos(n*phi - phase)) = k_openff * (1 + cos(n*phi - phase)).
             # AMBER evaluates a single matched improper with U = (K_amber / 2) * (1 + cos(n*phi - phase)).
@@ -292,7 +379,9 @@ def main():
         for b_idx, bond in enumerate(mol.bonds, 1):
             i = bond.atom1_index + 1
             j = bond.atom2_index + 1
-            b_order = "ar" if bond.is_aromatic else str(int(round(bond.bond_order or 1)))
+            b_order = (
+                "ar" if bond.is_aromatic else str(int(round(bond.bond_order or 1)))
+            )
             f.write(f"{b_idx:>6d} {i:>5d} {j:>5d} {b_order:>4s}\n")
 
         f.write("@<TRIPOS>SUBSTRUCTURE\n")
@@ -303,7 +392,9 @@ def main():
     out_frcmod.parent.mkdir(parents=True, exist_ok=True)
 
     with open(out_frcmod, "w", encoding="utf-8") as f:
-        f.write(f"Remark: OpenFF {ff_name} parameters for {clean_res} [Method: {args.charge_method.upper()}, Prefix: {args.prefix}]\n")
+        f.write(
+            f"Remark: OpenFF {ff_name} parameters for {clean_res} [Method: {args.charge_method.upper()}, Prefix: {args.prefix}]\n"
+        )
         f.write("MASS\n")
         for t_name, p in sorted(type_params.items()):
             f.write(f"{t_name:<2s}  {p['mass']:6.3f}\n")
@@ -319,10 +410,14 @@ def main():
             n_terms = len(terms_sorted)
             for idx_term, (idivf, pk, phase, period) in enumerate(terms_sorted, 1):
                 eff_period = -abs(period) if idx_term < n_terms else abs(period)
-                f.write(f"{t1:<2s}-{t2:<2s}-{t3:<2s}-{t4:<2s}  {idivf:2d}  {pk:8.3f}  {phase:7.2f}  {eff_period:5.1f}\n")
+                f.write(
+                    f"{t1:<2s}-{t2:<2s}-{t3:<2s}-{t4:<2s}  {idivf:2d}  {pk:8.3f}  {phase:7.2f}  {eff_period:5.1f}\n"
+                )
         f.write("\nIMPROPER\n")
         for (t1, t2, t3, t4), (k_val, phase, period) in sorted(impr_params.items()):
-            f.write(f"{t1:<2s}-{t2:<2s}-{t3:<2s}-{t4:<2s}  {k_val:8.3f}  {phase:7.2f}  {abs(period):5.1f}\n")
+            f.write(
+                f"{t1:<2s}-{t2:<2s}-{t3:<2s}-{t4:<2s}  {k_val:8.3f}  {phase:7.2f}  {abs(period):5.1f}\n"
+            )
         f.write("\nNONBON\n")
         for t_name, p in sorted(type_params.items()):
             f.write(f"  {t_name:<2s}  {p['r_star']:8.4f}  {p['epsilon']:8.4f}\n")
@@ -331,7 +426,7 @@ def main():
     print(
         f"✓ Successfully generated OpenFF AMBER library: {out_mol2.name} & {out_frcmod.name} "
         f"({mol.n_atoms} atoms, prefix '{args.prefix}', method: {args.charge_method})",
-        flush=True
+        flush=True,
     )
 
 

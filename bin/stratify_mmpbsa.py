@@ -16,6 +16,7 @@ import numpy as np
 import pandas as pd
 
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.collections import LineCollection
@@ -28,18 +29,38 @@ def parse_args():
     parser.add_argument("--system", required=True, help="Canonical system name")
     parser.add_argument("--labels", required=True, help="Path to cluster_labels.npy")
     parser.add_argument("--time_map", required=True, help="Path to frame_time_map.json")
-    parser.add_argument("--mmpbsa_dir", required=True, help="Directory containing replicate MM-PBSA outputs")
-    parser.add_argument("--metrics_dir", default="", help="Optional base directory to search for rmsd.csv files")
-    parser.add_argument("--temp_k", type=float, default=310.15, help="Simulation temperature in Kelvin")
-    parser.add_argument("--out_json", default="stratification_summary.json", help="Output summary JSON")
-    parser.add_argument("--out_plot", default="stratified_rmsd_plot.png", help="Output multi-replica plot PNG")
+    parser.add_argument(
+        "--mmpbsa_dir",
+        required=True,
+        help="Directory containing replicate MM-PBSA outputs",
+    )
+    parser.add_argument(
+        "--metrics_dir",
+        default="",
+        help="Optional base directory to search for rmsd.csv files",
+    )
+    parser.add_argument(
+        "--temp_k", type=float, default=310.15, help="Simulation temperature in Kelvin"
+    )
+    parser.add_argument(
+        "--out_json", default="stratification_summary.json", help="Output summary JSON"
+    )
+    parser.add_argument(
+        "--out_plot",
+        default="stratified_rmsd_plot.png",
+        help="Output multi-replica plot PNG",
+    )
     return parser.parse_args()
 
 
-def load_replicate_mmpbsa(mmpbsa_dir: Path, system_name: str) -> dict[str, pd.DataFrame]:
+def load_replicate_mmpbsa(
+    mmpbsa_dir: Path, system_name: str
+) -> dict[str, pd.DataFrame]:
     """Loads and sanitizes per-replicate DELTA binding free energy time series."""
     rep_dfs = {}
-    target_dirs = sorted([d for d in mmpbsa_dir.glob("*") if system_name in d.name and d.is_dir()])
+    target_dirs = sorted(
+        [d for d in mmpbsa_dir.glob("*") if system_name in d.name and d.is_dir()]
+    )
     if not target_dirs:
         raise FileNotFoundError(
             f"FATAL: No replicate output folders found for system '{system_name}' in {mmpbsa_dir}!"
@@ -58,11 +79,15 @@ def load_replicate_mmpbsa(mmpbsa_dir: Path, system_name: str) -> dict[str, pd.Da
         # Clean frame index column
         frame_col = next((c for c in df.columns if "FRAME" in c.upper()), df.columns[0])
 
-        df_clean = pd.DataFrame({
-            "sample_idx": np.arange(len(df)),
-            "energy_frame": pd.to_numeric(df[frame_col], errors="coerce").fillna(0).astype(int),
-            "delta_g": pd.to_numeric(df[target_col], errors="coerce"),
-        }).dropna()
+        df_clean = pd.DataFrame(
+            {
+                "sample_idx": np.arange(len(df)),
+                "energy_frame": pd.to_numeric(df[frame_col], errors="coerce")
+                .fillna(0)
+                .astype(int),
+                "delta_g": pd.to_numeric(df[target_col], errors="coerce"),
+            }
+        ).dropna()
 
         # Deduce replicate key matching frame_time_map (e.g. 'rep_1', 'rep_2')
         m_rep = re.search(r"rep_?(\d+)", r_dir.name)
@@ -70,7 +95,9 @@ def load_replicate_mmpbsa(mmpbsa_dir: Path, system_name: str) -> dict[str, pd.Da
         rep_dfs[rep_key] = df_clean
 
     if not rep_dfs:
-        raise FileNotFoundError(f"FATAL: Zero valid MM-PBSA CSV deliverables parsed from {mmpbsa_dir}!")
+        raise FileNotFoundError(
+            f"FATAL: Zero valid MM-PBSA CSV deliverables parsed from {mmpbsa_dir}!"
+        )
 
     return rep_dfs
 
@@ -86,7 +113,9 @@ def main():
     mmpbsa_dir = Path(args.mmpbsa_dir).resolve()
 
     if not labels_p.exists() or not time_map_p.exists():
-        raise FileNotFoundError("FATAL: Required labels array or time map JSON deliverable missing!")
+        raise FileNotFoundError(
+            "FATAL: Required labels array or time map JSON deliverable missing!"
+        )
 
     labels = np.load(labels_p)
     with open(time_map_p, "r", encoding="utf-8") as f:
@@ -118,7 +147,11 @@ def main():
 
         df_e_rep = df_e.copy()
         # Canonical timestamp key rounded to integration picosecond tolerance
-        df_e_rep["join_time"] = df_e_rep["energy_frame"].astype(float) if "energy_frame" in df_e_rep else np.arange(len(df_e_rep))
+        df_e_rep["join_time"] = (
+            df_e_rep["energy_frame"].astype(float)
+            if "energy_frame" in df_e_rep
+            else np.arange(len(df_e_rep))
+        )
         df_c_rep["join_time"] = df_c_rep["time_ns"].round(3)
 
         n_c = len(df_c_rep)
@@ -134,15 +167,19 @@ def main():
 
         df_c_sorted = df_c_rep.sort_values("time_ns").reset_index(drop=True)
         for idx in range(n_e):
-            stratified_samples.append({
-                "replicate": rep_key,
-                "time_ns": float(df_c_sorted.at[idx, "time_ns"]),
-                "cluster_id": int(df_c_sorted.at[idx, "cluster_id"]),
-                "delta_g": float(df_e_rep.iloc[idx]["delta_g"]),
-            })
+            stratified_samples.append(
+                {
+                    "replicate": rep_key,
+                    "time_ns": float(df_c_sorted.at[idx, "time_ns"]),
+                    "cluster_id": int(df_c_sorted.at[idx, "cluster_id"]),
+                    "delta_g": float(df_e_rep.iloc[idx]["delta_g"]),
+                }
+            )
 
     if not stratified_samples:
-        raise ValueError("FATAL: Point-to-State projection produced zero valid intersections!")
+        raise ValueError(
+            "FATAL: Point-to-State projection produced zero valid intersections!"
+        )
 
     df_strat = pd.DataFrame(stratified_samples)
     total_energy_points = len(df_strat)
@@ -171,14 +208,16 @@ def main():
         boltzmann_weight = pop_fraction * np.exp(-mean_dg / (kb * temp_k))
         boltzmann_terms.append(boltzmann_weight)
 
-        cluster_results.append({
-            "cluster_id": int(cid),
-            "sample_count": n_points,
-            "population_fraction": round(pop_fraction, 4),
-            "delta_g_mean": round(mean_dg, 3),
-            "delta_g_sem": round(sem_dg, 3),
-            "delta_g_std": round(std_dg, 3),
-        })
+        cluster_results.append(
+            {
+                "cluster_id": int(cid),
+                "sample_count": n_points,
+                "population_fraction": round(pop_fraction, 4),
+                "delta_g_mean": round(mean_dg, 3),
+                "delta_g_sem": round(sem_dg, 3),
+                "delta_g_std": round(std_dg, 3),
+            }
+        )
 
     # 5. Master Boltzmann Ensemble Free Energy
     sum_weights = sum(boltzmann_terms)
@@ -199,22 +238,45 @@ def main():
         json.dump(summary_manifest, jf, indent=2)
 
     # 6. Render Publication Multi-Replica Color-Coded Trajectory Plot
-    palette = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22"]
-    color_map = {cid: palette[idx % len(palette)] for idx, cid in enumerate(unique_clusters)}
+    palette = [
+        "#1f77b4",
+        "#ff7f0e",
+        "#2ca02c",
+        "#d62728",
+        "#9467bd",
+        "#8c564b",
+        "#e377c2",
+        "#7f7f7f",
+        "#bcbd22",
+    ]
+    color_map = {
+        cid: palette[idx % len(palette)] for idx, cid in enumerate(unique_clusters)
+    }
 
     unique_reps = sorted(list(set(df_coords["replicate"])))
     n_reps = len(unique_reps)
 
     n_cols = 2 if n_reps > 1 else 1
     n_rows = int(np.ceil(n_reps / float(n_cols)))
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(14, max(4, n_rows * 2.5)), dpi=250, sharex=True, sharey=True)
+    fig, axes = plt.subplots(
+        n_rows,
+        n_cols,
+        figsize=(14, max(4, n_rows * 2.5)),
+        dpi=250,
+        sharex=True,
+        sharey=True,
+    )
     if n_reps == 1:
         axes_flat = [axes]
     else:
         axes_flat = axes.flatten() if hasattr(axes, "flatten") else [axes]
 
     # Look for RMSD tables from md_metrics
-    metrics_base = Path(args.metrics_dir).resolve() if args.metrics_dir else Path.cwd() / "md_runs" / system_name
+    metrics_base = (
+        Path(args.metrics_dir).resolve()
+        if args.metrics_dir
+        else Path.cwd() / "md_runs" / system_name
+    )
 
     for idx, r_key in enumerate(unique_reps):
         ax = axes_flat[idx]
@@ -255,7 +317,9 @@ def main():
             lc = LineCollection(segments, colors=seg_colors, linewidth=1.8)
             ax.add_collection(lc)
             ax.set_xlim(times.min(), times.max())
-            ax.set_ylim(min(0.0, float(np.min(y_vals)) * 0.9), float(np.max(y_vals)) * 1.1)
+            ax.set_ylim(
+                min(0.0, float(np.min(y_vals)) * 0.9), float(np.max(y_vals)) * 1.1
+            )
 
         ax.set_title(f"{r_key}", fontsize=10, fontweight="bold")
         ax.grid(True, linestyle=":", alpha=0.5)
@@ -288,13 +352,26 @@ def main():
         fontsize=10,
     )
 
-    fig.text(0.5, 0.01, "Simulation Time (ns)", ha="center", fontsize=11, fontweight="bold")
-    fig.text(0.02, 0.5, y_label, va="center", rotation="vertical", fontsize=11, fontweight="bold")
+    fig.text(
+        0.5, 0.01, "Simulation Time (ns)", ha="center", fontsize=11, fontweight="bold"
+    )
+    fig.text(
+        0.02,
+        0.5,
+        y_label,
+        va="center",
+        rotation="vertical",
+        fontsize=11,
+        fontweight="bold",
+    )
     plt.tight_layout(rect=[0.03, 0.03, 0.98, 0.95])
     plt.savefig(args.out_plot)
     plt.close()
 
-    print(f"✓ Stratification completed successfully -> {args.out_json} & {args.out_plot}", flush=True)
+    print(
+        f"✓ Stratification completed successfully -> {args.out_json} & {args.out_plot}",
+        flush=True,
+    )
 
 
 if __name__ == "__main__":

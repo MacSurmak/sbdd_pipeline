@@ -305,7 +305,9 @@ def main():
         "--clustering", help="Explicit name of the ClusteringRun to stratify against"
     )
     p_strat.add_argument(
-        "--temp-k", type=float, help="Simulation temperature in Kelvin (default from DB)"
+        "--temp-k",
+        type=float,
+        help="Simulation temperature in Kelvin (default from DB)",
     )
 
     # 7. md-analyze
@@ -456,7 +458,8 @@ def main():
         "--clustering", required=True, help="Name of the ClusteringRun in database"
     )
     p_extract.add_argument(
-        "--ranks", help="Comma-separated ranks to extract as ReceptorFrames (default: all)"
+        "--ranks",
+        help="Comma-separated ranks to extract as ReceptorFrames (default: all)",
     )
 
     # 9. clean

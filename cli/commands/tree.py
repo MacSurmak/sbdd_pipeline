@@ -112,7 +112,9 @@ def print_tree() -> None:
                         .all()
                     )
                     if mmpbsa_runs:
-                        mmpbsa_branch = sys_node.add("[bold magenta]MM-PBSA Thermodynamic Runs[/bold magenta]")
+                        mmpbsa_branch = sys_node.add(
+                            "[bold magenta]MM-PBSA Thermodynamic Runs[/bold magenta]"
+                        )
                         for m_run in mmpbsa_runs:
                             boltz_str = (
                                 f", Boltzmann ΔG={m_run.delta_g_boltzmann_total:.2f} kcal/mol"
@@ -132,7 +134,9 @@ def print_tree() -> None:
                         .all()
                     )
                     if c_runs:
-                        c_branch = sys_node.add("[bold cyan]Conformational Clusterings[/bold cyan]")
+                        c_branch = sys_node.add(
+                            "[bold cyan]Conformational Clusterings[/bold cyan]"
+                        )
                         for cr in c_runs:
                             cr_node = c_branch.add(
                                 f"[cyan]{cr.name}[/cyan] [dim]({cr.algorithm}, {cr.feature_group} on {cr.align_group}, {len(cr.clusters)} basins)[/dim]"
@@ -178,18 +182,30 @@ def print_tree() -> None:
                 if st.path_mol2 and st.path_frcmod:
                     mol2_p = Path(st.path_mol2)
                     frcmod_p = Path(st.path_frcmod)
-                    frcmod_text = frcmod_p.read_text(encoding="utf-8", errors="ignore") if frcmod_p.exists() else ""
+                    frcmod_text = (
+                        frcmod_p.read_text(encoding="utf-8", errors="ignore")
+                        if frcmod_p.exists()
+                        else ""
+                    )
                     is_openff = "OpenFF" in frcmod_text
                     opt_sdf = mol2_p.parent / f"{sub.res_name}_opt.sdf"
 
                     if is_openff:
-                        ff_version = "OpenFF-2.3.0" if "2.3.0" in frcmod_text else "OpenFF"
+                        ff_version = (
+                            "OpenFF-2.3.0" if "2.3.0" in frcmod_text else "OpenFF"
+                        )
                         if opt_sdf.exists():
-                            param_status = f" [bold green]+RESP({ff_version})[/bold green]"
+                            param_status = (
+                                f" [bold green]+RESP({ff_version})[/bold green]"
+                            )
                         elif "AshGC" in frcmod_text:
-                            param_status = f" [bold green]+AshGC({ff_version})[/bold green]"
+                            param_status = (
+                                f" [bold green]+AshGC({ff_version})[/bold green]"
+                            )
                         else:
-                            param_status = f" [bold green]+BCC({ff_version})[/bold green]"
+                            param_status = (
+                                f" [bold green]+BCC({ff_version})[/bold green]"
+                            )
                     else:
                         if opt_sdf.exists():
                             param_status = " [bold green]+RESP(GAFF2)[/bold green]"

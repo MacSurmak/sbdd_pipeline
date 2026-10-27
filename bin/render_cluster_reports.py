@@ -13,6 +13,7 @@ from pathlib import Path
 import numpy as np
 
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import plotly.graph_objects as go
@@ -51,20 +52,46 @@ def compute_fes_2d(c1: np.ndarray, c2: np.ndarray, temp_k: float, bins: int = 80
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Render thermodynamic reports and portable PyMOL sessions")
+    parser = argparse.ArgumentParser(
+        description="Render thermodynamic reports and portable PyMOL sessions"
+    )
     parser.add_argument("--struct", required=True, help="Clean reference structure PDB")
     parser.add_argument("--umap", required=True, help="Input umap_2d.npy array")
-    parser.add_argument("--projections", required=True, help="Input projections.npy array")
-    parser.add_argument("--labels", required=True, help="Input cluster_labels.npy array")
-    parser.add_argument("--medoids_json", required=True, help="Input medoids_summary.json deliverable")
-    parser.add_argument("--time_map", required=True, help="Input frame_time_map.json mapping")
-    parser.add_argument("--feature_meta", required=True, help="Input feature_meta.json deliverable")
-    parser.add_argument("--align_group", required=True, help="Alignment basis group name")
-    parser.add_argument("--cluster_group", required=True, help="Clustering feature group name")
-    parser.add_argument("--dim_reduction", required=True, help="Dimensionality reduction method (pca or tica)")
+    parser.add_argument(
+        "--projections", required=True, help="Input projections.npy array"
+    )
+    parser.add_argument(
+        "--labels", required=True, help="Input cluster_labels.npy array"
+    )
+    parser.add_argument(
+        "--medoids_json", required=True, help="Input medoids_summary.json deliverable"
+    )
+    parser.add_argument(
+        "--time_map", required=True, help="Input frame_time_map.json mapping"
+    )
+    parser.add_argument(
+        "--feature_meta", required=True, help="Input feature_meta.json deliverable"
+    )
+    parser.add_argument(
+        "--align_group", required=True, help="Alignment basis group name"
+    )
+    parser.add_argument(
+        "--cluster_group", required=True, help="Clustering feature group name"
+    )
+    parser.add_argument(
+        "--dim_reduction",
+        required=True,
+        help="Dimensionality reduction method (pca or tica)",
+    )
     parser.add_argument("--system", required=True, help="Canonical parent system name")
-    parser.add_argument("--extracted_json", default="", help="Optional extracted_manifest.json with structure deliverables")
-    parser.add_argument("--temp_k", type=float, required=True, help="Simulation temperature in Kelvin")
+    parser.add_argument(
+        "--extracted_json",
+        default="",
+        help="Optional extracted_manifest.json with structure deliverables",
+    )
+    parser.add_argument(
+        "--temp_k", type=float, required=True, help="Simulation temperature in Kelvin"
+    )
     parser.add_argument("--outdir", required=True, help="Output directory for reports")
     args = parser.parse_args()
 
@@ -84,7 +111,17 @@ def main():
         time_map = json.load(f)
 
     n_frames = umap_2d.shape[0]
-    palette = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22"]
+    palette = [
+        "#1f77b4",
+        "#ff7f0e",
+        "#2ca02c",
+        "#d62728",
+        "#9467bd",
+        "#8c564b",
+        "#e377c2",
+        "#7f7f7f",
+        "#bcbd22",
+    ]
 
     # Copy reference PDB into outdir for 100% self-contained relative PyMOL sessions
     ref_pdb = outdir / "reference.pdb"
@@ -103,8 +140,23 @@ def main():
     cbar1.set_label("ΔG (kcal/mol)")
     for m in medoids:
         f = m["medoid_frame"]
-        ax1.scatter(umap_2d[f, 0], umap_2d[f, 1], marker="*", s=180, color="red", edgecolors="black", zorder=5)
-        ax1.text(umap_2d[f, 0] + 0.2, umap_2d[f, 1] + 0.2, f"#{m['rank']} ({m['population_pct']}%)", color="white", fontweight="bold", fontsize=9)
+        ax1.scatter(
+            umap_2d[f, 0],
+            umap_2d[f, 1],
+            marker="*",
+            s=180,
+            color="red",
+            edgecolors="black",
+            zorder=5,
+        )
+        ax1.text(
+            umap_2d[f, 0] + 0.2,
+            umap_2d[f, 1] + 0.2,
+            f"#{m['rank']} ({m['population_pct']}%)",
+            color="white",
+            fontweight="bold",
+            fontsize=9,
+        )
     ax1.set_title("1. Free Energy Surface ΔG on UMAP (kcal/mol)", fontweight="bold")
     ax1.set_xlabel("UMAP 1")
     ax1.set_ylabel("UMAP 2")
@@ -114,7 +166,14 @@ def main():
         cid = m["raw_cluster_id"]
         mask = labels == cid
         col = palette[(m["rank"] - 1) % len(palette)]
-        ax2.scatter(umap_2d[mask, 0], umap_2d[mask, 1], s=3, alpha=0.5, color=col, label=f"Basin #{m['rank']} ({m['population_pct']}%)")
+        ax2.scatter(
+            umap_2d[mask, 0],
+            umap_2d[mask, 1],
+            s=3,
+            alpha=0.5,
+            color=col,
+            label=f"Basin #{m['rank']} ({m['population_pct']}%)",
+        )
     ax2.set_title(f"2. Partitioned Macro-Basins (K={len(medoids)})", fontweight="bold")
     ax2.set_xlabel("UMAP 1")
     ax2.set_ylabel("UMAP 2")
@@ -126,8 +185,23 @@ def main():
     cbar3.set_label("ΔG (kcal/mol)")
     for m in medoids:
         f = m["medoid_frame"]
-        ax3.scatter(proj[f, 0], proj[f, 1], marker="*", s=180, color="red", edgecolors="black", zorder=5)
-        ax3.text(proj[f, 0] + 0.8, proj[f, 1] + 0.8, f"#{m['rank']}", color="white", fontweight="bold", fontsize=9)
+        ax3.scatter(
+            proj[f, 0],
+            proj[f, 1],
+            marker="*",
+            s=180,
+            color="red",
+            edgecolors="black",
+            zorder=5,
+        )
+        ax3.text(
+            proj[f, 0] + 0.8,
+            proj[f, 1] + 0.8,
+            f"#{m['rank']}",
+            color="white",
+            fontweight="bold",
+            fontsize=9,
+        )
     ax3.set_title("3. Free Energy Surface ΔG on Component Space", fontweight="bold")
     ax3.set_xlabel("Component 1")
     ax3.set_ylabel("Component 2")
@@ -138,7 +212,13 @@ def main():
     bottom_vals = np.zeros(len(medoids))
     for r in unique_reps:
         counts = [m["replicate_breakdown"].get(r, 0) for m in medoids]
-        ax4.bar([f"Basin #{m['rank']}" for m in medoids], counts, bottom=bottom_vals, label=r, width=bar_width)
+        ax4.bar(
+            [f"Basin #{m['rank']}" for m in medoids],
+            counts,
+            bottom=bottom_vals,
+            label=r,
+            width=bar_width,
+        )
         bottom_vals += np.array(counts)
     ax4.set_title("4. Replicate Breakdown per Basin", fontweight="bold")
     ax4.set_ylabel("Frame Count")
@@ -153,41 +233,88 @@ def main():
     step = max(1, n_frames // 10000)
     sub = slice(0, n_frames, step)
 
-    fig_html = make_subplots(rows=1, cols=2, subplot_titles=("UMAP Basins & Energy Medoids", "Component Representation of Basins"))
+    fig_html = make_subplots(
+        rows=1,
+        cols=2,
+        subplot_titles=(
+            "UMAP Basins & Energy Medoids",
+            "Component Representation of Basins",
+        ),
+    )
     for m in medoids:
         cid = m["raw_cluster_id"]
         mask = labels == cid
         sub_mask = mask[sub]
         col = palette[(m["rank"] - 1) % len(palette)]
         fig_html.add_trace(
-            go.Scatter(x=umap_2d[sub][sub_mask, 0], y=umap_2d[sub][sub_mask, 1], mode="markers",
-                       name=f"Basin #{m['rank']} ({m['population_pct']}%)", marker=dict(size=3, color=col, opacity=0.6)),
-            row=1, col=1
+            go.Scatter(
+                x=umap_2d[sub][sub_mask, 0],
+                y=umap_2d[sub][sub_mask, 1],
+                mode="markers",
+                name=f"Basin #{m['rank']} ({m['population_pct']}%)",
+                marker=dict(size=3, color=col, opacity=0.6),
+            ),
+            row=1,
+            col=1,
         )
         fig_html.add_trace(
-            go.Scatter(x=proj[sub][sub_mask, 0], y=proj[sub][sub_mask, 1], mode="markers",
-                       name=f"Basin #{m['rank']} ({m['population_pct']}%)", marker=dict(size=3, color=col, opacity=0.6), showlegend=False),
-            row=1, col=2
+            go.Scatter(
+                x=proj[sub][sub_mask, 0],
+                y=proj[sub][sub_mask, 1],
+                mode="markers",
+                name=f"Basin #{m['rank']} ({m['population_pct']}%)",
+                marker=dict(size=3, color=col, opacity=0.6),
+                showlegend=False,
+            ),
+            row=1,
+            col=2,
         )
 
     for m in medoids:
         f = m["medoid_frame"]
         fig_html.add_trace(
-            go.Scatter(x=[umap_2d[f, 0]], y=[umap_2d[f, 1]], mode="markers+text",
-                       text=[f"#{m['rank']}"], textposition="top center",
-                       marker=dict(size=14, color="red", symbol="star", line=dict(color="black", width=1.5)),
-                       name=f"Medoid #{m['rank']}"),
-            row=1, col=1
+            go.Scatter(
+                x=[umap_2d[f, 0]],
+                y=[umap_2d[f, 1]],
+                mode="markers+text",
+                text=[f"#{m['rank']}"],
+                textposition="top center",
+                marker=dict(
+                    size=14,
+                    color="red",
+                    symbol="star",
+                    line=dict(color="black", width=1.5),
+                ),
+                name=f"Medoid #{m['rank']}",
+            ),
+            row=1,
+            col=1,
         )
         fig_html.add_trace(
-            go.Scatter(x=[proj[f, 0]], y=[proj[f, 1]], mode="markers+text",
-                       text=[f"#{m['rank']}"], textposition="top center",
-                       marker=dict(size=14, color="red", symbol="star", line=dict(color="black", width=1.5)),
-                       showlegend=False),
-            row=1, col=2
+            go.Scatter(
+                x=[proj[f, 0]],
+                y=[proj[f, 1]],
+                mode="markers+text",
+                text=[f"#{m['rank']}"],
+                textposition="top center",
+                marker=dict(
+                    size=14,
+                    color="red",
+                    symbol="star",
+                    line=dict(color="black", width=1.5),
+                ),
+                showlegend=False,
+            ),
+            row=1,
+            col=2,
         )
 
-    fig_html.update_layout(height=650, width=1300, template="plotly_dark", title_text="Conformational Macro-Basin Landscape Dashboard")
+    fig_html.update_layout(
+        height=650,
+        width=1300,
+        template="plotly_dark",
+        title_text="Conformational Macro-Basin Landscape Dashboard",
+    )
     html_path = outdir / "macro_clustering_interactive.html"
     fig_html.write_html(str(html_path))
 
@@ -201,28 +328,44 @@ def main():
         "set cartoon_transparency, 0.4, reference_pdb",
         "",
     ]
-    pymol_colors = ["cyan", "orange", "palegreen", "salmon", "magenta", "yellow", "lightblue", "lightpink", "wheat"]
+    pymol_colors = [
+        "cyan",
+        "orange",
+        "palegreen",
+        "salmon",
+        "magenta",
+        "yellow",
+        "lightblue",
+        "lightpink",
+        "wheat",
+    ]
     for m in medoids:
         rank = m["rank"]
         pop = m["population_pct"]
         col = pymol_colors[(rank - 1) % len(pymol_colors)]
         obj_name = f"centroid_{rank}_{pop:.1f}pct"
 
-        pml_lines.extend([
-            f"load centroid_{rank}_complex.pdb, {obj_name}",
-            f"align {obj_name} and name CA, reference_pdb and name CA",
-            f"color {col}, {obj_name}",
-            f"show cartoon, {obj_name}",
-            f"show sticks, {obj_name} and not protein and not (resname HOH or resname TIP3 or resname WAT)",
-            "",
-        ])
+        pml_lines.extend(
+            [
+                f"load centroid_{rank}_complex.pdb, {obj_name}",
+                f"align {obj_name} and name CA, reference_pdb and name CA",
+                f"color {col}, {obj_name}",
+                f"show cartoon, {obj_name}",
+                f"show sticks, {obj_name} and not protein and not (resname HOH or resname TIP3 or resname WAT)",
+                "",
+            ]
+        )
     pml_lines.extend(["zoom reference_pdb, buffer=5.0", "util.cnc"])
 
     pml_path = outdir / "inspect_clusters.pml"
     pml_path.write_text("\n".join(pml_lines) + "\n")
 
     extracted_structures = []
-    if args.extracted_json and Path(args.extracted_json).exists() and Path(args.extracted_json).stat().st_size > 0:
+    if (
+        args.extracted_json
+        and Path(args.extracted_json).exists()
+        and Path(args.extracted_json).stat().st_size > 0
+    ):
         with open(Path(args.extracted_json).resolve(), "r", encoding="utf-8") as ef:
             extracted_structures = json.load(ef)
 

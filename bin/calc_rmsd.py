@@ -95,6 +95,7 @@ def calculate_pair_rmsd(m_ref, m_dock) -> float:
         sys.path.insert(0, str(framework_dir))
 
     from cli.core.chem import compute_symmetry_rmsd
+
     return compute_symmetry_rmsd(m_ref, m_dock)
 
 

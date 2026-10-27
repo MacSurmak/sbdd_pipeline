@@ -40,7 +40,9 @@ def add_mmpbsa_groups(ndx_path: Path, pdb_path: Path, ligand_name: str):
     import MDAnalysis as mda
 
     if not ligand_name or not ligand_name.strip():
-        raise ValueError("FATAL: ligand_name must be explicitly provided for MM-PBSA groups!")
+        raise ValueError(
+            "FATAL: ligand_name must be explicitly provided for MM-PBSA groups!"
+        )
 
     u = mda.Universe(str(pdb_path))
     lig_res = ligand_name.strip().upper()
@@ -343,7 +345,13 @@ if __name__ == "__main__":
     parser.add_argument("--ligand", default="")
     parser.add_argument(
         "--action",
-        choices=["add_groups", "generate_posre", "ensure_complex", "add_pocket", "add_mmpbsa_groups"],
+        choices=[
+            "add_groups",
+            "generate_posre",
+            "ensure_complex",
+            "add_pocket",
+            "add_mmpbsa_groups",
+        ],
         required=True,
     )
     parser.add_argument("--orgs", default="")

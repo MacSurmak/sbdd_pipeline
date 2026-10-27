@@ -138,7 +138,7 @@ def compute_tica(
     # 1. PCA whitening to eliminate rank deficiency and collinearity in Cartesian coordinates
     # X = U * S * Vt -> Covariance = (1 / (N - 1)) * V * S^2 * Vt
     u_mat, s_vals, vt_mat = linalg.svd(all_centered, full_matrices=False)
-    var_all = (s_vals ** 2) / float(max(1, total_samples - 1))
+    var_all = (s_vals**2) / float(max(1, total_samples - 1))
     sum_var = np.sum(var_all)
     cum_var = np.cumsum(var_all) / sum_var if sum_var > 0 else np.zeros_like(var_all)
 
@@ -148,7 +148,7 @@ def compute_tica(
     m_components = max(2, min(m_cand, int(np.sum(valid_sing)), 50, total_samples - 1))
 
     v_white = vt_mat[:m_components, :].T  # Shape: (n_features, m_components)
-    s_white = s_vals[:m_components]       # Singular values for scaling
+    s_white = s_vals[:m_components]  # Singular values for scaling
 
     # Whitening operator: transforms coordinates such that C(0) = Identity_M
     # y = x * V * diag(sqrt(N - 1) / S)
@@ -213,7 +213,7 @@ def compute_pca(
     centered = data - mean_vec
 
     _, s_vals, vt_mat = linalg.svd(centered, full_matrices=False)
-    var_exp = (s_vals ** 2) / float(max(1, n_samples - 1))
+    var_exp = (s_vals**2) / float(max(1, n_samples - 1))
     sum_var = np.sum(var_exp)
     if sum_var > 0:
         var_exp = var_exp / sum_var
@@ -232,29 +232,64 @@ def main():
         description="Stream trajectories, superimpose in memory, and reduce dimensionality"
     )
     parser.add_argument("--struct", required=True, help="Clean reference structure PDB")
-    parser.add_argument("--xtc", nargs="+", required=True, help="Clean trajectory XTC file(s)")
-    parser.add_argument("--rep_names", nargs="+", required=True, help="Explicit physical replicate names matching each XTC")
+    parser.add_argument(
+        "--xtc", nargs="+", required=True, help="Clean trajectory XTC file(s)"
+    )
+    parser.add_argument(
+        "--rep_names",
+        nargs="+",
+        required=True,
+        help="Explicit physical replicate names matching each XTC",
+    )
     parser.add_argument("--ndx", default="", help="Optional GROMACS index.ndx file")
-    parser.add_argument("--align_group", required=True, help="Basis group for superimposition")
-    parser.add_argument("--cluster_group", required=True, help="Feature group for coordinates")
-    parser.add_argument("--ligand_resname", default="", help="Ligand residue name (if applicable)")
-    parser.add_argument("--pocket_radius", type=float, required=True, help="Pocket radius (Å)")
+    parser.add_argument(
+        "--align_group", required=True, help="Basis group for superimposition"
+    )
+    parser.add_argument(
+        "--cluster_group", required=True, help="Feature group for coordinates"
+    )
+    parser.add_argument(
+        "--ligand_resname", default="", help="Ligand residue name (if applicable)"
+    )
+    parser.add_argument(
+        "--pocket_radius", type=float, required=True, help="Pocket radius (Å)"
+    )
     parser.add_argument("--dim_reduction", choices=["pca", "tica"], required=True)
-    parser.add_argument("--start_ns", type=float, default=1.0, help="Start buffer identical to MM-PBSA (ns)")
-    parser.add_argument("--sample_interval_ps", type=float, default=500.0, help="Sampling interval identical to MM-PBSA (ps)")
-    parser.add_argument("--tica_lag_ns", type=float, required=True, help="Lag time for TICA (ns)")
-    parser.add_argument("--variance_cutoff", type=float, required=True, help="Variance cutoff fraction")
+    parser.add_argument(
+        "--start_ns",
+        type=float,
+        default=1.0,
+        help="Start buffer identical to MM-PBSA (ns)",
+    )
+    parser.add_argument(
+        "--sample_interval_ps",
+        type=float,
+        default=500.0,
+        help="Sampling interval identical to MM-PBSA (ps)",
+    )
+    parser.add_argument(
+        "--tica_lag_ns", type=float, required=True, help="Lag time for TICA (ns)"
+    )
+    parser.add_argument(
+        "--variance_cutoff", type=float, required=True, help="Variance cutoff fraction"
+    )
     parser.add_argument("--outdir", required=True, help="Output directory")
     args = parser.parse_args()
 
     struct_p = Path(args.struct).resolve()
     if not struct_p.exists() or struct_p.stat().st_size == 0:
-        raise FileNotFoundError(f"FATAL: Reference structure missing or empty: {struct_p}")
+        raise FileNotFoundError(
+            f"FATAL: Reference structure missing or empty: {struct_p}"
+        )
 
     outdir = Path(args.outdir).resolve()
     outdir.mkdir(parents=True, exist_ok=True)
 
-    ndx_groups = parse_ndx(Path(args.ndx).resolve()) if args.ndx and Path(args.ndx).exists() else {}
+    ndx_groups = (
+        parse_ndx(Path(args.ndx).resolve())
+        if args.ndx and Path(args.ndx).exists()
+        else {}
+    )
 
     ref_u = mda.Universe(str(struct_p))
     selection_parser = AtomSelectionParser(
@@ -265,7 +300,9 @@ def main():
     )
 
     ref_align_atoms = selection_parser.parse(args.align_group, desc="Alignment Basis")
-    ref_cluster_atoms = selection_parser.parse(args.cluster_group, desc="Clustering Feature")
+    ref_cluster_atoms = selection_parser.parse(
+        args.cluster_group, desc="Clustering Feature"
+    )
 
     ref_align_pos = ref_align_atoms.positions.copy()
     ref_align_com = ref_align_pos.mean(axis=0)
@@ -275,7 +312,9 @@ def main():
     cluster_indices = ref_cluster_atoms.indices
 
     unique_resnames = sorted(list(set(str(r) for r in ref_cluster_atoms.resnames)))
-    res_summary = ", ".join(unique_resnames[:8]) + ("..." if len(unique_resnames) > 8 else "")
+    res_summary = ", ".join(unique_resnames[:8]) + (
+        "..." if len(unique_resnames) > 8 else ""
+    )
 
     print(
         f"[DIM_REDUCTION] Reference loaded: {struct_p.name}\n"
@@ -292,7 +331,9 @@ def main():
             if c_clean:
                 p_xtc = Path(c_clean).resolve()
                 if not p_xtc.exists() or p_xtc.stat().st_size == 0:
-                    raise FileNotFoundError(f"FATAL: Trajectory file missing or empty: {p_xtc}")
+                    raise FileNotFoundError(
+                        f"FATAL: Trajectory file missing or empty: {p_xtc}"
+                    )
                 clean_xtcs.append(p_xtc)
 
     clean_reps = []
@@ -324,14 +365,18 @@ def main():
         if dt_ps is None:
             dt_ps = float(u.trajectory[1].time - u.trajectory[0].time)
             if dt_ps <= 0:
-                raise ValueError(f"FATAL: Non-physical trajectory timestamp interval: dt={dt_ps} ps!")
+                raise ValueError(
+                    f"FATAL: Non-physical trajectory timestamp interval: dt={dt_ps} ps!"
+                )
 
         # Calculate exact start and stride frames matching MM-PBSA
-        start_frame = min(total_raw_frames, max(1, int(round(args.start_ns * 1000.0 / dt_ps)) + 1))
+        start_frame = min(
+            total_raw_frames, max(1, int(round(args.start_ns * 1000.0 / dt_ps)) + 1)
+        )
         step_frames = max(1, int(round(args.sample_interval_ps / dt_ps)))
 
         # Native MDAnalysis trajectory stream slicing without loading intermediate frames
-        trajectory_slice = u.trajectory[start_frame - 1 : : step_frames]
+        trajectory_slice = u.trajectory[start_frame - 1 :: step_frames]
 
         rep_frames_coords = []
         for ts in trajectory_slice:
@@ -341,15 +386,19 @@ def main():
 
             r_mat, _ = rotation_matrix(mob_align_centered, ref_align_centered)
             mob_cluster = u.atoms[cluster_indices].positions
-            aligned_cluster = np.dot(mob_cluster - mob_align_com, r_mat.T) + ref_align_com
+            aligned_cluster = (
+                np.dot(mob_cluster - mob_align_com, r_mat.T) + ref_align_com
+            )
 
             flat_coords = aligned_cluster.reshape(-1)
             rep_frames_coords.append(flat_coords)
-            frame_time_map.append({
-                "global_frame": global_frame,
-                "replicate": rep_name,
-                "time_ns": round(float(ts.time) / 1000.0, 4),
-            })
+            frame_time_map.append(
+                {
+                    "global_frame": global_frame,
+                    "replicate": rep_name,
+                    "time_ns": round(float(ts.time) / 1000.0, 4),
+                }
+            )
             global_frame += 1
 
         coords_by_rep.append(np.array(rep_frames_coords, dtype=np.float64))

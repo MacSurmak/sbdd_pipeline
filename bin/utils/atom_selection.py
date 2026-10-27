@@ -153,9 +153,7 @@ class AtomSelectionParser:
         Parses composite query with set algebra (+ for union, - for difference, & for intersection).
         """
         if not query or not query.strip():
-            raise ValueError(
-                f"FATAL: Empty atom selection query provided for {desc}!"
-            )
+            raise ValueError(f"FATAL: Empty atom selection query provided for {desc}!")
 
         raw_query = query.strip()
         tokens = re.split(r"(\+|\-|\&)", raw_query)

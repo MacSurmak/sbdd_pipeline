@@ -516,11 +516,17 @@ def run_dock(
                 # We graft heavy-atom coordinates onto the pristine LigPrep template
                 # and relax newly added protons while holding heavy atoms strictly rigid.
                 if eng != "glide":
-                    tmpl_suppl = Chem.SDMolSupplier(str(Path(lig.path_sdf).resolve()), removeHs=False, sanitize=False)
+                    tmpl_suppl = Chem.SDMolSupplier(
+                        str(Path(lig.path_sdf).resolve()),
+                        removeHs=False,
+                        sanitize=False,
+                    )
                     tmpl_mol = next((m for m in tmpl_suppl if m is not None), None)
                     if not tmpl_mol:
                         session.close()
-                        raise ValueError(f"FATAL: Could not read canonical template for '{title}' at {lig.path_sdf}")
+                        raise ValueError(
+                            f"FATAL: Could not read canonical template for '{title}' at {lig.path_sdf}"
+                        )
 
                     mol_conformation = transfer_coordinates_to_template(
                         template_mol=tmpl_mol,

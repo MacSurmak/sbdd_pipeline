@@ -274,14 +274,19 @@ def cmd_batch_convert(args):
         in_p = Path(item["in_path"]).resolve()
         out_p = Path(item["out_path"]).resolve()
         if not in_p.exists() or in_p.stat().st_size == 0:
-            print(f"FATAL: Source structure {in_p} missing or empty for batch conversion!", file=sys.stderr)
+            print(
+                f"FATAL: Source structure {in_p} missing or empty for batch conversion!",
+                file=sys.stderr,
+            )
             sys.exit(1)
 
         st = structure.StructureReader.read(str(in_p))
         st.write(str(out_p))
         converted += 1
 
-    print(f"Batch conversion successful: converted {converted} structure(s) in single runtime.")
+    print(
+        f"Batch conversion successful: converted {converted} structure(s) in single runtime."
+    )
 
 
 def cmd_prepwizard(args):

@@ -38,7 +38,14 @@ from cli.core.config_loader import (
 
 console = Console()
 
-FORBIDDEN_SCRATCH_TOKENS = ["/work/", ".nextflow", "/tmp/", "slurm_tmp", "nfs_scratch", "nxf."]
+FORBIDDEN_SCRATCH_TOKENS = [
+    "/work/",
+    ".nextflow",
+    "/tmp/",
+    "slurm_tmp",
+    "nfs_scratch",
+    "nxf.",
+]
 
 
 def assert_permanent_path(path: Path | str, context: str) -> Path:
@@ -349,10 +356,18 @@ def save_clustering_to_db(
 
     # Deterministic run naming: e.g. sys_RY12_Pocket_hdbscan
     clean_group_tag = re.sub(r"[^a-zA-Z0-9_]", "_", eff_cluster).strip("_")
-    run_name = custom_name.strip() if custom_name else f"{sys_obj.name}_{clean_group_tag}_{eff_algo}"
+    run_name = (
+        custom_name.strip()
+        if custom_name
+        else f"{sys_obj.name}_{clean_group_tag}_{eff_algo}"
+    )
 
-    labels_p = assert_permanent_path(task_dir / "cluster_labels.npy", "Cluster Labels Array")
-    time_map_p = assert_permanent_path(task_dir / "frame_time_map.json", "Frame Time Map JSON")
+    labels_p = assert_permanent_path(
+        task_dir / "cluster_labels.npy", "Cluster Labels Array"
+    )
+    time_map_p = assert_permanent_path(
+        task_dir / "frame_time_map.json", "Frame Time Map JSON"
+    )
 
     if not labels_p.exists() or not time_map_p.exists():
         session.close()
@@ -433,23 +448,35 @@ def run_extract_medoids(clustering: str, ranks: str | None = None) -> None:
     # Resolve ranks
     if ranks:
         try:
-            target_ranks = [int(x.strip().replace("#", "")) for x in ranks.split(",") if x.strip()]
+            target_ranks = [
+                int(x.strip().replace("#", "")) for x in ranks.split(",") if x.strip()
+            ]
         except ValueError:
             session.close()
-            raise ValueError(f"FATAL: Invalid ranks specified: '{ranks}'. Expected comma-separated integers.")
+            raise ValueError(
+                f"FATAL: Invalid ranks specified: '{ranks}'. Expected comma-separated integers."
+            )
     else:
         target_ranks = [tc.cluster_rank for tc in c_run.clusters]
 
     selected_clusters = [tc for tc in c_run.clusters if tc.cluster_rank in target_ranks]
     if not selected_clusters:
         session.close()
-        raise ValueError(f"FATAL: No clusters matching requested ranks {target_ranks} found in '{clustering}'!")
+        raise ValueError(
+            f"FATAL: No clusters matching requested ranks {target_ranks} found in '{clustering}'!"
+        )
 
     # Resolve clean trajectories
-    all_trajs = session.query(Trajectory).filter_by(system_id=sys_obj.id, status="cleaned").all()
+    all_trajs = (
+        session.query(Trajectory)
+        .filter_by(system_id=sys_obj.id, status="cleaned")
+        .all()
+    )
     if not all_trajs:
         session.close()
-        raise FileNotFoundError(f"FATAL: No cleaned trajectories found for system '{sys_obj.name}'!")
+        raise FileNotFoundError(
+            f"FATAL: No cleaned trajectories found for system '{sys_obj.name}'!"
+        )
 
     ref_pdb_path = Path(all_trajs[0].path_ref_pdb).resolve()
     clean_xtcs = [str(Path(t.path_clean_xtc).resolve()) for t in all_trajs]
@@ -458,7 +485,9 @@ def run_extract_medoids(clustering: str, ranks: str | None = None) -> None:
     protein_atoms = u.select_atoms("protein")
     if len(protein_atoms) == 0:
         session.close()
-        raise ValueError(f"FATAL: No protein atoms found in reference structure {ref_pdb_path}!")
+        raise ValueError(
+            f"FATAL: No protein atoms found in reference structure {ref_pdb_path}!"
+        )
 
     created_frames = 0
     clean_feature_tag = re.sub(r"[^a-zA-Z0-9_]", "_", c_run.feature_group).strip("_")
@@ -552,20 +581,46 @@ def run_cluster(
 
     # Apply explicit CLI overrides onto configuration dictionary before Nextflow argument construction
     eff_align = align_group if align_group is not None else cluster_cfg["align_group"]
-    eff_cluster = cluster_group if cluster_group is not None else cluster_cfg["cluster_group"]
-    eff_dim = dim_reduction if dim_reduction is not None else cluster_cfg["dim_reduction"]
-    eff_algo = algorithm if algorithm is not None else cluster_cfg.get("algorithm", "hdbscan")
+    eff_cluster = (
+        cluster_group if cluster_group is not None else cluster_cfg["cluster_group"]
+    )
+    eff_dim = (
+        dim_reduction if dim_reduction is not None else cluster_cfg["dim_reduction"]
+    )
+    eff_algo = (
+        algorithm if algorithm is not None else cluster_cfg.get("algorithm", "hdbscan")
+    )
     eff_k = n_clusters if n_clusters is not None else cluster_cfg.get("n_clusters", 3)
-    eff_cutoff = rmsd_cutoff if rmsd_cutoff is not None else cluster_cfg.get("rmsd_cutoff", 1.5)
-    eff_min_pop = min_population if min_population is not None else cluster_cfg["min_cluster_population"]
+    eff_cutoff = (
+        rmsd_cutoff if rmsd_cutoff is not None else cluster_cfg.get("rmsd_cutoff", 1.5)
+    )
+    eff_min_pop = (
+        min_population
+        if min_population is not None
+        else cluster_cfg["min_cluster_population"]
+    )
 
-    configs.setdefault("md_simulation", {}).setdefault("clustering", {})["align_group"] = eff_align
-    configs.setdefault("md_simulation", {}).setdefault("clustering", {})["cluster_group"] = eff_cluster
-    configs.setdefault("md_simulation", {}).setdefault("clustering", {})["dim_reduction"] = eff_dim
-    configs.setdefault("md_simulation", {}).setdefault("clustering", {})["algorithm"] = eff_algo
-    configs.setdefault("md_simulation", {}).setdefault("clustering", {})["rmsd_cutoff"] = eff_cutoff
-    configs.setdefault("md_simulation", {}).setdefault("clustering", {})["n_clusters"] = eff_k
-    configs.setdefault("md_simulation", {}).setdefault("clustering", {})["min_cluster_population"] = eff_min_pop
+    configs.setdefault("md_simulation", {}).setdefault("clustering", {})[
+        "align_group"
+    ] = eff_align
+    configs.setdefault("md_simulation", {}).setdefault("clustering", {})[
+        "cluster_group"
+    ] = eff_cluster
+    configs.setdefault("md_simulation", {}).setdefault("clustering", {})[
+        "dim_reduction"
+    ] = eff_dim
+    configs.setdefault("md_simulation", {}).setdefault("clustering", {})[
+        "algorithm"
+    ] = eff_algo
+    configs.setdefault("md_simulation", {}).setdefault("clustering", {})[
+        "rmsd_cutoff"
+    ] = eff_cutoff
+    configs.setdefault("md_simulation", {}).setdefault("clustering", {})[
+        "n_clusters"
+    ] = eff_k
+    configs.setdefault("md_simulation", {}).setdefault("clustering", {})[
+        "min_cluster_population"
+    ] = eff_min_pop
 
     trajs = _query_trajectories(
         session, systems, target, traj_names, target_status="cleaned"
@@ -600,7 +655,11 @@ def run_cluster(
         clean_xtcs = [str(Path(t.path_clean_xtc).resolve()) for t in t_list]
         rep_names = [f"rep_{t.replicate}" for t in t_list]
         ref_pdb = str(Path(t_list[0].path_ref_pdb).resolve())
-        ndx_path = str(Path(sys_obj.path_ndx).resolve()) if sys_obj.path_ndx and Path(sys_obj.path_ndx).exists() else ""
+        ndx_path = (
+            str(Path(sys_obj.path_ndx).resolve())
+            if sys_obj.path_ndx and Path(sys_obj.path_ndx).exists()
+            else ""
+        )
         lig_code = sys_obj.pose.res_name if sys_obj.pose else ""
 
         if eff_cluster.lower() == "pocket" and not lig_code:
@@ -613,17 +672,19 @@ def run_cluster(
 
         task_id = f"{sys_obj.name}_{eff_align}_{eff_cluster}"
 
-        plan_list.append({
-            "task_id": task_id,
-            "system": sys_obj.name,
-            "clean_xtcs": clean_xtcs,
-            "replicate_names": rep_names,
-            "ref_pdb": ref_pdb,
-            "ndx": ndx_path,
-            "align_group": eff_align,
-            "cluster_group": eff_cluster,
-            "ligand": lig_code,
-        })
+        plan_list.append(
+            {
+                "task_id": task_id,
+                "system": sys_obj.name,
+                "clean_xtcs": clean_xtcs,
+                "replicate_names": rep_names,
+                "ref_pdb": ref_pdb,
+                "ndx": ndx_path,
+                "align_group": eff_align,
+                "cluster_group": eff_cluster,
+                "ligand": lig_code,
+            }
+        )
 
     plan_file = cwd / "cluster_plan.json"
     with open(plan_file, "w", encoding="utf-8") as f:
@@ -637,9 +698,12 @@ def run_cluster(
     receipt_file.unlink(missing_ok=True)
 
     nf_args = build_nextflow_args(configs, cwd, entrypoint="md-analyze")
-    nf_args.extend([
-        "--cluster_plan", str(plan_file.resolve()),
-    ])
+    nf_args.extend(
+        [
+            "--cluster_plan",
+            str(plan_file.resolve()),
+        ]
+    )
 
     if urgent:
         nf_args.extend(["--queue", "urgent"])
@@ -674,12 +738,14 @@ def run_cluster(
                 continue
             parts = l_str.split("\t")
             if len(parts) == 4:
-                receipt_records.append({
-                    "system": parts[0],
-                    "align_group": parts[1],
-                    "cluster_group": parts[2],
-                    "manifest_path": Path(parts[3]).resolve(),
-                })
+                receipt_records.append(
+                    {
+                        "system": parts[0],
+                        "align_group": parts[1],
+                        "cluster_group": parts[2],
+                        "manifest_path": Path(parts[3]).resolve(),
+                    }
+                )
 
     session.close()
 
@@ -688,14 +754,18 @@ def run_cluster(
         m_path = rec_meta["manifest_path"]
 
         if not m_path.exists() or m_path.stat().st_size == 0:
-            raise FileNotFoundError(f"FATAL: Published cluster manifest missing on disk: {m_path}")
+            raise FileNotFoundError(
+                f"FATAL: Published cluster manifest missing on disk: {m_path}"
+            )
 
         with open(m_path, "r", encoding="utf-8") as jf:
             manifest = json.load(jf)
 
         basins = manifest.get("basins", [])
         if not basins:
-            console.print(f"[yellow]Warning: No basins found in manifest for system '{sys_name}'.[/yellow]")
+            console.print(
+                f"[yellow]Warning: No basins found in manifest for system '{sys_name}'.[/yellow]"
+            )
             continue
 
         table = Table(
@@ -719,7 +789,11 @@ def run_cluster(
             if is_rec:
                 recommended_ranks.append(rank)
                 sel_box = "[bold green][✓][/bold green]"
-                verdict = "[bold green]Recommended (Major Basin)[/bold green]" if rank == 1 else "[green]Recommended[/green]"
+                verdict = (
+                    "[bold green]Recommended (Major Basin)[/bold green]"
+                    if rank == 1
+                    else "[green]Recommended[/green]"
+                )
             else:
                 sel_box = "[dim][ ][/dim]"
                 verdict = f"[dim]Low population (< {eff_min_pop}%)[/dim]"
@@ -740,21 +814,35 @@ def run_cluster(
         html_report_name = Path(manifest.get("html_report", "")).name
         pml_session_name = Path(manifest.get("pymol_session", "")).name
 
-        html_report_path = assert_permanent_path(m_path.parent / html_report_name, "Interactive Landscape HTML")
-        pml_session_path = assert_permanent_path(m_path.parent / pml_session_name, "Portable PyMOL Session")
+        html_report_path = assert_permanent_path(
+            m_path.parent / html_report_name, "Interactive Landscape HTML"
+        )
+        pml_session_path = assert_permanent_path(
+            m_path.parent / pml_session_name, "Portable PyMOL Session"
+        )
 
         console.print(table)
-        console.print(f"📊 [bold cyan]Interactive Landscape (FES):[/bold cyan] {html_report_path}")
-        console.print(f"🔍 [bold cyan]Portable PyMOL 3D Session:[/bold cyan] pymol {pml_session_path}\n")
+        console.print(
+            f"📊 [bold cyan]Interactive Landscape (FES):[/bold cyan] {html_report_path}"
+        )
+        console.print(
+            f"🔍 [bold cyan]Portable PyMOL 3D Session:[/bold cyan] pymol {pml_session_path}\n"
+        )
 
         # Analytical persistence decision: Preview by default, commit only upon explicit instruction
         should_save = save or auto
         if not should_save and sys.stdin.isatty():
             try:
-                user_input = input("Save this analytical clustering run to database? [y/N]: ").strip().lower()
+                user_input = (
+                    input("Save this analytical clustering run to database? [y/N]: ")
+                    .strip()
+                    .lower()
+                )
                 should_save = user_input in ["y", "yes"]
             except (EOFError, KeyboardInterrupt):
-                console.print("\n[yellow]Preview closed. Database not modified.[/yellow]")
+                console.print(
+                    "\n[yellow]Preview closed. Database not modified.[/yellow]"
+                )
                 return
 
         if should_save:
@@ -926,7 +1014,9 @@ def run_stratify(
         )
 
     if clustering:
-        target_c_run = next((cr for cr in c_runs if cr.name == clustering.strip()), None)
+        target_c_run = next(
+            (cr for cr in c_runs if cr.name == clustering.strip()), None
+        )
         if not target_c_run:
             avail_names = [cr.name for cr in c_runs]
             session.close()
@@ -952,7 +1042,8 @@ def run_stratify(
     # 3b. Strict SSOT Provenance Verification between MM-PBSA and Clustering grids
     if (
         abs(float(m_run.start_ns) - float(target_c_run.start_ns)) > 1e-3
-        or abs(float(m_run.sample_interval_ps) - float(target_c_run.sample_interval_ps)) > 1e-3
+        or abs(float(m_run.sample_interval_ps) - float(target_c_run.sample_interval_ps))
+        > 1e-3
     ):
         session.close()
         raise ValueError(
@@ -969,22 +1060,34 @@ def run_stratify(
     out_plot = task_dir / f"{target_c_run.name}_stratified_rmsd.png"
     effective_temp = float(temp_k if temp_k is not None else m_run.temperature)
 
-    stratify_bin = Path(__file__).resolve().parent.parent.parent / "bin" / "stratify_mmpbsa.py"
+    stratify_bin = (
+        Path(__file__).resolve().parent.parent.parent / "bin" / "stratify_mmpbsa.py"
+    )
     if not stratify_bin.exists():
         session.close()
-        raise FileNotFoundError(f"FATAL: Stratification worker not found at {stratify_bin}")
+        raise FileNotFoundError(
+            f"FATAL: Stratification worker not found at {stratify_bin}"
+        )
 
     cmd = [
         sys.executable,
         str(stratify_bin.resolve()),
-        "--system", sys_obj.name,
-        "--labels", str(target_c_run.path_labels),
-        "--time_map", str(target_c_run.path_time_map),
-        "--mmpbsa_dir", str(mmpbsa_reports_dir.resolve()),
-        "--metrics_dir", str((cwd / "md_runs" / sys_obj.name).resolve()),
-        "--temp_k", str(effective_temp),
-        "--out_json", str(out_json.resolve()),
-        "--out_plot", str(out_plot.resolve()),
+        "--system",
+        sys_obj.name,
+        "--labels",
+        str(target_c_run.path_labels),
+        "--time_map",
+        str(target_c_run.path_time_map),
+        "--mmpbsa_dir",
+        str(mmpbsa_reports_dir.resolve()),
+        "--metrics_dir",
+        str((cwd / "md_runs" / sys_obj.name).resolve()),
+        "--temp_k",
+        str(effective_temp),
+        "--out_json",
+        str(out_json.resolve()),
+        "--out_plot",
+        str(out_plot.resolve()),
     ]
 
     console.print(
@@ -999,7 +1102,9 @@ def run_stratify(
 
     if not out_json.exists():
         session.close()
-        raise FileNotFoundError(f"FATAL: Stratification manifest was not emitted: {out_json}")
+        raise FileNotFoundError(
+            f"FATAL: Stratification manifest was not emitted: {out_json}"
+        )
 
     # 5. Synchronize Moment Estimates into SQLite 3NF
     with open(out_json, "r", encoding="utf-8") as f:
@@ -1008,7 +1113,9 @@ def run_stratify(
     boltz_total = float(strat_data["boltzmann_total_delta_g"])
     m_run.delta_g_boltzmann_total = boltz_total
 
-    cluster_stats_map = {item["cluster_id"]: item for item in strat_data.get("clusters", [])}
+    cluster_stats_map = {
+        item["cluster_id"]: item for item in strat_data.get("clusters", [])
+    }
     for tc in target_c_run.clusters:
         if tc.cluster_index in cluster_stats_map:
             c_info = cluster_stats_map[tc.cluster_index]
@@ -1045,8 +1152,12 @@ def run_stratify(
         f" [bold magenta]MACROSCOPIC ENSEMBLE NUMBER (Boltzmann ΔG_total):[/bold magenta] [bold green]{boltz_total:.2f} kcal/mol[/bold green]\n"
         f"═══════════════════════════════════════════════════════════════════════════"
     )
-    console.print(f"📈 [bold cyan]Multi-Replica Color-Coded Trajectory Plot:[/bold cyan] {out_plot}")
-    console.print(f"✓ Stratified thermodynamics atomically synchronized with SQLite 3NF database.\n")
+    console.print(
+        f"📈 [bold cyan]Multi-Replica Color-Coded Trajectory Plot:[/bold cyan] {out_plot}"
+    )
+    console.print(
+        f"✓ Stratified thermodynamics atomically synchronized with SQLite 3NF database.\n"
+    )
 
 
 def run_mmpbsa(
@@ -1172,7 +1283,9 @@ def run_mmpbsa(
                 f"FATAL: Target System '{sys_name}' declared in plan is not registered in SQLite database!"
             )
 
-        sys_reps = sorted([d for d in reports_dir.glob("*") if sys_name in d.name and d.is_dir()])
+        sys_reps = sorted(
+            [d for d in reports_dir.glob("*") if sys_name in d.name and d.is_dir()]
+        )
         if not sys_reps:
             session.close()
             raise FileNotFoundError(
@@ -1199,7 +1312,9 @@ def run_mmpbsa(
                     f"Available columns: {list(df.columns)}"
                 )
 
-            numeric_vals = pd.to_numeric(df[target_col], errors="coerce").dropna().values
+            numeric_vals = (
+                pd.to_numeric(df[target_col], errors="coerce").dropna().values
+            )
             if len(numeric_vals) == 0:
                 session.close()
                 raise ValueError(
@@ -1246,7 +1361,9 @@ def run_mmpbsa(
         else:
             ex_run.start_ns = eff_start_ns
             ex_run.sample_interval_ps = eff_interval_ps
-            ex_run.temperature = float(configs.get("mmpbsa", {}).get("temperature", 310.15))
+            ex_run.temperature = float(
+                configs.get("mmpbsa", {}).get("temperature", 310.15)
+            )
             ex_run.salt_conc = float(configs.get("mmpbsa", {}).get("salt_conc", 0.15))
             ex_run.delta_g_overall_mean = round(sys_mean, 3)
             ex_run.delta_g_overall_sem = round(sys_sem, 3)

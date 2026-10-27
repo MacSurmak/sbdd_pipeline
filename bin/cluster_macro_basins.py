@@ -15,22 +15,46 @@ from scipy.spatial.distance import cdist
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Partition trajectory phase space into macro-basins and identify medoids")
+    parser = argparse.ArgumentParser(
+        description="Partition trajectory phase space into macro-basins and identify medoids"
+    )
     parser.add_argument("--umap", required=True, help="Input umap_2d.npy array")
-    parser.add_argument("--projections", required=True, help="Input projections.npy array")
-    parser.add_argument("--coords", required=True, help="Input aligned_coords.npy array")
-    parser.add_argument("--time_map", required=True, help="Input frame_time_map.json mapping")
+    parser.add_argument(
+        "--projections", required=True, help="Input projections.npy array"
+    )
+    parser.add_argument(
+        "--coords", required=True, help="Input aligned_coords.npy array"
+    )
+    parser.add_argument(
+        "--time_map", required=True, help="Input frame_time_map.json mapping"
+    )
     parser.add_argument(
         "--algorithm",
         default="hdbscan",
         choices=["hdbscan", "hierarchical", "auto_kmeans", "kmeans"],
         help="Clustering algorithm",
     )
-    parser.add_argument("--n_clusters", type=int, default=3, help="Number of clusters (for kmeans)")
-    parser.add_argument("--rmsd_cutoff", type=float, default=1.5, help="RMSD cutoff in Ångströms (for hierarchical)")
-    parser.add_argument("--min_cluster_fraction", type=float, default=0.05, help="Minimum population fraction for a basin")
-    parser.add_argument("--out_json", required=True, help="Output medoids_summary.json deliverable")
-    parser.add_argument("--out_labels", required=True, help="Output cluster_labels.npy array")
+    parser.add_argument(
+        "--n_clusters", type=int, default=3, help="Number of clusters (for kmeans)"
+    )
+    parser.add_argument(
+        "--rmsd_cutoff",
+        type=float,
+        default=1.5,
+        help="RMSD cutoff in Ångströms (for hierarchical)",
+    )
+    parser.add_argument(
+        "--min_cluster_fraction",
+        type=float,
+        default=0.05,
+        help="Minimum population fraction for a basin",
+    )
+    parser.add_argument(
+        "--out_json", required=True, help="Output medoids_summary.json deliverable"
+    )
+    parser.add_argument(
+        "--out_labels", required=True, help="Output cluster_labels.npy array"
+    )
     args = parser.parse_args()
 
     umap_p = Path(args.umap).resolve()
@@ -38,8 +62,15 @@ def main():
     coords_p = Path(args.coords).resolve()
     time_p = Path(args.time_map).resolve()
 
-    if not umap_p.exists() or not proj_p.exists() or not coords_p.exists() or not time_p.exists():
-        raise FileNotFoundError("FATAL: Required input array(s) or time mapping missing for cluster_macro_basins!")
+    if (
+        not umap_p.exists()
+        or not proj_p.exists()
+        or not coords_p.exists()
+        or not time_p.exists()
+    ):
+        raise FileNotFoundError(
+            "FATAL: Required input array(s) or time mapping missing for cluster_macro_basins!"
+        )
 
     umap_2d = np.load(umap_p)
     proj = np.load(proj_p)
@@ -48,7 +79,11 @@ def main():
         time_map = json.load(f)
 
     n_frames = umap_2d.shape[0]
-    if n_frames != proj.shape[0] or n_frames != coords.shape[0] or n_frames != len(time_map):
+    if (
+        n_frames != proj.shape[0]
+        or n_frames != coords.shape[0]
+        or n_frames != len(time_map)
+    ):
         raise ValueError(
             f"FATAL: Inconsistent sample sizes! UMAP has {n_frames}, Projections has {proj.shape[0]}, "
             f"Coords has {coords.shape[0]}, Time map has {len(time_map)}"
@@ -75,6 +110,7 @@ def main():
         except ImportError:
             try:
                 import hdbscan as hdb_mod
+
                 HDBSCAN = hdb_mod.HDBSCAN
             except ImportError:
                 raise ImportError(
@@ -84,14 +120,22 @@ def main():
         # True multidimensional phase space clustering: execute HDBSCAN on k-D TICA/PCA coordinates!
         # UMAP 2D is reserved strictly as a visual canvas.
         k_components = min(proj.shape[1], 6)
-        print(f"[CLUSTER_BASINS] HDBSCAN partitioning in {k_components}-dimensional TICA/PCA manifold...", flush=True)
-        clusterer = HDBSCAN(min_cluster_size=min_size, min_samples=min_size, metric="euclidean")
+        print(
+            f"[CLUSTER_BASINS] HDBSCAN partitioning in {k_components}-dimensional TICA/PCA manifold...",
+            flush=True,
+        )
+        clusterer = HDBSCAN(
+            min_cluster_size=min_size, min_samples=min_size, metric="euclidean"
+        )
         labels = clusterer.fit_predict(proj[:, :k_components])
 
         # Fallback if density was completely uniform and only noise was returned
         valid_cids = sorted([c for c in set(labels) if c >= 0])
         if not valid_cids:
-            print("[CLUSTER_BASINS] Warning: HDBSCAN found 0 distinct clusters. Falling back to auto_kmeans...", flush=True)
+            print(
+                "[CLUSTER_BASINS] Warning: HDBSCAN found 0 distinct clusters. Falling back to auto_kmeans...",
+                flush=True,
+            )
             algo = "auto_kmeans"
 
     if algo == "hierarchical":
@@ -105,7 +149,9 @@ def main():
             )
 
         # Exact pairwise Cartesian RMSD in Ångströms
-        dists = cdist(coords, coords, metric="euclidean") / np.sqrt(float(n_heavy_atoms))
+        dists = cdist(coords, coords, metric="euclidean") / np.sqrt(
+            float(n_heavy_atoms)
+        )
         agg = AgglomerativeClustering(
             metric="precomputed",
             linkage="average",
@@ -130,7 +176,10 @@ def main():
                 best_score = score
                 best_k = k_cand
 
-        print(f"[CLUSTER_BASINS] Auto-K evaluated [2..{max_k}]: selected optimal K={best_k} in {k_components}D TICA space (Silhouette={best_score:.3f})", flush=True)
+        print(
+            f"[CLUSTER_BASINS] Auto-K evaluated [2..{max_k}]: selected optimal K={best_k} in {k_components}D TICA space (Silhouette={best_score:.3f})",
+            flush=True,
+        )
         kmeans = KMeans(n_clusters=best_k, n_init=30, random_state=42)
         labels = kmeans.fit_predict(proj[:, :k_components])
 
@@ -153,7 +202,7 @@ def main():
     # First pass: identify initial medoids for genuine basins in O(N) memory
     initial_stats = []
     for cid in raw_unique_cids:
-        mask = (labels == cid)
+        mask = labels == cid
         pop_count = int(np.sum(mask))
         if pop_count == 0:
             continue
@@ -162,25 +211,31 @@ def main():
 
         # In Kabsch-aligned Cartesian space, Fréchet centroid minimizes variance in O(N) memory:
         mean_coords = np.mean(coords_sub, axis=0)
-        dists_to_mean = np.linalg.norm(coords_sub - mean_coords, axis=1) / np.sqrt(float(n_heavy_atoms))
+        dists_to_mean = np.linalg.norm(coords_sub - mean_coords, axis=1) / np.sqrt(
+            float(n_heavy_atoms)
+        )
         best_local_idx = int(np.argmin(dists_to_mean))
         medoid_frame = int(orig_indices[best_local_idx])
         spread = float(np.mean(dists_to_mean))
-        initial_stats.append({
-            "cid": cid,
-            "medoid_frame": medoid_frame,
-            "spread": spread,
-        })
+        initial_stats.append(
+            {
+                "cid": cid,
+                "medoid_frame": medoid_frame,
+                "spread": spread,
+            }
+        )
 
     # Zero Discard: Vectorized reassignment of noise frames (-1) to the nearest medoid (O(N_noise * K) memory)
-    noise_mask = (labels == -1)
+    noise_mask = labels == -1
     if np.any(noise_mask) and len(initial_stats) > 0:
         noise_indices = np.where(noise_mask)[0]
         medoid_frames = [s["medoid_frame"] for s in initial_stats]
         medoid_coords = coords[medoid_frames]
         noise_coords = coords[noise_indices]
 
-        dists_to_medoids = cdist(noise_coords, medoid_coords, metric="euclidean") / np.sqrt(float(n_heavy_atoms))
+        dists_to_medoids = cdist(
+            noise_coords, medoid_coords, metric="euclidean"
+        ) / np.sqrt(float(n_heavy_atoms))
         best_basin_indices = np.argmin(dists_to_medoids, axis=1)
         for idx, n_idx in enumerate(noise_indices):
             labels[n_idx] = initial_stats[best_basin_indices[idx]]["cid"]
@@ -189,7 +244,7 @@ def main():
     cluster_stats = []
     final_cids = sorted(list(set(labels)))
     for cid in final_cids:
-        mask = (labels == cid)
+        mask = labels == cid
         pop_count = int(np.sum(mask))
         if pop_count == 0:
             continue
@@ -202,23 +257,33 @@ def main():
 
         coords_sub = coords[mask]
         mean_coords = np.mean(coords_sub, axis=0)
-        dists_to_mean = np.linalg.norm(coords_sub - mean_coords, axis=1) / np.sqrt(float(n_heavy_atoms))
+        dists_to_mean = np.linalg.norm(coords_sub - mean_coords, axis=1) / np.sqrt(
+            float(n_heavy_atoms)
+        )
         best_local_idx = int(np.argmin(dists_to_mean))
         medoid_frame = int(orig_indices[best_local_idx])
         spread = float(np.mean(dists_to_mean))
 
-        cluster_stats.append({
-            "raw_cluster_id": int(cid),
-            "population_count": pop_count,
-            "population_pct": pop_pct,
-            "medoid_frame": medoid_frame,
-            "medoid_time_ns": time_list[medoid_frame],
-            "medoid_replicate": reps_list[medoid_frame],
-            "compactness_spread": round(spread, 3),
-            "replicate_breakdown": rep_breakdown,
-            "umap_coords": [round(float(umap_2d[medoid_frame, 0]), 2), round(float(umap_2d[medoid_frame, 1]), 2)],
-            "pca_coords": [round(float(proj[medoid_frame, 0]), 2), round(float(proj[medoid_frame, 1]), 2)],
-        })
+        cluster_stats.append(
+            {
+                "raw_cluster_id": int(cid),
+                "population_count": pop_count,
+                "population_pct": pop_pct,
+                "medoid_frame": medoid_frame,
+                "medoid_time_ns": time_list[medoid_frame],
+                "medoid_replicate": reps_list[medoid_frame],
+                "compactness_spread": round(spread, 3),
+                "replicate_breakdown": rep_breakdown,
+                "umap_coords": [
+                    round(float(umap_2d[medoid_frame, 0]), 2),
+                    round(float(umap_2d[medoid_frame, 1]), 2),
+                ],
+                "pca_coords": [
+                    round(float(proj[medoid_frame, 0]), 2),
+                    round(float(proj[medoid_frame, 1]), 2),
+                ],
+            }
+        )
 
     cluster_stats.sort(key=lambda x: x["population_pct"], reverse=True)
     for rank, stat in enumerate(cluster_stats, start=1):
@@ -228,7 +293,10 @@ def main():
     with open(Path(args.out_json).resolve(), "w", encoding="utf-8") as f:
         json.dump(cluster_stats, f, indent=2)
 
-    print(f"✓ Macro-basin clustering completed: {len(cluster_stats)} basins identified (0% noise).", flush=True)
+    print(
+        f"✓ Macro-basin clustering completed: {len(cluster_stats)} basins identified (0% noise).",
+        flush=True,
+    )
 
 
 if __name__ == "__main__":

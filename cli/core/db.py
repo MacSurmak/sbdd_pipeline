@@ -95,12 +95,22 @@ class ReceptorFrame(Base):
     source_trajectory_id = Column(
         Integer, ForeignKey("trajectories.id", ondelete="SET NULL"), nullable=True
     )
-    feature_group = Column(String(64), nullable=True)  # Selection group for coordinates (e.g. Pocket, Backbone, Ligand)
-    align_group = Column(String(64), nullable=True)    # Basis group for superimposition (e.g. Backbone, C-alpha)
+    feature_group = Column(
+        String(64), nullable=True
+    )  # Selection group for coordinates (e.g. Pocket, Backbone, Ligand)
+    align_group = Column(
+        String(64), nullable=True
+    )  # Basis group for superimposition (e.g. Backbone, C-alpha)
     dim_reduction_method = Column(String(16), nullable=True)  # 'pca' or 'tica'
-    cluster_rank = Column(Integer, nullable=True)      # Medoid population ranking (1, 2, 3...)
-    population = Column(Float, nullable=True)          # Exact Boltzmann ensemble fraction (0.0 to 1.0)
-    compactness_spread = Column(Float, nullable=True)  # Intra-cluster coordinate spread (Å)
+    cluster_rank = Column(
+        Integer, nullable=True
+    )  # Medoid population ranking (1, 2, 3...)
+    population = Column(
+        Float, nullable=True
+    )  # Exact Boltzmann ensemble fraction (0.0 to 1.0)
+    compactness_spread = Column(
+        Float, nullable=True
+    )  # Intra-cluster coordinate spread (Å)
     path = Column(String, nullable=False)  # Canonical primary path
     path_mae = Column(
         String, nullable=True
@@ -274,7 +284,9 @@ class System(Base):
     path_gro = Column(String, nullable=True)  # Prepared canonical coordinate file
     path_top = Column(String, nullable=True)  # Prepared canonical topology file
     path_ndx = Column(String, nullable=True)  # Prepared canonical index file
-    path_dry_prmtop = Column(String, nullable=True)  # Validated AMBER dry complex topology for MM-PBSA
+    path_dry_prmtop = Column(
+        String, nullable=True
+    )  # Validated AMBER dry complex topology for MM-PBSA
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     target = relationship("Target", back_populates="systems")
@@ -343,19 +355,25 @@ class ClusteringRun(Base):
     )
     name = Column(String, unique=True, index=True, nullable=False)
     feature_group = Column(String(64), nullable=False)  # Ligand, Pocket, Backbone
-    align_group = Column(String(64), nullable=False)    # Backbone, C-alpha
-    algorithm = Column(String(32), nullable=False)      # hdbscan, hierarchical, auto_kmeans, kmeans
+    align_group = Column(String(64), nullable=False)  # Backbone, C-alpha
+    algorithm = Column(
+        String(32), nullable=False
+    )  # hdbscan, hierarchical, auto_kmeans, kmeans
     dim_reduction = Column(String(16), nullable=False)  # pca, tica, none
     start_ns = Column(Float, nullable=False, default=1.0)
     sample_interval_ps = Column(Float, nullable=False, default=500.0)
     parameters = Column(Text, default="{}", nullable=False)
-    path_labels = Column(String, nullable=False)        # Validated path to cluster_labels.npy
-    path_time_map = Column(String, nullable=False)      # Validated path to frame_time_map.json
+    path_labels = Column(String, nullable=False)  # Validated path to cluster_labels.npy
+    path_time_map = Column(
+        String, nullable=False
+    )  # Validated path to frame_time_map.json
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     system = relationship("System", back_populates="clustering_runs")
     clusters = relationship(
-        "TrajectoryCluster", back_populates="clustering_run", cascade="all, delete-orphan"
+        "TrajectoryCluster",
+        back_populates="clustering_run",
+        cascade="all, delete-orphan",
     )
 
     @property
@@ -381,17 +399,21 @@ class TrajectoryCluster(Base):
     clustering_run_id = Column(
         Integer, ForeignKey("clustering_runs.id", ondelete="CASCADE"), nullable=False
     )
-    cluster_index = Column(Integer, nullable=False)     # Internal index (0, 1, 2...)
-    cluster_rank = Column(Integer, nullable=False)      # Population rank (1 = major basin, 2...)
-    population_fraction = Column(Float, nullable=False) # Fraction of trajectory frames (0.0 to 1.0)
-    frame_count = Column(Integer, nullable=False)       # Exact frame count in basin
+    cluster_index = Column(Integer, nullable=False)  # Internal index (0, 1, 2...)
+    cluster_rank = Column(
+        Integer, nullable=False
+    )  # Population rank (1 = major basin, 2...)
+    population_fraction = Column(
+        Float, nullable=False
+    )  # Fraction of trajectory frames (0.0 to 1.0)
+    frame_count = Column(Integer, nullable=False)  # Exact frame count in basin
     medoid_replicate = Column(String(64), nullable=False)
     medoid_frame = Column(Integer, nullable=False)
     medoid_time_ns = Column(Float, nullable=False)
     compactness_spread = Column(Float, nullable=False)  # Mean RMSD spread to medoid (Å)
-    delta_g_mean = Column(Float, nullable=True)         # Stratified MM-PBSA mean (kcal/mol)
-    delta_g_sem = Column(Float, nullable=True)          # Standard error of mean
-    delta_g_std = Column(Float, nullable=True)          # Standard deviation
+    delta_g_mean = Column(Float, nullable=True)  # Stratified MM-PBSA mean (kcal/mol)
+    delta_g_sem = Column(Float, nullable=True)  # Standard error of mean
+    delta_g_std = Column(Float, nullable=True)  # Standard deviation
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     clustering_run = relationship("ClusteringRun", back_populates="clusters")
@@ -413,10 +435,12 @@ class MmpbsaRun(Base):
     sample_interval_ps = Column(Float, nullable=False)
     temperature = Column(Float, nullable=False)
     salt_conc = Column(Float, nullable=False)
-    path_csv = Column(String, nullable=False)           # Consolidated samples CSV
+    path_csv = Column(String, nullable=False)  # Consolidated samples CSV
     delta_g_overall_mean = Column(Float, nullable=False)
     delta_g_overall_sem = Column(Float, nullable=False)
-    delta_g_boltzmann_total = Column(Float, nullable=True) # Boltzmann weighted across clusters
+    delta_g_boltzmann_total = Column(
+        Float, nullable=True
+    )  # Boltzmann weighted across clusters
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     system = relationship("System", back_populates="mmpbsa_runs")
@@ -429,7 +453,14 @@ def _validate_non_scratch_path(target, value, oldvalue, initiator):
     """
     if value:
         val_str = str(value)
-        forbidden_tokens = ["/work/", ".nextflow", "/tmp/", "slurm_tmp", "nfs_scratch", "nxf."]
+        forbidden_tokens = [
+            "/work/",
+            ".nextflow",
+            "/tmp/",
+            "slurm_tmp",
+            "nfs_scratch",
+            "nxf.",
+        ]
         for token in forbidden_tokens:
             if token in val_str:
                 col_name = initiator.key if hasattr(initiator, "key") else "path"
@@ -481,7 +512,10 @@ def _migrate_schema(engine: Engine) -> None:
         existing_cols = {row[1] for row in cursor.fetchall()}
         if existing_cols:
             new_columns = [
-                ("source_trajectory_id", "INTEGER REFERENCES trajectories(id) ON DELETE SET NULL"),
+                (
+                    "source_trajectory_id",
+                    "INTEGER REFERENCES trajectories(id) ON DELETE SET NULL",
+                ),
                 ("feature_group", "VARCHAR(64)"),
                 ("align_group", "VARCHAR(64)"),
                 ("dim_reduction_method", "VARCHAR(16)"),
@@ -491,12 +525,16 @@ def _migrate_schema(engine: Engine) -> None:
             ]
             for col_name, col_def in new_columns:
                 if col_name not in existing_cols:
-                    conn.exec_driver_sql(f"ALTER TABLE receptor_frames ADD COLUMN {col_name} {col_def}")
+                    conn.exec_driver_sql(
+                        f"ALTER TABLE receptor_frames ADD COLUMN {col_name} {col_def}"
+                    )
 
         cursor_sys = conn.exec_driver_sql("PRAGMA table_info(systems)")
         existing_sys_cols = {row[1] for row in cursor_sys.fetchall()}
         if existing_sys_cols and "path_dry_prmtop" not in existing_sys_cols:
-            conn.exec_driver_sql("ALTER TABLE systems ADD COLUMN path_dry_prmtop VARCHAR")
+            conn.exec_driver_sql(
+                "ALTER TABLE systems ADD COLUMN path_dry_prmtop VARCHAR"
+            )
 
     # Idempotently instantiate newly declared 3NF analytical tables
     Base.metadata.create_all(
@@ -513,9 +551,13 @@ def _migrate_schema(engine: Engine) -> None:
         existing_c_cols = {row[1] for row in cursor_c.fetchall()}
         if existing_c_cols:
             if "start_ns" not in existing_c_cols:
-                conn.exec_driver_sql("ALTER TABLE clustering_runs ADD COLUMN start_ns FLOAT DEFAULT 1.0")
+                conn.exec_driver_sql(
+                    "ALTER TABLE clustering_runs ADD COLUMN start_ns FLOAT DEFAULT 1.0"
+                )
             if "sample_interval_ps" not in existing_c_cols:
-                conn.exec_driver_sql("ALTER TABLE clustering_runs ADD COLUMN sample_interval_ps FLOAT DEFAULT 500.0")
+                conn.exec_driver_sql(
+                    "ALTER TABLE clustering_runs ADD COLUMN sample_interval_ps FLOAT DEFAULT 500.0"
+                )
 
 
 def get_session(db_path: Path = None):

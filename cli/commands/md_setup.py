@@ -82,7 +82,9 @@ def run_md_setup(
         )
         cache_valid = False
         if mol2_ok and frcmod_ok:
-            frcmod_content = Path(state.path_frcmod).read_text(encoding="utf-8", errors="ignore")
+            frcmod_content = Path(state.path_frcmod).read_text(
+                encoding="utf-8", errors="ignore"
+            )
             is_openff_cached = "OpenFF" in frcmod_content
             if target_ff.startswith("openff"):
                 ff_match = target_ff in frcmod_content.lower()
@@ -96,7 +98,11 @@ def run_md_setup(
 
     # 3. Lazy On-Demand Parametrization: dispatch quantum calculations strictly for missing microstates
     if missing_states:
-        method_label = "ORCA RESP" if param_cfg["method"] == "resp" else ("AshGC GNN" if param_cfg["method"] == "ashgc" else "AM1-BCC")
+        method_label = (
+            "ORCA RESP"
+            if param_cfg["method"] == "resp"
+            else ("AshGC GNN" if param_cfg["method"] == "ashgc" else "AM1-BCC")
+        )
         console.print(
             f"[bold cyan]Lazy Parametrization ({method_label}): {len(missing_states)} chemical state(s) require {param_cfg['forcefield'].upper()} topology...[/bold cyan]"
         )

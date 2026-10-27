@@ -417,22 +417,34 @@ def _build_analyze_args(config: Dict[str, Any]) -> list:
         args.extend(["--lipid_names", ""])
 
     val_sampling = validate_analysis_sampling_config(config)
-    args.extend([
-        "--analysis_start_ns", str(val_sampling["start_ns"]),
-        "--analysis_sample_interval_ps", str(val_sampling["sample_interval_ps"]),
-    ])
+    args.extend(
+        [
+            "--analysis_start_ns",
+            str(val_sampling["start_ns"]),
+            "--analysis_sample_interval_ps",
+            str(val_sampling["sample_interval_ps"]),
+        ]
+    )
 
     mmpbsa_cfg = config.get("mmpbsa", {})
     if mmpbsa_cfg.get("enabled"):
         val_mmpbsa = validate_mmpbsa_config(config)
-        args.extend([
-            "--per_residue_decomp", "true" if val_mmpbsa["per_residue_decomp"] else "false",
-            "--mmpbsa_method", str(val_mmpbsa["method"]),
-            "--mmpbsa_gb_model", str(val_mmpbsa["gb_model"]),
-            "--mmpbsa_emem", str(val_mmpbsa["emem"]),
-            "--mmpbsa_indi", str(val_mmpbsa["indi"]),
-            "--mmpbsa_fillratio", str(val_mmpbsa["pb_fillratio"]),
-        ])
+        args.extend(
+            [
+                "--per_residue_decomp",
+                "true" if val_mmpbsa["per_residue_decomp"] else "false",
+                "--mmpbsa_method",
+                str(val_mmpbsa["method"]),
+                "--mmpbsa_gb_model",
+                str(val_mmpbsa["gb_model"]),
+                "--mmpbsa_emem",
+                str(val_mmpbsa["emem"]),
+                "--mmpbsa_indi",
+                str(val_mmpbsa["indi"]),
+                "--mmpbsa_fillratio",
+                str(val_mmpbsa["pb_fillratio"]),
+            ]
+        )
 
     prod = md_cfg.get("production", {})
     temp = prod.get("temperature") or mmpbsa_cfg.get("temperature")
@@ -446,20 +458,34 @@ def _build_analyze_args(config: Dict[str, Any]) -> list:
     cluster_cfg = md_cfg.get("clustering")
     if cluster_cfg:
         val_cluster = validate_clustering_config(config)
-        args.extend([
-            "--cluster_align_group", str(val_cluster["align_group"]),
-            "--cluster_feature_group", str(val_cluster["cluster_group"]),
-            "--cluster_dim_reduction", str(val_cluster["dim_reduction"]),
-            "--cluster_algorithm", str(val_cluster["algorithm"]),
-            "--cluster_rmsd_cutoff", str(val_cluster["rmsd_cutoff"]),
-            "--cluster_tica_lag_ns", str(val_cluster["tica_lag_ns"]),
-            "--cluster_variance_cutoff", str(val_cluster["variance_cutoff"]),
-            "--cluster_n_clusters", str(val_cluster["n_clusters"]),
-            "--cluster_pocket_radius", str(val_cluster["pocket_radius"]),
-            "--cluster_min_pop", str(val_cluster["min_cluster_population"]),
-            "--cluster_temp_k", str(val_cluster["temp_k"]),
-            "--cluster_auto_promote", "true" if val_cluster["auto_promote"] else "false",
-        ])
+        args.extend(
+            [
+                "--cluster_align_group",
+                str(val_cluster["align_group"]),
+                "--cluster_feature_group",
+                str(val_cluster["cluster_group"]),
+                "--cluster_dim_reduction",
+                str(val_cluster["dim_reduction"]),
+                "--cluster_algorithm",
+                str(val_cluster["algorithm"]),
+                "--cluster_rmsd_cutoff",
+                str(val_cluster["rmsd_cutoff"]),
+                "--cluster_tica_lag_ns",
+                str(val_cluster["tica_lag_ns"]),
+                "--cluster_variance_cutoff",
+                str(val_cluster["variance_cutoff"]),
+                "--cluster_n_clusters",
+                str(val_cluster["n_clusters"]),
+                "--cluster_pocket_radius",
+                str(val_cluster["pocket_radius"]),
+                "--cluster_min_pop",
+                str(val_cluster["min_cluster_population"]),
+                "--cluster_temp_k",
+                str(val_cluster["temp_k"]),
+                "--cluster_auto_promote",
+                "true" if val_cluster["auto_promote"] else "false",
+            ]
+        )
 
     return args
 
@@ -469,13 +495,18 @@ def validate_analysis_sampling_config(config: Dict[str, Any]) -> Dict[str, Any]:
     Central Single Source of Truth validation for trajectory sampling stride.
     Guarantees that MM-PBSA, Clustering, and Stratification share an identical time grid.
     """
-    sampling_cfg = config.get("analysis_sampling") or config.get("md_simulation", {}).get("analysis_sampling")
+    sampling_cfg = config.get("analysis_sampling") or config.get(
+        "md_simulation", {}
+    ).get("analysis_sampling")
 
     if not sampling_cfg or not isinstance(sampling_cfg, dict):
         # Legacy tolerance check: inspect mmpbsa section if present
         m_cfg = config.get("mmpbsa", {})
         if "start_ns" in m_cfg and "sample_interval_ps" in m_cfg:
-            sampling_cfg = {"start_ns": m_cfg["start_ns"], "sample_interval_ps": m_cfg["sample_interval_ps"]}
+            sampling_cfg = {
+                "start_ns": m_cfg["start_ns"],
+                "sample_interval_ps": m_cfg["sample_interval_ps"],
+            }
         else:
             raise ValueError(
                 "FATAL SSOT VIOLATION: Missing required 'analysis_sampling' configuration block in md.yaml!\n"
@@ -484,7 +515,11 @@ def validate_analysis_sampling_config(config: Dict[str, Any]) -> Dict[str, Any]:
 
     required_keys = ["start_ns", "sample_interval_ps"]
     for key in required_keys:
-        if key not in sampling_cfg or sampling_cfg[key] is None or sampling_cfg[key] == "":
+        if (
+            key not in sampling_cfg
+            or sampling_cfg[key] is None
+            or sampling_cfg[key] == ""
+        ):
             raise ValueError(
                 f"FATAL: Missing required parameter 'analysis_sampling.{key}' in md.yaml! "
                 "Silent fallbacks are strictly forbidden by architectural law."
@@ -494,9 +529,13 @@ def validate_analysis_sampling_config(config: Dict[str, Any]) -> Dict[str, Any]:
     interval_ps = float(sampling_cfg["sample_interval_ps"])
 
     if start_ns < 0.0:
-        raise ValueError(f"FATAL: 'analysis_sampling.start_ns' must be non-negative, got: {start_ns}")
+        raise ValueError(
+            f"FATAL: 'analysis_sampling.start_ns' must be non-negative, got: {start_ns}"
+        )
     if interval_ps <= 0.0:
-        raise ValueError(f"FATAL: 'analysis_sampling.sample_interval_ps' must be positive, got: {interval_ps}")
+        raise ValueError(
+            f"FATAL: 'analysis_sampling.sample_interval_ps' must be positive, got: {interval_ps}"
+        )
 
     return {"start_ns": start_ns, "sample_interval_ps": interval_ps}
 
@@ -505,7 +544,9 @@ def validate_mmpbsa_config(config: Dict[str, Any]) -> Dict[str, Any]:
     """Strict Fail-Fast validation of MM-PBSA thermodynamic parameters."""
     mmpbsa_cfg = config.get("mmpbsa")
     if not mmpbsa_cfg or not isinstance(mmpbsa_cfg, dict):
-        raise ValueError("FATAL: 'mmpbsa' configuration block is missing or invalid in mmpbsa.yaml!")
+        raise ValueError(
+            "FATAL: 'mmpbsa' configuration block is missing or invalid in mmpbsa.yaml!"
+        )
 
     # Inherit single source of truth for trajectory sampling
     sampling = validate_analysis_sampling_config(config)
@@ -521,11 +562,15 @@ def validate_mmpbsa_config(config: Dict[str, Any]) -> Dict[str, Any]:
             )
 
     if float(mmpbsa_cfg["temperature"]) <= 0.0:
-        raise ValueError(f"FATAL: 'temperature' must be positive Kelvin, got: {mmpbsa_cfg['temperature']}")
+        raise ValueError(
+            f"FATAL: 'temperature' must be positive Kelvin, got: {mmpbsa_cfg['temperature']}"
+        )
 
     method = str(mmpbsa_cfg.get("method", "auto")).strip().lower()
     if method not in ["auto", "gb", "pb"]:
-        raise ValueError(f"FATAL: Invalid mmpbsa.method: '{method}'. Must be 'auto', 'gb', or 'pb'.")
+        raise ValueError(
+            f"FATAL: Invalid mmpbsa.method: '{method}'. Must be 'auto', 'gb', or 'pb'."
+        )
 
     solv = mmpbsa_cfg.get("solvation", {})
     mmpbsa_cfg["gb_model"] = int(solv.get("gb_model", 2))
@@ -601,7 +646,10 @@ def validate_clustering_config(config: Dict[str, Any]) -> Dict[str, Any]:
             f"FATAL: 'n_clusters' must be a positive integer >= 1, got: {cluster_cfg['n_clusters']}"
         )
 
-    if float(cluster_cfg["variance_cutoff"]) <= 0.0 or float(cluster_cfg["variance_cutoff"]) > 1.0:
+    if (
+        float(cluster_cfg["variance_cutoff"]) <= 0.0
+        or float(cluster_cfg["variance_cutoff"]) > 1.0
+    ):
         raise ValueError(
             f"FATAL: 'variance_cutoff' must be a fraction within (0.0, 1.0], got: {cluster_cfg['variance_cutoff']}"
         )
@@ -635,7 +683,13 @@ def validate_ligand_parametrization_config(config: Dict[str, Any]) -> Dict[str, 
         )
 
     ff = param_cfg.get("forcefield")
-    valid_forcefields = ["gaff", "gaff2", "openff-2.3.0", "openff-2.2.1", "openff-2.1.0"]
+    valid_forcefields = [
+        "gaff",
+        "gaff2",
+        "openff-2.3.0",
+        "openff-2.2.1",
+        "openff-2.1.0",
+    ]
     if not ff or ff not in valid_forcefields:
         raise ValueError(
             f"FATAL: Invalid or missing 'md_simulation.ligand_parametrization.forcefield': '{ff}'. "

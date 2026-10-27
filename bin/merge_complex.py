@@ -202,10 +202,14 @@ def main():
         else:
             # Deterministic Topology Isomorphism: transfer coordinates onto canonical template
             if template_sdf_str and Path(template_sdf_str).exists():
-                tmpl_suppl = Chem.SDMolSupplier(template_sdf_str, removeHs=False, sanitize=False)
+                tmpl_suppl = Chem.SDMolSupplier(
+                    template_sdf_str, removeHs=False, sanitize=False
+                )
                 tmpl_mol = next((m for m in tmpl_suppl if m is not None), None)
                 if not tmpl_mol:
-                    raise ValueError(f"FATAL: Could not read template molecule from {template_sdf_str}")
+                    raise ValueError(
+                        f"FATAL: Could not read template molecule from {template_sdf_str}"
+                    )
                 mol = transfer_coordinates_to_template(
                     template_mol=tmpl_mol,
                     source_mol=mol,

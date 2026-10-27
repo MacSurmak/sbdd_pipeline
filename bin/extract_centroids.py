@@ -23,23 +23,66 @@ if str(FRAMEWORK_DIR) not in sys.path:
 from cli.core.chem import transfer_coordinates_to_template
 
 STANDARD_PROTEIN_RESIDUES = {
-    "ALA", "ARG", "ASN", "ASP", "CYS", "CYX", "GLN", "GLU", "GLY", "HIS",
-    "HID", "HIE", "HIP", "ILE", "LEU", "LYS", "LYN", "MET", "PHE", "PRO",
-    "SER", "THR", "TRP", "TYR", "VAL", "ASH", "GLH", "ACE", "NME", "NMA",
+    "ALA",
+    "ARG",
+    "ASN",
+    "ASP",
+    "CYS",
+    "CYX",
+    "GLN",
+    "GLU",
+    "GLY",
+    "HIS",
+    "HID",
+    "HIE",
+    "HIP",
+    "ILE",
+    "LEU",
+    "LYS",
+    "LYN",
+    "MET",
+    "PHE",
+    "PRO",
+    "SER",
+    "THR",
+    "TRP",
+    "TYR",
+    "VAL",
+    "ASH",
+    "GLH",
+    "ACE",
+    "NME",
+    "NMA",
 }
 
 WATER_RESIDUES = {"HOH", "WAT", "SOL", "TIP", "TIP3", "TIP4", "W"}
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Extract validated 3D medoid structures from trajectory")
+    parser = argparse.ArgumentParser(
+        description="Extract validated 3D medoid structures from trajectory"
+    )
     parser.add_argument("--struct", required=True, help="Clean reference structure PDB")
-    parser.add_argument("--xtc", nargs="+", required=True, help="Clean trajectory XTC file(s)")
-    parser.add_argument("--medoids_json", required=True, help="Input medoids_summary.json deliverable")
-    parser.add_argument("--heterogens_spec", default="[]", help="JSON string with heterogens specification")
-    parser.add_argument("--templates_dir", default="", help="Directory with staged template SDF files")
-    parser.add_argument("--ligand_resname", default="", help="Active ligand residue name")
-    parser.add_argument("--outdir", default="centroids_out", help="Output directory for structures")
+    parser.add_argument(
+        "--xtc", nargs="+", required=True, help="Clean trajectory XTC file(s)"
+    )
+    parser.add_argument(
+        "--medoids_json", required=True, help="Input medoids_summary.json deliverable"
+    )
+    parser.add_argument(
+        "--heterogens_spec",
+        default="[]",
+        help="JSON string with heterogens specification",
+    )
+    parser.add_argument(
+        "--templates_dir", default="", help="Directory with staged template SDF files"
+    )
+    parser.add_argument(
+        "--ligand_resname", default="", help="Active ligand residue name"
+    )
+    parser.add_argument(
+        "--outdir", default="centroids_out", help="Output directory for structures"
+    )
     args = parser.parse_args()
 
     struct_p = Path(args.struct).resolve()
@@ -48,7 +91,9 @@ def main():
     outdir.mkdir(parents=True, exist_ok=True)
 
     if not struct_p.exists() or not medoids_p.exists():
-        raise FileNotFoundError("FATAL: Required reference structure or medoids summary missing!")
+        raise FileNotFoundError(
+            "FATAL: Required reference structure or medoids summary missing!"
+        )
 
     clean_xtcs = []
     for raw_arg in args.xtc:
@@ -60,7 +105,9 @@ def main():
                     clean_xtcs.append(str(p_xtc))
 
     if not clean_xtcs:
-        raise ValueError("FATAL: No valid trajectory files provided to extract_centroids!")
+        raise ValueError(
+            "FATAL: No valid trajectory files provided to extract_centroids!"
+        )
 
     with open(medoids_p, "r", encoding="utf-8") as f:
         medoids = json.load(f)
@@ -85,7 +132,11 @@ def main():
     except Exception as e:
         raise ValueError(f"FATAL: Failed to parse heterogens specification JSON: {e}")
 
-    hetero_by_res = {item["res_name"].strip().upper(): item for item in hetero_specs if "res_name" in item}
+    hetero_by_res = {
+        item["res_name"].strip().upper(): item
+        for item in hetero_specs
+        if "res_name" in item
+    }
     tmpl_dir_p = Path(args.templates_dir).resolve() if args.templates_dir else None
 
     # Pre-load canonical template molecules for all declared organic small molecules
@@ -112,7 +163,10 @@ def main():
 
         if found_mol is not None:
             templates_by_res[r_code] = found_mol
-            print(f"[EXTRACT_CENTROIDS] Loaded pristine topology template for small molecule '{r_code}'.", flush=True)
+            print(
+                f"[EXTRACT_CENTROIDS] Loaded pristine topology template for small molecule '{r_code}'.",
+                flush=True,
+            )
 
     # Sort medoid frames monotonically for optimal linear seeking
     sorted_medoids = sorted(medoids, key=lambda x: x["medoid_frame"])
@@ -137,7 +191,9 @@ def main():
         view_pdb = outdir / f"centroid_{rank}_complex.pdb"
         view_mae = outdir / f"centroid_{rank}_complex.mae"
         u.atoms.write(str(view_pdb))
-        batch_convert_tasks.append({"in_path": str(view_pdb), "out_path": str(view_mae)})
+        batch_convert_tasks.append(
+            {"in_path": str(view_pdb), "out_path": str(view_mae)}
+        )
 
         extracted_poses = {}
         # Iterate over individual small molecule residues to support multiple copies (ions, oligomeric ligands)
@@ -165,10 +221,20 @@ def main():
                 else:
                     # Clean PDB atom name: strip digits, take up to 2 characters
                     clean_name = "".join([c for c in a.name if not c.isdigit()]).strip()
-                    mda_elements.append(clean_name[:2].capitalize() if len(clean_name) >= 2 and clean_name[:2].capitalize() in {"Cl", "Br", "Fe", "Mg", "Zn", "Ca", "Na"} else clean_name[:1].upper())
+                    mda_elements.append(
+                        clean_name[:2].capitalize()
+                        if len(clean_name) >= 2
+                        and clean_name[:2].capitalize()
+                        in {"Cl", "Br", "Fe", "Mg", "Zn", "Ca", "Na"}
+                        else clean_name[:1].upper()
+                    )
 
             spec = hetero_by_res.get(r_name)
-            is_active_ligand = spec.get("is_ligand", (r_name == active_res)) if spec else (r_name == active_res)
+            is_active_ligand = (
+                spec.get("is_ligand", (r_name == active_res))
+                if spec
+                else (r_name == active_res)
+            )
             is_ion = spec.get("is_ion", False) if spec else False
             tmpl = templates_by_res.get(r_name)
 
@@ -184,28 +250,55 @@ def main():
                 # Monoatomic ions (MG, ZN, CA, CL): assign coordinates directly
                 if tmpl is not None and is_ion:
                     restored_pose = Chem.Mol(tmpl)
-                    restored_pose.GetConformer().SetAtomPosition(0, [float(raw_positions[0][0]), float(raw_positions[0][1]), float(raw_positions[0][2])])
+                    restored_pose.GetConformer().SetAtomPosition(
+                        0,
+                        [
+                            float(raw_positions[0][0]),
+                            float(raw_positions[0][1]),
+                            float(raw_positions[0][2]),
+                        ],
+                    )
                 else:
                     # Canonical IUPAC symbol mapping for standard MD forcefield ions
                     ion_smiles_map = {
-                        "CLA": "[Cl-]", "CL": "[Cl-]", "SOD": "[Na+]", "NA": "[Na+]",
-                        "POT": "[K+]", "K": "[K+]", "CAL": "[Ca+2]", "CA": "[Ca+2]",
-                        "MG": "[Mg+2]", "MG2+": "[Mg+2]", "ZN": "[Zn+2]", "ZN2+": "[Zn+2]"
+                        "CLA": "[Cl-]",
+                        "CL": "[Cl-]",
+                        "SOD": "[Na+]",
+                        "NA": "[Na+]",
+                        "POT": "[K+]",
+                        "K": "[K+]",
+                        "CAL": "[Ca+2]",
+                        "CA": "[Ca+2]",
+                        "MG": "[Mg+2]",
+                        "MG2+": "[Mg+2]",
+                        "ZN": "[Zn+2]",
+                        "ZN2+": "[Zn+2]",
                     }
                     smi = ion_smiles_map.get(r_name, f"[{r_name.capitalize()}]")
                     restored_pose = Chem.MolFromSmiles(smi, sanitize=False)
                     if restored_pose:
                         c_ion = Chem.Conformer(1)
-                        c_ion.SetAtomPosition(0, [float(raw_positions[0][0]), float(raw_positions[0][1]), float(raw_positions[0][2])])
+                        c_ion.SetAtomPosition(
+                            0,
+                            [
+                                float(raw_positions[0][0]),
+                                float(raw_positions[0][1]),
+                                float(raw_positions[0][2]),
+                            ],
+                        )
                         restored_pose.AddConformer(c_ion)
                     else:
-                        raise ValueError(f"FATAL: Failed to construct ion representation for {r_name}!")
+                        raise ValueError(
+                            f"FATAL: Failed to construct ion representation for {r_name}!"
+                        )
 
             with Chem.SDWriter(str(dest_sdf)) as w:
                 w.SetForceV3000(False)
                 w.write(restored_pose)
 
-            batch_convert_tasks.append({"in_path": str(dest_sdf), "out_path": str(dest_mae)})
+            batch_convert_tasks.append(
+                {"in_path": str(dest_sdf), "out_path": str(dest_mae)}
+            )
             extracted_poses[res_key] = {
                 "res_name": r_name,
                 "resid": int(res.resid),
@@ -227,7 +320,10 @@ def main():
             "complex_mae": view_mae.name,
             "poses": extracted_poses,
         }
-        print(f"[EXTRACT_CENTROIDS] Centroid #{rank} extracted (frame {m_frame}, {pop_pct}%).", flush=True)
+        print(
+            f"[EXTRACT_CENTROIDS] Centroid #{rank} extracted (frame {m_frame}, {pop_pct}%).",
+            flush=True,
+        )
 
     # Restore canonical rank sorting in final manifest
     final_manifest = [manifest_by_rank[r] for r in sorted(manifest_by_rank.keys())]
@@ -238,7 +334,10 @@ def main():
     with open(outdir / "batch_convert_tasks.json", "w", encoding="utf-8") as f:
         json.dump(batch_convert_tasks, f, indent=2)
 
-    print(f"✓ Extracted {len(final_manifest)} centroid structures and emitted batch conversion manifest.", flush=True)
+    print(
+        f"✓ Extracted {len(final_manifest)} centroid structures and emitted batch conversion manifest.",
+        flush=True,
+    )
 
 
 if __name__ == "__main__":

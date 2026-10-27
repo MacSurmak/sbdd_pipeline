@@ -220,7 +220,9 @@ def cmd_trjconv(args):
     )
 
     if hasattr(args, "out_ndx") and args.out_ndx:
-        run_gmx(["gmx", "make_ndx", "-f", args.out_pdb, "-o", args.out_ndx], input_str="q\n")
+        run_gmx(
+            ["gmx", "make_ndx", "-f", args.out_pdb, "-o", args.out_ndx], input_str="q\n"
+        )
         if hasattr(args, "ligand") and args.ligand:
             subprocess.run(
                 [
@@ -471,7 +473,9 @@ def sanitize_mmpbsa_delta_csv(csv_path: Path):
 
     if delta_start_idx is None:
         for idx in range(len(lines) - 1, -1, -1):
-            if "Frame" in lines[idx] and ("TOTAL" in lines[idx] or "DELTA" in lines[idx]):
+            if "Frame" in lines[idx] and (
+                "TOTAL" in lines[idx] or "DELTA" in lines[idx]
+            ):
                 delta_start_idx = idx
                 break
 
@@ -495,7 +499,10 @@ def sanitize_mmpbsa_delta_csv(csv_path: Path):
             raw_copy = csv_path.with_name("raw_" + csv_path.name)
             shutil.copy2(csv_path, raw_copy)
             csv_path.write_text("\n".join(clean_lines) + "\n", encoding="utf-8")
-            print(f"[MMPBSA] Sanitized DELTA section in {csv_path.name} ({len(clean_lines)-1} frames retained).", flush=True)
+            print(
+                f"[MMPBSA] Sanitized DELTA section in {csv_path.name} ({len(clean_lines)-1} frames retained).",
+                flush=True,
+            )
 
 
 def cmd_mmpbsa(args):
@@ -535,7 +542,9 @@ def cmd_mmpbsa(args):
     # 1. Resolve calculation template declaratively from assets/mmpbsa/
     tmpl_dir = Path(args.templates_dir).resolve()
     if not tmpl_dir.exists():
-        raise FileNotFoundError(f"FATAL: MM-PBSA templates directory not found: {tmpl_dir}")
+        raise FileNotFoundError(
+            f"FATAL: MM-PBSA templates directory not found: {tmpl_dir}"
+        )
 
     method_req = str(args.method).strip().lower()
     if method_req == "auto":
@@ -549,7 +558,9 @@ def cmd_mmpbsa(args):
 
     primary_tmpl_path = tmpl_dir / target_template_name
     if not primary_tmpl_path.exists():
-        raise FileNotFoundError(f"FATAL: Archetype template {target_template_name} not found in {tmpl_dir}!")
+        raise FileNotFoundError(
+            f"FATAL: Archetype template {target_template_name} not found in {tmpl_dir}!"
+        )
 
     # Format primary calculation input file
     tmpl_text = primary_tmpl_path.read_text(encoding="utf-8")
@@ -607,7 +618,9 @@ def cmd_mmpbsa(args):
     if args.decomp:
         decomp_tmpl_path = tmpl_dir / "decomp_gb.in"
         if not decomp_tmpl_path.exists():
-            raise FileNotFoundError(f"FATAL: Decomposition template decomp_gb.in not found in {tmpl_dir}!")
+            raise FileNotFoundError(
+                f"FATAL: Decomposition template decomp_gb.in not found in {tmpl_dir}!"
+            )
 
         decomp_text = decomp_tmpl_path.read_text(encoding="utf-8")
         formatted_decomp = (
