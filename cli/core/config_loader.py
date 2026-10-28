@@ -62,15 +62,24 @@ def _build_prep_args(config: Dict[str, Any]) -> list:
     if "cap_termini" in prep_cfg:
         args.extend(["--cap_termini", "true" if prep_cfg["cap_termini"] else "false"])
 
-    # LigPrep parameters for chemical library and native ligand preparation
-    glide_cfg = config.get("glide", {})
-    lp_cfg = glide_cfg.get("ligprep", {})
-    lig_ph = lp_cfg.get("target_ph", prep_cfg.get("target_ph", 7.4))
-    lig_tol = lp_cfg.get("ph_tolerance", prep_cfg.get("ph_tolerance", 2.0))
-    lig_ff = lp_cfg.get("force_field", 16)
-    max_st = lp_cfg.get("max_states", 32)
-    gnina_cfg = config.get("gnina", {})
-    b_size = gnina_cfg.get("batch_size", 10)
+    # LigPrep parameters for chemical library and native ligand preparation (Strict Fail-Fast)
+    glide_cfg = config.get("glide")
+    if not glide_cfg or "ligprep" not in glide_cfg:
+        raise ValueError("FATAL: 'glide.ligprep' section is required in glide.yaml!")
+    lp_cfg = glide_cfg["ligprep"]
+    for req_k in ["target_ph", "ph_tolerance", "force_field", "max_states"]:
+        if req_k not in lp_cfg or lp_cfg[req_k] is None:
+            raise ValueError(f"FATAL: 'glide.ligprep.{req_k}' is required in glide.yaml!")
+
+    gnina_cfg = config.get("gnina")
+    if not gnina_cfg or "batch_size" not in gnina_cfg:
+        raise ValueError("FATAL: 'gnina.batch_size' is required in gnina.yaml!")
+
+    lig_ph = lp_cfg["target_ph"]
+    lig_tol = lp_cfg["ph_tolerance"]
+    lig_ff = lp_cfg["force_field"]
+    max_st = lp_cfg["max_states"]
+    b_size = gnina_cfg["batch_size"]
 
     args.extend(
         [
@@ -359,9 +368,23 @@ def _build_dynamics_args(config: Dict[str, Any], project_dir: Path) -> list:
         ("tau_p", "md_tau_p"),
     ]
     for yaml_k, nf_k in prod_mappings:
-        if yaml_k not in prod_cfg:
+        if yaml_k not in prod_cfg or prod_cfg[yaml_k] is None:
             raise ValueError(f"FATAL: 'md_simulation.production.{yaml_k}' is required!")
         args.extend([f"--{nf_k}", str(prod_cfg[yaml_k])])
+
+    tot_ns = float(prod_cfg["total_time_ns"])
+    chk_ns = float(prod_cfg["chunk_size_ns"])
+    if chk_ns <= 0 or tot_ns <= 0:
+        raise ValueError("FATAL: total_time_ns and chunk_size_ns must be positive!")
+    num_chunks = int(round(tot_ns / chk_ns))
+    if abs(tot_ns - num_chunks * chk_ns) > 1e-4:
+        raise ValueError(
+            f"FATAL: total_time_ns ({tot_ns}) must be an exact multiple of chunk_size_ns ({chk_ns})!"
+        )
+    if num_chunks < 1 or num_chunks > 20:
+        raise ValueError(
+            f"FATAL: Required number of MD chunks ({num_chunks}) exceeds supported static DAG limit (1..20)!"
+        )
 
     if "restraints_fc" in prod_cfg and int(float(prod_cfg["restraints_fc"])) > 0:
         args.extend(
@@ -566,17 +589,27 @@ def validate_mmpbsa_config(config: Dict[str, Any]) -> Dict[str, Any]:
             f"FATAL: 'temperature' must be positive Kelvin, got: {mmpbsa_cfg['temperature']}"
         )
 
-    method = str(mmpbsa_cfg.get("method", "auto")).strip().lower()
+    if "method" not in mmpbsa_cfg or not mmpbsa_cfg["method"]:
+        raise ValueError("FATAL: 'mmpbsa.method' is required in mmpbsa.yaml!")
+    method = str(mmpbsa_cfg["method"]).strip().lower()
     if method not in ["auto", "gb", "pb"]:
         raise ValueError(
             f"FATAL: Invalid mmpbsa.method: '{method}'. Must be 'auto', 'gb', or 'pb'."
         )
 
-    solv = mmpbsa_cfg.get("solvation", {})
-    mmpbsa_cfg["gb_model"] = int(solv.get("gb_model", 2))
-    mmpbsa_cfg["pb_fillratio"] = float(solv.get("pb_fillratio", 1.25))
-    mmpbsa_cfg["emem"] = float(solv.get("emem", 7.0))
-    mmpbsa_cfg["indi"] = float(solv.get("indi", 4.0))
+    solv = mmpbsa_cfg.get("solvation")
+    if not solv or not isinstance(solv, dict):
+        raise ValueError("FATAL: 'mmpbsa.solvation' block is required in mmpbsa.yaml!")
+    for s_key in ["gb_model", "pb_fillratio", "emem", "indi"]:
+        if s_key not in solv or solv[s_key] is None:
+            raise ValueError(
+                f"FATAL: 'mmpbsa.solvation.{s_key}' is required in mmpbsa.yaml!"
+            )
+
+    mmpbsa_cfg["gb_model"] = int(solv["gb_model"])
+    mmpbsa_cfg["pb_fillratio"] = float(solv["pb_fillratio"])
+    mmpbsa_cfg["emem"] = float(solv["emem"])
+    mmpbsa_cfg["indi"] = float(solv["indi"])
 
     return mmpbsa_cfg
 
@@ -633,8 +666,11 @@ def validate_clustering_config(config: Dict[str, Any]) -> Dict[str, Any]:
             "Must be strictly 'hdbscan', 'hierarchical', 'auto_kmeans', or 'kmeans'."
         )
 
-    cluster_cfg.setdefault("rmsd_cutoff", 1.5)
-    cluster_cfg.setdefault("n_clusters", 3)
+    for k_req in ["rmsd_cutoff", "n_clusters"]:
+        if k_req not in cluster_cfg or cluster_cfg[k_req] is None:
+            raise ValueError(
+                f"FATAL: Missing required clustering parameter 'md_simulation.clustering.{k_req}' in md.yaml!"
+            )
 
     if algo == "hierarchical" and float(cluster_cfg["rmsd_cutoff"]) <= 0.0:
         raise ValueError(

@@ -105,12 +105,12 @@ def run_md_init() -> None:
         sys.exit(1)
 
     prod = configs.get("md_simulation", {}).get("production", {})
-    chunk_ns = prod.get("chunk_size_ns")
-    if not chunk_ns:
-        console.print(
-            "[bold red]FATAL: Missing 'md_simulation.production.chunk_size_ns' in configs/md.yaml![/bold red]"
-        )
-        sys.exit(1)
+    for req_prod_key in ["chunk_size_ns", "dt_ps", "compressibility", "tau_p"]:
+        if req_prod_key not in prod or prod[req_prod_key] is None:
+            console.print(
+                f"[bold red]FATAL: Missing 'md_simulation.production.{req_prod_key}' in configs/md.yaml![/bold red]"
+            )
+            sys.exit(1)
 
     cmd = [
         sys.executable,
@@ -124,15 +124,15 @@ def run_md_init() -> None:
         "--temperature",
         str(temp),
         "--chunk_ns",
-        str(chunk_ns),
+        str(prod["chunk_size_ns"]),
         "--dt_ps",
-        str(prod.get("dt_ps", "0.002")),
+        str(prod["dt_ps"]),
         "--compressibility",
-        str(prod.get("compressibility", "4.5e-5")),
+        str(prod["compressibility"]),
         "--tau_p",
-        str(prod.get("tau_p", "5.0")),
+        str(prod["tau_p"]),
         "--prod_restraints_fc",
-        str(prod.get("restraints_fc", "")),
+        str(prod.get("restraints_fc", 0)),
     ]
     res = subprocess.run(cmd, capture_output=True, text=True)
     if res.returncode != 0:

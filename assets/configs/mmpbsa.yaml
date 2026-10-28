@@ -1,6 +1,6 @@
 mmpbsa:
   enabled: true
-  per_residue_decomp: false          # Enable per-residue binding energy decomposition
+  per_residue_decomp: true           # Enable per-residue binding energy decomposition
   temperature: 310.15
   salt_conc: 0.15
   method: "auto"                     # Options: auto (PB for membrane, GB for water), gb, or pb

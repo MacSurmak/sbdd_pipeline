@@ -1,23 +1,23 @@
 glide:
   enabled: true
   precision: "SP"                    # HTVS, SP, XP
-  poses_per_lig: 16
+  poses_per_lig: 10
   sample_rings: true
   epik_penalties: true
   forcefield: "OPLS4"
-  recep_vscale: 1.0                 # Softened vdW potential for cryo-EM & MD breathing
-  lig_vscale: 1.0
+  recep_vscale: 0.85                 # Softened vdW potential for cryo-EM & MD breathing
+  lig_vscale: 0.80
   recep_ccut: 0.25
   lig_ccut: 0.15
   postdock: true
   write_csv: true
   grid:
     inner_box: [10, 10, 10]
-    outer_box: [26, 26, 26]
+    outer_box: [28, 28, 26]
     forcefield: "OPLS4"
   ligprep:
     target_ph: 7.4
-    ph_tolerance: 2.0
+    ph_tolerance: 1.5
     force_field: 16                  # 16 = OPLS4, 14 = OPLS_2005
-    max_states: 32
+    max_states: 16
 

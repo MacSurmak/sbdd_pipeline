@@ -14,12 +14,11 @@ process ORCA_ESP_CALC {
 
     script:
     """
-    mult=\$(python3 -c "import json; print(json.load(open('${metadata_json}'))['spin_multiplicity'])")
     python3 ${projectDir}/bin/orca_esp.py \\
         --template "${projectDir}/assets/orca/esp.inp" \\
         --sdf ${refined_sdf} \\
         --charge ${meta.charge} \\
-        --mult \${mult} \\
+        --metadata_json ${metadata_json} \\
         --nprocs ${task.cpus} \\
         --maxcore_mb ${params.orca_maxcore} \\
         --out_log "orca_esp.out"

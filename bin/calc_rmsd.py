@@ -48,10 +48,7 @@ def _clean_heavy_mol(m):
         atom.SetNumExplicitHs(0)
         atom.SetNoImplicit(False)
 
-    try:
-        Chem.SanitizeMol(m_heavy)
-    except Exception:
-        m_heavy.UpdatePropertyCache(strict=False)
+    Chem.SanitizeMol(m_heavy)
     return m_heavy
 
 

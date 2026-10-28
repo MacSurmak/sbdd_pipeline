@@ -80,10 +80,7 @@ def main():
             f"FATAL: Could not read valid molecular structure from {sdf_path}"
         )
 
-    try:
-        Chem.SanitizeMol(mol)
-    except Exception:
-        mol.UpdatePropertyCache(strict=False)
+    Chem.SanitizeMol(mol)
 
     validate_geometry(mol, args.mol_id, sdf_path)
     mult = calculate_spin_multiplicity(mol, args.charge)

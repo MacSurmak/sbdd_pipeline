@@ -14,12 +14,11 @@ process ORCA_PREOPT {
 
     script:
     """
-    mult=\$(python3 -c "import json; print(json.load(open('${metadata_json}'))['spin_multiplicity'])")
     python3 ${projectDir}/bin/orca_opt.py \\
         --template "${projectDir}/assets/orca/preopt.inp" \\
         --input ${valid_sdf} \\
         --charge ${meta.charge} \\
-        --mult \${mult} \\
+        --metadata_json ${metadata_json} \\
         --nprocs ${task.cpus} \\
         --maxcore_mb ${params.orca_maxcore} \\
         --out_sdf "${meta.res_name}_preopt.sdf" \\

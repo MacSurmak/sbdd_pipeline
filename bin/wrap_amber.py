@@ -44,10 +44,7 @@ def cmd_antechamber(args):
     if mol is None:
         raise ValueError(f"FATAL: Could not read molecule from {args.sdf}")
 
-    try:
-        Chem.SanitizeMol(mol)
-    except Exception:
-        mol.UpdatePropertyCache(strict=False)
+    Chem.SanitizeMol(mol)
 
     clean_v2000_sdf = f"{args.mol_id}_v2000.sdf"
     with Chem.SDWriter(clean_v2000_sdf) as writer:

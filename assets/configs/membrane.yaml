@@ -1,18 +1,18 @@
 membrane:
   enabled: true                      # Set false for soluble proteins in water
-  type: "MOM"                        # PPM 3.0 membrane type (e.g. MOM, plasma)
+  type: "plasma"                     # PPM 3.0 membrane type (e.g. plasma, MOM)
   topology: "in"                     # N-terminus topology (in/out)
   chains: ["A"]                      # Chains participating in transmembrane bundle
-  lipid_names: ["POPC", "POPE", "CHL1", "POPS", "DPSM", "PAPC"]
+  lipid_names: ["POPC", "POPE", "CHL1", "POPS", "DPSM", "PAPC", "PA", "PC", "PE", "PS", "OL"]
   lipids:
     upper_leaflet:
       composition: "POPC:POPE:CHL1"
-      ratio: "5:4:1"
+      ratio: "5:3:2"
     lower_leaflet:
       composition: "POPC:POPE:POPS:CHL1"
-      ratio: "4:4:1:1"
+      ratio: "3:4:1:2"
   padding:
-    lipid_padding: 10.0              # Distance from protein to membrane edge (Å)
+    lipid_padding: 12.0              # Distance from protein to membrane edge (Å)
     box_padding: 15.0                # Water layer above/below membrane (Å)
   ions:
     salt_conc: 0.15                  # Molar salt concentration (KCl)

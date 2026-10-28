@@ -14,12 +14,11 @@ process ORCA_REFINE_OPT {
 
     script:
     """
-    mult=\$(python3 -c "import json; print(json.load(open('${metadata_json}'))['spin_multiplicity'])")
     python3 ${projectDir}/bin/orca_opt.py \\
         --template "${projectDir}/assets/orca/refine.inp" \\
         --input ${preopt_sdf} \\
         --charge ${meta.charge} \\
-        --mult \${mult} \\
+        --metadata_json ${metadata_json} \\
         --nprocs ${task.cpus} \\
         --maxcore_mb ${params.orca_maxcore} \\
         --out_sdf "${meta.res_name}_refined.sdf" \\

@@ -46,8 +46,14 @@ def main():
     parser.add_argument(
         "--min_cluster_fraction",
         type=float,
-        default=0.05,
-        help="Minimum population fraction for a basin",
+        default=None,
+        help="Minimum population fraction for a basin (0.0 to 1.0)",
+    )
+    parser.add_argument(
+        "--min_cluster_pop_pct",
+        type=float,
+        default=None,
+        help="Minimum population percentage for a basin (0.0 to 100.0)",
     )
     parser.add_argument(
         "--out_json", required=True, help="Output medoids_summary.json deliverable"
@@ -96,7 +102,15 @@ def main():
     n_heavy_atoms = coords.shape[1] // 3
 
     algo = args.algorithm.lower()
-    min_size = max(5, int(round(n_frames * float(args.min_cluster_fraction))))
+    if args.min_cluster_pop_pct is not None:
+        min_frac = float(args.min_cluster_pop_pct) / 100.0
+    elif args.min_cluster_fraction is not None:
+        min_frac = float(args.min_cluster_fraction)
+    else:
+        raise ValueError(
+            "FATAL: Either --min_cluster_pop_pct or --min_cluster_fraction must be explicitly provided!"
+        )
+    min_size = max(5, int(round(n_frames * min_frac)))
 
     print(
         f"[CLUSTER_BASINS] Executing algorithm '{algo}' on {n_frames} frames "

@@ -255,7 +255,7 @@ def generate_rmsd_plot(df_rmsd: pd.DataFrame, out_png: Path):
         plt.savefig(out_png)
         plt.close()
     except Exception as e:
-        print(f"Warning: Could not render RMSD plot: {e}")
+        raise RuntimeError(f"FATAL: Failed to render RMSD plot {out_png}: {e}") from e
 
 
 def main():

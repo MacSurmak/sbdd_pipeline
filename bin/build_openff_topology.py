@@ -188,10 +188,7 @@ def main():
     if rdmol is None:
         raise ValueError(f"FATAL: Could not read molecular structure from {sdf_path}")
 
-    try:
-        Chem.SanitizeMol(rdmol)
-    except Exception:
-        rdmol.UpdatePropertyCache(strict=False)
+    Chem.SanitizeMol(rdmol)
 
     # Strict Fail-Fast stereochemistry resolution: perceive 3D coordinates and forbid unassigned centers
     Chem.AssignStereochemistryFrom3D(rdmol)

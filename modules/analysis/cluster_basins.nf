@@ -28,7 +28,7 @@ process CLUSTER_BASINS {
         --algorithm "${algorithm}" \\
         --n_clusters ${n_clusters} \\
         --rmsd_cutoff ${rmsd_cutoff} \\
-        --min_cluster_fraction \$(python3 -c "print(float(${min_pop}) / 100.0)") \\
+        --min_cluster_pop_pct ${min_pop} \\
         --out_json medoids_summary.json \\
         --out_labels cluster_labels.npy
     """

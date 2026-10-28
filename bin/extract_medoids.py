@@ -24,12 +24,23 @@ from cli.core.chem import transfer_coordinates_to_template
 
 
 def convert_to_mae(src_path: Path, dst_path: Path):
-    """Converts PDB/SDF to MAE using Schrödinger structconvert."""
+    """Converts PDB/SDF to MAE using Schrödinger structconvert with strict Fail-Fast enforcement."""
     structconvert_bin = shutil.which("structconvert") or "/opt/containers/bin/structconvert"
     if Path(structconvert_bin).exists() or shutil.which("structconvert"):
-        subprocess.run([structconvert_bin, str(src_path), str(dst_path)], capture_output=True)
+        cmd = [structconvert_bin, str(src_path), str(dst_path)]
     elif shutil.which("schrodinger"):
-        subprocess.run(["schrodinger", "run", "structconvert", str(src_path), str(dst_path)], capture_output=True)
+        cmd = ["schrodinger", "run", "structconvert", str(src_path), str(dst_path)]
+    else:
+        raise RuntimeError(
+            "FATAL: Neither 'structconvert' nor 'schrodinger' binary found in PATH!"
+        )
+
+    res = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    if res.returncode != 0 or not dst_path.exists() or dst_path.stat().st_size == 0:
+        raise RuntimeError(
+            f"FATAL: structconvert failed for {src_path} -> {dst_path} (exit {res.returncode}):\n"
+            f"{res.stderr}\n{res.stdout}"
+        )
 
 
 def main():

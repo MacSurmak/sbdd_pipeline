@@ -75,7 +75,12 @@ def main():
     )
     parser.add_argument("--sdf", required=True, help="Input relaxed molecule structure")
     parser.add_argument("--charge", required=True, type=int, help="Net formal charge")
-    parser.add_argument("--mult", required=True, type=int, help="Spin multiplicity")
+    parser.add_argument("--mult", type=int, default=None, help="Spin multiplicity")
+    parser.add_argument(
+        "--metadata_json",
+        default=None,
+        help="Path to metadata.json containing spin_multiplicity",
+    )
     parser.add_argument("--nprocs", type=int, required=True, help="Number of CPU cores")
     parser.add_argument(
         "--maxcore_mb", type=int, required=True, help="Per-core RAM allocation in MB"
@@ -94,6 +99,19 @@ def main():
         raise FileNotFoundError(
             f"FATAL: ORCA template file does not exist or is empty: {tmpl_path}"
         )
+
+    import json
+
+    mult_val = args.mult
+    if mult_val is None:
+        if not args.metadata_json:
+            raise ValueError(
+                "FATAL: Either --mult or --metadata_json must be provided to orca_esp.py!"
+            )
+        meta_p = Path(args.metadata_json).resolve()
+        if not meta_p.exists():
+            raise FileNotFoundError(f"FATAL: Metadata JSON not found: {meta_p}")
+        mult_val = int(json.loads(meta_p.read_text(encoding="utf-8"))["spin_multiplicity"])
 
     suppl = Chem.SDMolSupplier(str(in_path), removeHs=False, sanitize=False)
     mol = next((m for m in suppl if m is not None), None)
@@ -114,7 +132,7 @@ def main():
         tmpl_text.replace("{NPROCS}", str(args.nprocs))
         .replace("{MAXCORE}", str(args.maxcore_mb))
         .replace("{CHARGE}", str(args.charge))
-        .replace("{MULT}", str(args.mult))
+        .replace("{MULT}", str(mult_val))
         .replace("{COORDINATES}", coord_block)
     )
 
