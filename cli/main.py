@@ -470,6 +470,7 @@ def main():
         "--ranks",
         help="Comma-separated ranks to extract as ReceptorFrames (default: all)",
     )
+    add_common_wf_args(p_extract)
 
     # 9. clean
     p_clean = subparsers.add_parser(
@@ -761,6 +762,9 @@ def main():
             clustering=args.clustering,
             system=args.system,
             ranks=args.ranks,
+            urgent=args.urgent,
+            local=args.local,
+            resume=not args.no_resume,
         )
     elif subcmd in ["watch", "progress", "top"]:
         from cli.core.monitor import run_monitor

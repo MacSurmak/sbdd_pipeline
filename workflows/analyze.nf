@@ -45,6 +45,37 @@ workflow ANALYZE_WF {
         return
     }
 
+    // MODE 1.5: Distributed Slurm Extraction of Medoid Complexes
+    if (params.extract_medoids_plan) {
+        def planFile = file(params.extract_medoids_plan)
+        def planList = new groovy.json.JsonSlurperClassic().parseText(planFile.text)
+
+        ch_medoids_in = Channel.fromList(planList).map { item ->
+            def meta = [
+                id: item.task_id,
+                system: item.system_name,
+                target: item.target_name,
+                clustering: item.clustering_name,
+                project: params.project_name
+            ]
+            def ref_pdb = file(item.ref_pdb)
+            def xtcs = item.clean_xtcs.collect { file(it) }
+            def spec_json = file("${workDir}/stage_${item.task_id}_spec.json")
+            spec_json.text = groovy.json.JsonOutput.toJson(item)
+            [ meta, ref_pdb, xtcs, spec_json ]
+        }
+
+        include { EXTRACT_MEDOID_COMPLEXES } from '../modules/analysis/extract_medoids'
+        EXTRACT_MEDOID_COMPLEXES(ch_medoids_in)
+
+        EXTRACT_MEDOID_COMPLEXES.out.receipt.collectFile(
+            name: 'extract_medoids_receipt.tsv',
+            storeDir: params.outdir,
+            keepHeader: false
+        )
+        return
+    }
+
     // MODE 2: Ensemble Clustering on Clean Trajectories (Analytical Subworkflow)
     if (params.cluster_plan) {
         def planFile = file(params.cluster_plan)

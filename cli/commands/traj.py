@@ -427,25 +427,15 @@ def run_extract_medoids(
     clustering: str,
     system: str | None = None,
     ranks: str | None = None,
+    urgent: bool = False,
+    local: bool = False,
+    resume: bool = True,
 ) -> None:
     """
-    Dedicated on-demand extractor: extracts 3D physical medoid receptor structures,
-    in-situ ligand and cofactor poses, and creates physical System entities for docking or MD.
-    Executes in batch across all systems sharing the clustering run name.
+    Dedicated on-demand extractor: orchestrates medoid complex extraction on Slurm cluster nodes.
+    Follows Plan & Receipt pattern: CLI constructs plan -> Nextflow runs in $SLURM_TMPDIR ->
+    Receipt synchronizes 3NF SQLite database. Master node does ZERO heavy I/O.
     """
-    import MDAnalysis as mda
-    from rdkit import Chem
-    from cli.core.chem import transfer_coordinates_to_template
-    from cli.core.db import (
-        ClusteringRun,
-        TrajectoryCluster,
-        ReceptorFrame,
-        Pose,
-        System,
-        Substance,
-        SubstanceState,
-    )
-
     cwd = Path.cwd()
     session = get_session()
 
@@ -466,27 +456,13 @@ def run_extract_medoids(
             f"Available clustering runs in project: {avail_runs}"
         )
 
-    console.print(
-        f"[bold cyan]Extracting medoid complexes from clustering '{clustering}' across {len(matched_runs)} system(s)...[/bold cyan]\n"
-    )
-
-    structconvert_bin = shutil.which("structconvert") or "/opt/containers/bin/structconvert"
-
-    def _convert_to_mae(src_path: Path, dst_path: Path):
-        """Converts PDB/SDF to MAE using Schrödinger structconvert."""
-        if not dst_path.exists() or dst_path.stat().st_size == 0:
-            if Path(structconvert_bin).exists() or shutil.which("structconvert"):
-                subprocess.run([structconvert_bin, str(src_path), str(dst_path)], capture_output=True)
-            elif shutil.which("schrodinger"):
-                subprocess.run(["schrodinger", "run", "structconvert", str(src_path), str(dst_path)], capture_output=True)
-
-    total_created_systems = 0
+    plan_tasks = []
 
     for c_run in matched_runs:
         sys_obj = c_run.system
+        target_obj = sys_obj.target
         parent_frame = sys_obj.receptor_frame
         parent_pose = sys_obj.pose
-        parent_cofactors = list(sys_obj.cofactors)
 
         if ranks:
             try:
@@ -503,7 +479,6 @@ def run_extract_medoids(
 
         selected_clusters = [tc for tc in c_run.clusters if tc.cluster_rank in target_ranks]
         if not selected_clusters:
-            console.print(f"[yellow]No clusters matching ranks {target_ranks} found in '{sys_obj.name}'. Skipping.[/yellow]")
             continue
 
         all_trajs = (
@@ -520,193 +495,212 @@ def run_extract_medoids(
         ref_pdb_path = Path(all_trajs[0].path_ref_pdb).resolve()
         clean_xtcs = [str(Path(t.path_clean_xtc).resolve()) for t in all_trajs]
 
-        u = mda.Universe(str(ref_pdb_path), clean_xtcs)
-        protein_atoms = u.select_atoms("protein")
-        if len(protein_atoms) == 0:
-            session.close()
-            raise ValueError(
-                f"FATAL: No protein atoms found in reference structure {ref_pdb_path}!"
-            )
+        clusters_spec = [
+            {
+                "rank": tc.cluster_rank,
+                "medoid_frame": tc.medoid_frame,
+                "medoid_replicate": tc.medoid_replicate,
+                "medoid_time_ns": tc.medoid_time_ns,
+                "population": tc.population_fraction,
+                "spread": tc.compactness_spread,
+            }
+            for tc in selected_clusters
+        ]
 
-        parent_frame_name = parent_frame.name
+        lig_spec = None
+        if parent_pose:
+            lig_spec = {
+                "res_name": parent_pose.res_name,
+                "inchikey": parent_pose.substance.inchikey,
+                "template_sdf": str(Path(parent_pose.substance_state.path_sdf).resolve()),
+                "state_id": parent_pose.substance_state_id,
+            }
 
-        for tc in selected_clusters:
-            rank = tc.cluster_rank
-            m_frame = tc.medoid_frame
+        cofactors_spec = [
+            {
+                "res_name": c.res_name,
+                "inchikey": c.substance.inchikey,
+                "template_sdf": str(Path(c.substance_state.path_sdf).resolve()),
+                "state_id": c.substance_state_id,
+                "is_ion": (c.substance.substance_type == "ion"),
+            }
+            for c in sys_obj.cofactors
+        ]
 
-            u.trajectory[m_frame]
+        plan_tasks.append(
+            {
+                "task_id": f"{sys_obj.name}_{c_run.name}",
+                "system_name": sys_obj.name,
+                "target_name": target_obj.name,
+                "clustering_name": c_run.name,
+                "parent_frame_name": parent_frame.name,
+                "parent_frame_id": parent_frame.id,
+                "feature_group": c_run.feature_group,
+                "align_group": c_run.align_group,
+                "dim_reduction": c_run.dim_reduction,
+                "ref_pdb": str(ref_pdb_path),
+                "clean_xtcs": clean_xtcs,
+                "clusters": clusters_spec,
+                "ligand": lig_spec,
+                "cofactors": cofactors_spec,
+            }
+        )
 
-            new_frame_name = f"{parent_frame_name}_{c_run.name}_c{rank}"
-            dest_frame_dir = assert_permanent_path(
-                cwd / "targets" / sys_obj.target.name / "frames" / new_frame_name,
-                f"Medoid #{rank} Frame Directory",
-            )
-            dest_frame_dir.mkdir(parents=True, exist_ok=True)
+    if not plan_tasks:
+        session.close()
+        console.print("[yellow]No matching systems or clusters found to extract.[/yellow]")
+        return
 
-            # 1. Export Receptor (PDB & MAE)
-            rec_pdb = dest_frame_dir / "receptor.pdb"
-            rec_mae = dest_frame_dir / "receptor.mae"
-            protein_atoms.write(str(rec_pdb))
-            _convert_to_mae(rec_pdb, rec_mae)
+    plan_file = cwd / "extract_medoids_plan.json"
+    plan_file.write_text(json.dumps(plan_tasks, indent=2), encoding="utf-8")
 
-            ex_frame = session.query(ReceptorFrame).filter_by(name=new_frame_name).first()
-            if not ex_frame:
-                new_f = ReceptorFrame(
-                    target_id=sys_obj.target_id,
-                    name=new_frame_name,
-                    source_type="md_centroid",
-                    parent_frame_id=sys_obj.receptor_frame_id,
-                    source_trajectory_id=None,
-                    feature_group=c_run.feature_group,
-                    align_group=c_run.align_group,
-                    dim_reduction_method=c_run.dim_reduction,
-                    cluster_rank=rank,
-                    population=tc.population_fraction,
-                    compactness_spread=tc.compactness_spread,
-                    state="ready",
-                    path=str(rec_pdb.resolve()),
-                    path_pdb=str(rec_pdb.resolve()),
-                    path_mae=str(rec_mae.resolve()) if rec_mae.exists() else None,
-                )
-                session.add(new_f)
-                session.flush()
-                curr_frame = new_f
-            else:
-                ex_frame.path = str(rec_pdb.resolve())
-                ex_frame.path_pdb = str(rec_pdb.resolve())
-                if rec_mae.exists():
-                    ex_frame.path_mae = str(rec_mae.resolve())
-                ex_frame.state = "ready"
-                ex_frame.population = tc.population_fraction
-                ex_frame.compactness_spread = tc.compactness_spread
-                curr_frame = ex_frame
+    receipt_file = cwd / "extract_medoids_receipt.tsv"
+    receipt_file.unlink(missing_ok=True)
 
-            # 2. Helper to extract, restore topology, and register a small molecule pose
-            def _extract_and_register_pose(parent_p: Pose, origin_desc: str) -> Pose:
-                sub_state = parent_p.substance_state
-                sub_entity = sub_state.substance
-                res_clean = parent_p.res_name.strip().upper()
-                is_ion = (sub_entity.substance_type == "ion")
+    console.print(
+        f"[bold cyan]Dispatching extraction of medoid complexes across {len(plan_tasks)} system(s) to Slurm cluster...[/bold cyan]"
+    )
 
-                mol_atoms = u.select_atoms(f"resname {res_clean}")
-                if len(mol_atoms) == 0:
-                    raise ValueError(
-                        f"FATAL: Molecule '{res_clean}' not found in trajectory {ref_pdb_path.name}!"
+    configs = load_project_configs(cwd)
+    nf_args = build_nextflow_args(configs, cwd, entrypoint="md-analyze")
+    nf_args.extend(["--extract_medoids_plan", str(plan_file.resolve())])
+
+    if urgent:
+        nf_args.extend(["--queue", "urgent"])
+
+    profile_name = "local" if local else "slurm"
+    ret_code = execute_nextflow(
+        "md-analyze", nf_args, cwd, profile=profile_name, resume=resume, configs=configs
+    )
+
+    if ret_code != 0:
+        session.close()
+        console.print("[bold red]Nextflow extraction failed on cluster.[/bold red]")
+        sys.exit(ret_code)
+
+    if not receipt_file.exists() or receipt_file.stat().st_size == 0:
+        session.close()
+        raise FileNotFoundError(
+            f"FATAL: Execution receipt {receipt_file} was not emitted by Nextflow. "
+            "Extraction failed without generating receipt."
+        )
+
+    # Atomic 3NF Database Synchronization based on verified receipt
+    frames_created = 0
+    poses_created = 0
+    systems_created = 0
+
+    with open(receipt_file, "r", encoding="utf-8") as rf:
+        for line in rf:
+            line_str = line.strip()
+            if not line_str:
+                continue
+            parts = line_str.split("\t")
+            record_type = parts[0]
+
+            if record_type == "FRAME":
+                _, t_name, f_name, rel_pdb, rel_mae, p_id_str, r_str, pop_str, sp_str, f_grp, a_grp, d_red = parts
+                abs_pdb = assert_permanent_path(cwd / rel_pdb, f"Receptor PDB {f_name}")
+                abs_mae = assert_permanent_path(cwd / rel_mae, f"Receptor MAE {f_name}")
+
+                t_obj = session.query(Target).filter_by(name=t_name).first()
+                ex_f = session.query(ReceptorFrame).filter_by(name=f_name).first()
+                if not ex_f:
+                    new_frame = ReceptorFrame(
+                        target_id=t_obj.id,
+                        name=f_name,
+                        source_type="md_centroid",
+                        parent_frame_id=int(p_id_str) if p_id_str != "None" else None,
+                        feature_group=f_grp,
+                        align_group=a_grp,
+                        dim_reduction_method=d_red,
+                        cluster_rank=int(r_str),
+                        population=float(pop_str),
+                        compactness_spread=float(sp_str),
+                        state="ready",
+                        path=str(abs_pdb),
+                        path_pdb=str(abs_pdb),
+                        path_mae=str(abs_mae),
                     )
-
-                tmpl_path = Path(sub_state.path_sdf or parent_p.path_sdf).resolve()
-                suppl = Chem.SDMolSupplier(str(tmpl_path), removeHs=False, sanitize=False)
-                tmpl_mol = next((m for m in suppl if m is not None), None)
-                if tmpl_mol is None:
-                    raise ValueError(f"FATAL: Failed to read reference template from {tmpl_path}")
-
-                raw_positions = mol_atoms.positions
-                if is_ion:
-                    restored_pose = Chem.Mol(tmpl_mol)
-                    restored_pose.GetConformer().SetAtomPosition(
-                        0, [float(raw_positions[0][0]), float(raw_positions[0][1]), float(raw_positions[0][2])]
-                    )
+                    session.add(new_frame)
+                    frames_created += 1
                 else:
-                    mda_elements = []
-                    for a in mol_atoms:
-                        if hasattr(a, "element") and a.element and a.element.strip():
-                            mda_elements.append(a.element.strip().capitalize())
-                        else:
-                            clean_n = "".join([c for c in a.name if not c.isdigit()]).strip()
-                            mda_elements.append(
-                                clean_n[:2].capitalize()
-                                if len(clean_n) >= 2
-                                and clean_n[:2].capitalize() in {"Cl", "Br", "Fe", "Mg", "Zn", "Ca", "Na"}
-                                else clean_n[:1].upper()
-                            )
+                    ex_f.path = str(abs_pdb)
+                    ex_f.path_pdb = str(abs_pdb)
+                    ex_f.path_mae = str(abs_mae)
+                    ex_f.state = "ready"
+                    ex_f.population = float(pop_str)
+                    ex_f.compactness_spread = float(sp_str)
 
-                    restored_pose = transfer_coordinates_to_template(
-                        template_mol=tmpl_mol,
-                        source_mol_or_coords=raw_positions,
-                        source_elements=mda_elements,
-                        relax_missing_hydrogens=False,
-                    )
+            elif record_type == "POSE":
+                _, f_name, p_name, inchikey, res_name, st_id_str, rel_sdf, rel_mae, lig_flag = parts
+                abs_sdf = assert_permanent_path(cwd / rel_sdf, f"Pose SDF {p_name}")
+                abs_mae = assert_permanent_path(cwd / rel_mae, f"Pose MAE {p_name}")
 
-                # Canonical 3NF Pose Location: substances/<inchikey>/poses/<pose_name>/<res>_pose.sdf
-                pose_name = f"{new_frame_name}_{res_clean}_centroid"
-                pose_dir = assert_permanent_path(
-                    cwd / "substances" / sub_entity.inchikey / "poses" / pose_name,
-                    f"Medoid Pose Directory {pose_name}",
-                )
-                pose_dir.mkdir(parents=True, exist_ok=True)
-                pose_sdf = pose_dir / f"{res_clean}_pose.sdf"
-                pose_mae = pose_dir / f"{res_clean}_pose.mae"
+                frame_obj = session.query(ReceptorFrame).filter_by(name=f_name).first()
+                state_obj = session.query(SubstanceState).get(int(st_id_str))
 
-                with Chem.SDWriter(str(pose_sdf)) as w:
-                    w.SetForceV3000(False)
-                    w.write(restored_pose)
-                _convert_to_mae(pose_sdf, pose_mae)
-
-                p_record = session.query(Pose).filter_by(name=pose_name).first()
-                if not p_record:
+                ex_p = session.query(Pose).filter_by(name=p_name).first()
+                if not ex_p:
                     new_p = Pose(
-                        substance_state_id=sub_state.id,
-                        receptor_frame_id=curr_frame.id,
-                        name=pose_name,
-                        res_name=res_clean,
+                        substance_state_id=state_obj.id,
+                        receptor_frame_id=frame_obj.id,
+                        name=p_name,
+                        res_name=res_name,
                         origin="md_centroid",
                         state="ready",
-                        path=str(pose_sdf.resolve()),
-                        path_sdf=str(pose_sdf.resolve()),
-                        path_mae=str(pose_mae.resolve()) if pose_mae.exists() else None,
+                        path=str(abs_sdf),
+                        path_sdf=str(abs_sdf),
+                        path_mae=str(abs_mae),
                     )
                     session.add(new_p)
-                    session.flush()
-                    return new_p
+                    poses_created += 1
                 else:
-                    p_record.path = str(pose_sdf.resolve())
-                    p_record.path_sdf = str(pose_sdf.resolve())
-                    if pose_mae.exists():
-                        p_record.path_mae = str(pose_mae.resolve())
-                    p_record.state = "ready"
-                    return p_record
+                    ex_p.path = str(abs_sdf)
+                    ex_p.path_sdf = str(abs_sdf)
+                    ex_p.path_mae = str(abs_mae)
+                    ex_p.state = "ready"
 
-            # 3. Extract Active Ligand Pose
-            medoid_lig_pose = None
-            if parent_pose:
-                medoid_lig_pose = _extract_and_register_pose(parent_pose, "ligand")
+            elif record_type == "SYSTEM":
+                _, t_name, s_name, f_name, lig_pname, cof_names_str = parts
+                t_obj = session.query(Target).filter_by(name=t_name).first()
+                frame_obj = session.query(ReceptorFrame).filter_by(name=f_name).first()
 
-            # 4. Extract Cofactors and Ions
-            medoid_cofactors = []
-            for cof_p in parent_cofactors:
-                medoid_cofactors.append(_extract_and_register_pose(cof_p, "cofactor"))
+                lig_pose = session.query(Pose).filter_by(name=lig_pname).first() if lig_pname else None
+                cofactor_poses = []
+                if cof_names_str:
+                    for cp in cof_names_str.split(","):
+                        if cp.strip():
+                            found_cof = session.query(Pose).filter_by(name=cp.strip()).first()
+                            if found_cof:
+                                cofactor_poses.append(found_cof)
 
-            # 5. Assemble Physical Holo System
-            sys_name = f"{new_frame_name}_{parent_pose.res_name}" if parent_pose else new_frame_name
-            ex_sys = session.query(System).filter_by(name=sys_name).first()
-            if not ex_sys:
-                new_sys = System(
-                    target_id=sys_obj.target_id,
-                    receptor_frame_id=curr_frame.id,
-                    pose_id=medoid_lig_pose.id if medoid_lig_pose else None,
-                    name=sys_name,
-                    state="raw",
-                    origin="md_centroid",
-                )
-                new_sys.cofactors = medoid_cofactors
-                session.add(new_sys)
-            else:
-                ex_sys.pose_id = medoid_lig_pose.id if medoid_lig_pose else None
-                ex_sys.cofactors = medoid_cofactors
-                ex_sys.state = "raw"
+                ex_sys = session.query(System).filter_by(name=s_name).first()
+                if not ex_sys:
+                    new_sys = System(
+                        target_id=t_obj.id,
+                        receptor_frame_id=frame_obj.id,
+                        pose_id=lig_pose.id if lig_pose else None,
+                        name=s_name,
+                        state="raw",
+                        origin="md_centroid",
+                    )
+                    new_sys.cofactors = cofactor_poses
+                    session.add(new_sys)
+                    systems_created += 1
+                else:
+                    ex_sys.pose_id = lig_pose.id if lig_pose else None
+                    ex_sys.cofactors = cofactor_poses
+                    ex_sys.state = "raw"
 
-            total_created_systems += 1
-            lig_info = f", Ligand: {medoid_lig_pose.name}" if medoid_lig_pose else ""
-            cof_info = f", Cofactors: {[c.name for c in medoid_cofactors]}" if medoid_cofactors else ""
-            console.print(
-                f"[bold green]✓ [{sys_obj.name}] Extracted Complex System '{sys_name}' "
-                f"(Rank #{rank}, Pop: {tc.population_fraction*100:.1f}%{lig_info}{cof_info})[/bold green]"
-            )
+        session.commit()
+        session.close()
 
-    session.commit()
-    session.close()
     console.print(
-        f"\n[bold green]✓ Successfully generated {total_created_systems} complete physical System(s) across targets for docking/MD![/bold green]"
+        f"\n[bold green]✓ Cluster extraction completed via Slurm! Synchronized with SQLite 3NF:[/bold green]\n"
+        f"  - Receptor Frames: {frames_created} created/updated (PDB v3.3 + MAE)\n"
+        f"  - Small Molecule Poses: {poses_created} created/updated\n"
+        f"  - Complete Physical Systems: {systems_created} created/updated\n"
     )
 
 
