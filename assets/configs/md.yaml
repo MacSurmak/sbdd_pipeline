@@ -38,24 +38,24 @@ md_simulation:
     prod_flags: "-nb gpu -pme gpu -update gpu -bonded gpu -ntmpi 1 -pin on"
   production:
     temperature: 310.15
-    total_time_ns: 200
+    total_time_ns: 100
     chunk_size_ns: 10
     replicates: 3
     dt_ps: 0.002
     compressibility: "4.5e-5"
     tau_p: 5.0
     restraints_group: "C-alpha"
-    restraints_fc: 0
+    restraints_fc: 50
   metrics:
     heavy_cutoff: 3.5
     hyd_cutoff: 4.0
     pol_cutoff: 3.4
   analysis_sampling:
-    start_ns: 20.0                     # Canonical start buffer for all post-MD analysis (ns)
+    start_ns: 1.0                      # Canonical start buffer for all post-MD analysis (ns)
     sample_interval_ps: 500.0          # Canonical statistical independence stride for MM-PBSA and clustering (ps)
   clustering:
     align_group: "Backbone"             # Basis group for coordinate superimposition (e.g. Backbone, C-alpha)
-    cluster_group: "Pocket + Ligand"    # Feature group for manifold reduction (e.g. Pocket, Backbone, Ligand, 'Pocket + Ligand')
+    cluster_group: "Ligand"             # Feature group for manifold reduction (e.g. Pocket, Backbone, Ligand, 'Pocket + Ligand')
     dim_reduction: "tica"               # Dimensionality reduction engine: tica or pca
     algorithm: "auto_kmeans"            # Clustering algorithm: hdbscan (density), hierarchical (RMSD cutoff), auto_kmeans, kmeans
     rmsd_cutoff: 1.5                    # Heavy-atom RMSD distance threshold for hierarchical clustering (Å)
