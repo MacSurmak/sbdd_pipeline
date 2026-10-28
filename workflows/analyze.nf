@@ -3,11 +3,12 @@
  * Independent trajectory analysis workflow (PBC fixing, RMSD, MMPBSA)
  */
 
-include { TRJCONV          } from '../modules/gromacs/trjconv'
-include { MD_METRICS       } from '../modules/gromacs/md_metrics'
-include { GMX_MMPBSA       } from '../modules/gromacs/mmpbsa'
-include { ANALYZE_MD_TRAJ  } from '../subworkflows/analyze_md_traj'
-include { CLUSTER_ENSEMBLE } from '../subworkflows/cluster_ensemble'
+include { TRJCONV                   } from '../modules/gromacs/trjconv'
+include { MD_METRICS                } from '../modules/gromacs/md_metrics'
+include { GMX_MMPBSA                } from '../modules/gromacs/mmpbsa'
+include { ANALYZE_MD_TRAJ           } from '../subworkflows/analyze_md_traj'
+include { CLUSTER_ENSEMBLE          } from '../subworkflows/cluster_ensemble'
+include { EXTRACT_MEDOID_COMPLEXES  } from '../modules/analysis/extract_medoids'
 
 workflow ANALYZE_WF {
 
@@ -65,7 +66,6 @@ workflow ANALYZE_WF {
             [ meta, ref_pdb, xtcs, spec_json ]
         }
 
-        include { EXTRACT_MEDOID_COMPLEXES } from '../modules/analysis/extract_medoids'
         EXTRACT_MEDOID_COMPLEXES(ch_medoids_in)
 
         EXTRACT_MEDOID_COMPLEXES.out.receipt.collectFile(

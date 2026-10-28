@@ -94,7 +94,7 @@ def main():
         convert_to_mae(rec_pdb, rec_mae)
 
         rel_rec_pdb = f"targets/{target_name}/frames/{new_frame_name}/receptor.pdb"
-        rel_rec_mae = f"targets/{target_name}/frames/{new_frame_name}/receptor.mae"
+        rel_rec_mae = f"targets/{target_name}/frames/{new_frame_name}/receptor.mae" if rec_mae.exists() and rec_mae.stat().st_size > 0 else "None"
 
         receipt_lines.append(
             f"FRAME\t{target_name}\t{new_frame_name}\t{rel_rec_pdb}\t{rel_rec_mae}\t"
@@ -155,7 +155,7 @@ def main():
             convert_to_mae(pose_sdf, pose_mae)
 
             rel_sdf = f"substances/{inchikey}/poses/{pose_name}/{res_clean}_pose.sdf"
-            rel_mae = f"substances/{inchikey}/poses/{pose_name}/{res_clean}_pose.mae"
+            rel_mae = f"substances/{inchikey}/poses/{pose_name}/{res_clean}_pose.mae" if pose_mae.exists() and pose_mae.stat().st_size > 0 else "None"
 
             lig_flag = "1" if is_primary_ligand else "0"
             receipt_lines.append(

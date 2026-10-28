@@ -601,7 +601,7 @@ def run_extract_medoids(
             if record_type == "FRAME":
                 _, t_name, f_name, rel_pdb, rel_mae, p_id_str, r_str, pop_str, sp_str, f_grp, a_grp, d_red = parts
                 abs_pdb = assert_permanent_path(cwd / rel_pdb, f"Receptor PDB {f_name}")
-                abs_mae = assert_permanent_path(cwd / rel_mae, f"Receptor MAE {f_name}")
+                abs_mae = assert_permanent_path(cwd / rel_mae, f"Receptor MAE {f_name}") if rel_mae != "None" else None
 
                 t_obj = session.query(Target).filter_by(name=t_name).first()
                 ex_f = session.query(ReceptorFrame).filter_by(name=f_name).first()
@@ -620,14 +620,15 @@ def run_extract_medoids(
                         state="ready",
                         path=str(abs_pdb),
                         path_pdb=str(abs_pdb),
-                        path_mae=str(abs_mae),
+                        path_mae=str(abs_mae) if abs_mae else None,
                     )
                     session.add(new_frame)
                     frames_created += 1
                 else:
                     ex_f.path = str(abs_pdb)
                     ex_f.path_pdb = str(abs_pdb)
-                    ex_f.path_mae = str(abs_mae)
+                    if abs_mae:
+                        ex_f.path_mae = str(abs_mae)
                     ex_f.state = "ready"
                     ex_f.population = float(pop_str)
                     ex_f.compactness_spread = float(sp_str)
@@ -635,7 +636,7 @@ def run_extract_medoids(
             elif record_type == "POSE":
                 _, f_name, p_name, inchikey, res_name, st_id_str, rel_sdf, rel_mae, lig_flag = parts
                 abs_sdf = assert_permanent_path(cwd / rel_sdf, f"Pose SDF {p_name}")
-                abs_mae = assert_permanent_path(cwd / rel_mae, f"Pose MAE {p_name}")
+                abs_mae = assert_permanent_path(cwd / rel_mae, f"Pose MAE {p_name}") if rel_mae != "None" else None
 
                 frame_obj = session.query(ReceptorFrame).filter_by(name=f_name).first()
                 state_obj = session.query(SubstanceState).get(int(st_id_str))
