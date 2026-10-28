@@ -30,17 +30,12 @@ def parse_args():
     parser.add_argument("--labels", required=True, help="Path to cluster_labels.npy")
     parser.add_argument("--time_map", required=True, help="Path to frame_time_map.json")
     parser.add_argument(
-        "--mmpbsa_dir",
+        "--replicates_manifest",
         required=True,
-        help="Directory containing replicate MM-PBSA outputs",
+        help="Path to deterministic JSON manifest mapping replicates to MM-PBSA and RMSD CSV paths",
     )
     parser.add_argument(
-        "--metrics_dir",
-        default="",
-        help="Optional base directory to search for rmsd.csv files",
-    )
-    parser.add_argument(
-        "--temp_k", type=float, default=310.15, help="Simulation temperature in Kelvin"
+        "--temp_k", type=float, required=True, help="Simulation temperature in Kelvin"
     )
     parser.add_argument(
         "--paradigm", required=True, help="Plateau detection paradigm"
@@ -206,30 +201,24 @@ def detect_plateaus_exclusion(
     return final_plateau_mask, smoothed, sigma_thermal
 
 
-def load_replicate_mmpbsa(
-    mmpbsa_dir: Path, system_name: str
+def load_replicate_mmpbsa_from_manifest(
+    manifest_records: list[dict],
 ) -> dict[str, pd.DataFrame]:
-    """Loads and sanitizes per-replicate DELTA binding free energy time series."""
+    """Loads per-replicate DELTA binding free energy time series strictly from deterministic manifest."""
     rep_dfs = {}
-    target_dirs = sorted(
-        [d for d in mmpbsa_dir.glob("*") if system_name in d.name and d.is_dir()]
-    )
-    if not target_dirs:
-        raise FileNotFoundError(
-            f"FATAL: No replicate output folders found for system '{system_name}' in {mmpbsa_dir}!"
-        )
-
-    for r_dir in target_dirs:
-        csv_f = r_dir / "thermodynamics_mmpbsa_pb.csv"
+    for rec in manifest_records:
+        rep_key = rec["replicate"]
+        csv_f = Path(rec["mmpbsa_csv"]).resolve()
         if not csv_f.exists() or csv_f.stat().st_size == 0:
-            continue
+            raise FileNotFoundError(
+                f"FATAL: MM-PBSA CSV deliverable missing or empty for {rep_key} at {csv_f}!"
+            )
 
         df = pd.read_csv(csv_f)
         target_col = next((c for c in df.columns if "TOTAL" in c.upper()), None)
         if not target_col:
             raise KeyError(f"FATAL: No 'TOTAL' energy column found in {csv_f}!")
 
-        # Clean frame index column
         frame_col = next((c for c in df.columns if "FRAME" in c.upper()), df.columns[0])
 
         df_clean = pd.DataFrame(
@@ -242,15 +231,10 @@ def load_replicate_mmpbsa(
             }
         ).dropna()
 
-        # Deduce replicate key matching frame_time_map (e.g. 'rep_1', 'rep_2')
-        m_rep = re.search(r"rep_?(\d+)", r_dir.name)
-        rep_key = f"rep_{m_rep.group(1)}" if m_rep else r_dir.name
         rep_dfs[rep_key] = df_clean
 
     if not rep_dfs:
-        raise FileNotFoundError(
-            f"FATAL: Zero valid MM-PBSA CSV deliverables parsed from {mmpbsa_dir}!"
-        )
+        raise ValueError("FATAL: Zero valid MM-PBSA CSV deliverables parsed from manifest!")
 
     return rep_dfs
 
@@ -263,16 +247,18 @@ def main():
 
     labels_p = Path(args.labels).resolve()
     time_map_p = Path(args.time_map).resolve()
-    mmpbsa_dir = Path(args.mmpbsa_dir).resolve()
+    manifest_p = Path(args.replicates_manifest).resolve()
 
-    if not labels_p.exists() or not time_map_p.exists():
+    if not labels_p.exists() or not time_map_p.exists() or not manifest_p.exists():
         raise FileNotFoundError(
-            "FATAL: Required labels array or time map JSON deliverable missing!"
+            "FATAL: Required labels array, time map, or replicates manifest JSON deliverable missing!"
         )
 
     labels = np.load(labels_p)
     with open(time_map_p, "r", encoding="utf-8") as f:
         time_map = json.load(f)
+    with open(manifest_p, "r", encoding="utf-8") as f:
+        manifest_records = json.load(f)
 
     if len(labels) != len(time_map):
         raise ValueError(
@@ -282,31 +268,20 @@ def main():
     # 1. Index coordinate frames by replicate and time
     df_coords = pd.DataFrame(time_map)
     df_coords["cluster_id"] = labels
-    # 1-based sequential frame index within each replicate
     df_coords["rep_frame"] = df_coords.groupby("replicate").cumcount() + 1
 
-    # 2. Load MM-PBSA samples
-    rep_energies = load_replicate_mmpbsa(mmpbsa_dir, system_name)
+    # 2. Load MM-PBSA samples strictly from manifest
+    rep_energies = load_replicate_mmpbsa_from_manifest(manifest_records)
+    rmsd_by_rep = {rec["replicate"]: Path(rec["rmsd_csv"]).resolve() for rec in manifest_records}
 
     # 3. Load full-resolution RMSD curves and compute Exclusion-First plateau masks
-    metrics_base = (
-        Path(args.metrics_dir).resolve()
-        if args.metrics_dir
-        else Path.cwd() / "md_runs" / system_name
-    )
-
     replicate_plateau_masks = {}
     replicate_full_rmsd = {}
     replicate_smoothed = {}
 
     for rep_key in rep_energies.keys():
-        m_num = re.search(r"(\d+)", rep_key)
-        rep_num = m_num.group(1) if m_num else "1"
-        rmsd_file = metrics_base / f"rep_{rep_num}" / "metrics" / "rmsd.csv"
-        if not rmsd_file.exists():
-            rmsd_file = metrics_base / f"rep_{rep_num}" / "rmsd.csv"
-
-        if not rmsd_file.exists() or rmsd_file.stat().st_size == 0:
+        rmsd_file = rmsd_by_rep.get(rep_key)
+        if not rmsd_file or not rmsd_file.exists() or rmsd_file.stat().st_size == 0:
             raise FileNotFoundError(
                 f"FATAL: Full-resolution RMSD table missing for {rep_key} at {rmsd_file}! "
                 "Exclusion-First plateau gating requires continuous RMSD trajectory data."
@@ -494,13 +469,6 @@ def main():
         axes_flat = [axes]
     else:
         axes_flat = axes.flatten() if hasattr(axes, "flatten") else [axes]
-
-    # Look for RMSD tables from md_metrics
-    metrics_base = (
-        Path(args.metrics_dir).resolve()
-        if args.metrics_dir
-        else Path.cwd() / "md_runs" / system_name
-    )
 
     for idx, r_key in enumerate(unique_reps):
         ax = axes_flat[idx]

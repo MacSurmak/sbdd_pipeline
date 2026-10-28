@@ -1243,6 +1243,28 @@ def run_stratify(
         out_ts = task_dir / "stratified_timeseries.tsv"
         effective_temp = float(temp_k if temp_k is not None else m_run.temperature)
 
+        # Build deterministic replicate manifest directly from 3NF Trajectory records (zero glob/regex)
+        clean_trajs = (
+            session.query(Trajectory)
+            .filter_by(system_id=sys_obj.id, status="cleaned")
+            .order_by(Trajectory.replicate)
+            .all()
+        )
+        rep_manifest_data = []
+        for tr in clean_trajs:
+            rep_key = f"rep_{tr.replicate}"
+            mmpbsa_csv = mmpbsa_reports_dir / f"{tr.name}_rep_{tr.replicate}" / "thermodynamics_mmpbsa_pb.csv"
+            rmsd_csv = Path(tr.raw_dir).parent / "metrics" / "rmsd.csv"
+            rep_manifest_data.append(
+                {
+                    "replicate": rep_key,
+                    "mmpbsa_csv": str(mmpbsa_csv.resolve()),
+                    "rmsd_csv": str(rmsd_csv.resolve()),
+                }
+            )
+        rep_manifest_file = task_dir / "stratify_replicates_manifest.json"
+        rep_manifest_file.write_text(json.dumps(rep_manifest_data, indent=2), encoding="utf-8")
+
         cmd = [
             sys.executable,
             str(stratify_bin.resolve()),
@@ -1252,10 +1274,8 @@ def run_stratify(
             str(target_c_run.path_labels),
             "--time_map",
             str(target_c_run.path_time_map),
-            "--mmpbsa_dir",
-            str(mmpbsa_reports_dir.resolve()),
-            "--metrics_dir",
-            str((cwd / "md_runs" / sys_obj.name).resolve()),
+            "--replicates_manifest",
+            str(rep_manifest_file.resolve()),
             "--temp_k",
             str(effective_temp),
             "--paradigm",
@@ -1417,6 +1437,9 @@ def run_mmpbsa(
     with open(plan_file, "w") as f:
         json.dump(plan_list, f, indent=2)
 
+    receipt_file = cwd / "mmpbsa_receipt.tsv"
+    receipt_file.unlink(missing_ok=True)
+
     console.print(
         f"[bold cyan]Running standalone MM-PBSA on {len(plan_list)} clean trajectory(ies)...[/bold cyan]"
     )
@@ -1438,15 +1461,29 @@ def run_mmpbsa(
         console.print("[bold red]Nextflow MM-PBSA failed.[/bold red]")
         sys.exit(ret_code)
 
-    # Synchronize and register clean DELTA free energies into SQLite 3NF with strict Fail-Fast validation
-    reports_dir = cwd / "reports" / "mmpbsa"
-    if not reports_dir.exists():
+    # Synchronize and register clean DELTA free energies into SQLite 3NF strictly via mmpbsa_receipt.tsv
+    if not receipt_file.exists() or receipt_file.stat().st_size == 0:
         session.close()
         raise FileNotFoundError(
-            f"FATAL: Reports directory not found at {reports_dir}. MM-PBSA output delivery failed."
+            f"FATAL: Execution receipt {receipt_file} was not emitted by Nextflow. MM-PBSA output delivery failed."
         )
 
-    # Deduplicate systems: an MmpbsaRun represents the aggregate ensemble of a System, not individual replicates
+    reports_dir = cwd / "reports" / "mmpbsa"
+    reports_dir.mkdir(parents=True, exist_ok=True)
+
+    receipt_by_sys: dict[str, list[tuple[int, Path]]] = {}
+    for line in receipt_file.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        parts = line.strip().split("\t")
+        if len(parts) != 3:
+            session.close()
+            raise ValueError(f"FATAL: Corrupted line in {receipt_file}: '{line}'")
+        r_sys, r_rep_str, r_csv_path = parts
+        receipt_by_sys.setdefault(r_sys, []).append(
+            (int(r_rep_str), assert_permanent_path(r_csv_path, "MM-PBSA CSV"))
+        )
+
     unique_sys_names = sorted(list(set(item["rec_id"] for item in plan_list)))
     registered_runs = 0
 
@@ -1458,24 +1495,21 @@ def run_mmpbsa(
                 f"FATAL: Target System '{sys_name}' declared in plan is not registered in SQLite database!"
             )
 
-        sys_reps = sorted(
-            [d for d in reports_dir.glob("*") if sys_name in d.name and d.is_dir()]
-        )
-        if not sys_reps:
+        sys_rep_entries = sorted(receipt_by_sys.get(sys_name, []), key=lambda x: x[0])
+        if not sys_rep_entries:
             session.close()
             raise FileNotFoundError(
-                f"FATAL: No replicate output directories found for system '{sys_name}' in {reports_dir}!"
+                f"FATAL: No replicate deliverables recorded in {receipt_file} for system '{sys_name}'!"
             )
 
         all_frames_dg = []
         rep_means = []
 
-        for r_dir in sys_reps:
-            csv_f = r_dir / "thermodynamics_mmpbsa_pb.csv"
+        for rep_idx, csv_f in sys_rep_entries:
             if not csv_f.exists() or csv_f.stat().st_size == 0:
                 session.close()
                 raise FileNotFoundError(
-                    f"FATAL: Missing or empty MM-PBSA deliverable for replicate in {r_dir}!"
+                    f"FATAL: Missing or empty MM-PBSA deliverable for replicate {rep_idx} at {csv_f}!"
                 )
 
             df = pd.read_csv(csv_f)

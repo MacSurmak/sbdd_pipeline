@@ -341,7 +341,11 @@ def run_dock(
 
             has_crystal_pose = (
                 session.query(Pose)
-                .filter_by(substance_id=l.id, origin="crystal")
+                .join(SubstanceState, Pose.substance_state_id == SubstanceState.id)
+                .filter(
+                    SubstanceState.substance_id == l.id,
+                    Pose.origin == "crystal",
+                )
                 .first()
                 is not None
             )
@@ -521,18 +525,33 @@ def run_dock(
                         removeHs=False,
                         sanitize=False,
                     )
-                    tmpl_mol = next((m for m in tmpl_suppl if m is not None), None)
-                    if not tmpl_mol:
+                    candidates = [m for m in tmpl_suppl if m is not None]
+                    if not candidates:
                         session.close()
                         raise ValueError(
-                            f"FATAL: Could not read canonical template for '{title}' at {lig.path_sdf}"
+                            f"FATAL: Could not read canonical templates for '{title}' at {lig.path_sdf}"
                         )
 
-                    mol_conformation = transfer_coordinates_to_template(
-                        template_mol=tmpl_mol,
-                        source_mol=mol_conformation,
-                        relax_missing_hydrogens=True,
-                    )
+                    restored_mol = None
+                    last_err = None
+                    for cand_tmpl in candidates:
+                        try:
+                            restored_mol = transfer_coordinates_to_template(
+                                template_mol=cand_tmpl,
+                                source_mol=mol_conformation,
+                                relax_missing_hydrogens=True,
+                            )
+                            break
+                        except ValueError as e:
+                            last_err = e
+                            continue
+
+                    if restored_mol is None:
+                        session.close()
+                        raise ValueError(
+                            f"FATAL: Failed to match GNINA pose for '{title}' against any LigPrep microstate in {lig.path_sdf}: {last_err}"
+                        )
+                    mol_conformation = restored_mol
 
                 key = (frame_name, title, eng)
                 pose_counter[key] = pose_counter.get(key, 0) + 1

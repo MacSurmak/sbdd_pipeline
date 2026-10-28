@@ -39,10 +39,15 @@ def run_rescore(
     dock_summary_files = set()
 
     for frame in ready_frames:
-        # Strict SSOT: Only process frames that have actual docking poses registered in the DB
+        # Strict SSOT: Process frames that have docking or redocking poses registered in the DB
         docked_poses = (
             session.query(Pose)
-            .filter(Pose.receptor_frame_id == frame.id, Pose.origin.like("docking_%"))
+            .filter(
+                Pose.receptor_frame_id == frame.id,
+                Pose.origin.in_(
+                    ["docking_glide", "docking_gnina", "redock_glide", "redock_gnina"]
+                ),
+            )
             .all()
         )
 
@@ -75,8 +80,8 @@ def run_rescore(
     # Determine reference native ligand strictly from database
     native_ligand_name = ""
     for s in session.query(System).all():
-        if s.pose and s.pose.origin == "crystal":
-            native_ligand_name = s.pose.ligand.name
+        if s.pose and s.pose.origin == "crystal" and s.pose.substance:
+            native_ligand_name = s.pose.substance.name
             break
 
     dock_plan_file = cwd / "dock_plan.json"
@@ -142,6 +147,8 @@ def run_rescore(
             f"FATAL: Consolidated ranking {res_csv} is missing. Process aborted."
         )
 
+    from cli.core.db import Substance, SubstanceState
+
     with open(res_csv, "r", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
@@ -150,7 +157,6 @@ def run_rescore(
             if not title or not frame_name:
                 continue
 
-            pose_name = f"{frame_name}_{title}_dock"
             scores_dict = {
                 k: float(v)
                 for k, v in row.items()
@@ -160,9 +166,25 @@ def run_rescore(
                 and v != ""
             }
 
-            pose_obj = session.query(Pose).filter_by(name=pose_name).first()
-            if pose_obj:
-                pose_obj.scores_dict = scores_dict
+            r_frame = session.query(ReceptorFrame).filter_by(name=frame_name).first()
+            sub_obj = session.query(Substance).filter_by(name=title).first()
+            if r_frame and sub_obj:
+                matched_poses = (
+                    session.query(Pose)
+                    .join(SubstanceState, Pose.substance_state_id == SubstanceState.id)
+                    .filter(
+                        Pose.receptor_frame_id == r_frame.id,
+                        SubstanceState.substance_id == sub_obj.id,
+                        Pose.origin.in_(
+                            ["docking_glide", "docking_gnina", "redock_glide", "redock_gnina"]
+                        ),
+                    )
+                    .all()
+                )
+                for pose_obj in matched_poses:
+                    merged_scores = pose_obj.scores_dict
+                    merged_scores.update(scores_dict)
+                    pose_obj.scores_dict = merged_scores
 
     session.commit()
     session.close()

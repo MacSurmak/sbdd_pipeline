@@ -22,21 +22,23 @@ from utils.parsers import parse_glide_csv, parse_prime_csv, parse_gnina_sdf
 
 
 def compute_pose_consensus_rmsd(df: pd.DataFrame, dock_dir: Path):
-    """Calculates in-place heavy-atom RMSD between Glide and GNINA dock poses using explicit file paths."""
-    try:
-        from rdkit import Chem
-        from rdkit.Chem import rdMolAlign
-    except ImportError:
-        df["Pose_RMSD"] = np.nan
-        return df
+    """Calculates in-situ symmetry-aware heavy-atom RMSD between Glide and GNINA dock poses."""
+    from rdkit import Chem
+
+    framework_dir = Path(__file__).resolve().parent.parent
+    if str(framework_dir) not in sys.path:
+        sys.path.insert(0, str(framework_dir))
+    from cli.core.chem import compute_symmetry_rmsd
 
     def _extract_mol(filepath: Path, target_title: str):
         if not filepath.exists() or filepath.stat().st_size == 0:
             return None
-        suppl = Chem.SDMolSupplier(str(filepath), removeHs=True, sanitize=False)
+        suppl = Chem.SDMolSupplier(str(filepath), removeHs=False, sanitize=False)
         for m in suppl:
             if m is not None:
                 m_title = m.GetProp("_Name").strip() if m.HasProp("_Name") else ""
+                if not m_title and m.HasProp("s_m_title"):
+                    m_title = m.GetProp("s_m_title").strip()
                 if m_title == target_title:
                     return m
         return None
@@ -52,15 +54,11 @@ def compute_pose_consensus_rmsd(df: pd.DataFrame, dock_dir: Path):
         if glide_sdf.exists() and gnina_sdf.exists():
             mg = _extract_mol(glide_sdf, title)
             mn = _extract_mol(gnina_sdf, title)
-            if (
-                mg is not None
-                and mn is not None
-                and mg.GetNumAtoms() == mn.GetNumAtoms()
-            ):
-                val = rdMolAlign.GetBestRMS(mg, mn)
-                rmsd_list.append(round(val, 2))
+            if mg is not None and mn is not None:
+                val = compute_symmetry_rmsd(mg, mn)
+                rmsd_list.append(round(val, 3))
                 continue
-        rmsd_list.append(np.nan)
+        rmsd_list.append(None)
 
     df["Pose_RMSD"] = rmsd_list
     return df
@@ -219,18 +217,12 @@ def main():
         ]:
             rmsd_csv = dock_dir / f"{rec_id}_{engine}_rmsd.csv"
             if rmsd_csv.exists() and rmsd_csv.stat().st_size > 0:
-                try:
-                    r_df = pd.read_csv(rmsd_csv)
-                    for _, r_row in r_df.iterrows():
-                        r_rec = str(r_row.get("Receptor", "")).strip()
-                        r_title = str(r_row.get("Title", "")).strip()
-                        if col_name in r_row and not pd.isna(r_row[col_name]):
-                            target_map[(r_rec, r_title)] = float(r_row[col_name])
-                except Exception as e:
-                    print(
-                        f"Warning: Failed to parse RMSD CSV {rmsd_csv}: {e}",
-                        file=sys.stderr,
-                    )
+                r_df = pd.read_csv(rmsd_csv)
+                for _, r_row in r_df.iterrows():
+                    r_rec = str(r_row.get("Receptor", "")).strip()
+                    r_title = str(r_row.get("Title", "")).strip()
+                    if col_name in r_row and not pd.isna(r_row[col_name]):
+                        target_map[(r_rec, r_title)] = float(r_row[col_name])
 
     glide_rmsds = []
     gnina_rmsds = []

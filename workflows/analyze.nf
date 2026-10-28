@@ -191,6 +191,12 @@ workflow ANALYZE_WF {
             params.mmpbsa_indi ?: 4.0,
             params.mmpbsa_fillratio ?: 1.25
         )
+
+        GMX_MMPBSA.out.pb_results.map { meta, pb_csv, pb_dat ->
+            def pub_dir = file("${params.outdir}/reports/mmpbsa/${meta.id}_rep_${meta.rep}").toAbsolutePath()
+            "${meta.rec_id}\t${meta.rep}\t${pub_dir}/${pb_csv.name}"
+        }.collectFile(name: 'mmpbsa_receipt.tsv', storeDir: params.outdir, newLine: true)
+
         return
     }
 

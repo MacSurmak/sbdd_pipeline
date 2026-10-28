@@ -15,8 +15,8 @@ def parse_glide_csv(csv_path: Path) -> Dict[str, Dict[str, float]]:
     with open(csv_path, "r", encoding="utf-8", errors="ignore") as f:
         reader = csv.DictReader(f)
         for row in reader:
-            title = row.get("title") or row.get("Title") or row.get("s_m_title")
-            if not title or title in data:
+            title = (row.get("title") or row.get("Title") or row.get("s_m_title") or "").strip()
+            if not title:
                 continue
 
             score = None
@@ -40,7 +40,9 @@ def parse_glide_csv(csv_path: Path) -> Dict[str, Dict[str, float]]:
                                 f"FATAL: Unparseable GScore '{row[k]}' for ligand '{title}': {e}"
                             )
             if score is not None:
-                data[title] = {"GlideScore": score}
+                # Retain the most favorable (lowest) GlideScore across protomers/poses
+                if title not in data or score < data[title]["GlideScore"]:
+                    data[title] = {"GlideScore": score}
     return data
 
 
@@ -51,8 +53,8 @@ def parse_prime_csv(csv_path: Path) -> Dict[str, Dict[str, float]]:
     with open(csv_path, "r", encoding="utf-8", errors="ignore") as f:
         reader = csv.DictReader(f)
         for row in reader:
-            title = row.get("title") or row.get("Title") or row.get("s_m_title")
-            if not title or title in data:
+            title = (row.get("title") or row.get("Title") or row.get("s_m_title") or "").strip()
+            if not title:
                 continue
             props: Dict[str, float] = {}
             for k, v in row.items():
@@ -81,7 +83,8 @@ def parse_prime_csv(csv_path: Path) -> Dict[str, Dict[str, float]]:
                         )
 
             if props:
-                data[title] = props
+                if title not in data or props.get("MMGBSA", float("inf")) < data[title].get("MMGBSA", float("inf")):
+                    data[title] = props
     return data
 
 
@@ -90,15 +93,14 @@ def parse_gnina_sdf(sdf_path: Path, prefix: str = "") -> Dict[str, Dict[str, flo
     if not sdf_path or not sdf_path.exists():
         return data
 
-    try:
-        from rdkit import Chem
-    except ImportError:
-        return data
+    from rdkit import Chem
 
     suppl = Chem.SDMolSupplier(str(sdf_path), removeHs=False, sanitize=False)
-    for mol in suppl:
+    for idx, mol in enumerate(suppl, start=1):
         if mol is None:
-            continue
+            raise ValueError(
+                f"FATAL: Corrupted molecule record at index {idx} in {sdf_path}"
+            )
 
         title = mol.GetProp("_Name").strip() if mol.HasProp("_Name") else ""
         if not title and mol.HasProp("s_m_title"):
@@ -113,23 +115,23 @@ def parse_gnina_sdf(sdf_path: Path, prefix: str = "") -> Dict[str, Dict[str, flo
                 "minimizedaffinity",
                 "affinity",
             ]:
+                raw_val = mol.GetProp(prop_name)
                 try:
-                    val = float(mol.GetProp(prop_name))
-                    if tag_clean == "cnnscore":
-                        props[f"{prefix}CNNscore"] = val
-                    elif tag_clean == "cnnaffinity":
-                        props[f"{prefix}CNNaffinity"] = val
-                    elif tag_clean in ["minimizedaffinity", "affinity"]:
-                        props[f"{prefix}VinaAff"] = val
-                except ValueError:
-                    pass
+                    val = float(raw_val)
+                except ValueError as e:
+                    raise ValueError(
+                        f"FATAL: Unparseable GNINA metric '{prop_name}={raw_val}' for ligand '{title}' in {sdf_path}: {e}"
+                    )
+                if tag_clean == "cnnscore":
+                    props[f"{prefix}CNNscore"] = val
+                elif tag_clean == "cnnaffinity":
+                    props[f"{prefix}CNNaffinity"] = val
+                elif tag_clean in ["minimizedaffinity", "affinity"]:
+                    props[f"{prefix}VinaAff"] = val
 
-        title_clean = re.sub(r"(_model_\d+|_dock_\d+|_\d+)$", "", title).strip()
-
-        if props:
-            if title and title not in data:
+        if props and title:
+            aff_key = f"{prefix}CNNaffinity"
+            if title not in data or props.get(aff_key, float("-inf")) > data[title].get(aff_key, float("-inf")):
                 data[title] = props
-            if title_clean and title_clean not in data:
-                data[title_clean] = props
 
     return data
