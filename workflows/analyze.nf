@@ -27,7 +27,8 @@ workflow ANALYZE_WF {
                 project: params.project_name
             ]
             def xtc_files = item.xtcs ? item.xtcs.collect { file(it) } : [ file(item.xtc) ]
-            [ meta, xtc_files, file(item.tpr) ]
+            def dry_top_f = item.dry_top ? file(item.dry_top) : []
+            [ meta, xtc_files, file(item.tpr), dry_top_f ]
         }
 
         TRJCONV(
@@ -209,7 +210,7 @@ workflow ANALYZE_WF {
     ch_trjconv_in = Channel.value(meta)
         .combine(ch_traj)
         .combine(ch_tpr)
-        .map { m, traj, tpr -> [m, traj, tpr] }
+        .map { m, traj, tpr -> [m, traj, tpr, []] }
 
     TRJCONV(
         ch_trjconv_in,

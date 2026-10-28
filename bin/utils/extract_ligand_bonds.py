@@ -9,24 +9,48 @@ def main():
         sys.exit(1)
 
     rec_file = sys.argv[1]
-    lig_name = sys.argv[2].strip().upper()
+    lig_spec = sys.argv[2].strip()
     out_file = sys.argv[3]
 
+    # Support both plain resname ("TGI") and exact chain:resnum:resname ("A:601:NA")
+    if ":" in lig_spec:
+        parts = lig_spec.split(":")
+        req_chain = parts[0].strip()
+        req_resnum = int(parts[1].strip())
+        lig_name = parts[2].strip().upper()
+    else:
+        req_chain = None
+        req_resnum = None
+        lig_name = lig_spec.upper()
+
     st = structure.StructureReader.read(rec_file)
-    lig_atoms = [a.index for a in st.atom if a.pdbres.strip().upper() == lig_name]
+    lig_atoms = [
+        a.index
+        for a in st.atom
+        if a.pdbres.strip().upper() == lig_name
+        and (req_chain is None or a.chain.strip() == req_chain)
+        and (req_resnum is None or a.resnum == req_resnum)
+    ]
 
     if not lig_atoms:
-        avail = sorted(list(set(a.pdbres.strip().upper() for a in st.atom)))
+        avail = sorted(
+            list(
+                set(
+                    f"{a.chain.strip()}:{a.resnum}:{a.pdbres.strip().upper()}"
+                    for a in st.atom
+                )
+            )
+        )
         print(f"RESIDUE_NOT_FOUND: {avail}", file=sys.stderr)
         sys.exit(2)
 
     lig_st = st.extract(lig_atoms)
 
-    # Strict Fail-Fast: Organic molecules must be a single connected graph
-    if len(lig_st.molecule) > 1 and len(lig_atoms) > len(lig_st.molecule):
+    # Strict Fail-Fast: Any extracted pose entity must be a single connected molecular graph
+    if len(lig_st.molecule) > 1:
         print(
-            f"FATAL: Residue name '{lig_name}' resolves to {len(lig_st.molecule)} disconnected molecules in the pocket! "
-            f"This destroys quantum parametrization. You must assign unique residue names (e.g. ATP, AT2) to distinct molecules.",
+            f"FATAL: Specification '{lig_spec}' resolves to {len(lig_st.molecule)} disconnected molecules! "
+            f"Each cofactor or ion instance must be extracted by its unique residue identifier.",
             file=sys.stderr,
         )
         sys.exit(1)

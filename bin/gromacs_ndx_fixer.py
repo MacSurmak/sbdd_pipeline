@@ -362,6 +362,11 @@ if __name__ == "__main__":
     parser.add_argument("--ion_names", default="")
     parser.add_argument("--lipid_names", default="")
     parser.add_argument(
+        "--dry_top",
+        default="",
+        help="Optional dry topology (.top/.prmtop) for exact COMPLEX atom count",
+    )
+    parser.add_argument(
         "--prod_group",
         default="C-alpha",
         help="Index group to generate native production position restraints for (e.g. C-alpha)",
@@ -391,8 +396,13 @@ if __name__ == "__main__":
             prod_fc=args.prod_fc,
         )
     elif args.action == "ensure_complex":
+        dry_top_p = Path(args.dry_top).resolve() if args.dry_top else None
         ensure_complex_ndx_group(
-            Path(args.ndx), args.water_names, args.ion_names, args.lipid_names
+            Path(args.ndx),
+            args.water_names,
+            args.ion_names,
+            args.lipid_names,
+            dry_top_path=dry_top_p,
         )
     elif args.action == "add_pocket":
         add_pocket_group(Path(args.ndx), Path(args.pdb), args.ligand)

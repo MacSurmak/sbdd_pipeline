@@ -132,23 +132,23 @@ def cmd_trjconv(args):
         tgt = "scratch_concat.xtc"
 
     run_gmx(["gmx", "make_ndx", "-f", args.tpr, "-o", "index.ndx"], input_str="q\n")
-    subprocess.run(
-        [
-            sys.executable,
-            f"{Path(__file__).parent}/gromacs_ndx_fixer.py",
-            "--ndx",
-            "index.ndx",
-            "--action",
-            "ensure_complex",
-            "--water_names",
-            args.water_names,
-            "--ion_names",
-            args.ion_names,
-            "--lipid_names",
-            args.lipid_names,
-        ],
-        check=True,
-    )
+    ensure_cmd = [
+        sys.executable,
+        f"{Path(__file__).parent}/gromacs_ndx_fixer.py",
+        "--ndx",
+        "index.ndx",
+        "--action",
+        "ensure_complex",
+        "--water_names",
+        args.water_names,
+        "--ion_names",
+        args.ion_names,
+        "--lipid_names",
+        args.lipid_names,
+    ]
+    if getattr(args, "dry_top", ""):
+        ensure_cmd.extend(["--dry_top", args.dry_top])
+    subprocess.run(ensure_cmd, check=True)
     run_gmx(
         [
             "gmx",
@@ -746,6 +746,7 @@ def main():
     p_trjconv.add_argument("--out_pdb", required=True)
     p_trjconv.add_argument("--out_ndx", default="")
     p_trjconv.add_argument("--ligand", default="")
+    p_trjconv.add_argument("--dry_top", default="")
     p_trjconv.add_argument("--water_names", required=True)
     p_trjconv.add_argument("--ion_names", required=True)
     p_trjconv.add_argument("--lipid_names", required=True)

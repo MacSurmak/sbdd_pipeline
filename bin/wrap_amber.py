@@ -137,6 +137,9 @@ def cmd_tleap_dry(args):
 
 
 def cmd_tleap(args):
+    # For membrane systems, packmol-memgen has already solvated the bilayer with explicit water;
+    # never strip packmol water in amber_cap_fixer!
+    effective_water_strip = "" if args.membrane else args.water_names
     subprocess.run(
         [
             sys.executable,
@@ -148,7 +151,7 @@ def cmd_tleap(args):
             "--ss_cutoff",
             str(args.ss_cutoff),
             "--water_names",
-            args.water_names,
+            effective_water_strip,
         ],
         check=True,
     )
@@ -228,9 +231,9 @@ def cmd_tleap(args):
         f.write("set default PBRadii mbondi3\nsource apply_bonds.in\n")
         if not args.membrane:
             f.write(f"{box_cmd}\n")
-        f.write("addIonsRand complex Cl- 0\naddIonsRand complex K+ 0\n")
-        if salt_pairs > 0:
-            f.write(f"addIonsRand complex K+ {salt_pairs} Cl- {salt_pairs}\n")
+            f.write("addIonsRand complex Cl- 0\naddIonsRand complex K+ 0\n")
+            if salt_pairs > 0:
+                f.write(f"addIonsRand complex K+ {salt_pairs} Cl- {salt_pairs}\n")
         f.write("charge complex\n")
         f.write(
             "saveAmberParm complex complex.prmtop complex.inpcrd\nsavepdb complex complex_tleap.pdb\nquit\n"

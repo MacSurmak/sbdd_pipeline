@@ -31,12 +31,36 @@ def write_ndx_group(f, name: str, atom_ids: List[int]):
         f.write(" ".join(f"{x:5d}" for x in atom_ids[i : i + 15]) + "\n")
 
 
+def count_dry_top_atoms(dry_top_path: Path) -> int:
+    """
+    Deterministically counts the exact number of atoms in the dry complex topology
+    (complex_dry.top or complex_dry.prmtop) to preserve structural pocket ions.
+    """
+    if not dry_top_path.exists() or dry_top_path.stat().st_size == 0:
+        raise FileNotFoundError(
+            f"FATAL: Dry topology file missing or empty: {dry_top_path}"
+        )
+    import parmed as pmd
+
+    struct = pmd.load_file(str(dry_top_path))
+    if len(struct.atoms) == 0:
+        raise ValueError(
+            f"FATAL: Dry topology {dry_top_path} resolved to 0 atoms!"
+        )
+    return len(struct.atoms)
+
+
 def ensure_complex_ndx_group(
-    ndx_path: Path, water_names: str, ion_names: str, lipid_names: str
+    ndx_path: Path,
+    water_names: str,
+    ion_names: str,
+    lipid_names: str,
+    dry_top_path: Path | None = None,
 ):
     """
-    Builds [ COMPLEX ] strictly containing Protein + Ligands + all Cofactors.
-    Excludes water, bulk ions, and membrane lipids purely by provided yaml names.
+    Builds [ COMPLEX ] strictly containing Protein + Ligands + all structural Cofactors/Ions.
+    When dry_top_path is provided, guarantees exact atom count parity with complex_dry.top
+    so structural ions in the binding pocket are never stripped along with bulk salt.
     """
     if not ndx_path.exists():
         raise FileNotFoundError(f"FATAL: index.ndx not found at {ndx_path}")
@@ -45,18 +69,27 @@ def ensure_complex_ndx_group(
     if "System" not in groups:
         raise KeyError("Group [ System ] not found in index.ndx")
 
-    w_set = {x.strip() for x in water_names.split(",") if x.strip()}
-    i_set = {x.strip() for x in ion_names.split(",") if x.strip()}
-    l_set = {x.strip() for x in lipid_names.split(",") if x.strip()}
-    solvent_and_lipid_names = w_set | i_set | l_set
+    if dry_top_path is not None:
+        n_dry = count_dry_top_atoms(dry_top_path)
+        system_atoms_sorted = sorted(groups["System"])
+        if len(system_atoms_sorted) < n_dry:
+            raise ValueError(
+                f"FATAL: System atom count ({len(system_atoms_sorted)}) is smaller than dry topology ({n_dry})!"
+            )
+        complex_atoms = system_atoms_sorted[:n_dry]
+    else:
+        w_set = {x.strip() for x in water_names.split(",") if x.strip()}
+        i_set = {x.strip() for x in ion_names.split(",") if x.strip()}
+        l_set = {x.strip() for x in lipid_names.split(",") if x.strip()}
+        solvent_and_lipid_names = w_set | i_set | l_set
 
-    solvent_atoms: set[int] = set()
-    for name in solvent_and_lipid_names:
-        if name in groups:
-            solvent_atoms.update(groups[name])
+        solvent_atoms: set[int] = set()
+        for name in solvent_and_lipid_names:
+            if name in groups:
+                solvent_atoms.update(groups[name])
 
-    system_atoms = set(groups["System"])
-    complex_atoms = sorted(list(system_atoms - solvent_atoms))
+        system_atoms = set(groups["System"])
+        complex_atoms = sorted(list(system_atoms - solvent_atoms))
 
     if not complex_atoms:
         raise ValueError(

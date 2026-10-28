@@ -21,7 +21,9 @@ process PUBLISH_MD_SYSTEM {
     cp -L "${top}" "${meta.id}_topol.top"
     cp -L "${ndx}" "${meta.id}_index.ndx"
     cp -L "${dry_prmtop}" "${meta.id}_complex_dry.prmtop"
-    python3 -c "import parmed as pmd; s = pmd.load_file('${dry_prmtop}'); s.save('${meta.id}_complex_dry.top', format='gromacs', overwrite=True)"
+    python3 ${projectDir}/bin/convert_amber_to_gmx.py \\
+        --prmtop "${dry_prmtop}" \\
+        --out_top "${meta.id}_complex_dry.top"
     """
 }
 

@@ -540,126 +540,148 @@ def add_receptor(
                     f"    It cannot be processed by 'sbdd prep'. Provide FASTA and run 'sbdd heal' to physically repair it."
                 )
 
-            # In the 3NF schema, Poses live inside substances/<inchikey>/poses/<pose_name>/
-            def _process_heterogen(resname: str, sub_type: str):
+            # Enumerate all physical residue instances matching resname in complex_file
+            from Bio.PDB import PDBParser as _BioPDBParser
+
+            _st_parsed = _BioPDBParser(QUIET=True).get_structure("frame", str(complex_file))
+
+            def _process_heterogen_instances(resname: str, sub_type: str) -> list[Pose]:
                 import tempfile
 
                 clean_res_name = resname.strip().upper()
+                matching_instances = []
+                for _chain in _st_parsed[0]:
+                    for _res in _chain:
+                        if _res.get_resname().strip().upper() == clean_res_name:
+                            matching_instances.append((_chain.id.strip(), int(_res.get_id()[1])))
 
-                with tempfile.NamedTemporaryFile(suffix=".sdf", delete=False) as tmp_f:
-                    tmp_extract_sdf = Path(tmp_f.name)
-
-                _extract_ligand_atoms(complex_file, clean_res_name, tmp_extract_sdf)
-                (
-                    parent_inchikey,
-                    parent_smiles,
-                    mol_name,
-                    state_hash,
-                    isomeric_smiles,
-                    formal_charge,
-                ) = get_microstate_identity(tmp_extract_sdf)
-
-                sub_dir = cwd / "substances" / parent_inchikey
-                sub_dir.mkdir(parents=True, exist_ok=True)
-
-                # Canonical Base Template: substances/<inchikey>/<res>_base.sdf
-                base_sdf = sub_dir / f"{clean_res_name}_base.sdf"
-                if not base_sdf.exists():
-                    shutil.copy2(tmp_extract_sdf, base_sdf)
-
-                # Substance Registration (Parent 2D compound)
-                sub_entity = (
-                    session.query(Substance).filter_by(inchikey=parent_inchikey).first()
-                )
-                if not sub_entity:
-                    sub_entity = Substance(
-                        inchikey=parent_inchikey,
-                        smiles=parent_smiles,
-                        name=mol_name or clean_res_name,
-                        res_name=clean_res_name,
-                        substance_type=sub_type,
-                        state="raw",
-                        batch_id="crystal_extract",
-                        path_sdf=str(base_sdf.resolve()),
-                    )
-                    session.add(sub_entity)
-                    session.flush()
-                    console.print(
-                        f"[bold green]✓ Registered {sub_type.capitalize()} '{sub_entity.name}'[/bold green] [dim](raw, {parent_inchikey})[/dim]"
-                    )
-                else:
-                    console.print(
-                        f"[bold green]✓ Matched existing {sub_type.capitalize()} '{sub_entity.name}' via InChIKey[/bold green] [dim]({parent_inchikey})[/dim]"
+                if not matching_instances:
+                    raise ValueError(
+                        f"FATAL: Residue '{clean_res_name}' not found in sanitized frame {complex_file}!"
                     )
 
-                # SubstanceState Registration (Specific microstate / protomer / charge)
-                state_entity = (
-                    session.query(SubstanceState)
-                    .filter_by(substance_id=sub_entity.id, state_hash=state_hash)
-                    .first()
-                )
-                if not state_entity:
-                    state_entity = SubstanceState(
-                        substance_id=sub_entity.id,
-                        state_hash=state_hash,
-                        isomeric_smiles=isomeric_smiles,
-                        formal_charge=formal_charge,
-                        state="raw",
-                        path_sdf=str(base_sdf.resolve()),
-                    )
-                    session.add(state_entity)
-                    session.flush()
+                created_poses = []
+                multi_instance = len(matching_instances) > 1
 
-                # Canonical Pose Storage: substances/<inchikey>/poses/<pose_name>/<res>_pose.sdf
-                pose_name = f"{frame_name}_{clean_res_name}_crystal"
-                pose_dir = sub_dir / "poses" / pose_name
-                pose_dir.mkdir(parents=True, exist_ok=True)
-                pose_sdf = pose_dir / f"{clean_res_name}_pose.sdf"
+                for c_id, r_num in matching_instances:
+                    with tempfile.NamedTemporaryFile(suffix=".sdf", delete=False) as tmp_f:
+                        tmp_extract_sdf = Path(tmp_f.name)
 
-                shutil.move(str(tmp_extract_sdf), str(pose_sdf))
+                    spec_token = f"{c_id}:{r_num}:{clean_res_name}"
+                    _extract_ligand_atoms(complex_file, spec_token, tmp_extract_sdf)
+                    (
+                        parent_inchikey,
+                        parent_smiles,
+                        mol_name,
+                        state_hash,
+                        isomeric_smiles,
+                        formal_charge,
+                    ) = get_microstate_identity(tmp_extract_sdf)
 
-                if tmp_extract_sdf.exists():
-                    tmp_extract_sdf.unlink()
+                    sub_dir = cwd / "substances" / parent_inchikey
+                    sub_dir.mkdir(parents=True, exist_ok=True)
 
-                p_obj = session.query(Pose).filter_by(name=pose_name).first()
-                if p_obj:
-                    p_obj.substance_state_id = state_entity.id
-                    p_obj.path = str(pose_sdf.resolve())
-                    p_obj.path_sdf = str(pose_sdf.resolve())
-                    p_obj.res_name = clean_res_name
-                else:
-                    p_obj = Pose(
-                        substance_state_id=state_entity.id,
-                        receptor_frame_id=frame_obj.id,
-                        name=pose_name,
-                        res_name=clean_res_name,
-                        origin="crystal",
-                        state="ready",
-                        path=str(pose_sdf.resolve()),
-                        path_sdf=str(pose_sdf.resolve()),
+                    base_sdf = sub_dir / f"{clean_res_name}_base.sdf"
+                    if not base_sdf.exists():
+                        shutil.copy2(tmp_extract_sdf, base_sdf)
+
+                    sub_entity = (
+                        session.query(Substance).filter_by(inchikey=parent_inchikey).first()
                     )
-                    session.add(p_obj)
-                    session.flush()
-                    ch_label = (
-                        f"q={formal_charge:+d}" if formal_charge != 0 else "neutral"
+                    if not sub_entity:
+                        sub_entity = Substance(
+                            inchikey=parent_inchikey,
+                            smiles=parent_smiles,
+                            name=mol_name or clean_res_name,
+                            res_name=clean_res_name,
+                            substance_type=sub_type,
+                            state="raw",
+                            batch_id="crystal_extract",
+                            path_sdf=str(base_sdf.resolve()),
+                        )
+                        session.add(sub_entity)
+                        session.flush()
+                        console.print(
+                            f"[bold green]✓ Registered {sub_type.capitalize()} '{sub_entity.name}'[/bold green] [dim](raw, {parent_inchikey})[/dim]"
+                        )
+
+                    state_entity = (
+                        session.query(SubstanceState)
+                        .filter_by(substance_id=sub_entity.id, state_hash=state_hash)
+                        .first()
                     )
-                    console.print(
-                        f"[bold green]✓ Registered Pose '{pose_name}'[/bold green] [dim]({clean_res_name}, {ch_label}, state={state_hash}) in substance {parent_inchikey}[/dim]"
-                    )
-                return p_obj
+                    if not state_entity:
+                        state_entity = SubstanceState(
+                            substance_id=sub_entity.id,
+                            state_hash=state_hash,
+                            isomeric_smiles=isomeric_smiles,
+                            formal_charge=formal_charge,
+                            state="raw",
+                            path_sdf=str(base_sdf.resolve()),
+                        )
+                        session.add(state_entity)
+                        session.flush()
+
+                    if multi_instance:
+                        pose_name = f"{frame_name}_{clean_res_name}_{c_id}{r_num}_crystal"
+                    else:
+                        pose_name = f"{frame_name}_{clean_res_name}_crystal"
+
+                    pose_dir = sub_dir / "poses" / pose_name
+                    pose_dir.mkdir(parents=True, exist_ok=True)
+                    pose_sdf = pose_dir / f"{clean_res_name}_pose.sdf"
+
+                    shutil.move(str(tmp_extract_sdf), str(pose_sdf))
+                    if tmp_extract_sdf.exists():
+                        tmp_extract_sdf.unlink()
+
+                    meta_scores = {"chain_id": c_id, "resnum": r_num}
+                    p_obj = session.query(Pose).filter_by(name=pose_name).first()
+                    if p_obj:
+                        p_obj.substance_state_id = state_entity.id
+                        p_obj.path = str(pose_sdf.resolve())
+                        p_obj.path_sdf = str(pose_sdf.resolve())
+                        p_obj.res_name = clean_res_name
+                        p_obj.scores_dict = meta_scores
+                    else:
+                        p_obj = Pose(
+                            substance_state_id=state_entity.id,
+                            receptor_frame_id=frame_obj.id,
+                            name=pose_name,
+                            res_name=clean_res_name,
+                            origin="crystal",
+                            state="ready",
+                            path=str(pose_sdf.resolve()),
+                            path_sdf=str(pose_sdf.resolve()),
+                        )
+                        p_obj.scores_dict = meta_scores
+                        session.add(p_obj)
+                        session.flush()
+                        ch_label = (
+                            f"q={formal_charge:+d}" if formal_charge != 0 else "neutral"
+                        )
+                        console.print(
+                            f"[bold green]✓ Registered Pose '{pose_name}'[/bold green] [dim]({clean_res_name} {c_id}:{r_num}, {ch_label}, state={state_hash})[/dim]"
+                        )
+                    created_poses.append(p_obj)
+                return created_poses
 
             main_ligand_pose = None
             if lig_code:
-                main_ligand_pose = _process_heterogen(lig_code, "ligand")
+                lig_poses = _process_heterogen_instances(lig_code, "ligand")
+                if len(lig_poses) > 1:
+                    raise ValueError(
+                        f"FATAL: Active ligand '{lig_code}' has {len(lig_poses)} copies in frame '{frame_name}'! "
+                        "Ensure the structure contains a single primary chain or unique ligand residue ID."
+                    )
+                main_ligand_pose = lig_poses[0]
 
             hetero_poses = []
             for cof in safe_cofactors:
-                c_pose = _process_heterogen(cof, "cofactor")
-                hetero_poses.append(c_pose)
+                hetero_poses.extend(_process_heterogen_instances(cof, "cofactor"))
 
             for ion in safe_ions:
-                i_pose = _process_heterogen(ion, "ion")
-                hetero_poses.append(i_pose)
+                hetero_poses.extend(_process_heterogen_instances(ion, "ion"))
 
             # System assembly (Pure relational binding of Frame + Poses)
             sys_name = f"{frame_name}_{lig_code}" if lig_code else frame_name

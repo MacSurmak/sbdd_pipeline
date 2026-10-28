@@ -14,7 +14,9 @@ def main():
         description="Convert Amber Topology to GROMACS via ParmEd"
     )
     parser.add_argument("--prmtop", required=True, help="Input Amber prmtop file")
-    parser.add_argument("--inpcrd", required=True, help="Input Amber inpcrd file")
+    parser.add_argument("--inpcrd", default=None, help="Input Amber inpcrd file")
+    parser.add_argument("--out_top", default="topol.top", help="Output GROMACS top file")
+    parser.add_argument("--out_gro", default="step3_input.gro", help="Output GROMACS gro file")
     args = parser.parse_args()
 
     try:
@@ -26,14 +28,18 @@ def main():
         )
         sys.exit(1)
 
-    print(f"Loading {args.prmtop} and {args.inpcrd}...")
-    struct = pmd.load_file(args.prmtop, args.inpcrd)
+    if args.inpcrd:
+        print(f"Loading {args.prmtop} and {args.inpcrd}...")
+        struct = pmd.load_file(args.prmtop, args.inpcrd)
+    else:
+        print(f"Loading dry topology {args.prmtop}...")
+        struct = pmd.load_file(args.prmtop)
 
-    print("Saving GROMACS topol.top...")
-    struct.save("topol.top", format="gromacs", overwrite=True)
+    print(f"Saving GROMACS {args.out_top}...")
+    struct.save(args.out_top, format="gromacs", overwrite=True)
 
     # Fail-Fast Validation: Ensure terminal caps are covalently integrated and did not fragment
-    topol_text = Path("topol.top").read_text(encoding="utf-8", errors="ignore")
+    topol_text = Path(args.out_top).read_text(encoding="utf-8", errors="ignore")
     isolated_caps = []
     in_moleculetype = False
 
@@ -61,8 +67,9 @@ def main():
         )
         sys.exit(1)
 
-    print("Saving GROMACS step3_input.gro...")
-    struct.save("step3_input.gro", overwrite=True)
+    if args.inpcrd:
+        print(f"Saving GROMACS {args.out_gro}...")
+        struct.save(args.out_gro, overwrite=True)
     print("Conversion successful.")
 
 

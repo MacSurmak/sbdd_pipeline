@@ -72,22 +72,28 @@ def run_prep(
         system = session.query(System).filter_by(receptor_frame_id=frame.id).first()
         heterogens = []
         if system and system.pose:
+            p_meta = system.pose.scores_dict
             heterogens.append(
                 {
                     "res_name": system.pose.res_name,
                     "pose_name": system.pose.name,
                     "inchikey": system.pose.substance.inchikey,
+                    "chain_id": p_meta.get("chain_id"),
+                    "resnum": p_meta.get("resnum"),
                     "is_ligand": True,
                     "is_ion": False,
                 }
             )
         if system:
             for cof in system.cofactors:
+                c_meta = cof.scores_dict
                 heterogens.append(
                     {
                         "res_name": cof.res_name,
                         "pose_name": cof.name,
                         "inchikey": cof.substance.inchikey,
+                        "chain_id": c_meta.get("chain_id"),
+                        "resnum": c_meta.get("resnum"),
                         "is_ligand": False,
                         "is_ion": (cof.substance.substance_type == "ion"),
                     }

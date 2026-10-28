@@ -8,7 +8,7 @@ process TRJCONV {
     label 'process_medium'
 
     input:
-    tuple val(meta), path(xtc_inputs, stageAs: 'inputs/*'), path(tpr)
+    tuple val(meta), path(xtc_inputs, stageAs: 'inputs/*'), path(tpr), path(dry_top)
     val(pbc_center)
     val(pbc_extract)
     val(water_names)
@@ -20,6 +20,7 @@ process TRJCONV {
 
     script:
     def lig_arg = meta.ligand ? "--ligand ${meta.ligand}" : ""
+    def dry_arg = (dry_top && dry_top.name != 'NO_DRY_TOP') ? "--dry_top ${dry_top}" : ""
     """
     python3 ${projectDir}/bin/wrap_gromacs.py trjconv \\
         --xtcs inputs/*.xtc \\
@@ -30,6 +31,7 @@ process TRJCONV {
         --out_pdb complex_ref.pdb \\
         --out_ndx complex_clean.ndx \\
         ${lig_arg} \\
+        ${dry_arg} \\
         --water_names "${water_names}" \\
         --ion_names "${ion_names}" \\
         --lipid_names "${lipid_names}"

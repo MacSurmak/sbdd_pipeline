@@ -147,6 +147,11 @@ def run_clean_traj(
 
         clean_dir = raw_dir.parent / "clean"
         lig_code = t.system.pose.res_name if (t.system and t.system.pose) else ""
+        dry_top_str = (
+            str(Path(t.system.path_dry_prmtop).resolve())
+            if (t.system and t.system.path_dry_prmtop and Path(t.system.path_dry_prmtop).exists())
+            else ""
+        )
         plan_list.append(
             {
                 "name": t.name,
@@ -154,6 +159,7 @@ def run_clean_traj(
                 "rep": t.replicate,
                 "xtcs": [str(c.resolve()) for c in chunks],
                 "tpr": str(Path(t.path_tpr).resolve()),
+                "dry_top": dry_top_str,
                 "ligand": lig_code,
                 "clean_dir": str(clean_dir.resolve()),
             }

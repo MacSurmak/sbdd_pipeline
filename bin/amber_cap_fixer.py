@@ -100,13 +100,15 @@ def main():
     else:
         struct = pmd.load_file(args.input_pdb)
 
-    # 1. Strip solvent strictly based on configuration SSOT via ParmEd masks
+    # 1. Strip crystallographic solvent if requested via configuration SSOT
     water_residues = [
         w.strip().upper() for w in args.water_names.split(",") if w.strip()
     ]
     if water_residues:
-        water_mask = ":" + ",".join(water_residues)
-        struct.strip(water_mask)
+        present_water = {r.name.strip().upper() for r in struct.residues} & set(water_residues)
+        if present_water:
+            water_mask = ":" + ",".join(sorted(present_water))
+            struct.strip(water_mask)
 
     # 2. Strict globally monotonic residue numbering (1..N) eliminating insertion codes
     for idx, res in enumerate(struct.residues, start=1):

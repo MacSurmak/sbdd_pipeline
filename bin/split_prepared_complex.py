@@ -76,22 +76,39 @@ def main():
         inchikey = item["inchikey"]
         is_lig = item.get("is_ligand", False)
         is_ion = item.get("is_ion", False)
+        req_chain = item.get("chain_id")
+        req_resnum = item.get("resnum")
 
-        atoms = [a.index for a in st.atom if a.pdbres.strip().upper() == res_clean]
-        if not atoms:
+        candidate_residues = [
+            r for r in st.residue if r.pdbres.strip().upper() == res_clean
+        ]
+        if not candidate_residues:
             avail = sorted(list(set(r.pdbres.strip().upper() for r in st.residue)))
             raise ValueError(
                 f"FATAL: Residue '{res_clean}' for pose '{pose_name}' not found in prepared complex! "
                 f"Available residues: {avail}"
             )
 
+        matched_res = None
+        if req_resnum is not None:
+            for r in candidate_residues:
+                if r.resnum == int(req_resnum) and (
+                    not req_chain or r.chain.strip() == req_chain
+                ):
+                    matched_res = r
+                    break
+
+        if matched_res is None:
+            matched_res = candidate_residues[0]
+
+        atoms = [a.index for a in matched_res.atom]
         pose_st = st.extract(atoms)
 
-        # Strict Fail-Fast: Ensure organic poses are single connected graphs
-        if not is_ion and len(pose_st.molecule) > 1:
+        # Strict Fail-Fast: Every pose entity (organic or monoatomic ion) must be a single connected graph
+        if len(pose_st.molecule) > 1:
             raise ValueError(
-                f"FATAL: Residue '{res_clean}' resolves to {len(pose_st.molecule)} disconnected molecules! "
-                f"Quantum parametrization (AM1-BCC) requires a single connected graph. Assign unique residue names."
+                f"FATAL: Residue '{res_clean}' (resnum={matched_res.resnum}) resolves to {len(pose_st.molecule)} disconnected molecules! "
+                f"Each molecular entity must be a single connected graph."
             )
 
         pose_st.title = res_clean
