@@ -590,6 +590,10 @@ def run_extract_medoids(
     poses_created = 0
     systems_created = 0
 
+    frame_lines = []
+    pose_lines = []
+    system_lines = []
+
     with open(receipt_file, "r", encoding="utf-8") as rf:
         for line in rf:
             line_str = line.strip()
@@ -597,105 +601,133 @@ def run_extract_medoids(
                 continue
             parts = line_str.split("\t")
             record_type = parts[0]
-
             if record_type == "FRAME":
-                _, t_name, f_name, rel_pdb, rel_mae, p_id_str, r_str, pop_str, sp_str, f_grp, a_grp, d_red = parts
-                abs_pdb = assert_permanent_path(cwd / rel_pdb, f"Receptor PDB {f_name}")
-                abs_mae = assert_permanent_path(cwd / rel_mae, f"Receptor MAE {f_name}") if rel_mae != "None" else None
-
-                t_obj = session.query(Target).filter_by(name=t_name).first()
-                ex_f = session.query(ReceptorFrame).filter_by(name=f_name).first()
-                if not ex_f:
-                    new_frame = ReceptorFrame(
-                        target_id=t_obj.id,
-                        name=f_name,
-                        source_type="md_centroid",
-                        parent_frame_id=int(p_id_str) if p_id_str != "None" else None,
-                        feature_group=f_grp,
-                        align_group=a_grp,
-                        dim_reduction_method=d_red,
-                        cluster_rank=int(r_str),
-                        population=float(pop_str),
-                        compactness_spread=float(sp_str),
-                        state="ready",
-                        path=str(abs_pdb),
-                        path_pdb=str(abs_pdb),
-                        path_mae=str(abs_mae) if abs_mae else None,
-                    )
-                    session.add(new_frame)
-                    frames_created += 1
-                else:
-                    ex_f.path = str(abs_pdb)
-                    ex_f.path_pdb = str(abs_pdb)
-                    if abs_mae:
-                        ex_f.path_mae = str(abs_mae)
-                    ex_f.state = "ready"
-                    ex_f.population = float(pop_str)
-                    ex_f.compactness_spread = float(sp_str)
-
+                frame_lines.append(parts)
             elif record_type == "POSE":
-                _, f_name, p_name, inchikey, res_name, st_id_str, rel_sdf, rel_mae, lig_flag = parts
-                abs_sdf = assert_permanent_path(cwd / rel_sdf, f"Pose SDF {p_name}")
-                abs_mae = assert_permanent_path(cwd / rel_mae, f"Pose MAE {p_name}") if rel_mae != "None" else None
-
-                frame_obj = session.query(ReceptorFrame).filter_by(name=f_name).first()
-                state_obj = session.query(SubstanceState).get(int(st_id_str))
-
-                ex_p = session.query(Pose).filter_by(name=p_name).first()
-                if not ex_p:
-                    new_p = Pose(
-                        substance_state_id=state_obj.id,
-                        receptor_frame_id=frame_obj.id,
-                        name=p_name,
-                        res_name=res_name,
-                        origin="md_centroid",
-                        state="ready",
-                        path=str(abs_sdf),
-                        path_sdf=str(abs_sdf),
-                        path_mae=str(abs_mae),
-                    )
-                    session.add(new_p)
-                    poses_created += 1
-                else:
-                    ex_p.path = str(abs_sdf)
-                    ex_p.path_sdf = str(abs_sdf)
-                    ex_p.path_mae = str(abs_mae)
-                    ex_p.state = "ready"
-
+                pose_lines.append(parts)
             elif record_type == "SYSTEM":
-                _, t_name, s_name, f_name, lig_pname, cof_names_str = parts
-                t_obj = session.query(Target).filter_by(name=t_name).first()
-                frame_obj = session.query(ReceptorFrame).filter_by(name=f_name).first()
+                system_lines.append(parts)
 
-                lig_pose = session.query(Pose).filter_by(name=lig_pname).first() if lig_pname else None
-                cofactor_poses = []
-                if cof_names_str:
-                    for cp in cof_names_str.split(","):
-                        if cp.strip():
-                            found_cof = session.query(Pose).filter_by(name=cp.strip()).first()
-                            if found_cof:
-                                cofactor_poses.append(found_cof)
+    # Phase 1: Register all ReceptorFrames and flush to populate primary integer keys
+    frame_cache = {}
+    for parts in frame_lines:
+        _, t_name, f_name, rel_pdb, rel_mae, p_id_str, r_str, pop_str, sp_str, f_grp, a_grp, d_red = parts
+        abs_pdb = assert_permanent_path(cwd / rel_pdb, f"Receptor PDB {f_name}")
+        abs_mae = assert_permanent_path(cwd / rel_mae, f"Receptor MAE {f_name}") if rel_mae != "None" else None
 
-                ex_sys = session.query(System).filter_by(name=s_name).first()
-                if not ex_sys:
-                    new_sys = System(
-                        target_id=t_obj.id,
-                        receptor_frame_id=frame_obj.id,
-                        pose_id=lig_pose.id if lig_pose else None,
-                        name=s_name,
-                        state="raw",
-                        origin="md_centroid",
-                    )
-                    new_sys.cofactors = cofactor_poses
-                    session.add(new_sys)
-                    systems_created += 1
-                else:
-                    ex_sys.pose_id = lig_pose.id if lig_pose else None
-                    ex_sys.cofactors = cofactor_poses
-                    ex_sys.state = "raw"
+        t_obj = session.query(Target).filter_by(name=t_name).first()
+        ex_f = session.query(ReceptorFrame).filter_by(name=f_name).first()
+        if not ex_f:
+            new_frame = ReceptorFrame(
+                target_id=t_obj.id,
+                name=f_name,
+                source_type="md_centroid",
+                parent_frame_id=int(p_id_str) if p_id_str != "None" else None,
+                feature_group=f_grp,
+                align_group=a_grp,
+                dim_reduction_method=d_red,
+                cluster_rank=int(r_str),
+                population=float(pop_str),
+                compactness_spread=float(sp_str),
+                state="ready",
+                path=str(abs_pdb),
+                path_pdb=str(abs_pdb),
+                path_mae=str(abs_mae) if abs_mae else None,
+            )
+            session.add(new_frame)
+            frame_cache[f_name] = new_frame
+            frames_created += 1
+        else:
+            ex_f.path = str(abs_pdb)
+            ex_f.path_pdb = str(abs_pdb)
+            if abs_mae:
+                ex_f.path_mae = str(abs_mae)
+            ex_f.state = "ready"
+            ex_f.population = float(pop_str)
+            ex_f.compactness_spread = float(sp_str)
+            frame_cache[f_name] = ex_f
 
-        session.commit()
-        session.close()
+    session.flush()
+
+    # Phase 2: Register all Poses linked to guaranteed ReceptorFrame IDs
+    pose_cache = {}
+    for parts in pose_lines:
+        _, f_name, p_name, inchikey, res_name, st_id_str, rel_sdf, rel_mae, lig_flag = parts
+        abs_sdf = assert_permanent_path(cwd / rel_sdf, f"Pose SDF {p_name}")
+        abs_mae = assert_permanent_path(cwd / rel_mae, f"Pose MAE {p_name}") if rel_mae != "None" else None
+
+        frame_obj = frame_cache.get(f_name) or session.query(ReceptorFrame).filter_by(name=f_name).first()
+        if not frame_obj:
+            session.close()
+            raise ValueError(f"FATAL: ReceptorFrame '{f_name}' referenced by pose '{p_name}' not found!")
+
+        state_obj = session.query(SubstanceState).get(int(st_id_str))
+        if not state_obj:
+            session.close()
+            raise ValueError(f"FATAL: SubstanceState ID {st_id_str} referenced by pose '{p_name}' not found!")
+
+        ex_p = session.query(Pose).filter_by(name=p_name).first()
+        if not ex_p:
+            new_p = Pose(
+                substance_state_id=state_obj.id,
+                receptor_frame_id=frame_obj.id,
+                name=p_name,
+                res_name=res_name,
+                origin="md_centroid",
+                state="ready",
+                path=str(abs_sdf),
+                path_sdf=str(abs_sdf),
+                path_mae=str(abs_mae) if abs_mae else None,
+            )
+            session.add(new_p)
+            pose_cache[p_name] = new_p
+            poses_created += 1
+        else:
+            ex_p.path = str(abs_sdf)
+            ex_p.path_sdf = str(abs_sdf)
+            if abs_mae:
+                ex_p.path_mae = str(abs_mae)
+            ex_p.state = "ready"
+            pose_cache[p_name] = ex_p
+
+    session.flush()
+
+    # Phase 3: Assemble physical Systems binding Frames, Ligand Pose, and Cofactor Poses
+    for parts in system_lines:
+        _, t_name, s_name, f_name, lig_pname, cof_names_str = parts
+        t_obj = session.query(Target).filter_by(name=t_name).first()
+        frame_obj = frame_cache.get(f_name) or session.query(ReceptorFrame).filter_by(name=f_name).first()
+
+        lig_pose = pose_cache.get(lig_pname) or (session.query(Pose).filter_by(name=lig_pname).first() if lig_pname else None)
+        cofactor_poses = []
+        if cof_names_str:
+            for cp in cof_names_str.split(","):
+                c_name_clean = cp.strip()
+                if c_name_clean:
+                    found_cof = pose_cache.get(c_name_clean) or session.query(Pose).filter_by(name=c_name_clean).first()
+                    if found_cof:
+                        cofactor_poses.append(found_cof)
+
+        ex_sys = session.query(System).filter_by(name=s_name).first()
+        if not ex_sys:
+            new_sys = System(
+                target_id=t_obj.id,
+                receptor_frame_id=frame_obj.id,
+                pose_id=lig_pose.id if lig_pose else None,
+                name=s_name,
+                state="raw",
+                origin="md_centroid",
+            )
+            new_sys.cofactors = cofactor_poses
+            session.add(new_sys)
+            systems_created += 1
+        else:
+            ex_sys.pose_id = lig_pose.id if lig_pose else None
+            ex_sys.cofactors = cofactor_poses
+            ex_sys.state = "raw"
+
+    session.commit()
+    session.close()
 
     console.print(
         f"\n[bold green]✓ Cluster extraction completed via Slurm! Synchronized with SQLite 3NF:[/bold green]\n"
