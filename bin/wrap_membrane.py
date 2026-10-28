@@ -57,7 +57,7 @@ def cmd_immers(args):
 
     with open("immers.inp", "w") as f:
         f.write(
-            f"2\nno\n{args.pdb}\n1\n{args.membrane_type}\nplanar\n{args.membrane_topo}\n{args.membrane_chains}\n"
+            f"2\nno\n{args.pdb}\n1\n{args.membrane_type}\nPlanar\n{args.membrane_topo}\n{args.membrane_chains}\n"
         )
 
     immers_bin = (

@@ -99,13 +99,27 @@ def _build_prep_args(config: Dict[str, Any]) -> list:
     mem_cfg = config.get("membrane", {})
     if mem_cfg.get("enabled"):
         args.extend(["--membrane", "true"])
-        mem_mappings = [("type", "membrane_type"), ("topology", "membrane_topo")]
-        for yaml_k, nf_k in mem_mappings:
-            if yaml_k not in mem_cfg:
-                raise ValueError(
-                    f"FATAL: 'membrane.{yaml_k}' is required when membrane is enabled!"
-                )
-            args.extend([f"--{nf_k}", str(mem_cfg[yaml_k])])
+
+        valid_ppm_codes = {
+            "PMm", "PMp", "PMf", "Erf", "ERm", "GOL", "LYS", "END", "VAC",
+            "MOM", "MIM", "THp", "THb", "GnO", "GnI", "GpI", "ARC",
+            "LPC", "MPC", "OPC", "EPC", "MIC"
+        }
+        mem_type = str(mem_cfg.get("type", "")).strip()
+        if mem_type not in valid_ppm_codes:
+            raise ValueError(
+                f"FATAL CONFIGURATION ERROR: Invalid 'membrane.type': '{mem_type}'! "
+                f"PPM 3.0 requires an exact 3-letter code from the official table (case-sensitive):\n"
+                f"{sorted(list(valid_ppm_codes))}"
+            )
+
+        mem_topo = str(mem_cfg.get("topology", "")).strip().lower()
+        if mem_topo not in ["in", "out"]:
+            raise ValueError(
+                f"FATAL CONFIGURATION ERROR: Invalid 'membrane.topology': '{mem_topo}'! Must be 'in' or 'out'."
+            )
+
+        args.extend(["--membrane_type", mem_type, "--membrane_topo", mem_topo])
 
         if "chains" in mem_cfg:
             chains = mem_cfg["chains"]
