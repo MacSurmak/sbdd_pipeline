@@ -19,6 +19,7 @@ from sqlalchemy import (
     Float,
     DateTime,
     Table,
+    UniqueConstraint,
 )
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
@@ -348,12 +349,15 @@ class ClusteringRun(Base):
     """
 
     __tablename__ = "clustering_runs"
+    __table_args__ = (
+        UniqueConstraint("system_id", "name", name="uq_system_clustering_name"),
+    )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     system_id = Column(
         Integer, ForeignKey("systems.id", ondelete="CASCADE"), nullable=False
     )
-    name = Column(String, unique=True, index=True, nullable=False)
+    name = Column(String, index=True, nullable=False)
     feature_group = Column(String(64), nullable=False)  # Ligand, Pocket, Backbone
     align_group = Column(String(64), nullable=False)  # Backbone, C-alpha
     algorithm = Column(

@@ -83,6 +83,11 @@ def main():
         required=True,
         help="Dimensionality reduction method (pca or tica)",
     )
+    parser.add_argument(
+        "--algorithm",
+        required=True,
+        help="Clustering algorithm name (e.g. auto_kmeans, hdbscan)",
+    )
     parser.add_argument("--system", required=True, help="Canonical parent system name")
     parser.add_argument(
         "--extracted_json",
@@ -376,6 +381,7 @@ def main():
         "align_group": args.align_group,
         "cluster_group": args.cluster_group,
         "dim_reduction": args.dim_reduction,
+        "algorithm": args.algorithm,
         "html_report": html_path.name,
         "png_overview": png_path.name,
         "pymol_session": pml_path.name,

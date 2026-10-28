@@ -337,30 +337,29 @@ def save_clustering_to_db(
 ) -> ClusteringRun:
     """
     Atomically registers pure analytical clustering run and its macro-basins into SQLite 3NF.
-    Does NOT instantiate ReceptorFrame, Pose, or System entities.
+    Strictly preserves semantic names per system without prepending system name prefixes.
     """
     with open(manifest_path, "r", encoding="utf-8") as f:
         manifest = json.load(f)
 
     task_dir = manifest_path.parent
-    eff_align = manifest.get("align_group", "Backbone")
-    eff_cluster = manifest.get("cluster_group", "Pocket")
-    eff_dim = manifest.get("dim_reduction", "pca")
-    eff_algo = manifest.get("algorithm", "hdbscan")
+    eff_align = manifest["align_group"]
+    eff_cluster = manifest["cluster_group"]
+    eff_dim = manifest["dim_reduction"]
+    if "algorithm" not in manifest:
+        raise KeyError(
+            f"FATAL: Required 'algorithm' key missing in manifest {manifest_path}! "
+            "Fallbacks are strictly prohibited by Fail-Fast law."
+        )
+    eff_algo = manifest["algorithm"]
 
-    # Single Source of Truth sampling provenance
     configs = load_project_configs(Path.cwd())
     val_sampling = validate_analysis_sampling_config(configs)
     start_ns = float(val_sampling["start_ns"])
     interval_ps = float(val_sampling["sample_interval_ps"])
 
-    # Deterministic run naming: e.g. sys_RY12_Pocket_hdbscan
     clean_group_tag = re.sub(r"[^a-zA-Z0-9_]", "_", eff_cluster).strip("_")
-    run_name = (
-        custom_name.strip()
-        if custom_name
-        else f"{sys_obj.name}_{clean_group_tag}_{eff_algo}"
-    )
+    run_name = custom_name.strip() if custom_name else f"{clean_group_tag}_{eff_algo}"
 
     labels_p = assert_permanent_path(
         task_dir / "cluster_labels.npy", "Cluster Labels Array"
@@ -375,13 +374,13 @@ def save_clustering_to_db(
             f"FATAL: Required clustering deliverables missing in {task_dir} (labels or time map)!"
         )
 
-    ex_run = session.query(ClusteringRun).filter_by(name=run_name).first()
+    ex_run = session.query(ClusteringRun).filter_by(system_id=sys_obj.id, name=run_name).first()
     if ex_run:
         if not overwrite:
             session.close()
             raise ValueError(
-                f"FATAL: ClusteringRun '{run_name}' already exists in database! "
-                "Use --overwrite to cleanly replace this analysis."
+                f"FATAL: ClusteringRun '{run_name}' already exists for system '{sys_obj.name}'! "
+                "Use --overwrite to replace it."
             )
         session.delete(ex_run)
         session.flush()
@@ -424,10 +423,15 @@ def save_clustering_to_db(
     return c_run
 
 
-def run_extract_medoids(clustering: str, ranks: str | None = None) -> None:
+def run_extract_medoids(
+    clustering: str,
+    system: str | None = None,
+    ranks: str | None = None,
+) -> None:
     """
     Dedicated on-demand extractor: extracts 3D physical medoid receptor structures
-    from an approved ClusteringRun and registers new ReceptorFrame entities for docking.
+    from an approved ClusteringRun identifier and registers new ReceptorFrame entities for docking.
+    Executes in batch across all systems sharing the clustering run name.
     """
     import MDAnalysis as mda
     from cli.core.db import ClusteringRun, TrajectoryCluster
@@ -435,117 +439,124 @@ def run_extract_medoids(clustering: str, ranks: str | None = None) -> None:
     cwd = Path.cwd()
     session = get_session()
 
-    c_run = session.query(ClusteringRun).filter_by(name=clustering).first()
-    if not c_run:
+    query = session.query(ClusteringRun).filter_by(name=clustering.strip())
+    if system:
+        sys_obj = session.query(System).filter_by(name=system.strip()).first()
+        if not sys_obj:
+            session.close()
+            raise ValueError(f"FATAL: System '{system}' not found in database!")
+        query = query.filter_by(system_id=sys_obj.id)
+
+    matched_runs = query.all()
+    if not matched_runs:
+        avail_runs = sorted(list(set(r.name for r in session.query(ClusteringRun).all())))
         session.close()
         raise ValueError(
-            f"FATAL: ClusteringRun '{clustering}' not found in database! Run 'sbdd tree' to view available runs."
+            f"FATAL: ClusteringRun '{clustering}' not found in database!\n"
+            f"Available clustering runs in project: {avail_runs}"
         )
 
-    sys_obj = c_run.system
-    task_dir = Path(c_run.path_labels).parent
+    console.print(
+        f"[bold cyan]Extracting medoids from clustering '{clustering}' across {len(matched_runs)} system(s)...[/bold cyan]\n"
+    )
 
-    # Resolve ranks
-    if ranks:
-        try:
-            target_ranks = [
-                int(x.strip().replace("#", "")) for x in ranks.split(",") if x.strip()
-            ]
-        except ValueError:
+    total_created_frames = 0
+
+    for c_run in matched_runs:
+        sys_obj = c_run.system
+        if ranks:
+            try:
+                target_ranks = [
+                    int(x.strip().replace("#", "")) for x in ranks.split(",") if x.strip()
+                ]
+            except ValueError:
+                session.close()
+                raise ValueError(
+                    f"FATAL: Invalid ranks specified: '{ranks}'. Expected comma-separated integers."
+                )
+        else:
+            target_ranks = [tc.cluster_rank for tc in c_run.clusters]
+
+        selected_clusters = [tc for tc in c_run.clusters if tc.cluster_rank in target_ranks]
+        if not selected_clusters:
+            console.print(f"[yellow]No clusters matching ranks {target_ranks} found in '{sys_obj.name}'. Skipping.[/yellow]")
+            continue
+
+        all_trajs = (
+            session.query(Trajectory)
+            .filter_by(system_id=sys_obj.id, status="cleaned")
+            .all()
+        )
+        if not all_trajs:
+            session.close()
+            raise FileNotFoundError(
+                f"FATAL: No cleaned trajectories found for system '{sys_obj.name}'!"
+            )
+
+        ref_pdb_path = Path(all_trajs[0].path_ref_pdb).resolve()
+        clean_xtcs = [str(Path(t.path_clean_xtc).resolve()) for t in all_trajs]
+
+        u = mda.Universe(str(ref_pdb_path), clean_xtcs)
+        protein_atoms = u.select_atoms("protein")
+        if len(protein_atoms) == 0:
             session.close()
             raise ValueError(
-                f"FATAL: Invalid ranks specified: '{ranks}'. Expected comma-separated integers."
+                f"FATAL: No protein atoms found in reference structure {ref_pdb_path}!"
             )
-    else:
-        target_ranks = [tc.cluster_rank for tc in c_run.clusters]
-
-    selected_clusters = [tc for tc in c_run.clusters if tc.cluster_rank in target_ranks]
-    if not selected_clusters:
-        session.close()
-        raise ValueError(
-            f"FATAL: No clusters matching requested ranks {target_ranks} found in '{clustering}'!"
-        )
-
-    # Resolve clean trajectories
-    all_trajs = (
-        session.query(Trajectory)
-        .filter_by(system_id=sys_obj.id, status="cleaned")
-        .all()
-    )
-    if not all_trajs:
-        session.close()
-        raise FileNotFoundError(
-            f"FATAL: No cleaned trajectories found for system '{sys_obj.name}'!"
-        )
-
-    ref_pdb_path = Path(all_trajs[0].path_ref_pdb).resolve()
-    clean_xtcs = [str(Path(t.path_clean_xtc).resolve()) for t in all_trajs]
-
-    u = mda.Universe(str(ref_pdb_path), clean_xtcs)
-    protein_atoms = u.select_atoms("protein")
-    if len(protein_atoms) == 0:
-        session.close()
-        raise ValueError(
-            f"FATAL: No protein atoms found in reference structure {ref_pdb_path}!"
-        )
-
-    created_frames = 0
-    clean_feature_tag = re.sub(r"[^a-zA-Z0-9_]", "_", c_run.feature_group).strip("_")
-
-    for tc in selected_clusters:
-        rank = tc.cluster_rank
-        m_frame = tc.medoid_frame
-
-        # Monotonic frame seek in trajectory
-        u.trajectory[m_frame]
 
         parent_frame_name = sys_obj.receptor_frame.name
-        new_frame_name = f"{parent_frame_name}_{clean_feature_tag}_c{rank}"
-        dest_frame_dir = assert_permanent_path(
-            cwd / "targets" / sys_obj.target.name / "frames" / new_frame_name,
-            f"Medoid #{rank} Frame Directory",
-        )
-        dest_frame_dir.mkdir(parents=True, exist_ok=True)
 
-        rec_pdb = dest_frame_dir / "receptor.pdb"
-        protein_atoms.write(str(rec_pdb))
+        for tc in selected_clusters:
+            rank = tc.cluster_rank
+            m_frame = tc.medoid_frame
 
-        # Idempotent registration of ReceptorFrame
-        ex_frame = session.query(ReceptorFrame).filter_by(name=new_frame_name).first()
-        if not ex_frame:
-            new_f = ReceptorFrame(
-                target_id=sys_obj.target_id,
-                name=new_frame_name,
-                source_type="md_centroid",
-                parent_frame_id=sys_obj.receptor_frame_id,
-                feature_group=c_run.feature_group,
-                align_group=c_run.align_group,
-                dim_reduction_method=c_run.dim_reduction,
-                cluster_rank=rank,
-                population=tc.population_fraction,
-                compactness_spread=tc.compactness_spread,
-                state="ready",
-                path=str(rec_pdb.resolve()),
-                path_pdb=str(rec_pdb.resolve()),
+            u.trajectory[m_frame]
+
+            new_frame_name = f"{parent_frame_name}_{c_run.name}_c{rank}"
+            dest_frame_dir = assert_permanent_path(
+                cwd / "targets" / sys_obj.target.name / "frames" / new_frame_name,
+                f"Medoid #{rank} Frame Directory",
             )
-            session.add(new_f)
-        else:
-            ex_frame.path = str(rec_pdb.resolve())
-            ex_frame.path_pdb = str(rec_pdb.resolve())
-            ex_frame.state = "ready"
-            ex_frame.population = tc.population_fraction
-            ex_frame.compactness_spread = tc.compactness_spread
+            dest_frame_dir.mkdir(parents=True, exist_ok=True)
 
-        created_frames += 1
-        console.print(
-            f"[bold green]✓ Extracted and registered ReceptorFrame '{new_frame_name}' "
-            f"(Rank #{rank}, Population: {tc.population_fraction*100:.1f}%)[/bold green]"
-        )
+            rec_pdb = dest_frame_dir / "receptor.pdb"
+            protein_atoms.write(str(rec_pdb))
+
+            ex_frame = session.query(ReceptorFrame).filter_by(name=new_frame_name).first()
+            if not ex_frame:
+                new_f = ReceptorFrame(
+                    target_id=sys_obj.target_id,
+                    name=new_frame_name,
+                    source_type="md_centroid",
+                    parent_frame_id=sys_obj.receptor_frame_id,
+                    feature_group=c_run.feature_group,
+                    align_group=c_run.align_group,
+                    dim_reduction_method=c_run.dim_reduction,
+                    cluster_rank=rank,
+                    population=tc.population_fraction,
+                    compactness_spread=tc.compactness_spread,
+                    state="ready",
+                    path=str(rec_pdb.resolve()),
+                    path_pdb=str(rec_pdb.resolve()),
+                )
+                session.add(new_f)
+            else:
+                ex_frame.path = str(rec_pdb.resolve())
+                ex_frame.path_pdb = str(rec_pdb.resolve())
+                ex_frame.state = "ready"
+                ex_frame.population = tc.population_fraction
+                ex_frame.compactness_spread = tc.compactness_spread
+
+            total_created_frames += 1
+            console.print(
+                f"[bold green]✓ [{sys_obj.name}] Extracted ReceptorFrame '{new_frame_name}' "
+                f"(Rank #{rank}, Pop: {tc.population_fraction*100:.1f}%, Spread: {tc.compactness_spread:.2f} Å)[/bold green]"
+            )
 
     session.commit()
     session.close()
     console.print(
-        f"\n[bold green]✓ Successfully generated {created_frames} receptor frame(s) for docking from '{clustering}'![/bold green]"
+        f"\n[bold green]✓ Successfully generated {total_created_frames} receptor frame(s) across systems for docking![/bold green]"
     )
 
 
@@ -829,16 +840,20 @@ def run_cluster(
             f"🔍 [bold cyan]Portable PyMOL 3D Session:[/bold cyan] pymol {pml_session_path}\n"
         )
 
-        # Analytical persistence decision: Preview by default, commit only upon explicit instruction
         should_save = save or auto
+        chosen_name = name
         if not should_save and sys.stdin.isatty():
             try:
                 user_input = (
-                    input("Save this analytical clustering run to database? [y/N]: ")
+                    input(f"Save clustering for '{sys_name}' to database? [y/N]: ")
                     .strip()
                     .lower()
                 )
                 should_save = user_input in ["y", "yes"]
+                if should_save and not chosen_name:
+                    def_name = f"{re.sub(r'[^a-zA-Z0-9_]', '_', eff_cluster).strip('_')}_{manifest['algorithm']}"
+                    name_input = input(f"Enter identifier name for this clustering run [default: {def_name}]: ").strip()
+                    chosen_name = name_input if name_input else def_name
             except (EOFError, KeyboardInterrupt):
                 console.print(
                     "\n[yellow]Preview closed. Database not modified.[/yellow]"
@@ -853,7 +868,7 @@ def run_cluster(
                     session=session_save,
                     sys_obj=sys_db_obj,
                     manifest_path=m_path,
-                    custom_name=name,
+                    custom_name=chosen_name,
                     overwrite=overwrite,
                 )
             session_save.close()

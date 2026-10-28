@@ -13,6 +13,7 @@ process RENDER_REPORTS {
     val(align_group)
     val(cluster_group)
     val(dim_reduction)
+    val(algorithm)
     val(temp_k)
 
     output:
@@ -32,6 +33,7 @@ process RENDER_REPORTS {
         --align_group "${align_group}" \\
         --cluster_group "${cluster_group}" \\
         --dim_reduction "${dim_reduction}" \\
+        --algorithm "${algorithm}" \\
         --temp_k ${temp_k} \\
         --outdir .
     """

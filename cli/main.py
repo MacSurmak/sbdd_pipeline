@@ -460,7 +460,11 @@ def main():
         help="Extract 3D physical medoid receptor structures from a saved ClusteringRun for ensemble docking",
     )
     p_extract.add_argument(
-        "--clustering", required=True, help="Name of the ClusteringRun in database"
+        "--clustering", required=True, help="Explicit name of the ClusteringRun in database"
+    )
+    p_extract.add_argument(
+        "--system",
+        help="Optional specific System name to restrict extraction",
     )
     p_extract.add_argument(
         "--ranks",
@@ -755,6 +759,7 @@ def main():
 
         run_extract_medoids(
             clustering=args.clustering,
+            system=args.system,
             ranks=args.ranks,
         )
     elif subcmd in ["watch", "progress", "top"]:
