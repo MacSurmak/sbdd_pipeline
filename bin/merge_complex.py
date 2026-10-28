@@ -55,6 +55,17 @@ def main():
         default=[],
         help="Residue names corresponding to cofactor SDFs",
     )
+    parser.add_argument(
+        "--ss_cutoff",
+        type=float,
+        default=3.0,
+        help="Disulfide bridge distance cutoff (A) for AMBER receptor standardization",
+    )
+    parser.add_argument(
+        "--water_names",
+        default="SOL,Water,HOH,WAT,TIP3,OPC",
+        help="Comma-separated water residue names to strip from receptor before assembly",
+    )
     parser.add_argument("--out_pdb", required=True, help="Output complex PDB")
     args = parser.parse_args()
 
@@ -91,7 +102,31 @@ def main():
         print(f"FATAL: Receptor PDB {rec_path} not found.", file=sys.stderr)
         sys.exit(1)
 
-    rec_lines = rec_path.read_text(errors="ignore").splitlines()
+    # Pre-standardize receptor via amber_cap_fixer so caps (ACE/NME), protonation states,
+    # and monotonic residue numbers without insertion codes are established BEFORE Packmol-Memgen!
+    import subprocess
+    import tempfile
+
+    with tempfile.NamedTemporaryFile(suffix=".pdb", delete=False) as tmp_rec:
+        clean_rec_path = Path(tmp_rec.name)
+
+    try:
+        subprocess.run(
+            [
+                sys.executable,
+                str(Path(__file__).resolve().parent / "amber_cap_fixer.py"),
+                str(rec_path.resolve()),
+                str(clean_rec_path),
+                "--ss_cutoff",
+                str(args.ss_cutoff),
+                "--water_names",
+                str(args.water_names),
+            ],
+            check=True,
+        )
+        rec_lines = clean_rec_path.read_text(errors="ignore").splitlines()
+    finally:
+        clean_rec_path.unlink(missing_ok=True)
     max_res_seq = 0
     used_chains = set()
     out_lines = []

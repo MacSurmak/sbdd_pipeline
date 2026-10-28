@@ -32,6 +32,59 @@ def parse_mol2_resname(mol2_file: Path) -> str:
     )
 
 
+def build_tleap_atom_types_block(mol2_files: list[str]) -> str:
+    """
+    Parses @<TRIPOS>ATOM and @<TRIPOS>BOND from custom OpenFF/GAFF2 mol2 files
+    and constructs an explicit addAtomTypes declaration for tLEaP to prevent Sp0 hybridization warnings.
+    """
+    type_map: dict[str, tuple[str, str]] = {}
+    for m_str in mol2_files:
+        p = Path(m_str)
+        if not p.exists():
+            continue
+        lines = p.read_text(encoding="utf-8", errors="ignore").splitlines()
+        section = None
+        atoms_info: dict[int, tuple[str, str]] = {}
+        has_multiple_or_ar_bond: set[int] = set()
+
+        for line in lines:
+            l_strip = line.strip()
+            if l_strip.startswith("@<TRIPOS>"):
+                section = l_strip
+                continue
+            if not l_strip:
+                continue
+            if section == "@<TRIPOS>ATOM":
+                parts = l_strip.split()
+                if len(parts) >= 6 and parts[0].isdigit():
+                    a_idx = int(parts[0])
+                    a_name = parts[1]
+                    a_type = parts[5]
+                    clean_alpha = "".join([c for c in a_name if c.isalpha()])
+                    if clean_alpha[:2].capitalize() in {"Cl", "Br", "Fe", "Mg", "Zn", "Ca", "Na"}:
+                        elem = clean_alpha[:2].capitalize()
+                    else:
+                        elem = clean_alpha[:1].upper() if clean_alpha else "C"
+                    atoms_info[a_idx] = (a_type, elem)
+            elif section == "@<TRIPOS>BOND":
+                parts = l_strip.split()
+                if len(parts) >= 4 and parts[0].isdigit():
+                    a1, a2, b_type = int(parts[1]), int(parts[2]), parts[3].lower()
+                    if b_type in {"2", "3", "ar", "am"}:
+                        has_multiple_or_ar_bond.add(a1)
+                        has_multiple_or_ar_bond.add(a2)
+
+        for a_idx, (a_type, elem) in atoms_info.items():
+            hyb = "sp2" if a_idx in has_multiple_or_ar_bond else "sp3"
+            type_map[a_type] = (elem, hyb)
+
+    if not type_map:
+        return ""
+
+    entries = [f'  {{ "{atype}" "{elem}" "{hyb}" }}' for atype, (elem, hyb) in sorted(type_map.items())]
+    return "addAtomTypes {\n" + "\n".join(entries) + "\n}\n"
+
+
 def cmd_antechamber(args):
     from rdkit import Chem
 
@@ -110,10 +163,13 @@ def cmd_tleap_dry(args):
         check=True,
     )
 
+    atom_types_block = build_tleap_atom_types_block(args.mol2s)
     with open("tleap_dry.in", "w") as f:
         f.write(
             f"source {args.protein_ff}\nsource {args.gaff_ff}\nsource {args.lipid_ff}\nsource {args.water_leaprc}\n"
         )
+        if atom_types_block:
+            f.write(atom_types_block)
         for m in args.mol2s:
             res_code = parse_mol2_resname(Path(m))
             f.write(f"{res_code} = loadmol2 {m}\n")
@@ -161,11 +217,15 @@ def cmd_tleap(args):
         else f"solvateOct complex {box} {args.box_padding}"
     )
 
+    atom_types_block = build_tleap_atom_types_block(args.mol2s)
+
     # 1. First tLEaP pass: Solvation and accurate water molecule enumeration
     with open("tleap_solv.in", "w") as f:
         f.write(
             f"source {args.protein_ff}\nsource {args.gaff_ff}\nsource {args.lipid_ff}\nsource {leaprc_water}\n"
         )
+        if atom_types_block:
+            f.write(atom_types_block)
         for m in args.mol2s:
             res_code = parse_mol2_resname(Path(m))
             f.write(f"{res_code} = loadmol2 {m}\n")
@@ -214,6 +274,8 @@ def cmd_tleap(args):
         f.write(
             f"source {args.protein_ff}\nsource {args.gaff_ff}\nsource {args.lipid_ff}\nsource {leaprc_water}\n"
         )
+        if atom_types_block:
+            f.write(atom_types_block)
         for m in args.mol2s:
             m_path = Path(m)
             res_code = parse_mol2_resname(m_path)

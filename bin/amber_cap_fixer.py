@@ -157,18 +157,29 @@ def main():
         if res.name == "ACE":
             res.ter = False
             if idx + 1 < len(struct.residues):
-                res.chain = struct.residues[idx + 1].chain
+                next_res = struct.residues[idx + 1]
+                res.chain = next_res.chain
+                ace_c = next((a for a in res.atoms if a.name.strip() == "C"), None)
+                next_n = next((a for a in next_res.atoms if a.name.strip() == "N"), None)
+                if ace_c is not None and next_n is not None and next_n not in ace_c.bond_partners:
+                    struct.bonds.append(pmd.Bond(ace_c, next_n))
 
         if idx + 1 < len(struct.residues) and struct.residues[idx + 1].name in (
             "NMA",
             "NME",
         ):
+            next_res = struct.residues[idx + 1]
             res.ter = False
-            struct.residues[idx + 1].chain = res.chain
+            next_res.chain = res.chain
             # Strip terminal oxygen (OXT) if Maestro left it, as it chemically blocks C-N peptide bond formation
             oxt = next((a for a in res.atoms if a.name.strip() == "OXT"), None)
             if oxt:
                 atoms_to_remove.append(oxt)
+            # Explicitly register peptide bond in ParmEd topology graph so PDB writer never inserts a TER card
+            curr_c = next((a for a in res.atoms if a.name.strip() == "C"), None)
+            cap_n = next((a for a in next_res.atoms if a.name.strip() == "N"), None)
+            if curr_c is not None and cap_n is not None and cap_n not in curr_c.bond_partners:
+                struct.bonds.append(pmd.Bond(curr_c, cap_n))
 
         atom_names = {a.name.strip() for a in res.atoms}
 
@@ -219,14 +230,19 @@ def main():
                 an = a.name.strip()
                 if an in ("CA", "CH3", "C"):
                     a.name = "C"
+                    a.atomic_number = 6
                 elif an in ("HN", "H"):
                     a.name = "H"
+                    a.atomic_number = 1
                 elif an in ("1HA", "1H", "HH31", "HA1", "H1"):
                     a.name = "H1"
+                    a.atomic_number = 1
                 elif an in ("2HA", "2H", "HH32", "HA2", "H2"):
                     a.name = "H2"
+                    a.atomic_number = 1
                 elif an in ("3HA", "3H", "HH33", "HA3", "H3"):
                     a.name = "H3"
+                    a.atomic_number = 1
 
         # N-terminal Cap (ACE -> AMBER ff19SB template: CH3, C, O, H1, H2, H3)
         elif res.name == "ACE":
@@ -234,12 +250,16 @@ def main():
                 an = a.name.strip()
                 if an in ("CA", "CH3"):
                     a.name = "CH3"
+                    a.atomic_number = 6
                 elif an in ("1HA", "1H", "HH31", "HA1", "H1"):
                     a.name = "H1"
+                    a.atomic_number = 1
                 elif an in ("2HA", "2H", "HH32", "HA2", "H2"):
                     a.name = "H2"
+                    a.atomic_number = 1
                 elif an in ("3HA", "3H", "HH33", "HA3", "H3"):
                     a.name = "H3"
+                    a.atomic_number = 1
 
         # Backbone Amide Hydrogens (H, H1, H2, H3)
         elif res.name in STANDARD_PROTEIN_RESIDUES and res.name != "PRO":
