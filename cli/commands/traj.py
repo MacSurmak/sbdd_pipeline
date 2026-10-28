@@ -429,12 +429,22 @@ def run_extract_medoids(
     ranks: str | None = None,
 ) -> None:
     """
-    Dedicated on-demand extractor: extracts 3D physical medoid receptor structures
-    from an approved ClusteringRun identifier and registers new ReceptorFrame entities for docking.
+    Dedicated on-demand extractor: extracts 3D physical medoid receptor structures,
+    in-situ ligand and cofactor poses, and creates physical System entities for docking or MD.
     Executes in batch across all systems sharing the clustering run name.
     """
     import MDAnalysis as mda
-    from cli.core.db import ClusteringRun, TrajectoryCluster
+    from rdkit import Chem
+    from cli.core.chem import transfer_coordinates_to_template
+    from cli.core.db import (
+        ClusteringRun,
+        TrajectoryCluster,
+        ReceptorFrame,
+        Pose,
+        System,
+        Substance,
+        SubstanceState,
+    )
 
     cwd = Path.cwd()
     session = get_session()
@@ -449,7 +459,7 @@ def run_extract_medoids(
 
     matched_runs = query.all()
     if not matched_runs:
-        avail_runs = sorted(list(set(r.name for r in session.query(ClusteringRun).all())))
+        avail_runs = sorted(list(set(r.name for r in session.query(ClusteringRun.name).all())))
         session.close()
         raise ValueError(
             f"FATAL: ClusteringRun '{clustering}' not found in database!\n"
@@ -457,13 +467,27 @@ def run_extract_medoids(
         )
 
     console.print(
-        f"[bold cyan]Extracting medoids from clustering '{clustering}' across {len(matched_runs)} system(s)...[/bold cyan]\n"
+        f"[bold cyan]Extracting medoid complexes from clustering '{clustering}' across {len(matched_runs)} system(s)...[/bold cyan]\n"
     )
 
-    total_created_frames = 0
+    structconvert_bin = shutil.which("structconvert") or "/opt/containers/bin/structconvert"
+
+    def _convert_to_mae(src_path: Path, dst_path: Path):
+        """Converts PDB/SDF to MAE using Schrödinger structconvert."""
+        if not dst_path.exists() or dst_path.stat().st_size == 0:
+            if Path(structconvert_bin).exists() or shutil.which("structconvert"):
+                subprocess.run([structconvert_bin, str(src_path), str(dst_path)], capture_output=True)
+            elif shutil.which("schrodinger"):
+                subprocess.run(["schrodinger", "run", "structconvert", str(src_path), str(dst_path)], capture_output=True)
+
+    total_created_systems = 0
 
     for c_run in matched_runs:
         sys_obj = c_run.system
+        parent_frame = sys_obj.receptor_frame
+        parent_pose = sys_obj.pose
+        parent_cofactors = list(sys_obj.cofactors)
+
         if ranks:
             try:
                 target_ranks = [
@@ -504,7 +528,7 @@ def run_extract_medoids(
                 f"FATAL: No protein atoms found in reference structure {ref_pdb_path}!"
             )
 
-        parent_frame_name = sys_obj.receptor_frame.name
+        parent_frame_name = parent_frame.name
 
         for tc in selected_clusters:
             rank = tc.cluster_rank
@@ -519,8 +543,11 @@ def run_extract_medoids(
             )
             dest_frame_dir.mkdir(parents=True, exist_ok=True)
 
+            # 1. Export Receptor (PDB & MAE)
             rec_pdb = dest_frame_dir / "receptor.pdb"
+            rec_mae = dest_frame_dir / "receptor.mae"
             protein_atoms.write(str(rec_pdb))
+            _convert_to_mae(rec_pdb, rec_mae)
 
             ex_frame = session.query(ReceptorFrame).filter_by(name=new_frame_name).first()
             if not ex_frame:
@@ -529,6 +556,7 @@ def run_extract_medoids(
                     name=new_frame_name,
                     source_type="md_centroid",
                     parent_frame_id=sys_obj.receptor_frame_id,
+                    source_trajectory_id=None,
                     feature_group=c_run.feature_group,
                     align_group=c_run.align_group,
                     dim_reduction_method=c_run.dim_reduction,
@@ -538,25 +566,147 @@ def run_extract_medoids(
                     state="ready",
                     path=str(rec_pdb.resolve()),
                     path_pdb=str(rec_pdb.resolve()),
+                    path_mae=str(rec_mae.resolve()) if rec_mae.exists() else None,
                 )
                 session.add(new_f)
+                session.flush()
+                curr_frame = new_f
             else:
                 ex_frame.path = str(rec_pdb.resolve())
                 ex_frame.path_pdb = str(rec_pdb.resolve())
+                if rec_mae.exists():
+                    ex_frame.path_mae = str(rec_mae.resolve())
                 ex_frame.state = "ready"
                 ex_frame.population = tc.population_fraction
                 ex_frame.compactness_spread = tc.compactness_spread
+                curr_frame = ex_frame
 
-            total_created_frames += 1
+            # 2. Helper to extract, restore topology, and register a small molecule pose
+            def _extract_and_register_pose(parent_p: Pose, origin_desc: str) -> Pose:
+                sub_state = parent_p.substance_state
+                sub_entity = sub_state.substance
+                res_clean = parent_p.res_name.strip().upper()
+                is_ion = (sub_entity.substance_type == "ion")
+
+                mol_atoms = u.select_atoms(f"resname {res_clean}")
+                if len(mol_atoms) == 0:
+                    raise ValueError(
+                        f"FATAL: Molecule '{res_clean}' not found in trajectory {ref_pdb_path.name}!"
+                    )
+
+                tmpl_path = Path(sub_state.path_sdf or parent_p.path_sdf).resolve()
+                suppl = Chem.SDMolSupplier(str(tmpl_path), removeHs=False, sanitize=False)
+                tmpl_mol = next((m for m in suppl if m is not None), None)
+                if tmpl_mol is None:
+                    raise ValueError(f"FATAL: Failed to read reference template from {tmpl_path}")
+
+                raw_positions = mol_atoms.positions
+                if is_ion:
+                    restored_pose = Chem.Mol(tmpl_mol)
+                    restored_pose.GetConformer().SetAtomPosition(
+                        0, [float(raw_positions[0][0]), float(raw_positions[0][1]), float(raw_positions[0][2])]
+                    )
+                else:
+                    mda_elements = []
+                    for a in mol_atoms:
+                        if hasattr(a, "element") and a.element and a.element.strip():
+                            mda_elements.append(a.element.strip().capitalize())
+                        else:
+                            clean_n = "".join([c for c in a.name if not c.isdigit()]).strip()
+                            mda_elements.append(
+                                clean_n[:2].capitalize()
+                                if len(clean_n) >= 2
+                                and clean_n[:2].capitalize() in {"Cl", "Br", "Fe", "Mg", "Zn", "Ca", "Na"}
+                                else clean_n[:1].upper()
+                            )
+
+                    restored_pose = transfer_coordinates_to_template(
+                        template_mol=tmpl_mol,
+                        source_mol_or_coords=raw_positions,
+                        source_elements=mda_elements,
+                        relax_missing_hydrogens=False,
+                    )
+
+                # Canonical 3NF Pose Location: substances/<inchikey>/poses/<pose_name>/<res>_pose.sdf
+                pose_name = f"{new_frame_name}_{res_clean}_centroid"
+                pose_dir = assert_permanent_path(
+                    cwd / "substances" / sub_entity.inchikey / "poses" / pose_name,
+                    f"Medoid Pose Directory {pose_name}",
+                )
+                pose_dir.mkdir(parents=True, exist_ok=True)
+                pose_sdf = pose_dir / f"{res_clean}_pose.sdf"
+                pose_mae = pose_dir / f"{res_clean}_pose.mae"
+
+                with Chem.SDWriter(str(pose_sdf)) as w:
+                    w.SetForceV3000(False)
+                    w.write(restored_pose)
+                _convert_to_mae(pose_sdf, pose_mae)
+
+                p_record = session.query(Pose).filter_by(name=pose_name).first()
+                if not p_record:
+                    new_p = Pose(
+                        substance_state_id=sub_state.id,
+                        receptor_frame_id=curr_frame.id,
+                        name=pose_name,
+                        res_name=res_clean,
+                        origin="md_centroid",
+                        state="ready",
+                        path=str(pose_sdf.resolve()),
+                        path_sdf=str(pose_sdf.resolve()),
+                        path_mae=str(pose_mae.resolve()) if pose_mae.exists() else None,
+                    )
+                    session.add(new_p)
+                    session.flush()
+                    return new_p
+                else:
+                    p_record.path = str(pose_sdf.resolve())
+                    p_record.path_sdf = str(pose_sdf.resolve())
+                    if pose_mae.exists():
+                        p_record.path_mae = str(pose_mae.resolve())
+                    p_record.state = "ready"
+                    return p_record
+
+            # 3. Extract Active Ligand Pose
+            medoid_lig_pose = None
+            if parent_pose:
+                medoid_lig_pose = _extract_and_register_pose(parent_pose, "ligand")
+
+            # 4. Extract Cofactors and Ions
+            medoid_cofactors = []
+            for cof_p in parent_cofactors:
+                medoid_cofactors.append(_extract_and_register_pose(cof_p, "cofactor"))
+
+            # 5. Assemble Physical Holo System
+            sys_name = f"{new_frame_name}_{parent_pose.res_name}" if parent_pose else new_frame_name
+            ex_sys = session.query(System).filter_by(name=sys_name).first()
+            if not ex_sys:
+                new_sys = System(
+                    target_id=sys_obj.target_id,
+                    receptor_frame_id=curr_frame.id,
+                    pose_id=medoid_lig_pose.id if medoid_lig_pose else None,
+                    name=sys_name,
+                    state="raw",
+                    origin="md_centroid",
+                )
+                new_sys.cofactors = medoid_cofactors
+                session.add(new_sys)
+            else:
+                ex_sys.pose_id = medoid_lig_pose.id if medoid_lig_pose else None
+                ex_sys.cofactors = medoid_cofactors
+                ex_sys.state = "raw"
+
+            total_created_systems += 1
+            lig_info = f", Ligand: {medoid_lig_pose.name}" if medoid_lig_pose else ""
+            cof_info = f", Cofactors: {[c.name for c in medoid_cofactors]}" if medoid_cofactors else ""
             console.print(
-                f"[bold green]✓ [{sys_obj.name}] Extracted ReceptorFrame '{new_frame_name}' "
-                f"(Rank #{rank}, Pop: {tc.population_fraction*100:.1f}%, Spread: {tc.compactness_spread:.2f} Å)[/bold green]"
+                f"[bold green]✓ [{sys_obj.name}] Extracted Complex System '{sys_name}' "
+                f"(Rank #{rank}, Pop: {tc.population_fraction*100:.1f}%{lig_info}{cof_info})[/bold green]"
             )
 
     session.commit()
     session.close()
     console.print(
-        f"\n[bold green]✓ Successfully generated {total_created_frames} receptor frame(s) across systems for docking![/bold green]"
+        f"\n[bold green]✓ Successfully generated {total_created_systems} complete physical System(s) across targets for docking/MD![/bold green]"
     )
 
 
