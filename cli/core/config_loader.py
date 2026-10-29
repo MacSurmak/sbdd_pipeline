@@ -121,14 +121,17 @@ def _build_prep_args(config: Dict[str, Any]) -> list:
 
         args.extend(["--membrane_type", mem_type, "--membrane_topo", mem_topo])
 
-        if "chains" in mem_cfg:
-            chains = mem_cfg["chains"]
-            args.extend(
-                [
-                    "--membrane_chains",
-                    ",".join(chains) if isinstance(chains, list) else str(chains),
-                ]
+        if "chains" not in mem_cfg or not mem_cfg["chains"]:
+            raise ValueError(
+                "FATAL: 'membrane.chains' is required in membrane.yaml when membrane is enabled!"
             )
+        chains = mem_cfg["chains"]
+        args.extend(
+            [
+                "--membrane_chains",
+                ",".join(chains) if isinstance(chains, list) else str(chains),
+            ]
+        )
     else:
         args.extend(["--membrane", "false"])
 
@@ -283,15 +286,38 @@ def _build_md_setup_args(config: Dict[str, Any]) -> list:
             )
         args.extend([f"--{nf_k}", str(sys_build[yaml_k])])
 
-    args.extend(["--water_names", ",".join(sys_build.get("water_names", []))])
-    args.extend(["--ion_names", ",".join(sys_build.get("ion_names", []))])
+    water_names = sys_build.get("water_names")
+    if not isinstance(water_names, list) or not water_names:
+        raise ValueError(
+            "FATAL: 'md_simulation.system_build.water_names' must be a non-empty list in md.yaml!"
+        )
+    ion_names = sys_build.get("ion_names")
+    if not isinstance(ion_names, list) or not ion_names:
+        raise ValueError(
+            "FATAL: 'md_simulation.system_build.ion_names' must be a non-empty list in md.yaml!"
+        )
+    args.extend(["--water_names", ",".join(water_names)])
+    args.extend(["--ion_names", ",".join(ion_names)])
 
-    mem_cfg = config.get("membrane", {})
-    if mem_cfg.get("enabled"):
+    mem_cfg = config.get("membrane")
+    if not isinstance(mem_cfg, dict) or "enabled" not in mem_cfg:
+        raise ValueError(
+            "FATAL: 'membrane' section with explicit 'enabled' boolean is required in membrane.yaml!"
+        )
+
+    if mem_cfg["enabled"]:
         args.extend(["--membrane", "true"])
-        lipids = mem_cfg.get("lipids", {})
-        upper = lipids.get("upper_leaflet", {})
-        lower = lipids.get("lower_leaflet", {})
+        lipids = mem_cfg.get("lipids")
+        if not isinstance(lipids, dict):
+            raise ValueError(
+                "FATAL: 'membrane.lipids' section is required in membrane.yaml when membrane is enabled!"
+            )
+        upper = lipids.get("upper_leaflet")
+        lower = lipids.get("lower_leaflet")
+        if not isinstance(upper, dict) or not isinstance(lower, dict):
+            raise ValueError(
+                "FATAL: 'membrane.lipids.upper_leaflet' and 'lower_leaflet' are required in membrane.yaml!"
+            )
         for k, v in [
             ("--upper_lipids", upper.get("composition")),
             ("--upper_ratio", upper.get("ratio")),
@@ -304,15 +330,52 @@ def _build_md_setup_args(config: Dict[str, Any]) -> list:
                 )
             args.extend([k, str(v)])
 
-        pad_cfg = mem_cfg.get("padding", {})
-        if "lipid_padding" in pad_cfg:
-            args.extend(["--lipid_padding", str(pad_cfg["lipid_padding"])])
-        pack_cfg = mem_cfg.get("packing", {})
-        if "nloop" in pack_cfg:
-            args.extend(["--packmol_nloop", str(pack_cfg["nloop"])])
-        if "nloop_all" in pack_cfg:
-            args.extend(["--packmol_nloop_all", str(pack_cfg["nloop_all"])])
-        args.extend(["--lipid_names", ",".join(mem_cfg.get("lipid_names", []))])
+        pad_cfg = mem_cfg.get("padding")
+        if (
+            not isinstance(pad_cfg, dict)
+            or "lipid_padding" not in pad_cfg
+            or pad_cfg["lipid_padding"] is None
+            or "box_padding" not in pad_cfg
+            or pad_cfg["box_padding"] is None
+        ):
+            raise ValueError(
+                "FATAL: 'membrane.padding.lipid_padding' and 'membrane.padding.box_padding' are required in membrane.yaml!"
+            )
+        args.extend(["--lipid_padding", str(pad_cfg["lipid_padding"])])
+        # Override box_padding with membrane water layer thickness when membrane is enabled
+        idx_bp = args.index("--box_padding")
+        args[idx_bp + 1] = str(pad_cfg["box_padding"])
+
+        pack_cfg = mem_cfg.get("packing")
+        if (
+            not isinstance(pack_cfg, dict)
+            or "nloop" not in pack_cfg
+            or pack_cfg["nloop"] is None
+            or "nloop_all" not in pack_cfg
+            or pack_cfg["nloop_all"] is None
+        ):
+            raise ValueError(
+                "FATAL: 'membrane.packing.nloop' and 'membrane.packing.nloop_all' must be explicitly specified in membrane.yaml!"
+            )
+        if int(pack_cfg["nloop"]) <= 0 or int(pack_cfg["nloop_all"]) <= 0:
+            raise ValueError(
+                "FATAL: 'membrane.packing.nloop' and 'nloop_all' must be positive integers!"
+            )
+        args.extend(
+            [
+                "--packmol_nloop",
+                str(int(pack_cfg["nloop"])),
+                "--packmol_nloop_all",
+                str(int(pack_cfg["nloop_all"])),
+            ]
+        )
+
+        lipid_names = mem_cfg.get("lipid_names")
+        if not isinstance(lipid_names, list) or not lipid_names:
+            raise ValueError(
+                "FATAL: 'membrane.lipid_names' must be a non-empty list in membrane.yaml!"
+            )
+        args.extend(["--lipid_names", ",".join(lipid_names)])
     else:
         args.extend(["--membrane", "false"])
         args.extend(["--lipid_names", ""])
@@ -330,7 +393,7 @@ def _build_md_setup_args(config: Dict[str, Any]) -> list:
         ("tolerance", "declash_tol"),
     ]
     for yaml_k, nf_k in declash_mappings:
-        if yaml_k not in declash:
+        if yaml_k not in declash or declash[yaml_k] is None:
             raise ValueError(f"FATAL: 'md_simulation.declash.{yaml_k}' is required!")
         args.extend([f"--{nf_k}", str(declash[yaml_k])])
 
@@ -342,20 +405,18 @@ def _build_md_setup_args(config: Dict[str, Any]) -> list:
     args.extend(["--md_restraints_fc", ",".join(map(str, rf_list))])
 
     prod_cfg = md_cfg.get("production")
-    if (
-        prod_cfg
-        and "restraints_fc" in prod_cfg
-        and int(float(prod_cfg["restraints_fc"])) > 0
-    ):
-        args.extend(
-            ["--prod_restraints_fc", str(int(float(prod_cfg["restraints_fc"])))]
+    if not isinstance(prod_cfg, dict) or "restraints_fc" not in prod_cfg or prod_cfg["restraints_fc"] is None:
+        raise ValueError(
+            "FATAL: 'md_simulation.production.restraints_fc' is required in md.yaml!"
         )
-        args.extend(
-            [
-                "--prod_restraints_group",
-                str(prod_cfg.get("restraints_group", "C-alpha")),
-            ]
-        )
+    prod_fc_val = int(float(prod_cfg["restraints_fc"]))
+    args.extend(["--prod_restraints_fc", str(prod_fc_val)])
+    if prod_fc_val > 0:
+        if "restraints_group" not in prod_cfg or not prod_cfg["restraints_group"]:
+            raise ValueError(
+                "FATAL: 'md_simulation.production.restraints_group' is required when restraints_fc > 0!"
+            )
+        args.extend(["--prod_restraints_group", str(prod_cfg["restraints_group"])])
 
     return args
 
@@ -405,16 +466,18 @@ def _build_dynamics_args(config: Dict[str, Any], project_dir: Path) -> list:
             f"FATAL: Required number of MD chunks ({num_chunks}) exceeds supported static DAG limit (1..20)!"
         )
 
-    if "restraints_fc" in prod_cfg and int(float(prod_cfg["restraints_fc"])) > 0:
-        args.extend(
-            ["--prod_restraints_fc", str(int(float(prod_cfg["restraints_fc"])))]
+    if "restraints_fc" not in prod_cfg or prod_cfg["restraints_fc"] is None:
+        raise ValueError(
+            "FATAL: 'md_simulation.production.restraints_fc' is required in md.yaml!"
         )
-        args.extend(
-            [
-                "--prod_restraints_group",
-                str(prod_cfg.get("restraints_group", "C-alpha")),
-            ]
-        )
+    prod_fc_val = int(float(prod_cfg["restraints_fc"]))
+    args.extend(["--prod_restraints_fc", str(prod_fc_val)])
+    if prod_fc_val > 0:
+        if "restraints_group" not in prod_cfg or not prod_cfg["restraints_group"]:
+            raise ValueError(
+                "FATAL: 'md_simulation.production.restraints_group' is required when restraints_fc > 0!"
+            )
+        args.extend(["--prod_restraints_group", str(prod_cfg["restraints_group"])])
 
     protocol_dir = project_dir / "configs" / "md_protocol"
     if not protocol_dir.exists():

@@ -33,6 +33,25 @@ def clean_shared_scratch(workdir: str, verbose: bool = True):
             console.print(f"[dim]No scratch directory found at {scratch_dir}[/dim]")
 
 
+def _resolve_entrypoint_session_id(scratch_base: Path, entrypoint: str) -> str | None:
+    """
+    Finds the most recent Nextflow session UUID for a specific --entry workflow
+    in .nextflow/history so independent subcommands never clobber each other's -resume state.
+    """
+    history_file = scratch_base / ".nextflow" / "history"
+    if not history_file.exists():
+        return None
+    target_token = f"--entry {entrypoint}"
+    lines = history_file.read_text(encoding="utf-8", errors="ignore").splitlines()
+    for line in reversed(lines):
+        parts = line.split("\t")
+        if len(parts) >= 7 and target_token in parts[6]:
+            session_id = parts[5].strip()
+            if session_id and (scratch_base / ".nextflow" / "cache" / session_id).exists():
+                return session_id
+    return None
+
+
 def execute_nextflow(
     entrypoint: str,
     extra_args: list,
@@ -53,19 +72,16 @@ def execute_nextflow(
         if idx + 1 < len(extra_args):
             project_name = extra_args[idx + 1]
 
-    # Resolve scratch base safely via config or fallback
     default_scratch = f"/shared/work/{project_name}"
     scratch_base_str = default_scratch
     if configs:
         scratch_base_str = configs.get("project", {}).get("workdir", default_scratch)
 
     scratch_base = Path(scratch_base_str)
-    scratch_nxf_home = scratch_base / ".nxf_home"
+    scratch_nxf_home = scratch_base / ".nextflow"
     scratch_work = scratch_base / "work"
-    scratch_session_dir = scratch_base / f"session_{entrypoint}"
     scratch_nxf_home.mkdir(parents=True, exist_ok=True)
     scratch_work.mkdir(parents=True, exist_ok=True)
-    scratch_session_dir.mkdir(parents=True, exist_ok=True)
 
     reports_dir = project_dir / "reports"
     reports_dir.mkdir(parents=True, exist_ok=True)
@@ -90,7 +106,11 @@ def execute_nextflow(
     ]
 
     if resume:
-        cmd.append("-resume")
+        session_uuid = _resolve_entrypoint_session_id(scratch_base, entrypoint)
+        if session_uuid:
+            cmd.extend(["-resume", session_uuid])
+        else:
+            cmd.append("-resume")
 
     cmd.extend(extra_args)
 
@@ -101,10 +121,8 @@ def execute_nextflow(
     console.print(f"[dim]Deliverables:    {project_dir.resolve()}[/dim]")
     console.print(f"[bold blue]Command:[/bold blue] {' '.join(cmd)}\n")
 
-    # Run Nextflow INSIDE the entrypoint-isolated session directory.
-    # This prevents .nextflow/history collisions across different subcommands while sharing work/.
     try:
-        proc = subprocess.Popen(cmd, cwd=scratch_session_dir, env=env)
+        proc = subprocess.Popen(cmd, cwd=scratch_base, env=env)
         ret = proc.wait()
 
         if ret == 0:

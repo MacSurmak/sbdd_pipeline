@@ -102,24 +102,21 @@ workflow ANALYZE_WF {
             [ meta, ref_pdb, xtcs, ndx_f ]
         }
 
-        def sampling_start = params.analysis_start_ns ?: params.cluster_start_ns ?: 1.0
-        def sampling_interval = params.analysis_sample_interval_ps ?: params.cluster_sample_interval_ps ?: 500.0
-
         CLUSTER_ENSEMBLE(
             ch_cluster_in,
-            params.cluster_align_group ?: "Backbone",
-            params.cluster_feature_group ?: "Ligand",
-            params.cluster_dim_reduction ?: "tica",
-            params.cluster_algorithm ?: "hdbscan",
-            sampling_start,
-            sampling_interval,
-            params.cluster_tica_lag_ns ?: 2.0,
-            params.cluster_variance_cutoff ?: 0.85,
-            params.cluster_pocket_radius ?: 5.0,
-            params.cluster_n_clusters ?: 3,
-            params.cluster_rmsd_cutoff ?: 1.5,
-            params.cluster_min_pop ?: 5.0,
-            params.cluster_temp_k ?: 310.15
+            params.cluster_align_group,
+            params.cluster_feature_group,
+            params.cluster_dim_reduction,
+            params.cluster_algorithm,
+            params.analysis_start_ns,
+            params.analysis_sample_interval_ps,
+            params.cluster_tica_lag_ns,
+            params.cluster_variance_cutoff,
+            params.cluster_pocket_radius,
+            params.cluster_n_clusters,
+            params.cluster_rmsd_cutoff,
+            params.cluster_min_pop,
+            params.cluster_temp_k
         )
 
         // Publish structured receipt mapping system and groups to published manifest
@@ -172,24 +169,21 @@ workflow ANALYZE_WF {
 
         ch_templates = file(params.mmpbsa_templates)
 
-        def mmpbsa_start = params.analysis_start_ns ?: params.mmpbsa_start_ns ?: 1.0
-        def mmpbsa_interval = params.analysis_sample_interval_ps ?: params.mmpbsa_sample_interval_ps ?: 500.0
-
         GMX_MMPBSA(
             ch_mmpbsa_in,
             ch_templates,
-            mmpbsa_start,
-            mmpbsa_interval,
+            params.analysis_start_ns,
+            params.analysis_sample_interval_ps,
             params.md_temperature,
             params.md_salt_conc,
             params.membrane,
             params.membrane_thickness,
             params.per_residue_decomp,
-            params.mmpbsa_method ?: "auto",
-            params.mmpbsa_gb_model ?: 2,
-            params.mmpbsa_emem ?: 7.0,
-            params.mmpbsa_indi ?: 4.0,
-            params.mmpbsa_fillratio ?: 1.25
+            params.mmpbsa_method,
+            params.mmpbsa_gb_model,
+            params.mmpbsa_emem,
+            params.mmpbsa_indi,
+            params.mmpbsa_fillratio
         )
 
         GMX_MMPBSA.out.pb_results.map { meta, pb_csv, pb_dat ->
