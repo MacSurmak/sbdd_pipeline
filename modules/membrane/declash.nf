@@ -9,7 +9,7 @@ process DECLASH {
     label 'process_medium'
 
     input:
-    tuple val(meta), path(input_gro), path(topol_top)
+    tuple val(meta), path(input_gro), path(topol_top), path(dry_prmtop)
     val(cutoff)
     val(niter)
     val(damping)
@@ -21,13 +21,14 @@ process DECLASH {
     tuple val(meta), path("${meta.id}_declashed.gro"), emit: declashed_gro
 
     script:
+    def fix_lig = (meta.lig_resname ?: meta.native_ligand) ? "--fix-moltype ${meta.lig_resname ?: meta.native_ligand}" : ""
     """
     python3 ${projectDir}/bin/declash_gmx.py \\
         -f ${input_gro} \\
         -p ${topol_top} \\
+        --dry-top ${dry_prmtop} \\
         -o ${meta.id}_declashed.gro \\
-        --fix-moltype system1 \\
-        ${meta.native_ligand ? "--fix-moltype ${meta.native_ligand} \\\\" : ""}
+        --fix-moltype system1 ${fix_lig} \\
         --no-heavy-only \\
         --cutoff ${cutoff} \\
         --niter ${niter} \\

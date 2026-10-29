@@ -224,6 +224,19 @@ def wrap(coords: np.ndarray, box: np.ndarray) -> np.ndarray:
     return coords - np.floor(coords / box) * box
 
 
+def wrap_molecules(
+    coords: np.ndarray, box: np.ndarray, mol_slices: List[slice]
+) -> np.ndarray:
+    """Wraps whole molecules into [0, box) by their geometric center so covalent bonds never split across PBC."""
+    out = coords.astype(np.float64, copy=True)
+    for sl in mol_slices:
+        com = out[sl].mean(axis=0)
+        shift = -np.floor(com / box) * box
+        if np.any(shift):
+            out[sl] += shift
+    return out
+
+
 def min_image(d: np.ndarray, box: np.ndarray) -> np.ndarray:
     return d - box * np.round(d / box)
 
@@ -342,9 +355,9 @@ def declash_sequential(
 ):
     rng = np.random.default_rng(seed if seed >= 0 else None)
     L = box.astype(np.float64)
-    coords = wrap(coords.astype(np.float64), L)
     nmol = len(mol_ranges)
     mol_slices = [slice(m.start, m.end) for m in mol_ranges]
+    coords = wrap_molecules(coords.astype(np.float64), L, mol_slices)
 
     for it in range(niter):
         clashes = find_clashes(
@@ -423,7 +436,7 @@ def declash_sequential(
                 moved[mj] += dj
                 applied += 1
 
-        coords = wrap(coords, L)
+        coords = wrap_molecules(coords, L, mol_slices)
 
         if verbose:
             print(
@@ -438,7 +451,7 @@ def declash_sequential(
             for mid in range(nmol):
                 if mobile_mol[mid]:
                     coords[mol_slices[mid]] += jitter[mid]
-            coords = wrap(coords, L)
+            coords = wrap_molecules(coords, L, mol_slices)
 
     final = find_clashes(
         coords, L, atom_molid, atomname, cutoff, max_pairs=500000, heavy_only=heavy_only
@@ -467,6 +480,7 @@ def main():
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--fix-moltype", action="append", default=[])
     ap.add_argument("--fix-first-n", type=int, default=0)
+    ap.add_argument("--dry-top", type=Path, default=None)
     ap.add_argument("--restrict-xy-moltype", action="append", default=[])
     ap.add_argument("--report", type=Path, default=None)
     ap.add_argument("-v", "--verbose", action="store_true")
@@ -474,18 +488,24 @@ def main():
 
     title, coords, resid, resname, atomname, box = read_gro(args.gro)
 
-    if args.scale and abs(args.scale - 1.0) > 1e-8:
-        sc = float(args.scale)
-        center = box / 2.0
-        coords = wrap(coords, box)
-        coords = (coords - center) * sc + center
-        box = box * sc
-        coords = wrap(coords, box)
-
     top_text = read_text_with_includes(args.top)
     atomcounts = parse_moleculetype_atomcounts(top_text)
     mol_list = parse_molecules(top_text)
     mol_ranges = build_molecule_ranges(coords.shape[0], atomcounts, mol_list)
+    mol_slices = [slice(m.start, m.end) for m in mol_ranges]
+
+    # Translate the entire unbroken system from [-L/2, +L/2] (centered around origin)
+    # into the positive periodic box [0, L] centered at box / 2.0 before any wrapping.
+    bbox_center = 0.5 * (coords.min(axis=0) + coords.max(axis=0))
+    coords = coords + (0.5 * box - bbox_center)
+
+    if args.scale and abs(args.scale - 1.0) > 1e-8:
+        sc = float(args.scale)
+        center = box / 2.0
+        coords = wrap_molecules(coords, box, mol_slices)
+        coords = (coords - center) * sc + center
+        box = box * sc
+        coords = wrap_molecules(coords, box, mol_slices)
 
     atom_molid = np.empty(coords.shape[0], dtype=np.int32)
     moltype_of_molid: List[str] = []
@@ -495,6 +515,21 @@ def main():
     moltype_of_molid = np.array(moltype_of_molid, dtype=object)
 
     mobile = np.ones(len(mol_ranges), dtype=bool)
+    if args.dry_top is not None:
+        if not args.dry_top.exists() or args.dry_top.stat().st_size == 0:
+            raise FileNotFoundError(
+                f"FATAL: Dry topology file missing or empty: {args.dry_top}"
+            )
+        import parmed as pmd
+
+        n_dry_atoms = len(pmd.load_file(str(args.dry_top)).atoms)
+        if n_dry_atoms <= 0:
+            raise ValueError(
+                f"FATAL: Dry topology {args.dry_top} resolved to 0 atoms!"
+            )
+        for mid, m in enumerate(mol_ranges):
+            if m.end <= n_dry_atoms:
+                mobile[mid] = False
     if args.fix_first_n > 0:
         mobile[: args.fix_first_n] = False
     for mt in args.fix_moltype:

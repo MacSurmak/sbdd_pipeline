@@ -239,6 +239,8 @@ def cmd_tleap(args):
         f.write("set default PBRadii mbondi3\nsource apply_bonds.in\n")
         if not args.membrane:
             f.write(f"{box_cmd}\n")
+        else:
+            f.write("setBox complex vdw\n")
         f.write("savepdb complex complex_solv.pdb\nquit\n")
 
     run_cmd(["tleap", "-f", "tleap_solv.in"])
@@ -293,6 +295,8 @@ def cmd_tleap(args):
             f.write("addIonsRand complex Cl- 0\naddIonsRand complex K+ 0\n")
             if salt_pairs > 0:
                 f.write(f"addIonsRand complex K+ {salt_pairs} Cl- {salt_pairs}\n")
+        else:
+            f.write("setBox complex vdw\n")
         f.write("charge complex\n")
         f.write(
             "saveAmberParm complex complex.prmtop complex.inpcrd\nsavepdb complex complex_tleap.pdb\nquit\n"

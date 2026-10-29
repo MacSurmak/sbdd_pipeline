@@ -16,7 +16,7 @@ console = Console()
 
 
 def run_md_setup(
-    system: str | None = None,
+    systems: list[str] | None = None,
     target: str | None = None,
     force: bool = False,
     urgent: bool = False,
@@ -27,9 +27,11 @@ def run_md_setup(
     session = init_db()
     configs = load_project_configs(cwd)
 
-    query = session.query(System).filter_by(state="raw")
-    if system:
-        query = query.filter_by(name=system)
+    query = session.query(System)
+    if not force:
+        query = query.filter_by(state="raw")
+    if systems:
+        query = query.filter(System.name.in_(systems))
     elif target:
         target_obj = session.query(Target).filter_by(name=target).first()
         if not target_obj:

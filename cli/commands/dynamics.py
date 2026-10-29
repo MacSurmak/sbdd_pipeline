@@ -16,7 +16,7 @@ console = Console()
 
 
 def run_dynamics(
-    system: str | None = None,
+    systems: list[str] | None = None,
     target: str | None = None,
     urgent: bool = False,
     local: bool = False,
@@ -41,8 +41,8 @@ def run_dynamics(
         sys.exit(1)
 
     query = session.query(System).filter_by(state="ready")
-    if system:
-        query = query.filter_by(name=system)
+    if systems:
+        query = query.filter(System.name.in_(systems))
     elif target:
         target_obj = session.query(Target).filter_by(name=target).first()
         if not target_obj:

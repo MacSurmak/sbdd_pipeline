@@ -256,14 +256,19 @@ def main():
     p_mdsetup = subparsers.add_parser(
         "md-setup", help="Prepare MD topologies for raw systems (tLEaP/Declash)"
     )
-    p_mdsetup.add_argument("--system", help="Specific System to setup")
+    p_mdsetup.add_argument(
+        "--systems",
+        "--system",
+        dest="systems",
+        help="Comma-separated list of specific System names to setup",
+    )
     p_mdsetup.add_argument(
         "--target", help="Setup all raw systems for a specific Target"
     )
     p_mdsetup.add_argument(
         "--force",
         action="store_true",
-        help="Force re-parametrization of chemical states using the configured method (e.g. ORCA RESP)",
+        help="Force re-parametrization and topology rebuild even for ready systems",
     )
     add_common_wf_args(p_mdsetup)
 
@@ -271,10 +276,13 @@ def main():
     p_dyn = subparsers.add_parser(
         "dynamics",
         aliases=["md", "md-run"],
-        help="Execute chunked MD simulations for a ready System using protocol.txt playlist",
+        help="Execute chunked MD simulations for ready System(s) using protocol.txt playlist",
     )
     p_dyn.add_argument(
-        "--system", help="Name of the physical System to simulate (from 'sbdd tree')"
+        "--systems",
+        "--system",
+        dest="systems",
+        help="Comma-separated list of physical System names to simulate (from 'sbdd tree')",
     )
     p_dyn.add_argument(
         "--target", help="Simulate all ready Systems belonging to a specific Target"
@@ -619,7 +627,11 @@ def main():
         from cli.commands.md_setup import run_md_setup
 
         run_md_setup(
-            system=args.system,
+            systems=(
+                [s.strip() for s in args.systems.split(",") if s.strip()]
+                if args.systems
+                else None
+            ),
             target=args.target,
             force=args.force,
             urgent=args.urgent,
@@ -630,7 +642,11 @@ def main():
         from cli.commands.dynamics import run_dynamics
 
         run_dynamics(
-            system=args.system,
+            systems=(
+                [s.strip() for s in args.systems.split(",") if s.strip()]
+                if args.systems
+                else None
+            ),
             target=args.target,
             urgent=args.urgent,
             local=args.local,

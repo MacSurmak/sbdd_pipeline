@@ -68,7 +68,16 @@ def main():
         sys.exit(1)
 
     if args.inpcrd:
-        print(f"Saving GROMACS {args.out_gro}...")
+        if struct.box is None or any(float(x) <= 0.0 for x in struct.box[:3]):
+            print(
+                f"FATAL: Periodic box vectors are missing or non-positive in {args.prmtop} / {args.inpcrd}: {struct.box}! "
+                "Execution halted by Fail-Fast law.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        print(
+            f"Saving GROMACS {args.out_gro} (box: {struct.box[0]:.2f} x {struct.box[1]:.2f} x {struct.box[2]:.2f} A)..."
+        )
         struct.save(args.out_gro, overwrite=True)
     print("Conversion successful.")
 

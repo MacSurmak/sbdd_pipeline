@@ -104,7 +104,9 @@ workflow SETUP_MD_SYSTEM {
 
     // 7. Declash (Molecules-based)
     if (is_membrane.toString() == 'true') {
-        ch_declash_in = PARMED.out.gmx_system.map { meta, topol, gro -> [ meta, gro, topol ] }
+        ch_declash_in = PARMED.out.gmx_system
+            .join(TLEAP_DRY.out.dry_amber.map { meta, dry_prmtop, dry_inpcrd -> [ meta, dry_prmtop ] })
+            .map { meta, topol, gro, dry_prmtop -> [ meta, gro, topol, dry_prmtop ] }
         DECLASH(
             ch_declash_in,
             declash_cutoff,
