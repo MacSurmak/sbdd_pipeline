@@ -268,7 +268,12 @@ def main():
     p_mdsetup.add_argument(
         "--force",
         action="store_true",
-        help="Force re-parametrization and topology rebuild even for ready systems",
+        help="Rebuild MD system topologies even for systems already in ready state",
+    )
+    p_mdsetup.add_argument(
+        "--reparametrize",
+        action="store_true",
+        help="Force re-parametrization of small molecule quantum states (ORCA/Antechamber)",
     )
     add_common_wf_args(p_mdsetup)
 
@@ -634,6 +639,7 @@ def main():
             ),
             target=args.target,
             force=args.force,
+            reparametrize=args.reparametrize,
             urgent=args.urgent,
             local=args.local,
             resume=not args.no_resume,

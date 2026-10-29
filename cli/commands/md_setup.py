@@ -19,6 +19,7 @@ def run_md_setup(
     systems: list[str] | None = None,
     target: str | None = None,
     force: bool = False,
+    reparametrize: bool = False,
     urgent: bool = False,
     local: bool = False,
     resume: bool = True,
@@ -69,7 +70,7 @@ def run_md_setup(
 
     missing_states = []
     for state_id, state in unique_states.items():
-        if force:
+        if reparametrize:
             missing_states.append(state)
             continue
         mol2_ok = (
@@ -189,7 +190,7 @@ def run_md_setup(
             nf_param_args.extend(["--queue", "urgent"])
 
         profile_name = "local" if local else "slurm"
-        resume_param = resume and not force
+        resume_param = resume and not reparametrize
         ret = execute_nextflow(
             "parametrize",
             nf_param_args,
