@@ -60,10 +60,12 @@ def execute_nextflow(
         scratch_base_str = configs.get("project", {}).get("workdir", default_scratch)
 
     scratch_base = Path(scratch_base_str)
-    scratch_nxf_home = scratch_base / ".nextflow"
+    scratch_nxf_home = scratch_base / ".nxf_home"
     scratch_work = scratch_base / "work"
+    scratch_session_dir = scratch_base / f"session_{entrypoint}"
     scratch_nxf_home.mkdir(parents=True, exist_ok=True)
     scratch_work.mkdir(parents=True, exist_ok=True)
+    scratch_session_dir.mkdir(parents=True, exist_ok=True)
 
     reports_dir = project_dir / "reports"
     reports_dir.mkdir(parents=True, exist_ok=True)
@@ -99,10 +101,10 @@ def execute_nextflow(
     console.print(f"[dim]Deliverables:    {project_dir.resolve()}[/dim]")
     console.print(f"[bold blue]Command:[/bold blue] {' '.join(cmd)}\n")
 
-    # Run Nextflow INSIDE the scratch directory.
-    # This prevents .nextflow/ caches and .nextflow.log from polluting the user's clean project folder.
+    # Run Nextflow INSIDE the entrypoint-isolated session directory.
+    # This prevents .nextflow/history collisions across different subcommands while sharing work/.
     try:
-        proc = subprocess.Popen(cmd, cwd=scratch_base, env=env)
+        proc = subprocess.Popen(cmd, cwd=scratch_session_dir, env=env)
         ret = proc.wait()
 
         if ret == 0:

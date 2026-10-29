@@ -307,6 +307,11 @@ def _build_md_setup_args(config: Dict[str, Any]) -> list:
         pad_cfg = mem_cfg.get("padding", {})
         if "lipid_padding" in pad_cfg:
             args.extend(["--lipid_padding", str(pad_cfg["lipid_padding"])])
+        pack_cfg = mem_cfg.get("packing", {})
+        if "nloop" in pack_cfg:
+            args.extend(["--packmol_nloop", str(pack_cfg["nloop"])])
+        if "nloop_all" in pack_cfg:
+            args.extend(["--packmol_nloop_all", str(pack_cfg["nloop_all"])])
         args.extend(["--lipid_names", ",".join(mem_cfg.get("lipid_names", []))])
     else:
         args.extend(["--membrane", "false"])

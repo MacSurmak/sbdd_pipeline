@@ -21,6 +21,8 @@ workflow SETUP_MD_SYSTEM {
     lower_ratio       // val: "4:4:1:1"
     lipid_pad         // val: 10.0
     wat_pad           // val: 15.0
+    packmol_nloop     // val: 10
+    packmol_nloop_all // val: 30
     salt_conc         // val: 0.15
     water_leaprc
     water_box
@@ -70,6 +72,8 @@ workflow SETUP_MD_SYSTEM {
             lower_ratio,
             lipid_pad,
             wat_pad,
+            packmol_nloop,
+            packmol_nloop_all,
             salt_conc
         )
         ch_tleap_pdb = PACKMOL_MEMGEN.out.mem_complex_pdb

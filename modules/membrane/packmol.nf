@@ -15,6 +15,8 @@ process PACKMOL_MEMGEN {
     val(lower_ratio)
     val(lipid_pad)
     val(wat_pad)
+    val(nloop)
+    val(nloop_all)
     val(salt_conc)
 
     output:
@@ -30,6 +32,8 @@ process PACKMOL_MEMGEN {
         --lower_ratio "${lower_ratio}" \\
         --lipid_pad ${lipid_pad} \\
         --wat_pad ${wat_pad} \\
+        --nloop ${nloop} \\
+        --nloop_all ${nloop_all} \\
         --salt_conc ${salt_conc} \\
         --out_id ${meta.id}
     """

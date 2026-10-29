@@ -60,6 +60,8 @@ workflow MD_SETUP_WF {
         params.lower_ratio,
         params.lipid_padding,
         params.box_padding,
+        params.packmol_nloop,
+        params.packmol_nloop_all,
         params.md_salt_conc,
         params.water_leaprc,
         params.water_box,

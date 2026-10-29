@@ -30,6 +30,10 @@ def cmd_packmol(args):
         args.lipid_pad,
         "--dist_wat",
         args.wat_pad,
+        "--nloop",
+        str(args.nloop),
+        "--nloop_all",
+        str(args.nloop_all),
         "--salt",
         "--salt_c",
         "K+",
@@ -110,6 +114,8 @@ def main():
     p_pack.add_argument("--lower_ratio", required=True)
     p_pack.add_argument("--lipid_pad", required=True)
     p_pack.add_argument("--wat_pad", required=True)
+    p_pack.add_argument("--nloop", required=True)
+    p_pack.add_argument("--nloop_all", required=True)
     p_pack.add_argument("--salt_conc", required=True)
     p_pack.add_argument("--out_id", required=True)
 
