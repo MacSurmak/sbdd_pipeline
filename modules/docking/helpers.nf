@@ -95,7 +95,7 @@ process MERGE_GNINA_DOCK {
     label 'process_single'
 
     input:
-    tuple val(meta), path(chunk_sdfs)
+    tuple val(meta), path(chunk_sdfs, stageAs: 'sdfs_?/*')
 
     output:
     tuple val(meta), path("${meta.id}_gnina_docked_all.sdf"), emit: merged_sdf
@@ -113,7 +113,7 @@ process MERGE_GNINA_RESC {
     label 'process_single'
 
     input:
-    tuple val(meta), path(chunk_sdfs)
+    tuple val(meta), path(chunk_sdfs, stageAs: 'sdfs_?/*')
 
     output:
     tuple val(meta), path("${meta.id}_rescored.sdf"), emit: rescored_sdf

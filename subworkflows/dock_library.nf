@@ -110,18 +110,19 @@ workflow DOCK_LIBRARY {
         GNINA_RESCORE(ch_rescore_in, cnn_model)
 
         // Consolidate Glide chunks per frame
-        ch_to_merge_glide = GLIDE_DOCK.out.pv_maegz
-            .join(GLIDE_DOCK.out.scores_csv, by: 0)
-            .join(GLIDE_DOCK.out.poses_sdf, by: 0)
-            .map { comb_meta, pv, csv, sdf ->
-                def frame_meta = [
-                    id: comb_meta.frame_id,
-                    frame: comb_meta.frame,
-                    project: comb_meta.project
-                ]
-                [ frame_meta, pv, csv, sdf ]
-            }
+        ch_glide_pvs = GLIDE_DOCK.out.pv_maegz
+            .map { comb_meta, pv -> [ [id: comb_meta.frame_id, frame: comb_meta.frame, project: comb_meta.project], pv ] }
             .groupTuple(by: 0, sort: true)
+        ch_glide_csvs = GLIDE_DOCK.out.scores_csv
+            .map { comb_meta, csv -> [ [id: comb_meta.frame_id, frame: comb_meta.frame, project: comb_meta.project], csv ] }
+            .groupTuple(by: 0, sort: true)
+        ch_glide_sdfs = GLIDE_DOCK.out.poses_sdf
+            .map { comb_meta, sdf -> [ [id: comb_meta.frame_id, frame: comb_meta.frame, project: comb_meta.project], sdf ] }
+            .groupTuple(by: 0, sort: true)
+
+        ch_to_merge_glide = ch_glide_pvs
+            .join(ch_glide_csvs, by: 0)
+            .join(ch_glide_sdfs, by: 0)
 
         MERGE_GLIDE_CHUNKS(ch_to_merge_glide)
 
@@ -139,19 +140,20 @@ workflow DOCK_LIBRARY {
 
         MERGE_RESC_CHUNKS(ch_to_merge_resc)
 
-        // In-situ RMSD calculation for Glide poses
-        ch_glide_rmsd_in = MERGE_GLIDE_CHUNKS.out.poses_sdf
-            .map { meta, docked_sdf -> [ meta.id, meta, docked_sdf ] }
-            .join(ch_ref_lig_sdf.map { meta, ref_sdf -> [ meta.id, ref_sdf ] }, by: 0)
-            .map { frame_id, meta, docked_sdf, ref_sdf -> [ meta, docked_sdf, ref_sdf ] }
-
-        CALC_RMSD_GLIDE(ch_glide_rmsd_in, 'glide')
-
         ch_summary_files = ch_summary_files
             .mix(MERGE_GLIDE_CHUNKS.out.scores_csv.map { meta, csv -> csv })
             .mix(MERGE_GLIDE_CHUNKS.out.poses_sdf.map { meta, sdf -> sdf })
             .mix(MERGE_RESC_CHUNKS.out.rescored_sdf.map { meta, sdf -> sdf })
-            .mix(CALC_RMSD_GLIDE.out.rmsd_csv.map { meta, csv -> csv })
+
+        if (is_self) {
+            ch_glide_rmsd_in = MERGE_GLIDE_CHUNKS.out.poses_sdf
+                .map { meta, docked_sdf -> [ meta.id, meta, docked_sdf ] }
+                .join(ch_ref_lig_sdf.map { meta, ref_sdf -> [ meta.id, ref_sdf ] }, by: 0)
+                .map { frame_id, meta, docked_sdf, ref_sdf -> [ meta, docked_sdf, ref_sdf ] }
+
+            CALC_RMSD_GLIDE(ch_glide_rmsd_in, 'glide')
+            ch_summary_files = ch_summary_files.mix(CALC_RMSD_GLIDE.out.rmsd_csv.map { meta, csv -> csv })
+        }
 
         ch_primary_poses = MERGE_GLIDE_CHUNKS.out.poses_sdf
     }
@@ -191,17 +193,18 @@ workflow DOCK_LIBRARY {
 
         MERGE_DOCK_CHUNKS(ch_to_merge)
 
-        // In-situ RMSD calculation for GNINA poses
-        ch_gnina_rmsd_in = MERGE_DOCK_CHUNKS.out.merged_sdf
-            .map { meta, docked_sdf -> [ meta.id, meta, docked_sdf ] }
-            .join(ch_ref_lig_sdf.map { meta, ref_sdf -> [ meta.id, ref_sdf ] }, by: 0)
-            .map { frame_id, meta, docked_sdf, ref_sdf -> [ meta, docked_sdf, ref_sdf ] }
-
-        CALC_RMSD_GNINA(ch_gnina_rmsd_in, 'gnina')
-
         ch_summary_files = ch_summary_files
             .mix(MERGE_DOCK_CHUNKS.out.merged_sdf.map { meta, sdf -> sdf })
-            .mix(CALC_RMSD_GNINA.out.rmsd_csv.map { meta, csv -> csv })
+
+        if (is_self) {
+            ch_gnina_rmsd_in = MERGE_DOCK_CHUNKS.out.merged_sdf
+                .map { meta, docked_sdf -> [ meta.id, meta, docked_sdf ] }
+                .join(ch_ref_lig_sdf.map { meta, ref_sdf -> [ meta.id, ref_sdf ] }, by: 0)
+                .map { frame_id, meta, docked_sdf, ref_sdf -> [ meta, docked_sdf, ref_sdf ] }
+
+            CALC_RMSD_GNINA(ch_gnina_rmsd_in, 'gnina')
+            ch_summary_files = ch_summary_files.mix(CALC_RMSD_GNINA.out.rmsd_csv.map { meta, csv -> csv })
+        }
 
         if (dock_engine == "gnina") {
             ch_primary_poses = MERGE_DOCK_CHUNKS.out.merged_sdf
