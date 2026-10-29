@@ -213,11 +213,17 @@ def cmd_prime_mmgbsa(args):
 
 
 def cmd_ligprep(args):
+    env = os.environ.copy()
+    tmp_dir = os.environ.get("SLURM_TMPDIR", "/tmp")
+    env["SCHRODINGER_JOBDB"] = f"{tmp_dir}/schrodinger_jobdb_{os.getpid()}"
+    Path(env["SCHRODINGER_JOBDB"]).mkdir(parents=True, exist_ok=True)
+
     in_flag = (
         "-imae"
         if args.ligand_file.endswith(".mae") or args.ligand_file.endswith(".maegz")
         else "-isd"
     )
+    job_stem = Path(args.out_maegz).stem
     run_cmd(
         get_tool("ligprep")
         + [
@@ -235,13 +241,22 @@ def cmd_ligprep(args):
             args.max_states,
             "-bff",
             args.ff_version,
-            "-WAIT",
-        ]
+            "-NOJOBID",
+        ],
+        env=env,
+        job_name=job_stem,
     )
-    if not Path(args.out_maegz).exists():
-        print(f"FATAL: Ligprep output missing: {args.out_maegz}", file=sys.stderr)
+    if not Path(args.out_maegz).exists() or Path(args.out_maegz).stat().st_size == 0:
+        logs_dump = []
+        for lg in sorted(Path(".").glob("*.log")):
+            logs_dump.append(f"--- {lg.name} ---\n{lg.read_text(errors='ignore')}")
+        logs_str = "\n".join(logs_dump) if logs_dump else "No .log files found in scratch."
+        print(
+            f"FATAL: Ligprep output missing or empty: {args.out_maegz}\n{logs_str}",
+            file=sys.stderr,
+        )
         sys.exit(1)
-    run_cmd(get_tool("structconvert") + [args.out_maegz, args.out_sdf])
+    run_cmd(get_tool("structconvert") + [args.out_maegz, args.out_sdf], env=env)
 
 
 def cmd_convert_ligand(args):
