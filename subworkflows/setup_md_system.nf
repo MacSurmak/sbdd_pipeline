@@ -21,8 +21,8 @@ workflow SETUP_MD_SYSTEM {
     lower_ratio       // val: "4:4:1:1"
     lipid_pad         // val: 10.0
     wat_pad           // val: 15.0
-    packmol_nloop     // val: 10
-    packmol_nloop_all // val: 30
+    packmol_nloop     // val: 30
+    packmol_nloop_all // val: 100
     salt_conc         // val: 0.15
     water_leaprc
     water_box
