@@ -4,28 +4,25 @@ Description: Chemoinformatics helpers for ligand standardization and identity ve
 Computes Standard InChIKey and Canonical SMILES via RDKit for topological deduplication.
 """
 
+import hashlib
 from pathlib import Path
-from typing import Tuple, Optional
 import sys
+from typing import List, Optional, Tuple
+import numpy as np
+from rdkit import Chem
+from rdkit.Chem import AllChem
+from rdkit.Chem.EnumerateStereoisomers import (
+    EnumerateStereoisomers,
+    StereoEnumerationOptions,
+)
+from rdkit.Chem.MolStandardize import rdMolStandardize
 
 
-def get_mol_identity(source: str | Path) -> Tuple[str, str, str, int]:
-    """
-    Parses a chemical structure (SDF file, molblock, SMILES or PDB),
-    standardizes it, and returns (inchikey, canonical_smiles, mol_name).
-    Raises ValueError on invalid chemistry.
-    """
-    try:
-        from rdkit import Chem
-    except ImportError:
-        raise ImportError(
-            "RDKit is required for molecular identity and InChIKey calculation."
-        )
-
+def _load_rdkit_mol(source: str | Path | Chem.Mol) -> Tuple[Chem.Mol, str]:
     mol = None
     mol_name = ""
 
-    if hasattr(source, "GetAtoms"):
+    if isinstance(source, Chem.Mol) or hasattr(source, "GetAtoms"):
         mol = Chem.Mol(source)
         if mol.HasProp("_Name"):
             mol_name = mol.GetProp("_Name").strip()
@@ -34,50 +31,186 @@ def get_mol_identity(source: str | Path) -> Tuple[str, str, str, int]:
     ):
         p = Path(source)
         if p.suffix.lower() in [".sdf", ".mol"]:
-            suppl = Chem.SDMolSupplier(str(p), removeHs=False)
+            suppl = Chem.SDMolSupplier(str(p), removeHs=False, sanitize=False)
             mol = next((m for m in suppl if m is not None), None)
             if mol and mol.HasProp("_Name"):
                 mol_name = mol.GetProp("_Name").strip()
         elif p.suffix.lower() == ".pdb":
-            mol = Chem.MolFromPDBFile(str(p), removeHs=False)
+            mol = Chem.MolFromPDBFile(str(p), removeHs=False, sanitize=False)
         else:
-            raise ValueError(f"Unsupported molecule file format: {p.suffix}")
+            raise ValueError(f"FATAL: Unsupported molecule file format: {p.suffix}")
     elif isinstance(source, str):
         source_clean = source.strip()
         if "\n" in source_clean or "$$$$" in source_clean:
-            mol = Chem.MolFromMolBlock(source_clean, removeHs=False)
+            mol = Chem.MolFromMolBlock(source_clean, removeHs=False, sanitize=False)
             if mol and mol.HasProp("_Name"):
                 mol_name = mol.GetProp("_Name").strip()
         else:
-            mol = Chem.MolFromSmiles(source_clean)
+            mol = Chem.MolFromSmiles(source_clean, sanitize=False)
             mol_name = source_clean
 
     if mol is None:
         raise ValueError(
-            "Could not parse valid chemical structure from provided input."
+            f"FATAL: Could not parse valid chemical structure from source: {source}"
         )
 
-    from rdkit.Chem.MolStandardize import rdMolStandardize
+    mol.UpdatePropertyCache(strict=False)
+    Chem.SanitizeMol(mol)
+    _perceive_stereochemistry(mol)
+    return mol, mol_name
 
+
+def _perceive_stereochemistry(mol: Chem.Mol) -> None:
+    """Perceives 3D or 2D stereochemistry deterministically without losing wedge or coordinate parity."""
+    if mol.GetNumConformers() > 0 and mol.GetConformer().Is3D():
+        # Preserve any existing 2D wedge annotations if coordinates are flat, otherwise perceive from 3D
+        conf = mol.GetConformer()
+        zs = [abs(conf.GetAtomPosition(i).z) for i in range(mol.GetNumAtoms())]
+        if max(zs, default=0.0) > 1e-3:
+            Chem.AssignStereochemistryFrom3D(mol, replaceExistingTags=True)
+            Chem.AssignStereochemistry(
+                mol, force=False, cleanIt=True, flagPossibleStereoCenters=True
+            )
+            return
+    Chem.AssignStereochemistry(
+        mol, force=True, cleanIt=True, flagPossibleStereoCenters=True
+    )
+
+
+def _format_stereo_tag(mol: Chem.Mol, inchikey: str) -> str:
+    """Extracts human-readable CIP stereocenter descriptors (e.g. '3R_5S') or InChIKey stereo block."""
+    Chem.AssignStereochemistry(
+        mol, force=False, cleanIt=True, flagPossibleStereoCenters=True
+    )
+    cip_tokens = []
+    for atom in mol.GetAtoms():
+        if atom.HasProp("_CIPCode"):
+            cip = atom.GetProp("_CIPCode").strip()
+            cip_tokens.append(f"{atom.GetIdx()+1}{cip}")
+    for bond in mol.GetBonds():
+        if bond.GetStereo() == Chem.BondStereo.STEREOE:
+            cip_tokens.append(f"b{bond.GetIdx()+1}E")
+        elif bond.GetStereo() == Chem.BondStereo.STEREOZ:
+            cip_tokens.append(f"b{bond.GetIdx()+1}Z")
+    if cip_tokens:
+        return "_".join(cip_tokens)
+    parts = inchikey.split("-")
+    return parts[1] if len(parts) > 1 else inchikey[:8]
+
+
+def expand_stereoisomers(
+    mol: Chem.Mol, base_name: str, max_isomers: int = 32
+) -> List[Tuple[Chem.Mol, str]]:
+    """
+    Checks for unspecified covalent stereocenters (chiral atoms '?' or STEREOANY double bonds)
+    on the uncharged molecular skeleton. If unspecified centers exist, deterministically enumerates
+    all physically embeddable stereoisomers so every Substance in the 3NF DB has 100% explicit chirality.
+    """
+    mol_copy = Chem.Mol(mol)
+    mol_copy.UpdatePropertyCache(strict=False)
+    Chem.SanitizeMol(mol_copy)
+    _perceive_stereochemistry(mol_copy)
+
+    if mol_copy.GetNumHeavyAtoms() == 1 and mol_copy.GetNumAtoms() == 1:
+        return [(mol_copy, base_name)]
+
+    uncharger = rdMolStandardize.Uncharger()
+    heavy_neutral = uncharger.uncharge(Chem.RemoveHs(mol_copy))
+    Chem.AssignStereochemistry(
+        heavy_neutral, force=False, cleanIt=True, flagPossibleStereoCenters=True
+    )
+
+    chiral_centers = Chem.FindMolChiralCenters(
+        heavy_neutral, includeUnassigned=True, useLegacyImplementation=False
+    )
+    has_unassigned_atoms = any(tag == "?" for _, tag in chiral_centers)
+    has_unassigned_bonds = any(
+        b.GetBondType() == Chem.BondType.DOUBLE
+        and b.GetStereo() == Chem.BondStereo.STEREOANY
+        for b in heavy_neutral.GetBonds()
+    )
+
+    if not has_unassigned_atoms and not has_unassigned_bonds:
+        return [(mol_copy, base_name)]
+
+    # Strip 3D conformers before stereoisomer enumeration so RDKit embeds each isomer cleanly
+    mol_no_conf = Chem.RemoveHs(mol_copy)
+    mol_no_conf.RemoveAllConformers()
+    Chem.AssignStereochemistry(
+        mol_no_conf, force=False, cleanIt=True, flagPossibleStereoCenters=True
+    )
+
+    opts = StereoEnumerationOptions(
+        tryEmbedding=True, unique=True, maxIsomers=max_isomers, onlyUnassigned=True
+    )
+    raw_isomers = list(EnumerateStereoisomers(mol_no_conf, options=opts))
+    if not raw_isomers:
+        raise ValueError(
+            f"FATAL: Stereoisomer enumeration failed to produce any physically embeddable isomer for '{base_name}'!"
+        )
+
+    results: List[Tuple[Chem.Mol, str]] = []
+    seen_inchikeys = set()
+    for iso in raw_isomers:
+        iso_h = Chem.AddHs(iso)
+        params = AllChem.ETKDGv3()
+        params.randomSeed = 42
+        res_cid = AllChem.EmbedMolecule(iso_h, params)
+        if res_cid < 0:
+            res_cid = AllChem.EmbedMolecule(iso_h, useRandomCoords=True, randomSeed=42)
+        if res_cid < 0:
+            raise ValueError(
+                f"FATAL: Failed to generate 3D coordinates for enumerated stereoisomer of '{base_name}'!"
+            )
+        AllChem.UFFOptimizeMolecule(iso_h, maxIters=200)
+        _perceive_stereochemistry(iso_h)
+
+        ik, _, _, _ = get_mol_identity(iso_h)
+        if ik in seen_inchikeys:
+            continue
+        seen_inchikeys.add(ik)
+
+        if len(raw_isomers) == 1:
+            iso_title = base_name
+        else:
+            stereo_tag = _format_stereo_tag(iso_h, ik)
+            iso_title = f"{base_name}_{stereo_tag}"
+
+        iso_h.SetProp("_Name", iso_title)
+        results.append((iso_h, iso_title))
+
+    return results
+
+
+def get_mol_identity(source: str | Path | Chem.Mol) -> Tuple[str, str, str, int]:
+    """
+    Parses a chemical structure, perceives 3D/2D stereochemistry, neutralizes ionizable groups,
+    and returns (parent_inchikey, parent_isomeric_smiles, mol_name, formal_charge).
+    """
+    mol, mol_name = _load_rdkit_mol(source)
     formal_charge = Chem.GetFormalCharge(mol)
 
-    # Check if entity is a monoatomic ion to preserve its formal oxidation state
     is_monoatomic_ion = mol.GetNumHeavyAtoms() == 1 and mol.GetNumAtoms() == 1
 
     if is_monoatomic_ion:
         parent_inchikey = Chem.MolToInchiKey(mol)
-        parent_smiles = Chem.MolToSmiles(mol, canonical=True)
+        parent_smiles = Chem.MolToSmiles(mol, isomericSmiles=True, canonical=True)
     else:
-        # Neutralize organic parent to establish invariant chemical substance identity
-        # across protonation microstates, while preserving individual pose physics
         uncharger = rdMolStandardize.Uncharger()
         heavy_mol = Chem.RemoveHs(mol)
         parent_mol = uncharger.uncharge(heavy_mol)
+        Chem.AssignStereochemistry(
+            parent_mol, force=False, cleanIt=True, flagPossibleStereoCenters=True
+        )
         parent_inchikey = Chem.MolToInchiKey(parent_mol)
-        parent_smiles = Chem.MolToSmiles(parent_mol, canonical=True)
+        parent_smiles = Chem.MolToSmiles(
+            parent_mol, isomericSmiles=True, canonical=True
+        )
 
     if not parent_inchikey:
-        raise ValueError("Failed to generate InChIKey. Invalid chemical structure.")
+        raise ValueError(
+            "FATAL: Failed to generate Standard InChIKey. Invalid chemical structure."
+        )
 
     if not mol_name:
         mol_name = parent_inchikey[:14]
@@ -85,51 +218,19 @@ def get_mol_identity(source: str | Path) -> Tuple[str, str, str, int]:
     return parent_inchikey, parent_smiles, mol_name, formal_charge
 
 
-def get_microstate_identity(source: str | Path) -> Tuple[str, str, str, str, str, int]:
+def get_microstate_identity(
+    source: str | Path | Chem.Mol,
+) -> Tuple[str, str, str, str, str, int]:
     """
-    Computes both the Abstract Substance Identity (Neutral InChIKey) and the
-    Exact Chemical Microstate Identity (Isomeric Canonical SMILES and state hash).
+    Computes both the Abstract Substance Identity (Stereospecific Neutral InChIKey) and the
+    Exact Chemical Microstate Identity (Isomeric Canonical SMILES and SHA-256 state hash).
 
     Returns:
         (parent_inchikey, parent_smiles, mol_name, state_hash, isomeric_smiles, formal_charge)
     """
-    import hashlib
+    mol, _ = _load_rdkit_mol(source)
+    parent_inchikey, parent_smiles, mol_name, formal_charge = get_mol_identity(mol)
 
-    parent_inchikey, parent_smiles, mol_name, formal_charge = get_mol_identity(source)
-
-    try:
-        from rdkit import Chem
-    except ImportError:
-        raise ImportError("RDKit is required for microstate identification.")
-
-    mol = None
-    if hasattr(source, "GetAtoms"):
-        mol = Chem.Mol(source)
-    elif isinstance(source, Path) or (
-        isinstance(source, str) and Path(source).exists()
-    ):
-        p = Path(source)
-        if p.suffix.lower() in [".sdf", ".mol"]:
-            suppl = Chem.SDMolSupplier(str(p), removeHs=False, sanitize=False)
-            mol = next((m for m in suppl if m is not None), None)
-        elif p.suffix.lower() == ".pdb":
-            mol = Chem.MolFromPDBFile(str(p), removeHs=False, sanitize=False)
-    elif isinstance(source, str):
-        source_clean = source.strip()
-        if "\n" in source_clean or "$$$$" in source_clean:
-            mol = Chem.MolFromMolBlock(source_clean, removeHs=False, sanitize=False)
-        else:
-            mol = Chem.MolFromSmiles(source_clean, sanitize=False)
-
-    if mol is None:
-        raise ValueError(
-            f"Could not parse valid chemical structure from source: {source}"
-        )
-
-    # Standardize property cache to ensure valences and formal charges are evaluated
-    mol.UpdatePropertyCache(strict=False)
-
-    # Compute Isomeric Canonical SMILES with stereochemistry and explicit charges
     isomeric_smiles = Chem.MolToSmiles(mol, isomericSmiles=True, canonical=True)
     state_hash = hashlib.sha256(isomeric_smiles.encode("utf-8")).hexdigest()[:12]
 

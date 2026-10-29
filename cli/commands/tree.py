@@ -18,6 +18,8 @@ from cli.core.db import (
     ClusteringRun,
     TrajectoryCluster,
     MmpbsaRun,
+    DockingRun,
+    DockedPose,
 )
 
 console = Console()
@@ -150,6 +152,31 @@ def print_tree() -> None:
                                 cr_node.add(
                                     f"Basin #{cl.cluster_rank} ({cl.population_fraction * 100:.1f}%, {cl.frame_count} frames, medoid: {cl.medoid_replicate}@{cl.medoid_time_ns:.1f}ns){dg_str}"
                                 )
+
+    # 1.5 Analytical Docking Runs
+    dock_runs = session.query(DockingRun).order_by(DockingRun.created_at).all()
+    if dock_runs:
+        d_branch = root_tree.add(
+            "[bold magenta]Analytical Docking Runs (3NF)[/bold magenta]"
+        )
+        for dr in dock_runs:
+            total_poses = len(dr.docked_poses)
+            frames_set = sorted(
+                list({dp.receptor_frame.name for dp in dr.docked_poses})
+            )
+            subs_set = sorted(list({dp.substance.name for dp in dr.docked_poses}))
+            dr_node = d_branch.add(
+                f"[bold cyan]{dr.name}[/bold cyan] [dim](mode={dr.mode}, {len(frames_set)} frame(s) × {len(subs_set)} substance(s), {total_poses} total modes)[/dim]"
+            )
+            for f_name in frames_set:
+                f_poses = [
+                    dp for dp in dr.docked_poses if dp.receptor_frame.name == f_name
+                ]
+                g_count = sum(1 for dp in f_poses if dp.engine == "glide")
+                n_count = sum(1 for dp in f_poses if dp.engine == "gnina")
+                dr_node.add(
+                    f"Frame [cyan]{f_name}[/cyan]: {len( {dp.substance_id for dp in f_poses} )} substance(s) [dim](Glide: {g_count} modes, GNINA: {n_count} modes)[/dim]"
+                )
 
     # 2. Chemical Substances, Microstates & Their 3D Poses
     substances = (

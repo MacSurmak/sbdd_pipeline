@@ -16,6 +16,8 @@ from cli.core.db import (
     ClusteringRun,
     TrajectoryCluster,
     MmpbsaRun,
+    DockingRun,
+    DockedPose,
 )
 
 console = Console()
@@ -72,6 +74,15 @@ def remove_entity(name: str) -> None:
             session.delete(c_run)
             console.print(
                 f"[bold green]✓ Deleted ClusteringRun '{name}' and associated clusters (CASCADE).[/bold green]"
+            )
+            deleted = True
+
+    if not deleted:
+        d_run = session.query(DockingRun).filter_by(name=name).first()
+        if d_run:
+            session.delete(d_run)
+            console.print(
+                f"[bold green]✓ Deleted DockingRun '{name}' and all associated docked modes (CASCADE).[/bold green]"
             )
             deleted = True
 

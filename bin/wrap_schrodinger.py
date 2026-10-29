@@ -225,6 +225,7 @@ def cmd_ligprep(args):
             args.ligand_file,
             "-omae",
             args.out_maegz,
+            "-g",
             "-epik",
             "-ph",
             args.target_ph,
