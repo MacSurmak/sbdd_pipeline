@@ -73,13 +73,21 @@ def _build_prep_args(config: Dict[str, Any]) -> list:
         "force_field",
         "max_states",
         "batch_size",
+        "cpus",
+        "memory_gb",
     ]:
         if req_k not in lp_cfg or lp_cfg[req_k] is None:
             raise ValueError(
                 f"FATAL: 'glide.ligprep.{req_k}' is required in glide.yaml!"
             )
-    if int(lp_cfg["batch_size"]) <= 0:
-        raise ValueError("FATAL: 'glide.ligprep.batch_size' must be a positive integer!")
+    if (
+        int(lp_cfg["batch_size"]) <= 0
+        or int(lp_cfg["cpus"]) <= 0
+        or int(lp_cfg["memory_gb"]) <= 0
+    ):
+        raise ValueError(
+            "FATAL: 'glide.ligprep.batch_size', 'cpus', and 'memory_gb' must be positive integers!"
+        )
 
     lig_ph = lp_cfg["target_ph"]
     lig_tol = lp_cfg["ph_tolerance"]
@@ -99,6 +107,10 @@ def _build_prep_args(config: Dict[str, Any]) -> list:
             str(max_st),
             "--batch_size",
             str(b_size),
+            "--ligprep_cpus",
+            str(int(lp_cfg["cpus"])),
+            "--ligprep_mem_gb",
+            str(int(lp_cfg["memory_gb"])),
         ]
     )
 
@@ -206,6 +218,41 @@ def _build_screen_args(config: Dict[str, Any], project_dir: Path) -> list:
         if int(gnina_cfg["batch_size"]) <= 0:
             raise ValueError("FATAL: 'gnina.batch_size' must be a positive integer!")
 
+        g_res = gnina_cfg.get("resources")
+        if not isinstance(g_res, dict):
+            raise ValueError(
+                "FATAL: 'gnina.resources' block is required in gnina.yaml!"
+            )
+        for rk in ["cpus", "parallel_workers", "memory_gb", "slurm_gres"]:
+            if rk not in g_res or g_res[rk] is None or str(g_res[rk]).strip() == "":
+                raise ValueError(
+                    f"FATAL: 'gnina.resources.{rk}' is required in gnina.yaml!"
+                )
+        g_cpus = int(g_res["cpus"])
+        g_workers = int(g_res["parallel_workers"])
+        g_mem = int(g_res["memory_gb"])
+        g_gres = str(g_res["slurm_gres"]).strip()
+        if g_cpus <= 0 or g_workers <= 0 or g_mem <= 0:
+            raise ValueError(
+                "FATAL: 'gnina.resources.cpus', 'parallel_workers', and 'memory_gb' must be positive integers!"
+            )
+        if g_cpus < g_workers or (g_cpus % g_workers != 0):
+            raise ValueError(
+                f"FATAL: 'gnina.resources.cpus' ({g_cpus}) must be an exact multiple of 'parallel_workers' ({g_workers})!"
+            )
+        args.extend(
+            [
+                "--gnina_cpus",
+                str(g_cpus),
+                "--gnina_workers",
+                str(g_workers),
+                "--gnina_mem_gb",
+                str(g_mem),
+                "--gnina_gres",
+                g_gres,
+            ]
+        )
+
         if "cnn_model" in gnina_cfg and gnina_cfg["cnn_model"] is not None:
             args.extend(["--cnn_model", str(gnina_cfg["cnn_model"])])
     else:
@@ -230,6 +277,29 @@ def _build_screen_args(config: Dict[str, Any], project_dir: Path) -> list:
             args.extend([f"--{nf_k}", str(glide_cfg[yaml_k])])
         if int(glide_cfg["batch_size"]) <= 0:
             raise ValueError("FATAL: 'glide.batch_size' must be a positive integer!")
+
+        gl_res = glide_cfg.get("resources")
+        if not isinstance(gl_res, dict):
+            raise ValueError(
+                "FATAL: 'glide.resources' block is required in glide.yaml!"
+            )
+        for rk in ["cpus", "memory_gb"]:
+            if rk not in gl_res or gl_res[rk] is None:
+                raise ValueError(
+                    f"FATAL: 'glide.resources.{rk}' is required in glide.yaml!"
+                )
+        if int(gl_res["cpus"]) <= 0 or int(gl_res["memory_gb"]) <= 0:
+            raise ValueError(
+                "FATAL: 'glide.resources.cpus' and 'memory_gb' must be positive integers!"
+            )
+        args.extend(
+            [
+                "--glide_cpus",
+                str(int(gl_res["cpus"])),
+                "--glide_mem_gb",
+                str(int(gl_res["memory_gb"])),
+            ]
+        )
     else:
         args.extend(["--glide_batch_size", "0"])
 
@@ -444,10 +514,25 @@ def _build_dynamics_args(config: Dict[str, Any], project_dir: Path) -> list:
     exec_cfg = md_cfg.get("execution")
     if not exec_cfg:
         raise ValueError("FATAL: 'md_simulation.execution' block is required!")
+    for k in ["minim_flags", "eq_flags", "prod_flags", "cpus", "memory_gb"]:
+        if k not in exec_cfg or exec_cfg[k] is None:
+            raise ValueError(
+                f"FATAL: 'md_simulation.execution.{k}' is required in md.yaml!"
+            )
+    if int(exec_cfg["cpus"]) <= 0 or int(exec_cfg["memory_gb"]) <= 0:
+        raise ValueError(
+            "FATAL: 'md_simulation.execution.cpus' and 'memory_gb' must be positive integers!"
+        )
     for k in ["minim_flags", "eq_flags", "prod_flags"]:
-        if k not in exec_cfg:
-            raise ValueError(f"FATAL: 'md_simulation.execution.{k}' is required!")
         args.extend([f"--{k}", str(exec_cfg[k])])
+    args.extend(
+        [
+            "--md_cpus",
+            str(int(exec_cfg["cpus"])),
+            "--md_mem_gb",
+            str(int(exec_cfg["memory_gb"])),
+        ]
+    )
 
     prod_cfg = md_cfg.get("production")
     if not prod_cfg:
@@ -562,6 +647,10 @@ def _build_analyze_args(config: Dict[str, Any]) -> list:
                 str(val_mmpbsa["indi"]),
                 "--mmpbsa_fillratio",
                 str(val_mmpbsa["pb_fillratio"]),
+                "--mmpbsa_cpus",
+                str(val_mmpbsa["cpus"]),
+                "--mmpbsa_mem_gb",
+                str(val_mmpbsa["memory_gb"]),
             ]
         )
 
@@ -692,6 +781,21 @@ def validate_mmpbsa_config(config: Dict[str, Any]) -> Dict[str, Any]:
         raise ValueError(
             f"FATAL: Invalid mmpbsa.method: '{method}'. Must be 'auto', 'gb', or 'pb'."
         )
+
+    res_block = mmpbsa_cfg.get("resources")
+    if not isinstance(res_block, dict):
+        raise ValueError("FATAL: 'mmpbsa.resources' block is required in mmpbsa.yaml!")
+    for r_key in ["cpus", "memory_gb"]:
+        if r_key not in res_block or res_block[r_key] is None:
+            raise ValueError(
+                f"FATAL: 'mmpbsa.resources.{r_key}' is required in mmpbsa.yaml!"
+            )
+    if int(res_block["cpus"]) <= 0 or int(res_block["memory_gb"]) <= 0:
+        raise ValueError(
+            "FATAL: 'mmpbsa.resources.cpus' and 'memory_gb' must be positive integers!"
+        )
+    mmpbsa_cfg["cpus"] = int(res_block["cpus"])
+    mmpbsa_cfg["memory_gb"] = int(res_block["memory_gb"])
 
     solv = mmpbsa_cfg.get("solvation")
     if not solv or not isinstance(solv, dict):

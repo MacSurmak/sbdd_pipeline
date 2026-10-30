@@ -5,5 +5,10 @@ gnina:
   num_modes: 16                      # Number of binding poses to output
   autobox_add: 4.0                   # Tight binding cleft focus (Å)
   cnn_model: "crossdock_default2018" # Default GNINA CNN model
-  batch_size: 5                      # 5 ligands per chunk for maximum cluster scalability
+  batch_size: 10                     # Ligands per chunk for cluster scalability
+  resources:
+    cpus: 4                          # Total CPU cores allocated per GNINA Slurm task
+    parallel_workers: 2              # Concurrent GNINA processes inside each task (each gets cpus / parallel_workers threads)
+    memory_gb: 6                     # RAM allocation per task in GB
+    slurm_gres: "shard:1"            # Slurm GRES request: "shard:1" (shared GPU) or "gpu:1" (exclusive GPU)
 

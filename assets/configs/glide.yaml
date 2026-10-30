@@ -12,6 +12,9 @@ glide:
   postdock: true
   write_csv: true
   batch_size: 10                     # Ligands per chunk for Glide docking
+  resources:
+    cpus: 1                          # Single-core per -NOJOBID Glide chunk for maximum node density
+    memory_gb: 4                     # RAM allocation per Glide chunk in GB
   grid:
     inner_box: [10, 10, 10]
     outer_box: [26, 26, 26]
@@ -22,4 +25,6 @@ glide:
     force_field: 16                  # 16 = OPLS4, 14 = OPLS_2005
     max_states: 32
     batch_size: 10                   # Substances per chunk for LigPrep preparation
+    cpus: 1                          # Single-core per -NOJOBID LigPrep batch
+    memory_gb: 4                     # RAM allocation per LigPrep batch in GB
 

@@ -4,6 +4,9 @@ mmpbsa:
   temperature: 310.15
   salt_conc: 0.15
   method: "auto"                     # Options: auto (PB for membrane, GB for water), gb, or pb
+  resources:
+    cpus: 8
+    memory_gb: 12
   solvation:
     gb_model: 2                      # 2 = Onufriev-Bashford-Case (OBC2)
     pb_fillratio: 1.25               # Finite-difference grid scaling factor

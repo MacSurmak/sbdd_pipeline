@@ -5,11 +5,12 @@
 
 process GNINA_RESCORE {
     tag "${meta.id}"
-    label 'process_gpu'
+    label 'process_gpu_shard'
 
     input:
     tuple val(meta), path(receptor_pdb, stageAs: 'rec_dir/*'), path(ref_lig_sdf, stageAs: 'ref_dir/*'), path(poses_sdf, stageAs: 'poses_dir/*')
     val(cnn_model)
+    val(gnina_workers)
 
     output:
     tuple val(meta), path("rescored.sdf"), emit: rescored_sdf
@@ -22,6 +23,8 @@ process GNINA_RESCORE {
         --receptor ${receptor_pdb} \\
         --ligand ${poses_sdf} \\
         --ref_ligand ${ref_lig_sdf} \\
+        --cpus ${task.cpus} \\
+        --workers ${gnina_workers} \\
         ${cnn_arg} \\
         --out_sdf rescored.sdf \\
         --out_log rescored.log

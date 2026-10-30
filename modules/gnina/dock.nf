@@ -5,7 +5,7 @@
 
 process GNINA_DOCK {
     tag "${meta.id}"
-    label 'process_gpu'
+    label 'process_gpu_shard'
 
     input:
     tuple val(meta), path(receptor_pdb, stageAs: 'rec_dir/*'), path(ref_lig_sdf, stageAs: 'ref_dir/*'), path(chunk_sdf, stageAs: 'chunk_dir/*'), val(chunk_idx)
@@ -13,6 +13,8 @@ process GNINA_DOCK {
     val(cnn_scoring)
     val(num_modes)
     val(autobox_add)
+    val(gnina_workers)
+
     output:
     tuple val(meta), path("gnina_dock.sdf"), emit: docked_sdf
     tuple val(meta), path("gnina_dock.log"), emit: log
@@ -23,6 +25,8 @@ process GNINA_DOCK {
         --receptor ${receptor_pdb} \\
         --ligand ${chunk_sdf} \\
         --ref_ligand ${ref_lig_sdf} \\
+        --cpus ${task.cpus} \\
+        --workers ${gnina_workers} \\
         --autobox_add ${autobox_add} \\
         --exhaustiveness ${exhaustiveness} \\
         --cnn_scoring ${cnn_scoring} \\
