@@ -80,6 +80,29 @@ def main():
         )
         sys.exit(res.returncode)
 
+    # Structurally normalize the SDF via RDKit to replace OpenBabel's 2D header tag
+    # with proper 3D MDL V2000 headers and eliminate downstream dimensionality warnings.
+    try:
+        import os
+        from rdkit import Chem, RDLogger
+
+        RDLogger.DisableLog("rdApp.*")
+        suppl = Chem.SDMolSupplier(args.out_sdf, removeHs=False, sanitize=False)
+        tmp_sdf = f"{args.out_sdf}.tmp"
+        with Chem.SDWriter(tmp_sdf) as w:
+            w.SetForceV3000(False)
+            for m in suppl:
+                if m is not None:
+                    w.write(m)
+        os.replace(tmp_sdf, args.out_sdf)
+    except Exception as e:
+        print(
+            f"FATAL: Failed to structurally normalize GNINA SDF {args.out_sdf} via RDKit: {e}",
+            file=sys.stderr,
+            flush=True,
+        )
+        sys.exit(1)
+
 
 if __name__ == "__main__":
     main()

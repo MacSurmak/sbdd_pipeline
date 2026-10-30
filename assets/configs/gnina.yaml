@@ -5,7 +5,7 @@ gnina:
   num_modes: 16                      # Number of binding poses to output
   autobox_add: 4.0                   # Tight binding cleft focus (Å)
   cnn_model: "crossdock_default2018" # Default GNINA CNN model
-  batch_size: 1                      # 1 substance per task for maximum horizontal GPU shard parallelism
+  batch_size: 4                      # 4 substances per task to amortize CUDA/CNN initialization across GPU shards
   resources:
     cpus: 2                          # CPU threads (--cpu) allocated per GNINA Slurm task
     memory_gb: 4                     # RAM allocation per task in GB
