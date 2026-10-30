@@ -458,6 +458,22 @@ def _ingest_docking_receipt(
                     3,
                 )
 
+    session.flush()
+
+    # Prune orphaned raw SubstanceStates left over from replaced docking runs
+    for sub_obj in set(substance_by_title.values()):
+        sub_states = (
+            session.query(SubstanceState).filter_by(substance_id=sub_obj.id).all()
+        )
+        if len(sub_states) > 1:
+            for st in sub_states:
+                if (
+                    st.state == "raw"
+                    and len(st.poses) == 0
+                    and len(st.docked_poses) == 0
+                ):
+                    session.delete(st)
+
     session.commit()
     return dock_run, parsed_modes, total_modes_saved
 

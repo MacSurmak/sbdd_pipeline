@@ -231,7 +231,15 @@ def get_microstate_identity(
     mol, _ = _load_rdkit_mol(source)
     parent_inchikey, parent_smiles, mol_name, formal_charge = get_mol_identity(mol)
 
-    isomeric_smiles = Chem.MolToSmiles(mol, isomericSmiles=True, canonical=True)
+    if mol.GetNumHeavyAtoms() == 1 and mol.GetNumAtoms() == 1:
+        mol_canon = mol
+    else:
+        mol_canon = Chem.RemoveHs(mol, updateExplicitCount=True)
+        Chem.AssignStereochemistry(
+            mol_canon, force=False, cleanIt=True, flagPossibleStereoCenters=True
+        )
+
+    isomeric_smiles = Chem.MolToSmiles(mol_canon, isomericSmiles=True, canonical=True)
     state_hash = hashlib.sha256(isomeric_smiles.encode("utf-8")).hexdigest()[:12]
 
     return (

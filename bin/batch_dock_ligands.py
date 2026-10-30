@@ -20,27 +20,44 @@ def merge_sdf_files(sdf_paths: list[Path], out_sdf: Path) -> None:
                 raise FileNotFoundError(
                     f"FATAL: Prepared ligand SDF missing or empty: {p}"
                 )
-            content = p.read_text(encoding="utf-8", errors="ignore").strip()
-            if not content:
-                raise ValueError(f"FATAL: Prepared ligand SDF is empty: {p}")
-            if not content.endswith("$$$$"):
-                content += "\n$$$$"
-            out_f.write(content + "\n")
+            current_lines = []
+            records_written = 0
+            with open(p, "r", encoding="utf-8", errors="ignore") as in_f:
+                for line in in_f:
+                    if line.strip() == "$$$$":
+                        if any(l.strip() for l in current_lines):
+                            out_f.write("".join(current_lines) + "$$$$\n")
+                            records_written += 1
+                        current_lines = []
+                    else:
+                        current_lines.append(line)
+            if any(l.strip() for l in current_lines):
+                out_f.write("".join(current_lines) + "\n$$$$\n")
+                records_written += 1
+            if records_written == 0:
+                raise ValueError(f"FATAL: Prepared ligand SDF has 0 records: {p}")
 
 
 def merge_maegz_files(mae_paths: list[Path], out_maegz: Path) -> None:
-    with gzip.open(out_maegz, "wb") as out_gz:
-        for p in mae_paths:
+    with gzip.open(out_maegz, "wt", encoding="utf-8") as out_gz:
+        for idx, p in enumerate(mae_paths):
             if not p.exists() or p.stat().st_size == 0:
                 raise FileNotFoundError(
                     f"FATAL: Prepared ligand MAEGZ missing or empty: {p}"
                 )
             if p.suffix.lower() == ".maegz":
-                with gzip.open(p, "rb") as in_gz:
-                    shutil.copyfileobj(in_gz, out_gz)
+                with gzip.open(p, "rt", encoding="utf-8", errors="ignore") as in_gz:
+                    text = in_gz.read()
             else:
-                with open(p, "rb") as in_f:
-                    shutil.copyfileobj(in_f, out_gz)
+                text = p.read_text(encoding="utf-8", errors="ignore")
+
+            if idx > 0:
+                ct_pos = text.find("f_m_ct")
+                if ct_pos != -1:
+                    text = text[ct_pos:]
+            out_gz.write(text)
+            if not text.endswith("\n"):
+                out_gz.write("\n")
 
 
 def main() -> None:

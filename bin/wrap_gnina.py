@@ -13,13 +13,18 @@ from pathlib import Path
 
 
 def split_sdf_records(sdf_path: Path) -> list[str]:
-    text = sdf_path.read_text(encoding="utf-8", errors="ignore")
-    raw_blocks = text.split("$$$$")
     records = []
-    for blk in raw_blocks:
-        clean = blk.strip()
-        if clean:
-            records.append(clean + "\n$$$$\n")
+    current_lines = []
+    with open(sdf_path, "r", encoding="utf-8", errors="ignore") as f:
+        for line in f:
+            if line.strip() == "$$$$":
+                if any(l.strip() for l in current_lines):
+                    records.append("".join(current_lines) + "$$$$\n")
+                current_lines = []
+            else:
+                current_lines.append(line)
+    if any(l.strip() for l in current_lines):
+        records.append("".join(current_lines) + "\n$$$$\n")
     return records
 
 
