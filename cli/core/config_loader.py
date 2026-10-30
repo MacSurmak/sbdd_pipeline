@@ -300,8 +300,6 @@ def _build_screen_args(config: Dict[str, Any], project_dir: Path) -> list:
                 str(int(gl_res["memory_gb"])),
             ]
         )
-    else:
-        args.extend(["--glide_batch_size", "0"])
 
         grid_cfg = glide_cfg.get("grid")
         if not grid_cfg:
@@ -328,6 +326,8 @@ def _build_screen_args(config: Dict[str, Any], project_dir: Path) -> list:
             ]:
                 if yaml_k in lp_cfg:
                     args.extend([f"--{nf_k}", str(lp_cfg[yaml_k])])
+    else:
+        args.extend(["--glide_batch_size", "0"])
 
     return args
 
