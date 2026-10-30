@@ -20,6 +20,31 @@ process SPLIT_SDF {
     """
 }
 
+process BATCH_DOCK_LIGANDS {
+    tag "${project_name}"
+    executor 'local'
+    scratch false
+    label 'process_single'
+
+    input:
+    val(project_name)
+    path(dock_plan_json)
+    val(batch_size)
+
+    output:
+    path("chunks_manifest.json"), emit: manifest
+    path("chunk_*.sdf"), emit: sdf_chunks
+    path("chunk_*.maegz"), emit: mae_chunks
+
+    script:
+    """
+    python3 ${projectDir}/bin/batch_dock_ligands.py \\
+        --dock_plan ${dock_plan_json} \\
+        --batch_size ${batch_size} \\
+        --out_manifest chunks_manifest.json
+    """
+}
+
 process MERGE_CSV {
     tag "${meta.id}"
     executor 'local'

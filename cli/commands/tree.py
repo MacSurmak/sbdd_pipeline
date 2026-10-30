@@ -190,8 +190,9 @@ def print_tree() -> None:
         )
         for sub in substances:
             type_badge = f"[bold]{sub.substance_type.upper()}[/bold]"
+            sub_color = "green" if sub.state == "ready" else "yellow"
             sub_node = sub_branch.add(
-                f"{type_badge}: [bold cyan]{sub.name}[/bold cyan] [dim]({sub.inchikey})[/dim]"
+                f"{type_badge}: [bold cyan]{sub.name}[/bold cyan] [{sub_color}]\\[{sub.state}][/{sub_color}] [dim]({sub.inchikey})[/dim]"
             )
 
             states = (
@@ -240,7 +241,7 @@ def print_tree() -> None:
                             param_status = " [bold green]+BCC(GAFF2)[/bold green]"
 
                 state_node = sub_node.add(
-                    f"State: [magenta]{st.state_hash}[/magenta] [{st_color}][{st.state}][/{st_color}] [cyan]({q_label})[/cyan]{param_status} [dim]SMILES: {st.isomeric_smiles}[/dim]"
+                    f"State: [magenta]{st.state_hash}[/magenta] [{st_color}]\\[{st.state}][/{st_color}] [cyan]({q_label})[/cyan]{param_status} [dim]SMILES: {st.isomeric_smiles}[/dim]"
                 )
 
                 poses = (

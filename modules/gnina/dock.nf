@@ -4,7 +4,7 @@
  */
 
 process GNINA_DOCK {
-    tag "${meta.id}_chunk_${chunk_idx}"
+    tag "${meta.id}"
     label 'process_gpu'
 
     input:

@@ -51,42 +51,47 @@ workflow PREPARE_WF {
         )
     }
 
-    // 2. Process Ligands if present in plan
+    // 2. Process Ligands in batches of batch_size if present in plan
     def ligandList = planData.ligands ?: []
     if (ligandList) {
-        ch_lig_in = Channel.fromList(ligandList).map { lig ->
-            def lig_path = file(lig.path)
-            if (!lig_path.exists()) {
-                error "FATAL: Ligand file path does not exist: ${lig.path}"
-            }
-            def meta = [
-                id: lig.name,
-                name: lig.name,
-                inchikey: lig.inchikey,
-                project: params.project_name,
-                status: lig.status ?: 'unprepared',
-                is_native: lig.is_native ?: false
-            ]
-            [ meta, lig_path.toAbsolutePath() ]
+        if (!params.batch_size || !params.ligand_ph || !params.ligand_ph_tol || !params.ligprep_ff || !params.max_states) {
+            error "FATAL: Ligand preparation parameters missing in configuration! Check glide.yaml and gnina.yaml."
         }
 
-        if (!params.batch_size || !params.ligand_ph || !params.ligand_ph_tol || !params.ligprep_ff || !params.max_states) {
-            error "FATAL: Ligand preparation parameters missing in configuration! Check project.yaml."
+        def b_size = params.batch_size as int
+        def batchedList = ligandList.collate(b_size)
+
+        ch_lig_batches = Channel.fromList(batchedList.withIndex()).map { batch_items, b_idx ->
+            def sdf_files = batch_items.collect { lig ->
+                def lig_path = file(lig.path)
+                if (!lig_path.exists()) {
+                    error "FATAL: Ligand file path does not exist: ${lig.path}"
+                }
+                lig_path.toAbsolutePath()
+            }
+            def spec_json = file("${workDir}/stage_ligprep_b${b_idx}_spec.json")
+            spec_json.text = groovy.json.JsonOutput.toJson(batch_items)
+            def meta = [
+                id: "b${b_idx}",
+                batch_idx: b_idx,
+                project: params.project_name
+            ]
+            [ meta, spec_json, sdf_files ]
         }
 
         PREPARE_LIGANDS(
-            ch_lig_in,
-            params.batch_size,
+            ch_lig_batches,
             params.ligand_ph,
             params.ligand_ph_tol,
             params.ligprep_ff,
-            params.max_states
+            params.max_states,
+            params.outdir
         )
 
-        PREPARE_LIGANDS.out.prepared_ligands.map { meta, mae ->
-            def base_id = meta.name ?: meta.id
-            def sub_dir = file("${params.outdir}/substances/${meta.inchikey}").toAbsolutePath()
-            "${base_id}\t${sub_dir}/${meta.name}_conformers.maegz\t${sub_dir}/${meta.name}_conformers.sdf"
-        }.collectFile(name: 'prep_ligand_receipt.tsv', storeDir: params.outdir, newLine: true)
+        PREPARE_LIGANDS.out.receipt.collectFile(
+            name: 'prep_ligand_receipt.tsv',
+            storeDir: params.outdir,
+            keepHeader: false
+        )
     }
 }

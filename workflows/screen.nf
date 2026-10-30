@@ -4,12 +4,13 @@
  * Consumes pre-prepared receptors and pre-prepared ligands directly from DB plan.
  */
 
-include { DOCK_LIBRARY      } from "../subworkflows/dock_library"
-include { SUMMARIZE_DOCKING } from "../modules/reporting/summarize"
-include { SPLIT_SDF         } from "../modules/common/helpers"
+include { DOCK_LIBRARY       } from "../subworkflows/dock_library"
+include { SUMMARIZE_DOCKING  } from "../modules/reporting/summarize"
+include { BATCH_DOCK_LIGANDS } from "../modules/common/helpers"
 
 workflow SCREEN_WF {
     if (!params.dock_plan) { error "FATAL: Parameter --dock_plan (JSON) is required." }
+    if (!params.batch_size) { error "FATAL: Parameter --batch_size is required for docking." }
 
     def planFile = file(params.dock_plan)
     def planData = new groovy.json.JsonSlurperClassic().parseText(planFile.text)
@@ -55,38 +56,42 @@ workflow SCREEN_WF {
     ch_cof_sdfs = ch_targets.map { meta, pdb, mae, rsdf, rmae, isdf, imae, csdf, cmae -> [meta, csdf] }
     ch_cof_maes = ch_targets.map { meta, pdb, mae, rsdf, rmae, isdf, imae, csdf, cmae -> [meta, cmae] }
 
-    // 2. Pre-prepared Ligands
-    ch_ready_ligands = Channel.fromList(planData.ligands).map { lig ->
-        def sdf_f = file(lig.path_sdf)
-        def mae_f = file(lig.path_mae)
-        if (!sdf_f.exists()) error "FATAL: Prepared ligand SDF not found: ${lig.path_sdf}"
-        if (!mae_f.exists()) error "FATAL: Prepared ligand MAE not found: ${lig.path_mae}"
+    // 2. Batch Pre-prepared Ligands into chunks of batch_size for both Glide (.maegz) and GNINA (.sdf)
+    ch_dock_plan_file = Channel.fromPath(params.dock_plan, checkIfExists: true)
+    BATCH_DOCK_LIGANDS(params.project_name, ch_dock_plan_file, params.batch_size)
 
-        def meta = [
-            id: lig.name,
-            project: params.project_name,
-            receptor: lig.receptor ?: "",
-            ligand_title: lig.ligand_title ?: lig.name
-        ]
-        [ meta, sdf_f.toAbsolutePath(), mae_f.toAbsolutePath() ]
+    ch_manifest_items = BATCH_DOCK_LIGANDS.out.manifest.flatMap { mf ->
+        new groovy.json.JsonSlurperClassic().parseText(mf.text)
     }
 
-    // Chunk prepared SDF for cluster GPU parallelization
-    ch_sdf_for_chunk = ch_ready_ligands.map { meta, sdf, mae -> [ meta, sdf ] }
-    SPLIT_SDF(ch_sdf_for_chunk, params.batch_size ?: 10)
+    ch_sdf_map = BATCH_DOCK_LIGANDS.out.sdf_chunks.flatten().map { f -> [ f.name, f ] }
+    ch_mae_map = BATCH_DOCK_LIGANDS.out.mae_chunks.flatten().map { f -> [ f.name, f ] }
 
-    ch_chunks_sdf = SPLIT_SDF.out.chunks.flatMap { meta, files ->
-        def fileList = files instanceof List ? files : (files ? [files] : [])
-        fileList.withIndex().collect { f, idx ->
-            def chunk_meta = meta + [chunk_idx: idx]
-            [ chunk_meta, f, idx ]
+    ch_chunks_sdf = ch_manifest_items
+        .map { item -> [ item.sdf, item ] }
+        .join(ch_sdf_map, by: 0)
+        .map { sdf_name, item, sdf_file ->
+            def chunk_meta = [
+                id: "c${item.chunk_idx}",
+                chunk_idx: item.chunk_idx,
+                receptor: item.receptor ?: "",
+                project: params.project_name
+            ]
+            [ chunk_meta, sdf_file, item.chunk_idx ]
         }
-    }
 
-    ch_chunks_mae = ch_ready_ligands.map { meta, sdf, mae ->
-        def chunk_meta = meta + [chunk_idx: 0]
-        [ chunk_meta, mae ]
-    }
+    ch_chunks_mae = ch_manifest_items
+        .map { item -> [ item.maegz, item ] }
+        .join(ch_mae_map, by: 0)
+        .map { mae_name, item, mae_file ->
+            def chunk_meta = [
+                id: "c${item.chunk_idx}",
+                chunk_idx: item.chunk_idx,
+                receptor: item.receptor ?: "",
+                project: params.project_name
+            ]
+            [ chunk_meta, mae_file ]
+        }
 
     // Validate Fail-Fast parameters before dispatching tasks
     if (params.dock_engine in ["glide", "both"]) {

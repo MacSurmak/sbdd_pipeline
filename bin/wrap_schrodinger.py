@@ -212,11 +212,133 @@ def cmd_prime_mmgbsa(args):
         sys.exit(1)
 
 
+def _normalize_sdf_v2000(sdf_path: Path) -> None:
+    from rdkit import Chem, RDLogger
+
+    RDLogger.DisableLog("rdApp.*")
+    suppl = Chem.SDMolSupplier(str(sdf_path), removeHs=False, sanitize=False)
+    tmp_sdf = sdf_path.with_suffix(".sdf.tmp")
+    with Chem.SDWriter(str(tmp_sdf)) as w:
+        w.SetForceV3000(False)
+        for m in suppl:
+            if m is not None:
+                w.write(m)
+    tmp_sdf.replace(sdf_path)
+
+
 def cmd_ligprep(args):
+    import json
+    from schrodinger import structure
+
     env = os.environ.copy()
     tmp_dir = os.environ.get("SLURM_TMPDIR", "/tmp")
     env["SCHRODINGER_JOBDB"] = f"{tmp_dir}/schrodinger_jobdb_{os.getpid()}"
     Path(env["SCHRODINGER_JOBDB"]).mkdir(parents=True, exist_ok=True)
+
+    if args.spec_json:
+        spec_path = Path(args.spec_json).resolve()
+        if not spec_path.exists():
+            print(f"FATAL: Batch spec JSON not found: {spec_path}", file=sys.stderr)
+            sys.exit(1)
+        items = json.loads(spec_path.read_text(encoding="utf-8"))
+        if len(items) != len(args.in_sdfs):
+            print(
+                f"FATAL: Mismatch between spec_json items ({len(items)}) and staged input files ({len(args.in_sdfs)})!",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+        batch_in_sdf = Path("batch_input.sdf")
+        with structure.StructureWriter(str(batch_in_sdf)) as writer:
+            for item, sdf_file in zip(items, args.in_sdfs):
+                st = structure.StructureReader.read(str(sdf_file))
+                st.title = item["name"]
+                st.property["s_m_title"] = item["name"]
+                writer.append(st)
+
+        batch_out_maegz = Path("batch_out.maegz")
+        run_cmd(
+            get_tool("ligprep")
+            + [
+                "-isd",
+                str(batch_in_sdf),
+                "-omae",
+                str(batch_out_maegz),
+                "-g",
+                "-epik",
+                "-ph",
+                args.target_ph,
+                "-pht",
+                args.ph_tolerance,
+                "-s",
+                args.max_states,
+                "-bff",
+                args.ff_version,
+                "-NOJOBID",
+            ],
+            env=env,
+            job_name="batch_out",
+        )
+
+        if not batch_out_maegz.exists() or batch_out_maegz.stat().st_size == 0:
+            logs_dump = [
+                f"--- {lg.name} ---\n{lg.read_text(errors='ignore')}"
+                for lg in sorted(Path(".").glob("*.log"))
+            ]
+            print(
+                f"FATAL: Ligprep batch output missing or empty!\n"
+                + ("\n".join(logs_dump) if logs_dump else "No .log files found."),
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+        grouped_sts: dict[str, list] = {}
+        with structure.StructureReader(str(batch_out_maegz)) as reader:
+            for st in reader:
+                t_name = (st.property.get("s_m_title") or st.title or "").strip()
+                if t_name:
+                    grouped_sts.setdefault(t_name, []).append(st.copy())
+
+        receipt_lines = []
+        outdir_abs = Path(args.outdir).resolve()
+        for item in items:
+            sub_name = item["name"]
+            inchikey = item["inchikey"]
+            st_list = grouped_sts.get(sub_name, [])
+            if not st_list:
+                logs_dump = [
+                    f"--- {lg.name} ---\n{lg.read_text(errors='ignore')}"
+                    for lg in sorted(Path(".").glob("*.log"))
+                ]
+                print(
+                    f"FATAL: LigPrep produced 0 conformers for substance '{sub_name}' ({inchikey})!\n"
+                    + ("\n".join(logs_dump) if logs_dump else ""),
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+
+            rel_dir = Path("substances") / inchikey
+            rel_dir.mkdir(parents=True, exist_ok=True)
+            out_mae = rel_dir / f"{sub_name}_conformers.maegz"
+            out_sdf = rel_dir / f"{sub_name}_conformers.sdf"
+
+            with (
+                structure.StructureWriter(str(out_mae)) as w_mae,
+                structure.StructureWriter(str(out_sdf)) as w_sdf,
+            ):
+                for st in st_list:
+                    w_mae.append(st)
+                    w_sdf.append(st)
+
+            _normalize_sdf_v2000(out_sdf)
+            abs_mae = outdir_abs / out_mae
+            abs_sdf = outdir_abs / out_sdf
+            receipt_lines.append(f"{sub_name}\t{abs_mae}\t{abs_sdf}")
+
+        Path(args.out_receipt).write_text(
+            "\n".join(receipt_lines) + "\n", encoding="utf-8"
+        )
+        return
 
     in_flag = (
         "-imae"
@@ -250,7 +372,9 @@ def cmd_ligprep(args):
         logs_dump = []
         for lg in sorted(Path(".").glob("*.log")):
             logs_dump.append(f"--- {lg.name} ---\n{lg.read_text(errors='ignore')}")
-        logs_str = "\n".join(logs_dump) if logs_dump else "No .log files found in scratch."
+        logs_str = (
+            "\n".join(logs_dump) if logs_dump else "No .log files found in scratch."
+        )
         print(
             f"FATAL: Ligprep output missing or empty: {args.out_maegz}\n{logs_str}",
             file=sys.stderr,
@@ -378,13 +502,17 @@ def main():
     p_prime.add_argument("--membrane", action="store_true")
 
     p_ligprep = subparsers.add_parser("ligprep")
-    p_ligprep.add_argument("--ligand_file", required=True)
+    p_ligprep.add_argument("--ligand_file", default="")
+    p_ligprep.add_argument("--spec_json", default="")
+    p_ligprep.add_argument("--in_sdfs", nargs="*", default=[])
+    p_ligprep.add_argument("--outdir", default=".")
+    p_ligprep.add_argument("--out_receipt", default="batch_prep_receipt.tsv")
     p_ligprep.add_argument("--target_ph", required=True)
     p_ligprep.add_argument("--ph_tolerance", required=True)
     p_ligprep.add_argument("--ff_version", required=True)
     p_ligprep.add_argument("--max_states", required=True)
-    p_ligprep.add_argument("--out_maegz", required=True)
-    p_ligprep.add_argument("--out_sdf", required=True)
+    p_ligprep.add_argument("--out_maegz", default="")
+    p_ligprep.add_argument("--out_sdf", default="")
 
     p_conv = subparsers.add_parser("convert_ligand")
     p_conv.add_argument("--in_sdf", required=True)

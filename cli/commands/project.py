@@ -68,7 +68,7 @@ def run_status() -> None:
     console.rule("[bold cyan]Cluster & Slurm Status[/bold cyan]")
     try:
         res = subprocess.run(
-            ["squeue", "-o", "%.10i %.10P %.20j %.10u %.2t %.10M %.6D %R"],
+            ["squeue", "-o", "%.10i %.10P %.26j %.10u %.2t %.10M %.6D %R"],
             capture_output=True,
             text=True,
         )

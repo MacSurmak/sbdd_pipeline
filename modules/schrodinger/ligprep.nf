@@ -8,26 +8,28 @@ process LIGPREP {
     label 'process_medium'
 
     input:
-    tuple val(meta), path(ligand_file)
+    tuple val(meta), path(spec_json), path(input_sdfs, stageAs: 'in_sdfs_*/*')
     val(target_ph)
     val(ph_tolerance)
     val(ff_version)
     val(max_states)
+    val(outdir)
 
     output:
-    tuple val(meta), path("${meta.name}_conformers.maegz"), emit: prepared_maegz
-    tuple val(meta), path("${meta.name}_conformers.sdf"), emit: prepared_sdf
+    path("substances/**"), emit: published_substances
+    path("batch_prep_receipt.tsv"), emit: receipt
 
     script:
     """
     schrodinger run python3 ${projectDir}/bin/wrap_schrodinger.py ligprep \\
-        --ligand_file ${ligand_file} \\
+        --spec_json ${spec_json} \\
+        --in_sdfs ${input_sdfs} \\
+        --outdir "${outdir}" \\
+        --out_receipt batch_prep_receipt.tsv \\
         --target_ph ${target_ph} \\
         --ph_tolerance ${ph_tolerance} \\
         --ff_version ${ff_version} \\
-        --max_states ${max_states} \\
-        --out_maegz "${meta.name}_conformers.maegz" \\
-        --out_sdf "${meta.name}_conformers.sdf"
+        --max_states ${max_states}
     """
 }
 
