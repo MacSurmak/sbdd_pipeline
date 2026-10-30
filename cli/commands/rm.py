@@ -23,6 +23,72 @@ from cli.core.db import (
 console = Console()
 
 
+def remove_library_substances() -> None:
+    """
+    Removes all imported screening library substances (batch_id != 'crystal_extract'),
+    their physical directories under substances/<inchikey>, any matrix DockingRuns,
+    and any unreferenced raw SubstanceStates on crystal ligands.
+    Strictly preserves crystal/medoid receptors, native ligands (TGI), ready ORCA states, and MD Systems.
+    """
+    import shutil
+    from pathlib import Path
+
+    session = init_db()
+    cwd = Path.cwd()
+
+    matrix_runs = session.query(DockingRun).filter_by(mode="matrix").all()
+    for dr in matrix_runs:
+        session.delete(dr)
+    session.flush()
+
+    lib_subs = (
+        session.query(Substance)
+        .filter(Substance.batch_id != "crystal_extract")
+        .all()
+    )
+    removed_subs = 0
+    for sub in lib_subs:
+        sub_dir = cwd / "substances" / sub.inchikey
+        if sub_dir.exists():
+            shutil.rmtree(sub_dir)
+        session.delete(sub)
+        removed_subs += 1
+    session.flush()
+
+    # Re-link any DockedPose on crystal substances that pointed to a raw state back to its canonical full-H state
+    from cli.core.chem import get_microstate_identity
+    from rdkit import Chem
+
+    for dp in session.query(DockedPose).all():
+        st = dp.substance_state
+        if st and st.state == "raw":
+            mol = Chem.MolFromMolBlock(dp.mol_block, removeHs=False, sanitize=False)
+            if mol is not None:
+                _, _, _, canon_hash, _, _ = get_microstate_identity(mol)
+                ready_st = (
+                    session.query(SubstanceState)
+                    .filter_by(substance_id=dp.substance_id, state_hash=canon_hash)
+                    .first()
+                )
+                if ready_st and ready_st.id != st.id:
+                    dp.substance_state_id = ready_st.id
+    session.flush()
+
+    # Prune any unreferenced raw SubstanceStates on remaining crystal substances
+    pruned_states = 0
+    for st in session.query(SubstanceState).filter_by(state="raw").all():
+        if len(st.poses) == 0 and len(st.docked_poses) == 0:
+            session.delete(st)
+            pruned_states += 1
+
+    session.commit()
+    session.close()
+    console.print(
+        f"[bold green]✓ Removed {removed_subs} library substance(s), {len(matrix_runs)} matrix DockingRun(s), "
+        f"and {pruned_states} orphaned raw microstate(s). Crystal systems and ORCA caches preserved![/bold green]"
+    )
+
+
 def remove_entity(name: str) -> None:
     session = init_db()
     deleted = False

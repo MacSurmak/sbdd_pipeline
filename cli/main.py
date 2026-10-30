@@ -131,8 +131,15 @@ def main():
     )
 
     # 0.4 rm
-    p_rm = subparsers.add_parser("rm", help="Remove an item from the database by name")
-    p_rm.add_argument("target", help="Name of the item to remove")
+    p_rm = subparsers.add_parser(
+        "rm", help="Remove an item from the database by name or wipe library ligands"
+    )
+    p_rm.add_argument("target", nargs="?", default=None, help="Name of the item to remove")
+    p_rm.add_argument(
+        "--library",
+        action="store_true",
+        help="Remove all imported screening library substances while preserving crystal/medoid systems",
+    )
 
     # Common options for orchestration
     def add_common_wf_args(p):
@@ -562,9 +569,18 @@ def main():
 
         print_tree()
     elif subcmd == "rm":
-        from cli.commands.rm import remove_entity
+        from cli.commands.rm import remove_entity, remove_library_substances
 
-        remove_entity(name=args.target)
+        if args.library:
+            remove_library_substances()
+        elif args.target:
+            for t_name in [x.strip() for x in args.target.split(",") if x.strip()]:
+                remove_entity(name=t_name)
+        else:
+            console.print(
+                "[bold red]FATAL: Specify an entity name or pass --library to 'sbdd rm'.[/bold red]"
+            )
+            sys.exit(1)
     elif subcmd == "init":
         from cli.commands.project import run_init
 

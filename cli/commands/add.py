@@ -889,26 +889,6 @@ def add_ligand(path: str, name: str | None = None, force: bool = False) -> None:
                     session.add(sub_entity)
                     session.flush()
 
-                ex_state = (
-                    session.query(SubstanceState)
-                    .filter_by(substance_id=sub_entity.id, state_hash=state_hash)
-                    .first()
-                )
-                if not ex_state:
-                    state_entity = SubstanceState(
-                        substance_id=sub_entity.id,
-                        state_hash=state_hash,
-                        isomeric_smiles=isomeric_smiles,
-                        formal_charge=formal_charge,
-                        state="raw",
-                        path_sdf=str(base_sdf.resolve()),
-                    )
-                    session.add(state_entity)
-                elif force:
-                    ex_state.path_sdf = str(base_sdf.resolve())
-                    ex_state.isomeric_smiles = isomeric_smiles
-                    ex_state.formal_charge = formal_charge
-
                 if ex_sub and not force:
                     skipped += 1
                     continue

@@ -191,15 +191,15 @@ def print_tree() -> None:
         for sub in substances:
             type_badge = f"[bold]{sub.substance_type.upper()}[/bold]"
             sub_color = "green" if sub.state == "ready" else "yellow"
-            sub_node = sub_branch.add(
-                f"{type_badge}: [bold cyan]{sub.name}[/bold cyan] [{sub_color}]\\[{sub.state}][/{sub_color}] [dim]({sub.inchikey})[/dim]"
-            )
-
             states = (
                 session.query(SubstanceState)
                 .filter_by(substance_id=sub.id)
                 .order_by(SubstanceState.state_hash)
                 .all()
+            )
+            smi_suffix = f" [dim]SMILES: {sub.smiles}[/dim]" if not states else ""
+            sub_node = sub_branch.add(
+                f"{type_badge}: [bold cyan]{sub.name}[/bold cyan] [{sub_color}]\\[{sub.state}][/{sub_color}] [dim]({sub.inchikey})[/dim]{smi_suffix}"
             )
             for st in states:
                 st_color = "green" if st.state == "ready" else "yellow"

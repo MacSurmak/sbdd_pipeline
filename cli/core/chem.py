@@ -149,7 +149,7 @@ def expand_stereoisomers(
             f"FATAL: Stereoisomer enumeration failed to produce any physically embeddable isomer for '{base_name}'!"
         )
 
-    results: List[Tuple[Chem.Mol, str]] = []
+    unique_isomers: List[Tuple[Chem.Mol, str]] = []
     seen_inchikeys = set()
     for iso in raw_isomers:
         iso_h = Chem.AddHs(iso)
@@ -169,13 +169,18 @@ def expand_stereoisomers(
         if ik in seen_inchikeys:
             continue
         seen_inchikeys.add(ik)
+        unique_isomers.append((iso_h, ik))
 
-        if len(raw_isomers) == 1:
-            iso_title = base_name
-        else:
-            stereo_tag = _format_stereo_tag(iso_h, ik)
-            iso_title = f"{base_name}_{stereo_tag}"
+    if len(unique_isomers) == 1:
+        # All enumerated bond/atom variations collapsed to a single symmetric molecule;
+        # preserve the original input conformation and base_name untouched!
+        mol_copy.SetProp("_Name", base_name)
+        return [(mol_copy, base_name)]
 
+    results: List[Tuple[Chem.Mol, str]] = []
+    for iso_h, ik in unique_isomers:
+        stereo_tag = _format_stereo_tag(iso_h, ik)
+        iso_title = f"{base_name}_{stereo_tag}"
         iso_h.SetProp("_Name", iso_title)
         results.append((iso_h, iso_title))
 
@@ -234,10 +239,8 @@ def get_microstate_identity(
     if mol.GetNumHeavyAtoms() == 1 and mol.GetNumAtoms() == 1:
         mol_canon = mol
     else:
-        mol_canon = Chem.RemoveHs(mol, updateExplicitCount=True)
-        Chem.AssignStereochemistry(
-            mol_canon, force=False, cleanIt=True, flagPossibleStereoCenters=True
-        )
+        mol_canon = Chem.AddHs(mol)
+        _perceive_stereochemistry(mol_canon)
 
     isomeric_smiles = Chem.MolToSmiles(mol_canon, isomericSmiles=True, canonical=True)
     state_hash = hashlib.sha256(isomeric_smiles.encode("utf-8")).hexdigest()[:12]
