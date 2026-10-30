@@ -10,7 +10,9 @@ include { BATCH_DOCK_LIGANDS } from "../modules/common/helpers"
 
 workflow SCREEN_WF {
     if (!params.dock_plan) { error "FATAL: Parameter --dock_plan (JSON) is required." }
-    if (!params.batch_size) { error "FATAL: Parameter --batch_size is required for docking." }
+    if (params.glide_batch_size == null || params.gnina_batch_size == null) {
+        error "FATAL: Parameters --glide_batch_size and --gnina_batch_size are required for docking."
+    }
 
     def planFile = file(params.dock_plan)
     def planData = new groovy.json.JsonSlurperClassic().parseText(planFile.text)
@@ -56,19 +58,29 @@ workflow SCREEN_WF {
     ch_cof_sdfs = ch_targets.map { meta, pdb, mae, rsdf, rmae, isdf, imae, csdf, cmae -> [meta, csdf] }
     ch_cof_maes = ch_targets.map { meta, pdb, mae, rsdf, rmae, isdf, imae, csdf, cmae -> [meta, cmae] }
 
-    // 2. Batch Pre-prepared Ligands into chunks of batch_size for both Glide (.maegz) and GNINA (.sdf)
+    // 2. Batch Pre-prepared Ligands into independent chunks for Glide (.maegz) and GNINA (.sdf)
     ch_dock_plan_file = Channel.fromPath(params.dock_plan, checkIfExists: true)
-    BATCH_DOCK_LIGANDS(params.project_name, ch_dock_plan_file, params.batch_size)
+    BATCH_DOCK_LIGANDS(
+        params.project_name,
+        ch_dock_plan_file,
+        params.glide_batch_size,
+        params.gnina_batch_size
+    )
 
-    ch_manifest_items = BATCH_DOCK_LIGANDS.out.manifest.flatMap { mf ->
-        new groovy.json.JsonSlurperClassic().parseText(mf.text)
+    ch_glide_manifest = BATCH_DOCK_LIGANDS.out.manifest.flatMap { mf ->
+        def parsed = new groovy.json.JsonSlurperClassic().parseText(mf.text)
+        parsed.glide_chunks ?: []
+    }
+    ch_gnina_manifest = BATCH_DOCK_LIGANDS.out.manifest.flatMap { mf ->
+        def parsed = new groovy.json.JsonSlurperClassic().parseText(mf.text)
+        parsed.gnina_chunks ?: []
     }
 
     ch_sdf_map = BATCH_DOCK_LIGANDS.out.sdf_chunks.flatten().map { f -> [ f.name, f ] }
     ch_mae_map = BATCH_DOCK_LIGANDS.out.mae_chunks.flatten().map { f -> [ f.name, f ] }
 
-    ch_chunks_sdf = ch_manifest_items
-        .map { item -> [ item.sdf, item ] }
+    ch_chunks_sdf = ch_gnina_manifest
+        .map { item -> [ item.file, item ] }
         .join(ch_sdf_map, by: 0)
         .map { sdf_name, item, sdf_file ->
             def chunk_meta = [
@@ -80,8 +92,8 @@ workflow SCREEN_WF {
             [ chunk_meta, sdf_file, item.chunk_idx ]
         }
 
-    ch_chunks_mae = ch_manifest_items
-        .map { item -> [ item.maegz, item ] }
+    ch_chunks_mae = ch_glide_manifest
+        .map { item -> [ item.file, item ] }
         .join(ch_mae_map, by: 0)
         .map { mae_name, item, mae_file ->
             def chunk_meta = [

@@ -45,11 +45,20 @@ def merge_maegz_files(mae_paths: list[Path], out_maegz: Path) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Batch prepared ligands into SDF and MAEGZ chunks for docking"
+        description="Batch prepared ligands into independent SDF (GNINA) and MAEGZ (Glide) chunks"
     )
     parser.add_argument("--dock_plan", required=True, help="Input dock_plan.json")
     parser.add_argument(
-        "--batch_size", type=int, required=True, help="Number of substances per chunk"
+        "--glide_batch_size",
+        type=int,
+        required=True,
+        help="Substances per Glide chunk (0 if Glide disabled)",
+    )
+    parser.add_argument(
+        "--gnina_batch_size",
+        type=int,
+        required=True,
+        help="Substances per GNINA chunk (0 if GNINA disabled)",
     )
     parser.add_argument(
         "--out_manifest",
@@ -58,9 +67,9 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    if args.batch_size <= 0:
+    if args.glide_batch_size <= 0 and args.gnina_batch_size <= 0:
         print(
-            f"FATAL: --batch_size must be a positive integer, got {args.batch_size}",
+            "FATAL: At least one of --glide_batch_size or --gnina_batch_size must be positive!",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -77,52 +86,83 @@ def main() -> None:
         print("FATAL: No ligands specified in dock_plan.json!", file=sys.stderr)
         sys.exit(1)
 
-    manifest = []
+    glide_chunks = []
+    gnina_chunks = []
 
     if mode == "self":
         for idx, lig in enumerate(ligands):
-            sdf_in = Path(lig["path_sdf"]).resolve()
-            mae_in = Path(lig["path_mae"]).resolve()
-            out_sdf = Path(f"chunk_{idx:03d}.sdf")
-            out_mae = Path(f"chunk_{idx:03d}.maegz")
-            merge_sdf_files([sdf_in], out_sdf)
-            merge_maegz_files([mae_in], out_mae)
-            manifest.append(
-                {
-                    "chunk_idx": idx,
-                    "receptor": lig.get("receptor", ""),
-                    "sdf": out_sdf.name,
-                    "maegz": out_mae.name,
-                    "substances": [lig.get("ligand_title", lig["name"])],
-                }
-            )
+            if args.glide_batch_size > 0:
+                mae_in = Path(lig["path_mae"]).resolve()
+                out_mae = Path(f"glide_chunk_{idx:03d}.maegz")
+                merge_maegz_files([mae_in], out_mae)
+                glide_chunks.append(
+                    {
+                        "chunk_idx": idx,
+                        "receptor": lig.get("receptor", ""),
+                        "file": out_mae.name,
+                        "substances": [lig.get("ligand_title", lig["name"])],
+                    }
+                )
+            if args.gnina_batch_size > 0:
+                sdf_in = Path(lig["path_sdf"]).resolve()
+                out_sdf = Path(f"gnina_chunk_{idx:03d}.sdf")
+                merge_sdf_files([sdf_in], out_sdf)
+                gnina_chunks.append(
+                    {
+                        "chunk_idx": idx,
+                        "receptor": lig.get("receptor", ""),
+                        "file": out_sdf.name,
+                        "substances": [lig.get("ligand_title", lig["name"])],
+                    }
+                )
     else:
-        b_size = int(args.batch_size)
-        batches = [ligands[i : i + b_size] for i in range(0, len(ligands), b_size)]
-        for idx, batch in enumerate(batches):
-            sdf_list = [Path(item["path_sdf"]).resolve() for item in batch]
-            mae_list = [Path(item["path_mae"]).resolve() for item in batch]
-            out_sdf = Path(f"chunk_{idx:03d}.sdf")
-            out_mae = Path(f"chunk_{idx:03d}.maegz")
-            merge_sdf_files(sdf_list, out_sdf)
-            merge_maegz_files(mae_list, out_mae)
-            manifest.append(
-                {
-                    "chunk_idx": idx,
-                    "receptor": "",
-                    "sdf": out_sdf.name,
-                    "maegz": out_mae.name,
-                    "substances": [
-                        item.get("ligand_title", item["name"]) for item in batch
-                    ],
-                }
-            )
+        if args.glide_batch_size > 0:
+            g_size = int(args.glide_batch_size)
+            g_batches = [
+                ligands[i : i + g_size] for i in range(0, len(ligands), g_size)
+            ]
+            for idx, batch in enumerate(g_batches):
+                mae_list = [Path(item["path_mae"]).resolve() for item in batch]
+                out_mae = Path(f"glide_chunk_{idx:03d}.maegz")
+                merge_maegz_files(mae_list, out_mae)
+                glide_chunks.append(
+                    {
+                        "chunk_idx": idx,
+                        "receptor": "",
+                        "file": out_mae.name,
+                        "substances": [
+                            item.get("ligand_title", item["name"]) for item in batch
+                        ],
+                    }
+                )
 
+        if args.gnina_batch_size > 0:
+            n_size = int(args.gnina_batch_size)
+            n_batches = [
+                ligands[i : i + n_size] for i in range(0, len(ligands), n_size)
+            ]
+            for idx, batch in enumerate(n_batches):
+                sdf_list = [Path(item["path_sdf"]).resolve() for item in batch]
+                out_sdf = Path(f"gnina_chunk_{idx:03d}.sdf")
+                merge_sdf_files(sdf_list, out_sdf)
+                gnina_chunks.append(
+                    {
+                        "chunk_idx": idx,
+                        "receptor": "",
+                        "file": out_sdf.name,
+                        "substances": [
+                            item.get("ligand_title", item["name"]) for item in batch
+                        ],
+                    }
+                )
+
+    manifest = {"glide_chunks": glide_chunks, "gnina_chunks": gnina_chunks}
     Path(args.out_manifest).write_text(
         json.dumps(manifest, indent=2), encoding="utf-8"
     )
     print(
-        f"Batched {len(ligands)} substance(s) into {len(manifest)} chunk(s) (batch_size={args.batch_size}, mode={mode})."
+        f"Batched {len(ligands)} substance(s): {len(glide_chunks)} Glide chunk(s) (size={args.glide_batch_size}), "
+        f"{len(gnina_chunks)} GNINA chunk(s) (size={args.gnina_batch_size}) [mode={mode}]."
     )
 
 

@@ -11,6 +11,7 @@ glide:
   lig_ccut: 0.15
   postdock: true
   write_csv: true
+  batch_size: 10                     # Ligands per chunk for Glide docking
   grid:
     inner_box: [10, 10, 10]
     outer_box: [26, 26, 26]
@@ -20,4 +21,5 @@ glide:
     ph_tolerance: 2.0
     force_field: 16                  # 16 = OPLS4, 14 = OPLS_2005
     max_states: 32
+    batch_size: 10                   # Substances per chunk for LigPrep preparation
 

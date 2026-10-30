@@ -67,19 +67,25 @@ def _build_prep_args(config: Dict[str, Any]) -> list:
     if not glide_cfg or "ligprep" not in glide_cfg:
         raise ValueError("FATAL: 'glide.ligprep' section is required in glide.yaml!")
     lp_cfg = glide_cfg["ligprep"]
-    for req_k in ["target_ph", "ph_tolerance", "force_field", "max_states"]:
+    for req_k in [
+        "target_ph",
+        "ph_tolerance",
+        "force_field",
+        "max_states",
+        "batch_size",
+    ]:
         if req_k not in lp_cfg or lp_cfg[req_k] is None:
-            raise ValueError(f"FATAL: 'glide.ligprep.{req_k}' is required in glide.yaml!")
-
-    gnina_cfg = config.get("gnina")
-    if not gnina_cfg or "batch_size" not in gnina_cfg:
-        raise ValueError("FATAL: 'gnina.batch_size' is required in gnina.yaml!")
+            raise ValueError(
+                f"FATAL: 'glide.ligprep.{req_k}' is required in glide.yaml!"
+            )
+    if int(lp_cfg["batch_size"]) <= 0:
+        raise ValueError("FATAL: 'glide.ligprep.batch_size' must be a positive integer!")
 
     lig_ph = lp_cfg["target_ph"]
     lig_tol = lp_cfg["ph_tolerance"]
     lig_ff = lp_cfg["force_field"]
     max_st = lp_cfg["max_states"]
-    b_size = gnina_cfg["batch_size"]
+    b_size = int(lp_cfg["batch_size"])
 
     args.extend(
         [
@@ -189,18 +195,21 @@ def _build_screen_args(config: Dict[str, Any], project_dir: Path) -> list:
             ("cnn_scoring", "cnn_scoring"),
             ("num_modes", "num_modes"),
             ("autobox_add", "autobox_add"),
+            ("batch_size", "gnina_batch_size"),
         ]
         for yaml_k, nf_k in gnina_mappings:
-            if yaml_k not in gnina_cfg:
+            if yaml_k not in gnina_cfg or gnina_cfg[yaml_k] is None:
                 raise ValueError(
-                    f"FATAL: 'gnina.{yaml_k}' is required when GNINA is enabled!"
+                    f"FATAL: 'gnina.{yaml_k}' is required in gnina.yaml when GNINA is enabled!"
                 )
             args.extend([f"--{nf_k}", str(gnina_cfg[yaml_k])])
+        if int(gnina_cfg["batch_size"]) <= 0:
+            raise ValueError("FATAL: 'gnina.batch_size' must be a positive integer!")
 
-        if "cnn_model" in gnina_cfg:
+        if "cnn_model" in gnina_cfg and gnina_cfg["cnn_model"] is not None:
             args.extend(["--cnn_model", str(gnina_cfg["cnn_model"])])
-        if "batch_size" in gnina_cfg:
-            args.extend(["--batch_size", str(gnina_cfg["batch_size"])])
+    else:
+        args.extend(["--gnina_batch_size", "0"])
 
     if g_en:
         glide_mappings = [
@@ -211,13 +220,18 @@ def _build_screen_args(config: Dict[str, Any], project_dir: Path) -> list:
             ("lig_vscale", "glide_lig_vscale"),
             ("recep_ccut", "glide_recep_ccut"),
             ("lig_ccut", "glide_lig_ccut"),
+            ("batch_size", "glide_batch_size"),
         ]
         for yaml_k, nf_k in glide_mappings:
-            if yaml_k not in glide_cfg:
+            if yaml_k not in glide_cfg or glide_cfg[yaml_k] is None:
                 raise ValueError(
-                    f"FATAL: 'glide.{yaml_k}' is required when Glide is enabled!"
+                    f"FATAL: 'glide.{yaml_k}' is required in glide.yaml when Glide is enabled!"
                 )
             args.extend([f"--{nf_k}", str(glide_cfg[yaml_k])])
+        if int(glide_cfg["batch_size"]) <= 0:
+            raise ValueError("FATAL: 'glide.batch_size' must be a positive integer!")
+    else:
+        args.extend(["--glide_batch_size", "0"])
 
         grid_cfg = glide_cfg.get("grid")
         if not grid_cfg:
