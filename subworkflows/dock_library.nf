@@ -38,6 +38,7 @@ workflow DOCK_LIBRARY {
     glide_lig_ccut      // val: 0.15
     is_self             // val: boolean
     outdir              // val: canonical project outdir string
+    dock_run_name       // val: unique DockingRun identifier
 
     main:
     ch_summary_files = Channel.empty()
@@ -111,13 +112,13 @@ workflow DOCK_LIBRARY {
 
         // Consolidate Glide chunks per frame
         ch_glide_pvs = GLIDE_DOCK.out.pv_maegz
-            .map { comb_meta, pv -> [ [id: comb_meta.frame_id, frame: comb_meta.frame, project: comb_meta.project], pv ] }
+            .map { comb_meta, pv -> [ [id: comb_meta.frame_id, frame: comb_meta.frame, project: comb_meta.project, run_name: dock_run_name], pv ] }
             .groupTuple(by: 0, sort: true)
         ch_glide_csvs = GLIDE_DOCK.out.scores_csv
-            .map { comb_meta, csv -> [ [id: comb_meta.frame_id, frame: comb_meta.frame, project: comb_meta.project], csv ] }
+            .map { comb_meta, csv -> [ [id: comb_meta.frame_id, frame: comb_meta.frame, project: comb_meta.project, run_name: dock_run_name], csv ] }
             .groupTuple(by: 0, sort: true)
         ch_glide_sdfs = GLIDE_DOCK.out.poses_sdf
-            .map { comb_meta, sdf -> [ [id: comb_meta.frame_id, frame: comb_meta.frame, project: comb_meta.project], sdf ] }
+            .map { comb_meta, sdf -> [ [id: comb_meta.frame_id, frame: comb_meta.frame, project: comb_meta.project, run_name: dock_run_name], sdf ] }
             .groupTuple(by: 0, sort: true)
 
         ch_to_merge_glide = ch_glide_pvs
@@ -132,7 +133,8 @@ workflow DOCK_LIBRARY {
                 def frame_meta = [
                     id: comb_meta.frame_id,
                     frame: comb_meta.frame,
-                    project: comb_meta.project
+                    project: comb_meta.project,
+                    run_name: dock_run_name
                 ]
                 [ frame_meta, sdf ]
             }
@@ -186,7 +188,7 @@ workflow DOCK_LIBRARY {
 
         ch_to_merge = GNINA_DOCK.out.docked_sdf
             .map { meta, sdf ->
-                def frame_meta = [id: meta.frame_id, frame: meta.frame, project: meta.project]
+                def frame_meta = [id: meta.frame_id, frame: meta.frame, project: meta.project, run_name: dock_run_name]
                 [ frame_meta, sdf ]
             }
             .groupTuple(by: 0, sort: true)
@@ -215,17 +217,18 @@ workflow DOCK_LIBRARY {
 
     // Deterministic Plan & Receipt generation targeting permanent published deliverables
     ch_receipts = Channel.empty()
+    def pub_subpath = dock_run_name ? "docking/${dock_run_name}" : "docking"
     if (dock_engine in ["glide", "both"]) {
         ch_receipts = ch_receipts.mix(
             MERGE_GLIDE_CHUNKS.out.poses_sdf.map { meta, sdf ->
-                "${meta.id}\tglide\t${outdir}/docking/${meta.id}/${sdf.name}"
+                "${meta.id}\tglide\t${outdir}/${pub_subpath}/${meta.id}/${sdf.name}"
             }
         )
     }
     if (dock_engine in ["gnina", "both"]) {
         ch_receipts = ch_receipts.mix(
             MERGE_DOCK_CHUNKS.out.merged_sdf.map { meta, sdf ->
-                "${meta.id}\tgnina\t${outdir}/docking/${meta.id}/${sdf.name}"
+                "${meta.id}\tgnina\t${outdir}/${pub_subpath}/${meta.id}/${sdf.name}"
             }
         )
     }

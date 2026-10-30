@@ -471,6 +471,12 @@ def run_dock(
             f"[bold cyan]Cross-Docking Matrix Plan generated: {len(frames)} Receptor Frame(s) × {len(ligands)} Stereospecific Substance(s)[/bold cyan]"
         )
 
+    num_ligs = len(plan.get("ligands", []))
+    default_run_name = (
+        f"redock_{len(frames)}" if is_self else f"screen_{len(frames)}x{num_ligs}"
+    )
+    run_name = name.strip() if name else default_run_name
+
     plan_file = cwd / "dock_plan.json"
     with open(plan_file, "w", encoding="utf-8") as f:
         json.dump(plan, f, indent=2)
@@ -478,7 +484,14 @@ def run_dock(
 
     configs = load_project_configs(cwd)
     nf_args = build_nextflow_args(configs, cwd, entrypoint="screen")
-    nf_args.extend(["--dock_plan", str(plan_file.resolve())])
+    nf_args.extend(
+        [
+            "--dock_plan",
+            str(plan_file.resolve()),
+            "--dock_run_name",
+            run_name,
+        ]
+    )
 
     if urgent:
         nf_args.extend(["--queue", "urgent"])
@@ -491,13 +504,6 @@ def run_dock(
         session.close()
         console.print("[bold red]Nextflow docking failed.[/bold red]")
         sys.exit(ret_code)
-
-    # 6. Register analytical DockingRun and all DockedPose modes (1..16) via Receipt
-    num_ligs = len(plan.get("ligands", []))
-    default_run_name = (
-        f"redock_{len(frames)}" if is_self else f"screen_{len(frames)}x{num_ligs}"
-    )
-    run_name = name.strip() if name else default_run_name
 
     receipt_file = cwd / "dock_receipt.tsv"
     if not receipt_file.exists() or receipt_file.stat().st_size == 0:

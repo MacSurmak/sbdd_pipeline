@@ -128,7 +128,8 @@ workflow SCREEN_WF {
         params.glide_recep_ccut,
         params.glide_lig_ccut,
         (planData.mode == "self"),
-        params.outdir
+        params.outdir,
+        params.dock_run_name
     )
 
     // 4. Generate structured execution receipt
