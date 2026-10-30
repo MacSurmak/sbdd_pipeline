@@ -7,7 +7,7 @@ include { GNINA_DOCK }              from '../modules/gnina/dock'
 include { GNINA_RESCORE }           from '../modules/gnina/rescore'
 include { GLIDE_GRIDGEN }           from '../modules/schrodinger/gridgen'
 include { GLIDE_DOCK }              from '../modules/schrodinger/glide_dock'
-include { ASSEMBLE_DOCKING_RECEPTOR; GENERATE_DOCKING_BOX; CALC_RMSD as CALC_RMSD_GLIDE; CALC_RMSD as CALC_RMSD_GNINA; MERGE_GNINA_DOCK as MERGE_DOCK_CHUNKS; MERGE_GNINA_RESC as MERGE_RESC_CHUNKS; MERGE_GLIDE as MERGE_GLIDE_CHUNKS } from '../modules/docking/helpers'
+include { ASSEMBLE_DOCKING_RECEPTOR; GENERATE_DOCKING_BOX; CALC_RMSD as CALC_RMSD_GLIDE; CALC_RMSD as CALC_RMSD_GNINA; MERGE_GNINA_DOCK as MERGE_DOCK_CHUNKS; MERGE_GLIDE as MERGE_GLIDE_CHUNKS } from '../modules/docking/helpers'
 
 workflow DOCK_LIBRARY {
     take:
@@ -101,16 +101,7 @@ workflow DOCK_LIBRARY {
             glide_lig_ccut
         )
 
-        ch_rec_rescore = ch_assembled_pdb.join(ch_ref_lig_sdf, by: 0)
-        ch_rescore_in = GLIDE_DOCK.out.poses_sdf
-            .map { comb_meta, sdf -> [ comb_meta.frame_id, comb_meta, sdf ] }
-            .combine(ch_rec_rescore.map { meta_rec, pdb, ref_sdf -> [ meta_rec.id, pdb, ref_sdf ] }, by: 0)
-            .map { frame_id, comb_meta, poses_sdf, rec_pdb, ref_sdf ->
-                [ comb_meta, rec_pdb, ref_sdf, poses_sdf ]
-            }
-        GNINA_RESCORE(ch_rescore_in, cnn_model)
-
-        // Consolidate Glide chunks per frame
+        // Consolidate Glide chunks per frame first
         ch_glide_pvs = GLIDE_DOCK.out.pv_maegz
             .map { comb_meta, pv -> [ [id: comb_meta.frame_id, frame: comb_meta.frame, project: comb_meta.project, run_name: dock_run_name], pv ] }
             .groupTuple(by: 0, sort: true)
@@ -127,25 +118,20 @@ workflow DOCK_LIBRARY {
 
         MERGE_GLIDE_CHUNKS(ch_to_merge_glide)
 
-        // Consolidate Rescore chunks per frame
-        ch_to_merge_resc = GNINA_RESCORE.out.rescored_sdf
-            .map { comb_meta, sdf ->
-                def frame_meta = [
-                    id: comb_meta.frame_id,
-                    frame: comb_meta.frame,
-                    project: comb_meta.project,
-                    run_name: dock_run_name
-                ]
-                [ frame_meta, sdf ]
+        // Run GNINA_RESCORE once per receptor frame on the merged Glide poses SDF
+        ch_rec_rescore = ch_assembled_pdb.join(ch_ref_lig_sdf, by: 0)
+        ch_rescore_in = MERGE_GLIDE_CHUNKS.out.poses_sdf
+            .map { frame_meta, poses_sdf -> [ frame_meta.id, frame_meta, poses_sdf ] }
+            .join(ch_rec_rescore.map { meta_rec, pdb, ref_sdf -> [ meta_rec.id, pdb, ref_sdf ] }, by: 0)
+            .map { frame_id, frame_meta, poses_sdf, rec_pdb, ref_sdf ->
+                [ frame_meta, rec_pdb, ref_sdf, poses_sdf ]
             }
-            .groupTuple(by: 0, sort: true)
-
-        MERGE_RESC_CHUNKS(ch_to_merge_resc)
+        GNINA_RESCORE(ch_rescore_in, cnn_model)
 
         ch_summary_files = ch_summary_files
             .mix(MERGE_GLIDE_CHUNKS.out.scores_csv.map { meta, csv -> csv })
             .mix(MERGE_GLIDE_CHUNKS.out.poses_sdf.map { meta, sdf -> sdf })
-            .mix(MERGE_RESC_CHUNKS.out.rescored_sdf.map { meta, sdf -> sdf })
+            .mix(GNINA_RESCORE.out.rescored_sdf.map { meta, sdf -> sdf })
 
         if (is_self) {
             ch_glide_rmsd_in = MERGE_GLIDE_CHUNKS.out.poses_sdf
@@ -220,9 +206,11 @@ workflow DOCK_LIBRARY {
     def pub_subpath = dock_run_name ? "docking/${dock_run_name}" : "docking"
     if (dock_engine in ["glide", "both"]) {
         ch_receipts = ch_receipts.mix(
-            MERGE_GLIDE_CHUNKS.out.poses_sdf.map { meta, sdf ->
-                "${meta.id}\tglide\t${outdir}/${pub_subpath}/${meta.id}/${sdf.name}"
-            }
+            MERGE_GLIDE_CHUNKS.out.poses_sdf
+                .join(GNINA_RESCORE.out.rescored_sdf, by: 0)
+                .map { meta, sdf, resc_sdf ->
+                    "${meta.id}\tglide\t${outdir}/${pub_subpath}/${meta.id}/${sdf.name}"
+                }
         )
     }
     if (dock_engine in ["gnina", "both"]) {

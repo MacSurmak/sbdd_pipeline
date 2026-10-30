@@ -12,8 +12,8 @@ process GNINA_RESCORE {
     val(cnn_model)
 
     output:
-    tuple val(meta), path("rescored.sdf"), emit: rescored_sdf
-    tuple val(meta), path("rescored.log"), emit: log
+    tuple val(meta), path("${meta.id}_rescored.sdf"), emit: rescored_sdf
+    tuple val(meta), path("${meta.id}_rescored.log"), emit: log
 
     script:
     def cnn_arg = cnn_model ? "--cnn_model ${cnn_model}" : ""
@@ -24,8 +24,8 @@ process GNINA_RESCORE {
         --ref_ligand ${ref_lig_sdf} \\
         --cpus ${task.cpus} \\
         ${cnn_arg} \\
-        --out_sdf rescored.sdf \\
-        --out_log rescored.log
+        --out_sdf "${meta.id}_rescored.sdf" \\
+        --out_log "${meta.id}_rescored.log"
     """
 }
 

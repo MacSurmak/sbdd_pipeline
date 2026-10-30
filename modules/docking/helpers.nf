@@ -106,23 +106,7 @@ process MERGE_GNINA_DOCK {
     """
 }
 
-process MERGE_GNINA_RESC {
-    tag "${meta.id}"
-    executor 'local'
-    scratch false
-    label 'process_single'
 
-    input:
-    tuple val(meta), path(chunk_sdfs, stageAs: 'sdfs_?/*')
-
-    output:
-    tuple val(meta), path("${meta.id}_rescored.sdf"), emit: rescored_sdf
-
-    script:
-    """
-    python3 ${projectDir}/bin/wrap_utils.py merge_sdf --in_sdfs ${chunk_sdfs} --out_sdf ${meta.id}_rescored.sdf
-    """
-}
 
 process MERGE_GLIDE {
     tag "${meta.id}"
