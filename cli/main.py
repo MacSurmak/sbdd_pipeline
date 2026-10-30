@@ -193,7 +193,9 @@ def main():
 
     # 3. dock / screen
     p_dock = subparsers.add_parser(
-        "dock", aliases=["screen"], help="Run distributed docking into ReceptorFrames"
+        "dock",
+        aliases=["screen"],
+        help="Run virtual screening / cross-docking of library ligands into ReceptorFrames",
     )
     p_dock.add_argument(
         "--target", help="Parent target name to dock into its ready frames"
@@ -206,17 +208,27 @@ def main():
     )
     p_dock.add_argument(
         "--ligands",
-        help="Comma-separated list of ligand names from DB (optional in --self / --redock mode)",
+        help="Comma-separated list of ligand names from DB (default: all ready ligands)",
     )
-    p_dock.add_argument(
-        "--self",
-        "--redock",
-        dest="self_dock",
-        action="store_true",
-        help="Run 1-to-1 self-docking (redocking) of each receptor with its own native ligand without cross-docking matrix",
-    )
-    p_dock.add_argument("--name", help="Name for the output PoseSet in DB")
+    p_dock.add_argument("--name", help="Name for the output DockingRun in DB")
     add_common_wf_args(p_dock)
+
+    # 3.05 redock
+    p_redock = subparsers.add_parser(
+        "redock",
+        help="Run 1-to-1 validation redocking of native ligands into their ReceptorFrames",
+    )
+    p_redock.add_argument(
+        "--target", help="Parent target name to redock into its ready frames"
+    )
+    p_redock.add_argument(
+        "--frames",
+        "--receptors",
+        dest="frames",
+        help="Comma-separated list of specific ready ReceptorFrame names",
+    )
+    p_redock.add_argument("--name", help="Name for the output DockingRun in DB")
+    add_common_wf_args(p_redock)
 
     # 3.1 select-hits
     p_hits = subparsers.add_parser(
@@ -603,9 +615,25 @@ def main():
                 else None
             ),
             ligand_names=(
-                [n.strip() for n in args.ligands.split(",")] if args.ligands else None
+                [n.strip() for n in args.ligands.split(",") if n.strip()]
+                if args.ligands
+                else None
             ),
-            self_dock=args.self_dock,
+            name=args.name,
+            urgent=args.urgent,
+            local=args.local,
+            resume=not args.no_resume,
+        )
+    elif subcmd == "redock":
+        from cli.commands.dock import run_redock
+
+        run_redock(
+            target=args.target,
+            frame_names=(
+                [f.strip() for f in args.frames.split(",") if f.strip()]
+                if args.frames
+                else None
+            ),
             name=args.name,
             urgent=args.urgent,
             local=args.local,

@@ -154,26 +154,9 @@ def _ensure_substance_state_for_pose(
     return state_entity
 
 
-def run_dock(
-    target: str | None = None,
-    frame_names: list[str] | None = None,
-    ligand_names: list[str] | None = None,
-    self_dock: bool = False,
-    name: str | None = None,
-    urgent: bool = False,
-    local: bool = False,
-    resume: bool = True,
-) -> None:
-    """
-    Runs distributed docking into ReceptorFrames (crystals or MD medoids) and records
-    all generated binding modes (1..16 per engine) in 3NF DockingRun / DockedPose tables
-    without polluting physical System or Pose tables.
-    """
-    cwd = Path.cwd()
-    session = init_db()
-    is_self = self_dock
-
-    # 1. Fetch requested Ready Frames (strictly structural frames, never docking artifacts)
+def _query_ready_structural_frames(
+    session, target: str | None, frame_names: list[str] | None
+) -> list[ReceptorFrame]:
     query = session.query(ReceptorFrame).filter(
         ReceptorFrame.state == "ready",
         ReceptorFrame.source_type.in_(
@@ -190,321 +173,83 @@ def run_dock(
     elif frame_names:
         query = query.filter(ReceptorFrame.name.in_(frame_names))
 
-    frames = query.all()
+    frames = query.order_by(ReceptorFrame.name).all()
     if not frames:
         session.close()
         console.print(
-            "[bold red]FATAL: No ready ReceptorFrames found to dock. Run 'sbdd prep' first![/bold red]"
+            "[bold red]FATAL: No ready ReceptorFrames found. Run 'sbdd prep' first![/bold red]"
         )
         sys.exit(1)
+    return frames
 
-    plan = {
-        "mode": "self" if is_self else "matrix",
-        "receptors": [],
-        "ligands": [],
-        "pairs": [],
-    }
-    ref_mol_by_frame: dict[str, tuple[Substance, Chem.Mol]] = {}
 
-    if is_self:
-        active_frames = []
-        for r in frames:
-            native_pose, cof_poses = _resolve_frame_structural_poses(session, r)
-            if not native_pose or not native_pose.substance:
-                continue
-            active_frames.append((r, native_pose, native_pose.substance, cof_poses))
-
-        if not active_frames:
-            session.close()
-            console.print(
-                "[bold red]FATAL: None of the selected ready frames have a native structural ligand pose ('crystal' or 'md_centroid') for redocking![/bold red]"
-            )
-            sys.exit(1)
-
-        for r, native_pose, native_lig, cof_poses in active_frames:
-            if not r.path_mae or not r.path_pdb:
-                session.close()
-                raise ValueError(
-                    f"FATAL: ReceptorFrame '{r.name}' is missing path_mae or path_pdb in 3NF database!"
-                )
-            path_mae = Path(r.path_mae).resolve()
-            path_pdb = Path(r.path_pdb).resolve()
-            if not path_mae.exists() or not path_pdb.exists():
-                session.close()
-                raise FileNotFoundError(
-                    f"FATAL: Receptor deliverables missing on disk for '{r.name}': {path_mae}, {path_pdb}"
-                )
-
-            if not native_pose.path_sdf or not native_pose.path_mae:
-                session.close()
-                raise ValueError(
-                    f"FATAL: Native Pose '{native_pose.name}' for '{r.name}' is missing path_sdf or path_mae!"
-                )
-            pose_sdf = Path(native_pose.path_sdf).resolve()
-            pose_mae = Path(native_pose.path_mae).resolve()
-            if not pose_sdf.exists() or not pose_mae.exists():
-                session.close()
-                raise FileNotFoundError(
-                    f"FATAL: Native pose deliverables missing on disk: {pose_sdf}, {pose_mae}"
-                )
-
-            ref_suppl = Chem.SDMolSupplier(str(pose_sdf), removeHs=False, sanitize=False)
-            ref_mol = next((m for m in ref_suppl if m is not None), None)
-            if ref_mol is None:
-                session.close()
-                raise ValueError(f"FATAL: Failed to parse reference SDF {pose_sdf}")
-            ref_mol_by_frame[r.name] = (native_lig, ref_mol)
-
-            ion_sdfs, ion_maes, ion_resnames = [], [], []
-            cof_sdfs, cof_maes, cof_resnames = [], [], []
-            for c in cof_poses:
-                if c.substance.substance_type == "ion":
-                    ion_sdfs.append(str(Path(c.path_sdf).resolve()))
-                    if c.path_mae:
-                        ion_maes.append(str(Path(c.path_mae).resolve()))
-                    ion_resnames.append(c.res_name)
-                else:
-                    cof_sdfs.append(str(Path(c.path_sdf).resolve()))
-                    if c.path_mae:
-                        cof_maes.append(str(Path(c.path_mae).resolve()))
-                    cof_resnames.append(c.res_name)
-
-            plan["receptors"].append(
-                {
-                    "name": r.name,
-                    "path_mae": str(path_mae),
-                    "path_pdb": str(path_pdb),
-                    "ref_sdf": str(pose_sdf),
-                    "ref_mae": str(pose_mae),
-                    "native_ligand": native_lig.name,
-                    "ion_sdfs": ion_sdfs,
-                    "ion_maes": ion_maes,
-                    "ion_resnames": ion_resnames,
-                    "cofactor_sdfs": cof_sdfs,
-                    "cofactor_maes": cof_maes,
-                    "cofactor_resnames": cof_resnames,
-                }
-            )
-
-            if (
-                native_lig.state != "ready"
-                or not native_lig.path_mae
-                or not native_lig.path_sdf
-            ):
-                session.close()
-                console.print(
-                    f"[bold red]FATAL: Chemical Substance '{native_lig.name}' is in state '{native_lig.state}'! "
-                    "Run 'sbdd prep' first so LigPrep generates canonical 3D states.[/bold red]"
-                )
-                sys.exit(1)
-
-            lig_mae = Path(native_lig.path_mae).resolve()
-            lig_sdf = Path(native_lig.path_sdf).resolve()
-            if not lig_mae.exists() or not lig_sdf.exists():
-                session.close()
-                raise FileNotFoundError(
-                    f"FATAL: LigPrep deliverables missing for '{native_lig.name}': {lig_mae}"
-                )
-
-            plan["ligands"].append(
-                {
-                    "name": f"{r.name}_{native_lig.name}",
-                    "path_sdf": str(lig_sdf),
-                    "path_mae": str(lig_mae),
-                    "is_native": True,
-                    "receptor": r.name,
-                    "ligand_title": native_lig.name,
-                    "substance_id": native_lig.id,
-                }
-            )
-
-        console.print(
-            f"[bold green]✓ 1-to-1 Redocking Mode: Matched {len(active_frames)} receptor frame(s) directly to their native ligands.[/bold green]"
+def _build_receptor_plan_entry(
+    r: ReceptorFrame, ref_pose: Pose, cof_poses: list[Pose]
+) -> dict:
+    if not r.path_mae or not r.path_pdb:
+        raise ValueError(
+            f"FATAL: ReceptorFrame '{r.name}' is missing path_mae or path_pdb in 3NF database!"
+        )
+    path_mae = Path(r.path_mae).resolve()
+    path_pdb = Path(r.path_pdb).resolve()
+    if not path_mae.exists() or not path_pdb.exists():
+        raise FileNotFoundError(
+            f"FATAL: Receptor deliverables missing on disk for '{r.name}': {path_mae}, {path_pdb}"
         )
 
-    else:
-        if not ligand_names or ligand_names == ["all"]:
-            ligands = (
-                session.query(Substance)
-                .filter_by(substance_type="ligand", state="ready")
-                .order_by(Substance.name)
-                .all()
-            )
-            if not ligands:
-                session.close()
-                console.print(
-                    "[bold red]FATAL: No ready ligands found in database! Run 'sbdd add ligand' and 'sbdd prep' first.[/bold red]"
-                )
-                sys.exit(1)
+    if not ref_pose.path_sdf or not ref_pose.path_mae:
+        raise ValueError(
+            f"FATAL: Reference Pose '{ref_pose.name}' for '{r.name}' is missing path_sdf or path_mae!"
+        )
+    pose_sdf = Path(ref_pose.path_sdf).resolve()
+    pose_mae = Path(ref_pose.path_mae).resolve()
+    if not pose_sdf.exists() or not pose_mae.exists():
+        raise FileNotFoundError(
+            f"FATAL: Reference pose deliverables missing on disk: {pose_sdf}, {pose_mae}"
+        )
+
+    ion_sdfs, ion_maes, ion_resnames = [], [], []
+    cof_sdfs, cof_maes, cof_resnames = [], [], []
+    for c in cof_poses:
+        if c.substance.substance_type == "ion":
+            ion_sdfs.append(str(Path(c.path_sdf).resolve()))
+            if c.path_mae:
+                ion_maes.append(str(Path(c.path_mae).resolve()))
+            ion_resnames.append(c.res_name)
         else:
-            ligands = (
-                session.query(Substance)
-                .filter(
-                    Substance.name.in_(ligand_names),
-                    Substance.substance_type == "ligand",
-                )
-                .order_by(Substance.name)
-                .all()
-            )
-            if len(ligands) != len(set(ligand_names)):
-                found = {l.name for l in ligands}
-                missing = set(ligand_names) - found
-                session.close()
-                console.print(
-                    f"[bold red]FATAL: Ligands not found in DB: {missing}[/bold red]"
-                )
-                sys.exit(1)
+            cof_sdfs.append(str(Path(c.path_sdf).resolve()))
+            if c.path_mae:
+                cof_maes.append(str(Path(c.path_mae).resolve()))
+            cof_resnames.append(c.res_name)
 
-        for r in frames:
-            pose_obj, cof_poses = _resolve_frame_structural_poses(session, r)
-            if not pose_obj or not pose_obj.substance:
-                session.close()
-                console.print(
-                    f"[bold red]FATAL: ReceptorFrame '{r.name}' has no structural reference pose ('crystal' or 'md_centroid') to define the binding pocket![/bold red]"
-                )
-                sys.exit(1)
+    return {
+        "name": r.name,
+        "path_mae": str(path_mae),
+        "path_pdb": str(path_pdb),
+        "ref_sdf": str(pose_sdf),
+        "ref_mae": str(pose_mae),
+        "native_ligand": ref_pose.substance.name,
+        "ion_sdfs": ion_sdfs,
+        "ion_maes": ion_maes,
+        "ion_resnames": ion_resnames,
+        "cofactor_sdfs": cof_sdfs,
+        "cofactor_maes": cof_maes,
+        "cofactor_resnames": cof_resnames,
+    }
 
-            native_lig = pose_obj.substance
-            if not r.path_mae or not r.path_pdb:
-                session.close()
-                raise ValueError(
-                    f"FATAL: ReceptorFrame '{r.name}' does not have both path_mae and path_pdb registered!"
-                )
-            path_mae = Path(r.path_mae).resolve()
-            path_pdb = Path(r.path_pdb).resolve()
-            if not path_mae.exists() or not path_pdb.exists():
-                session.close()
-                raise FileNotFoundError(
-                    f"FATAL: Receptor deliverables missing for '{r.name}' on disk"
-                )
 
-            if not pose_obj.path_sdf or not pose_obj.path_mae:
-                session.close()
-                raise ValueError(
-                    f"FATAL: Reference Pose '{pose_obj.name}' missing path_sdf or path_mae registration!"
-                )
-            ref_sdf = Path(pose_obj.path_sdf).resolve()
-            ref_mae = Path(pose_obj.path_mae).resolve()
-            if not ref_sdf.exists() or not ref_mae.exists():
-                session.close()
-                raise FileNotFoundError(
-                    f"FATAL: Reference pose deliverables missing for '{r.name}' on disk"
-                )
-
-            ref_suppl = Chem.SDMolSupplier(str(ref_sdf), removeHs=False, sanitize=False)
-            ref_mol = next((m for m in ref_suppl if m is not None), None)
-            if ref_mol is None:
-                session.close()
-                raise ValueError(f"FATAL: Failed to parse reference SDF {ref_sdf}")
-            ref_mol_by_frame[r.name] = (native_lig, ref_mol)
-
-            ion_sdfs, ion_maes, ion_resnames = [], [], []
-            cof_sdfs, cof_maes, cof_resnames = [], [], []
-            for c in cof_poses:
-                if c.substance.substance_type == "ion":
-                    ion_sdfs.append(str(Path(c.path_sdf).resolve()))
-                    if c.path_mae:
-                        ion_maes.append(str(Path(c.path_mae).resolve()))
-                    ion_resnames.append(c.res_name)
-                else:
-                    cof_sdfs.append(str(Path(c.path_sdf).resolve()))
-                    if c.path_mae:
-                        cof_maes.append(str(Path(c.path_mae).resolve()))
-                    cof_resnames.append(c.res_name)
-
-            plan["receptors"].append(
-                {
-                    "name": r.name,
-                    "path_mae": str(path_mae),
-                    "path_pdb": str(path_pdb),
-                    "ref_sdf": str(ref_sdf),
-                    "ref_mae": str(ref_mae),
-                    "native_ligand": native_lig.name,
-                    "ion_sdfs": ion_sdfs,
-                    "ion_maes": ion_maes,
-                    "ion_resnames": ion_resnames,
-                    "cofactor_sdfs": cof_sdfs,
-                    "cofactor_maes": cof_maes,
-                    "cofactor_resnames": cof_resnames,
-                }
-            )
-
-        for l in ligands:
-            if l.state != "ready" or not l.path_mae or not l.path_sdf:
-                session.close()
-                console.print(
-                    f"[bold red]FATAL: Chemical Ligand '{l.name}' is in state '{l.state}'! Run 'sbdd prep' first.[/bold red]"
-                )
-                sys.exit(1)
-
-            lig_mae = Path(l.path_mae).resolve()
-            lig_sdf = Path(l.path_sdf).resolve()
-            if not lig_mae.exists() or not lig_sdf.exists():
-                session.close()
-                raise FileNotFoundError(
-                    f"FATAL: Prepared files missing for '{l.name}' ({lig_mae}). Run 'sbdd prep' first."
-                )
-
-            has_structural_pose = (
-                session.query(Pose)
-                .join(SubstanceState, Pose.substance_state_id == SubstanceState.id)
-                .filter(
-                    SubstanceState.substance_id == l.id,
-                    Pose.origin.in_(["crystal", "md_centroid"]),
-                )
-                .first()
-                is not None
-            )
-
-            plan["ligands"].append(
-                {
-                    "name": l.name,
-                    "path_sdf": str(lig_sdf),
-                    "path_mae": str(lig_mae),
-                    "is_native": has_structural_pose,
-                    "ligand_title": l.name,
-                    "substance_id": l.id,
-                }
-            )
-
-        console.print(
-            f"[bold cyan]Cross-Docking Matrix Plan generated: {len(frames)} Receptor Frame(s) × {len(ligands)} Stereospecific Substance(s)[/bold cyan]"
-        )
-
-    num_ligs = len(plan.get("ligands", []))
-    default_run_name = (
-        f"redock_{len(frames)}" if is_self else f"screen_{len(frames)}x{num_ligs}"
-    )
-    run_name = name.strip() if name else default_run_name
-
-    plan_file = cwd / "dock_plan.json"
-    with open(plan_file, "w", encoding="utf-8") as f:
-        json.dump(plan, f, indent=2)
-    (cwd / "dock_receipt.tsv").unlink(missing_ok=True)
-
-    configs = load_project_configs(cwd)
-    nf_args = build_nextflow_args(configs, cwd, entrypoint="screen")
-    nf_args.extend(
-        [
-            "--dock_plan",
-            str(plan_file.resolve()),
-            "--dock_run_name",
-            run_name,
-        ]
-    )
-
-    if urgent:
-        nf_args.extend(["--queue", "urgent"])
-
-    profile_name = "local" if local else "slurm"
-    ret_code = execute_nextflow(
-        "screen", nf_args, cwd, profile=profile_name, resume=resume, configs=configs
-    )
-    if ret_code != 0:
-        session.close()
-        console.print("[bold red]Nextflow docking failed.[/bold red]")
-        sys.exit(ret_code)
-
+def _ingest_docking_receipt(
+    session,
+    cwd: Path,
+    run_name: str,
+    mode: str,
+    plan: dict,
+    ref_mol_by_frame: dict[str, tuple[Substance, Chem.Mol]] | None = None,
+) -> tuple[
+    DockingRun,
+    dict[tuple[str, str], dict[str, list[tuple[DockedPose, Chem.Mol]]]],
+    int,
+]:
     receipt_file = cwd / "dock_receipt.tsv"
     if not receipt_file.exists() or receipt_file.stat().st_size == 0:
         session.close()
@@ -553,18 +298,18 @@ def run_dock(
                 )
             receipt_map[(r_frame_id, r_engine)] = sdf_file
 
-    # Create or replace analytical DockingRun
     dock_run = session.query(DockingRun).filter_by(name=run_name).first()
     if dock_run:
         session.delete(dock_run)
         session.flush()
 
-    dock_run = DockingRun(name=run_name, mode=plan["mode"])
+    dock_run = DockingRun(name=run_name, mode=mode)
     session.add(dock_run)
     session.flush()
 
-    # Structure to hold parsed modes: (frame_name, sub_title) -> {"glide": [DockedPose...], "gnina": [DockedPose...]}
-    parsed_modes: dict[tuple[str, str], dict[str, list[ tuple[DockedPose, Chem.Mol] ]]] = {}
+    parsed_modes: dict[
+        tuple[str, str], dict[str, list[tuple[DockedPose, Chem.Mol]]]
+    ] = {}
     total_modes_saved = 0
 
     for (frame_name, eng), sdf_file in sorted(receipt_map.items()):
@@ -576,7 +321,6 @@ def run_dock(
             )
 
         frame_dir = sdf_file.parent
-        # For Glide, <frame>_rescored.sdf has the exact same Glide poses enriched with GNINA CNNscore & CNNaffinity
         resc_sdf = frame_dir / f"{frame_name}_rescored.sdf"
         source_sdf_for_props = (
             resc_sdf
@@ -584,7 +328,6 @@ def run_dock(
             else sdf_file
         )
 
-        # Also read Glide CSV scores in order if available
         glide_csv_scores: dict[str, list[float]] = {}
         glide_csv = frame_dir / f"{frame_name}_dock.csv"
         if eng == "glide" and glide_csv.exists() and glide_csv.stat().st_size > 0:
@@ -640,7 +383,6 @@ def run_dock(
             c_score = _parse_mol_float_prop(m, ["CNNscore"])
             c_aff = _parse_mol_float_prop(m, ["CNNaffinity"])
 
-            # Restore full all-atom topology for GNINA united-atom output
             if eng != "glide":
                 candidates = templates_by_sub_id[sub_obj.id]
                 restored_mol = None
@@ -671,13 +413,13 @@ def run_dock(
                 session, cwd, sub_obj, mol_clean
             )
 
-            # Calculate exact symmetry-aware In-Situ RMSD if this substance is the native reference ligand of this frame
             insitu_rmsd_val = None
-            ref_pair = ref_mol_by_frame.get(frame_name)
-            if ref_pair and ref_pair[0].id == sub_obj.id:
-                insitu_rmsd_val = round(
-                    compute_symmetry_rmsd(ref_pair[1], mol_clean), 3
-                )
+            if ref_mol_by_frame is not None:
+                ref_pair = ref_mol_by_frame.get(frame_name)
+                if ref_pair and ref_pair[0].id == sub_obj.id:
+                    insitu_rmsd_val = round(
+                        compute_symmetry_rmsd(ref_pair[1], mol_clean), 3
+                    )
 
             dp = DockedPose(
                 docking_run_id=dock_run.id,
@@ -717,20 +459,180 @@ def run_dock(
                 )
 
     session.commit()
+    return dock_run, parsed_modes, total_modes_saved
 
-    # Build Level-1 Compound/Frame Summary Table sorted by Consensus
+
+def run_dock(
+    target: str | None = None,
+    frame_names: list[str] | None = None,
+    ligand_names: list[str] | None = None,
+    name: str | None = None,
+    urgent: bool = False,
+    local: bool = False,
+    resume: bool = True,
+) -> None:
+    """
+    Runs Virtual Screening / Cross-Docking of library substances into ReceptorFrames.
+    Selects representative poses strictly by best scoring energy/affinity and stores all
+    modes (1..16) in 3NF DockingRun / DockedPose tables without native RMSD columns.
+    """
+    cwd = Path.cwd()
+    session = init_db()
+
+    frames = _query_ready_structural_frames(session, target, frame_names)
+
+    if not ligand_names or ligand_names == ["all"]:
+        ligands = (
+            session.query(Substance)
+            .filter_by(substance_type="ligand", state="ready")
+            .order_by(Substance.name)
+            .all()
+        )
+        if not ligands:
+            session.close()
+            console.print(
+                "[bold red]FATAL: No ready ligands found in database! Run 'sbdd add ligand' and 'sbdd prep' first.[/bold red]"
+            )
+            sys.exit(1)
+    else:
+        ligands = (
+            session.query(Substance)
+            .filter(
+                Substance.name.in_(ligand_names),
+                Substance.substance_type == "ligand",
+            )
+            .order_by(Substance.name)
+            .all()
+        )
+        if len(ligands) != len(set(ligand_names)):
+            found = {l.name for l in ligands}
+            missing = set(ligand_names) - found
+            session.close()
+            console.print(
+                f"[bold red]FATAL: Ligands not found in DB: {missing}[/bold red]"
+            )
+            sys.exit(1)
+
+    plan = {
+        "mode": "matrix",
+        "receptors": [],
+        "ligands": [],
+        "pairs": [],
+    }
+
+    for r in frames:
+        pose_obj, cof_poses = _resolve_frame_structural_poses(session, r)
+        if not pose_obj or not pose_obj.substance:
+            session.close()
+            console.print(
+                f"[bold red]FATAL: ReceptorFrame '{r.name}' has no structural reference pose ('crystal' or 'md_centroid') to define the binding pocket![/bold red]"
+            )
+            sys.exit(1)
+        plan["receptors"].append(_build_receptor_plan_entry(r, pose_obj, cof_poses))
+
+    for l in ligands:
+        if l.state != "ready" or not l.path_mae or not l.path_sdf:
+            session.close()
+            console.print(
+                f"[bold red]FATAL: Chemical Ligand '{l.name}' is in state '{l.state}'! Run 'sbdd prep' first.[/bold red]"
+            )
+            sys.exit(1)
+
+        lig_mae = Path(l.path_mae).resolve()
+        lig_sdf = Path(l.path_sdf).resolve()
+        if not lig_mae.exists() or not lig_sdf.exists():
+            session.close()
+            raise FileNotFoundError(
+                f"FATAL: Prepared files missing for '{l.name}' ({lig_mae}). Run 'sbdd prep' first."
+            )
+
+        plan["ligands"].append(
+            {
+                "name": l.name,
+                "path_sdf": str(lig_sdf),
+                "path_mae": str(lig_mae),
+                "is_native": False,
+                "ligand_title": l.name,
+                "substance_id": l.id,
+            }
+        )
+
+    run_name = name.strip() if name else f"screen_{len(frames)}x{len(ligands)}"
+    console.print(
+        f"[bold cyan]Cross-Docking Matrix Plan generated: {len(frames)} Receptor Frame(s) × {len(ligands)} Stereospecific Substance(s)[/bold cyan]"
+    )
+
+    plan_file = cwd / "dock_plan.json"
+    with open(plan_file, "w", encoding="utf-8") as f:
+        json.dump(plan, f, indent=2)
+    (cwd / "dock_receipt.tsv").unlink(missing_ok=True)
+
+    configs = load_project_configs(cwd)
+    nf_args = build_nextflow_args(configs, cwd, entrypoint="screen")
+    nf_args.extend(
+        [
+            "--dock_plan",
+            str(plan_file.resolve()),
+            "--dock_run_name",
+            run_name,
+        ]
+    )
+    if urgent:
+        nf_args.extend(["--queue", "urgent"])
+
+    profile_name = "local" if local else "slurm"
+    ret_code = execute_nextflow(
+        "screen", nf_args, cwd, profile=profile_name, resume=resume, configs=configs
+    )
+    if ret_code != 0:
+        session.close()
+        console.print("[bold red]Nextflow docking failed.[/bold red]")
+        sys.exit(ret_code)
+
+    _, parsed_modes, total_modes_saved = _ingest_docking_receipt(
+        session=session,
+        cwd=cwd,
+        run_name=run_name,
+        mode="matrix",
+        plan=plan,
+        ref_mol_by_frame=None,
+    )
+
     summary_rows = []
     for (frame_name, m_title), eng_dict in parsed_modes.items():
         glide_list = eng_dict.get("glide", [])
         gnina_list = eng_dict.get("gnina", [])
-        g_top = glide_list[0][0] if glide_list else None
-        n_top = gnina_list[0][0] if gnina_list else None
+
+        # Select representative pose strictly by best scoring energy/affinity
+        g_best = (
+            min(
+                glide_list,
+                key=lambda x: (
+                    x[0].glide_score if x[0].glide_score is not None else float("inf")
+                ),
+            )
+            if glide_list
+            else None
+        )
+        n_best = (
+            max(
+                gnina_list,
+                key=lambda x: (
+                    x[0].cnn_affinity
+                    if x[0].cnn_affinity is not None
+                    else float("-inf")
+                ),
+            )
+            if gnina_list
+            else None
+        )
+
+        g_top = g_best[0] if g_best else None
+        n_top = n_best[0] if n_best else None
 
         top_pair_rmsd = None
-        if glide_list and gnina_list:
-            top_pair_rmsd = round(
-                compute_symmetry_rmsd(glide_list[0][1], gnina_list[0][1]), 3
-            )
+        if g_best and n_best:
+            top_pair_rmsd = round(compute_symmetry_rmsd(g_best[1], n_best[1]), 3)
 
         summary_rows.append(
             {
@@ -738,19 +640,18 @@ def run_dock(
                 "title": m_title,
                 "n_glide": len(glide_list),
                 "n_gnina": len(gnina_list),
+                "g_mode": g_top.mode_index if g_top else None,
                 "g_score": g_top.glide_score if g_top else None,
                 "g_cnn_aff": g_top.cnn_affinity if g_top else None,
                 "g_cnn_sc": g_top.cnn_score if g_top else None,
-                "g_rmsd": g_top.insitu_rmsd if g_top else None,
+                "n_mode": n_top.mode_index if n_top else None,
                 "n_vina": n_top.vina_affinity if n_top else None,
                 "n_cnn_aff": n_top.cnn_affinity if n_top else None,
                 "n_cnn_sc": n_top.cnn_score if n_top else None,
-                "n_rmsd": n_top.insitu_rmsd if n_top else None,
                 "pair_rmsd": top_pair_rmsd,
             }
         )
 
-    # Sort by GlideScore (ascending) and CNNaffinity (descending)
     summary_rows.sort(
         key=lambda r: (
             (r["g_score"] if r["g_score"] is not None else 0.0)
@@ -759,27 +660,18 @@ def run_dock(
     )
 
     table = Table(
-        title=f"🎯 Docking Run '{run_name}' Summary (Level 1: Representative #1 Poses | Total Modes in DB: {total_modes_saved})",
+        title=f"🎯 Virtual Screening Run '{run_name}' Summary (Best Energy Poses | Total Modes in DB: {total_modes_saved})",
         show_header=True,
     )
     table.add_column("Rank", justify="right", style="bold")
     table.add_column("Frame", style="cyan")
     table.add_column("Substance", style="bold")
     table.add_column("Modes (G/N)", justify="center", style="dim")
-    table.add_column("Glide #1 Score", justify="right")
-    table.add_column("Glide #1 CNN (p)", justify="right")
-    table.add_column("GNINA #1 CNNaff (p)", justify="right")
-    table.add_column("GNINA #1 Vina", justify="right")
+    table.add_column("Glide Score", justify="right")
+    table.add_column("Glide CNNaff (p)", justify="right")
+    table.add_column("GNINA CNNaff (p)", justify="right")
+    table.add_column("GNINA Vina", justify="right")
     table.add_column("Glide↔GNINA ΔRMSD (Å)", justify="center")
-    if is_self or any(
-        r["g_rmsd"] is not None or r["n_rmsd"] is not None for r in summary_rows
-    ):
-        table.add_column("Glide Ref RMSD", justify="center")
-        table.add_column("GNINA Ref RMSD", justify="center")
-
-    has_ref_cols = is_self or any(
-        r["g_rmsd"] is not None or r["n_rmsd"] is not None for r in summary_rows
-    )
 
     for rank_idx, r in enumerate(summary_rows, start=1):
         g_cnn_str = (
@@ -792,7 +684,7 @@ def run_dock(
             if (r["n_cnn_aff"] is not None and r["n_cnn_sc"] is not None)
             else _format_metric(r["n_cnn_aff"])
         )
-        row_cells = [
+        table.add_row(
             str(rank_idx),
             r["frame"],
             r["title"],
@@ -802,19 +694,254 @@ def run_dock(
             n_cnn_str,
             _format_metric(r["n_vina"]),
             _color_rmsd(r["pair_rmsd"]),
-        ]
-        if has_ref_cols:
-            row_cells.extend(
-                [
-                    _color_rmsd(r["g_rmsd"]),
-                    _color_rmsd(r["n_rmsd"]),
-                ]
-            )
-        table.add_row(*row_cells)
+        )
 
     session.close()
-
     console.print(
-        f"\n[bold green]✓ Docking Run '{run_name}' saved to 3NF DB ({total_modes_saved} modes across {len(summary_rows)} pair(s), 0 Systems spammed).[/bold green]\n"
+        f"\n[bold green]✓ Virtual Screening Run '{run_name}' saved to 3NF DB ({total_modes_saved} modes across {len(summary_rows)} pair(s), 0 Systems spammed).[/bold green]\n"
+    )
+    console.print(table)
+
+
+def run_redock(
+    target: str | None = None,
+    frame_names: list[str] | None = None,
+    name: str | None = None,
+    urgent: bool = False,
+    local: bool = False,
+    resume: bool = True,
+) -> None:
+    """
+    Runs 1-to-1 Redocking of each ReceptorFrame's native structural ligand ('crystal' or 'md_centroid')
+    back into its own pocket. Evaluates symmetry-aware in-situ RMSD via compute_symmetry_rmsd
+    across all 16 generated modes and selects the best-reproducing pose per engine.
+    """
+    cwd = Path.cwd()
+    session = init_db()
+
+    frames = _query_ready_structural_frames(session, target, frame_names)
+
+    active_frames = []
+    for r in frames:
+        native_pose, cof_poses = _resolve_frame_structural_poses(session, r)
+        if not native_pose or not native_pose.substance:
+            continue
+        active_frames.append((r, native_pose, native_pose.substance, cof_poses))
+
+    if not active_frames:
+        session.close()
+        console.print(
+            "[bold red]FATAL: None of the selected ready frames have a native structural ligand pose ('crystal' or 'md_centroid') for redocking![/bold red]"
+        )
+        sys.exit(1)
+
+    plan = {
+        "mode": "self",
+        "receptors": [],
+        "ligands": [],
+        "pairs": [],
+    }
+    ref_mol_by_frame: dict[str, tuple[Substance, Chem.Mol]] = {}
+
+    for r, native_pose, native_lig, cof_poses in active_frames:
+        plan["receptors"].append(_build_receptor_plan_entry(r, native_pose, cof_poses))
+
+        pose_sdf = Path(native_pose.path_sdf).resolve()
+        ref_suppl = Chem.SDMolSupplier(str(pose_sdf), removeHs=False, sanitize=False)
+        ref_mol = next((m for m in ref_suppl if m is not None), None)
+        if ref_mol is None:
+            session.close()
+            raise ValueError(f"FATAL: Failed to parse reference SDF {pose_sdf}")
+        ref_mol_by_frame[r.name] = (native_lig, ref_mol)
+
+        if (
+            native_lig.state != "ready"
+            or not native_lig.path_mae
+            or not native_lig.path_sdf
+        ):
+            session.close()
+            console.print(
+                f"[bold red]FATAL: Chemical Substance '{native_lig.name}' is in state '{native_lig.state}'! "
+                "Run 'sbdd prep' first so LigPrep generates canonical 3D states.[/bold red]"
+            )
+            sys.exit(1)
+
+        lig_mae = Path(native_lig.path_mae).resolve()
+        lig_sdf = Path(native_lig.path_sdf).resolve()
+        if not lig_mae.exists() or not lig_sdf.exists():
+            session.close()
+            raise FileNotFoundError(
+                f"FATAL: LigPrep deliverables missing for '{native_lig.name}': {lig_mae}"
+            )
+
+        plan["ligands"].append(
+            {
+                "name": f"{r.name}_{native_lig.name}",
+                "path_sdf": str(lig_sdf),
+                "path_mae": str(lig_mae),
+                "is_native": True,
+                "receptor": r.name,
+                "ligand_title": native_lig.name,
+                "substance_id": native_lig.id,
+            }
+        )
+
+    run_name = name.strip() if name else f"redock_{len(active_frames)}"
+    console.print(
+        f"[bold green]✓ 1-to-1 Redocking Mode: Matched {len(active_frames)} receptor frame(s) directly to their native ligands.[/bold green]"
+    )
+
+    plan_file = cwd / "dock_plan.json"
+    with open(plan_file, "w", encoding="utf-8") as f:
+        json.dump(plan, f, indent=2)
+    (cwd / "dock_receipt.tsv").unlink(missing_ok=True)
+
+    configs = load_project_configs(cwd)
+    nf_args = build_nextflow_args(configs, cwd, entrypoint="screen")
+    nf_args.extend(
+        [
+            "--dock_plan",
+            str(plan_file.resolve()),
+            "--dock_run_name",
+            run_name,
+        ]
+    )
+    if urgent:
+        nf_args.extend(["--queue", "urgent"])
+
+    profile_name = "local" if local else "slurm"
+    ret_code = execute_nextflow(
+        "screen", nf_args, cwd, profile=profile_name, resume=resume, configs=configs
+    )
+    if ret_code != 0:
+        session.close()
+        console.print("[bold red]Nextflow redocking failed.[/bold red]")
+        sys.exit(ret_code)
+
+    _, parsed_modes, total_modes_saved = _ingest_docking_receipt(
+        session=session,
+        cwd=cwd,
+        run_name=run_name,
+        mode="self",
+        plan=plan,
+        ref_mol_by_frame=ref_mol_by_frame,
+    )
+
+    summary_rows = []
+    for (frame_name, m_title), eng_dict in parsed_modes.items():
+        glide_list = eng_dict.get("glide", [])
+        gnina_list = eng_dict.get("gnina", [])
+
+        # Select representative pose strictly by minimum symmetry-aware In-Situ RMSD to native pose
+        g_best = (
+            min(
+                glide_list,
+                key=lambda x: (
+                    x[0].insitu_rmsd if x[0].insitu_rmsd is not None else float("inf")
+                ),
+            )
+            if glide_list
+            else None
+        )
+        n_best = (
+            min(
+                gnina_list,
+                key=lambda x: (
+                    x[0].insitu_rmsd if x[0].insitu_rmsd is not None else float("inf")
+                ),
+            )
+            if gnina_list
+            else None
+        )
+
+        g_top = g_best[0] if g_best else None
+        n_top = n_best[0] if n_best else None
+
+        best_pair_rmsd = None
+        if g_best and n_best:
+            best_pair_rmsd = round(compute_symmetry_rmsd(g_best[1], n_best[1]), 3)
+
+        summary_rows.append(
+            {
+                "frame": frame_name,
+                "title": m_title,
+                "n_glide": len(glide_list),
+                "n_gnina": len(gnina_list),
+                "g_mode": g_top.mode_index if g_top else None,
+                "g_score": g_top.glide_score if g_top else None,
+                "g_cnn_aff": g_top.cnn_affinity if g_top else None,
+                "g_cnn_sc": g_top.cnn_score if g_top else None,
+                "g_rmsd": g_top.insitu_rmsd if g_top else None,
+                "n_mode": n_top.mode_index if n_top else None,
+                "n_vina": n_top.vina_affinity if n_top else None,
+                "n_cnn_aff": n_top.cnn_affinity if n_top else None,
+                "n_cnn_sc": n_top.cnn_score if n_top else None,
+                "n_rmsd": n_top.insitu_rmsd if n_top else None,
+                "pair_rmsd": best_pair_rmsd,
+            }
+        )
+
+    summary_rows.sort(
+        key=lambda r: min(
+            r["g_rmsd"] if r["g_rmsd"] is not None else float("inf"),
+            r["n_rmsd"] if r["n_rmsd"] is not None else float("inf"),
+        )
+    )
+
+    table = Table(
+        title=f"🎯 Redocking Validation Run '{run_name}' Summary (Best In-Situ RMSD Poses | Total Modes in DB: {total_modes_saved})",
+        show_header=True,
+    )
+    table.add_column("Frame", style="cyan")
+    table.add_column("Native Ligand", style="bold")
+    table.add_column("Glide Best Mode", justify="center")
+    table.add_column("Glide Score", justify="right")
+    table.add_column("Glide Ref RMSD (Å)", justify="center")
+    table.add_column("GNINA Best Mode", justify="center")
+    table.add_column("GNINA CNNaff (p)", justify="right")
+    table.add_column("GNINA Vina", justify="right")
+    table.add_column("GNINA Ref RMSD (Å)", justify="center")
+    table.add_column("Glide↔GNINA ΔRMSD (Å)", justify="center")
+    table.add_column("Verdict", justify="center")
+
+    for r in summary_rows:
+        g_mode_str = f"#{r['g_mode']}/{r['n_glide']}" if r["g_mode"] else "-"
+        n_mode_str = f"#{r['n_mode']}/{r['n_gnina']}" if r["n_mode"] else "-"
+        n_cnn_str = (
+            f"{r['n_cnn_aff']:.2f} ({r['n_cnn_sc']:.2f})"
+            if (r["n_cnn_aff"] is not None and r["n_cnn_sc"] is not None)
+            else _format_metric(r["n_cnn_aff"])
+        )
+
+        vg = r["g_rmsd"]
+        vn = r["n_rmsd"]
+        best_r = min(
+            vg if vg is not None else float("inf"),
+            vn if vn is not None else float("inf"),
+        )
+        if best_r <= 2.0:
+            verdict = "[bold green]✓ SUCCESS[/bold green]"
+        elif math.isfinite(best_r):
+            verdict = "[bold yellow]⚠ DRIFT[/bold yellow]"
+        else:
+            verdict = "[dim]-[/dim]"
+
+        table.add_row(
+            r["frame"],
+            r["title"],
+            g_mode_str,
+            _format_metric(r["g_score"]),
+            _color_rmsd(vg),
+            n_mode_str,
+            n_cnn_str,
+            _format_metric(r["n_vina"]),
+            _color_rmsd(vn),
+            _color_rmsd(r["pair_rmsd"]),
+            verdict,
+        )
+
+    session.close()
+    console.print(
+        f"\n[bold green]✓ Redocking Run '{run_name}' saved to 3NF DB ({total_modes_saved} modes across {len(summary_rows)} frame(s), 0 Systems spammed).[/bold green]\n"
     )
     console.print(table)

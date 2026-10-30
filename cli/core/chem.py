@@ -535,6 +535,10 @@ def compute_symmetry_rmsd(template_mol, target_mol) -> float:
         for a in q.GetAtoms():
             a.SetFormalCharge(0)
             a.SetIsotope(0)
+            a.SetNumExplicitHs(0)
+            a.SetNoImplicit(False)
+            a.SetNumRadicalElectrons(0)
+        q.UpdatePropertyCache(strict=False)
 
     matches = q_target.GetSubstructMatches(q_tmpl, uniquify=False)
     if not matches:
