@@ -39,7 +39,6 @@ workflow DOCK_LIBRARY {
     is_self             // val: boolean
     outdir              // val: canonical project outdir string
     dock_run_name       // val: unique DockingRun identifier
-    gnina_workers       // val: concurrent GNINA processes per task
 
     main:
     ch_summary_files = Channel.empty()
@@ -109,7 +108,7 @@ workflow DOCK_LIBRARY {
             .map { frame_id, comb_meta, poses_sdf, rec_pdb, ref_sdf ->
                 [ comb_meta, rec_pdb, ref_sdf, poses_sdf ]
             }
-        GNINA_RESCORE(ch_rescore_in, cnn_model, gnina_workers)
+        GNINA_RESCORE(ch_rescore_in, cnn_model)
 
         // Consolidate Glide chunks per frame
         ch_glide_pvs = GLIDE_DOCK.out.pv_maegz
@@ -184,8 +183,7 @@ workflow DOCK_LIBRARY {
             exhaustiveness,
             cnn_scoring,
             num_modes,
-            autobox_add,
-            gnina_workers
+            autobox_add
         )
 
         ch_to_merge = GNINA_DOCK.out.docked_sdf

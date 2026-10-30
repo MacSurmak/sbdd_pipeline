@@ -13,7 +13,6 @@ process GNINA_DOCK {
     val(cnn_scoring)
     val(num_modes)
     val(autobox_add)
-    val(gnina_workers)
 
     output:
     tuple val(meta), path("gnina_dock.sdf"), emit: docked_sdf
@@ -26,7 +25,6 @@ process GNINA_DOCK {
         --ligand ${chunk_sdf} \\
         --ref_ligand ${ref_lig_sdf} \\
         --cpus ${task.cpus} \\
-        --workers ${gnina_workers} \\
         --autobox_add ${autobox_add} \\
         --exhaustiveness ${exhaustiveness} \\
         --cnn_scoring ${cnn_scoring} \\

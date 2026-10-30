@@ -223,29 +223,22 @@ def _build_screen_args(config: Dict[str, Any], project_dir: Path) -> list:
             raise ValueError(
                 "FATAL: 'gnina.resources' block is required in gnina.yaml!"
             )
-        for rk in ["cpus", "parallel_workers", "memory_gb", "slurm_gres"]:
+        for rk in ["cpus", "memory_gb", "slurm_gres"]:
             if rk not in g_res or g_res[rk] is None or str(g_res[rk]).strip() == "":
                 raise ValueError(
                     f"FATAL: 'gnina.resources.{rk}' is required in gnina.yaml!"
                 )
         g_cpus = int(g_res["cpus"])
-        g_workers = int(g_res["parallel_workers"])
         g_mem = int(g_res["memory_gb"])
         g_gres = str(g_res["slurm_gres"]).strip()
-        if g_cpus <= 0 or g_workers <= 0 or g_mem <= 0:
+        if g_cpus <= 0 or g_mem <= 0:
             raise ValueError(
-                "FATAL: 'gnina.resources.cpus', 'parallel_workers', and 'memory_gb' must be positive integers!"
-            )
-        if g_cpus < g_workers or (g_cpus % g_workers != 0):
-            raise ValueError(
-                f"FATAL: 'gnina.resources.cpus' ({g_cpus}) must be an exact multiple of 'parallel_workers' ({g_workers})!"
+                "FATAL: 'gnina.resources.cpus' and 'memory_gb' must be positive integers!"
             )
         args.extend(
             [
                 "--gnina_cpus",
                 str(g_cpus),
-                "--gnina_workers",
-                str(g_workers),
                 "--gnina_mem_gb",
                 str(g_mem),
                 "--gnina_gres",
