@@ -33,6 +33,41 @@ def main():
     if args.inpcrd:
         print(f"Loading {args.prmtop} and {args.inpcrd}...")
         struct = pmd.load_file(args.prmtop, args.inpcrd)
+
+        # Sanitize atomic_number strictly from initial physical atomic masses in prmtop
+        # to prevent case-insensitive custom atom type collisions in tLEaP from corrupting HMR
+        for a in struct.atoms:
+            m = float(a.mass)
+            if m < 0.5:
+                a.atomic_number = 0
+            elif 0.8 <= m <= 2.5:
+                a.atomic_number = 1
+            else:
+                if m < 13.0:
+                    a.atomic_number = 6
+                elif m < 15.0:
+                    a.atomic_number = 7
+                elif m < 17.5:
+                    a.atomic_number = 8
+                elif m < 20.0:
+                    a.atomic_number = 9
+                elif m < 23.5:
+                    a.atomic_number = 11
+                elif m < 25.5:
+                    a.atomic_number = 12
+                elif m < 31.5:
+                    a.atomic_number = 15
+                elif m < 33.5:
+                    a.atomic_number = 16
+                elif m < 37.0:
+                    a.atomic_number = 17
+                elif m < 41.0:
+                    a.atomic_number = 19
+                elif m < 85.0:
+                    a.atomic_number = 35
+                else:
+                    a.atomic_number = 53
+
         if args.hmr:
             if args.hmr_mass is None or args.hmr_mass <= 1.008:
                 print(
@@ -46,6 +81,26 @@ def main():
                 f"Applying Hydrogen Mass Repartitioning (HMR = {args.hmr_mass:.3f} Da, dowater=False)..."
             )
             HMassRepartition(struct, args.hmr_mass).execute()
+
+            water_resnames = {"WAT", "HOH", "SOL", "OPC", "OPC3", "TIP3", "TP3"}
+            for a in struct.atoms:
+                res_name = a.residue.name.strip().upper() if a.residue else ""
+                if res_name in water_resnames or a.atomic_number == 0:
+                    continue
+                if a.atomic_number == 1 and abs(float(a.mass) - args.hmr_mass) > 0.05:
+                    print(
+                        f"FATAL: HMR verification failed on hydrogen atom {a.name} (res {res_name}): "
+                        f"expected mass {args.hmr_mass:.3f} Da, got {a.mass:.3f} Da!",
+                        file=sys.stderr,
+                    )
+                    sys.exit(1)
+                if a.atomic_number > 1 and float(a.mass) < 4.5:
+                    print(
+                        f"FATAL: HMR verification failed on heavy atom {a.name} (res {res_name}): "
+                        f"unphysical mass {a.mass:.3f} Da < 4.5 Da!",
+                        file=sys.stderr,
+                    )
+                    sys.exit(1)
 
         # Strict Fail-Fast charge neutrality verification and 6-decimal rounding dust elimination for PME
         total_q = sum(float(a.charge) for a in struct.atoms)

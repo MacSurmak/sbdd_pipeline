@@ -31,6 +31,9 @@ AMBER_RESERVED_TYPES: Set[str] = {
     "CY",
     "CZ",
     "C*",
+    "1C",
+    "2C",
+    "3C",
     "H",
     "H1",
     "H2",
@@ -81,7 +84,7 @@ AMBER_RESERVED_TYPES: Set[str] = {
 }
 
 SAFE_PREFIXES = "1234567890JQXUWYG"
-ALPHANUMERIC = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+ALPHANUMERIC = "0123456789abcdefghijklmnopqrstuvwxyz"
 
 
 def allocate_atom_types(n_atoms: int, start_prefix: str) -> List[str]:
