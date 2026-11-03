@@ -396,10 +396,6 @@ def _ingest_docking_receipt(
                         f"expected full-atom count in {valid_atom_counts}! Worker-side topology restoration failed."
                     )
 
-            state_entity = _ensure_substance_state_for_pose(
-                session, cwd, sub_obj, mol_clean
-            )
-
             insitu_rmsd_val = None
             if ref_mol_by_frame is not None:
                 ref_pair = ref_mol_by_frame.get(frame_name)
@@ -412,7 +408,7 @@ def _ingest_docking_receipt(
                 docking_run_id=dock_run.id,
                 receptor_frame_id=r_frame.id,
                 substance_id=sub_obj.id,
-                substance_state_id=state_entity.id,
+                substance_state_id=None,
                 engine=eng,
                 mode_index=m_idx,
                 glide_score=g_score,
@@ -444,22 +440,6 @@ def _ingest_docking_receipt(
                     min(compute_symmetry_rmsd(n_mol, g_mol) for _, g_mol in glide_list),
                     3,
                 )
-
-    session.flush()
-
-    # Prune orphaned raw SubstanceStates left over from replaced docking runs
-    for sub_obj in set(substance_by_title.values()):
-        sub_states = (
-            session.query(SubstanceState).filter_by(substance_id=sub_obj.id).all()
-        )
-        if len(sub_states) > 1:
-            for st in sub_states:
-                if (
-                    st.state == "raw"
-                    and len(st.poses) == 0
-                    and len(st.docked_poses) == 0
-                ):
-                    session.delete(st)
 
     session.commit()
     return dock_run, parsed_modes, total_modes_saved

@@ -506,7 +506,7 @@ class DockedPose(Base):
         Integer, ForeignKey("substances.id", ondelete="CASCADE"), nullable=False
     )
     substance_state_id = Column(
-        Integer, ForeignKey("substance_states.id", ondelete="CASCADE"), nullable=False
+        Integer, ForeignKey("substance_states.id", ondelete="CASCADE"), nullable=True
     )
     engine = Column(String(16), nullable=False)  # 'glide' or 'gnina'
     mode_index = Column(Integer, nullable=False)  # 1-based mode rank (1..16)
@@ -644,6 +644,26 @@ def _migrate_schema(engine: Engine) -> None:
                 conn.exec_driver_sql(
                     "ALTER TABLE clustering_runs ADD COLUMN sample_interval_ps FLOAT DEFAULT 500.0"
                 )
+
+        cursor_dp = conn.exec_driver_sql("PRAGMA table_info(docked_poses)")
+        dp_cols = {row[1]: row[3] for row in cursor_dp.fetchall()}
+        if dp_cols.get("substance_state_id") == 1:
+            conn.exec_driver_sql("ALTER TABLE docked_poses RENAME TO _docked_poses_old")
+            DockedPose.__table__.create(bind=conn)
+            conn.exec_driver_sql(
+                "INSERT INTO docked_poses SELECT * FROM _docked_poses_old"
+            )
+            conn.exec_driver_sql("DROP TABLE _docked_poses_old")
+        if dp_cols:
+            conn.exec_driver_sql(
+                "UPDATE docked_poses SET substance_state_id = NULL WHERE substance_state_id IN ("
+                "SELECT id FROM substance_states WHERE state = 'raw' AND id NOT IN ("
+                "SELECT substance_state_id FROM poses WHERE substance_state_id IS NOT NULL))"
+            )
+            conn.exec_driver_sql(
+                "DELETE FROM substance_states WHERE state = 'raw' AND id NOT IN ("
+                "SELECT substance_state_id FROM poses WHERE substance_state_id IS NOT NULL)"
+            )
 
 
 def get_session(db_path: Path = None):

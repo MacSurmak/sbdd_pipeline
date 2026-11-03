@@ -29,12 +29,52 @@ def main():
         )
         sys.exit(1)
 
+    import os
+    from rdkit import Chem, RDLogger
+
+    RDLogger.DisableLog("rdApp.*")
+
+    templates_by_idx: dict[int, tuple[str, Chem.Mol]] = {}
+    effective_ligand_input = args.ligand
+    tagged_input_sdf = f"{args.out_sdf}.in_tagged.sdf"
+
+    if args.mode == "dock":
+        with Chem.SDWriter(tagged_input_sdf) as tag_w:
+            tag_w.SetForceV3000(False)
+            for idx, tmpl_mol in enumerate(
+                Chem.SDMolSupplier(args.ligand, removeHs=False, sanitize=False)
+            ):
+                if tmpl_mol is None:
+                    continue
+                t_name = (
+                    tmpl_mol.GetProp("_Name").strip()
+                    if tmpl_mol.HasProp("_Name")
+                    else ""
+                )
+                if not t_name and tmpl_mol.HasProp("s_m_title"):
+                    t_name = tmpl_mol.GetProp("s_m_title").strip()
+                if not t_name:
+                    raise ValueError(
+                        f"FATAL: Unnamed molecule at index {idx} in {args.ligand}!"
+                    )
+                tmpl_mol.UpdatePropertyCache(strict=False)
+                Chem.SanitizeMol(tmpl_mol)
+                templates_by_idx[idx] = (t_name, Chem.Mol(tmpl_mol))
+
+                tagged_mol = Chem.Mol(tmpl_mol)
+                tagged_name = f"{t_name}__tmpl_{idx}"
+                tagged_mol.SetProp("_Name", tagged_name)
+                if tagged_mol.HasProp("s_m_title"):
+                    tagged_mol.SetProp("s_m_title", tagged_name)
+                tag_w.write(tagged_mol)
+        effective_ligand_input = tagged_input_sdf
+
     cmd = [
         "gnina",
         "-r",
         args.receptor,
         "-l",
-        args.ligand,
+        effective_ligand_input,
         "--autobox_ligand",
         args.ref_ligand,
         "--cpu",
@@ -68,6 +108,7 @@ def main():
         res = subprocess.run(cmd, stdout=f, stderr=subprocess.STDOUT, check=False)
 
     if res.returncode != 0:
+        Path(tagged_input_sdf).unlink(missing_ok=True)
         log_content = ""
         if Path(args.out_log).exists():
             log_content = Path(args.out_log).read_text(errors="ignore")
@@ -84,10 +125,6 @@ def main():
 
     # Restore full-atom chemical topology and explicit hydrogens directly in worker $SLURM_TMPDIR
     try:
-        import os
-        from rdkit import Chem, RDLogger
-
-        RDLogger.DisableLog("rdApp.*")
         framework_dir = Path(__file__).resolve().parent.parent
         if str(framework_dir) not in sys.path:
             sys.path.insert(0, str(framework_dir))
@@ -111,53 +148,39 @@ def main():
                         orig_m.SetProp(prop, sc_m.GetProp(prop))
                     w.write(orig_m)
         else:
-            templates_by_title: dict[str, list[Chem.Mol]] = {}
-            for tmpl_mol in Chem.SDMolSupplier(args.ligand, removeHs=False, sanitize=False):
-                if tmpl_mol is not None:
-                    t_name = tmpl_mol.GetProp("_Name").strip() if tmpl_mol.HasProp("_Name") else ""
-                    if not t_name and tmpl_mol.HasProp("s_m_title"):
-                        t_name = tmpl_mol.GetProp("s_m_title").strip()
-                    if t_name:
-                        tmpl_mol.UpdatePropertyCache(strict=False)
-                        Chem.SanitizeMol(tmpl_mol)
-                        templates_by_title.setdefault(t_name, []).append(tmpl_mol)
-
             with Chem.SDWriter(tmp_sdf) as w:
                 w.SetForceV3000(False)
                 for m in out_suppl:
                     if m is None:
                         continue
-                    m_title = m.GetProp("_Name").strip() if m.HasProp("_Name") else ""
-                    if not m_title and m.HasProp("s_m_title"):
-                        m_title = m.GetProp("s_m_title").strip()
-                    candidates = templates_by_title.get(m_title)
-                    if not candidates:
-                        raise KeyError(
-                            f"FATAL: Docked pose title '{m_title}' not found in input chunk {args.ligand}!"
-                        )
-                    restored_mol = None
-                    last_err = None
-                    for cand_tmpl in candidates:
-                        try:
-                            restored_mol = transfer_coordinates_to_template(
-                                template_mol=cand_tmpl,
-                                source_mol=m,
-                                relax_missing_hydrogens=True,
-                            )
-                            break
-                        except ValueError as err:
-                            last_err = err
-                            continue
-                    if restored_mol is None:
+                    raw_tag = m.GetProp("_Name").strip() if m.HasProp("_Name") else ""
+                    if not raw_tag and m.HasProp("s_m_title"):
+                        raw_tag = m.GetProp("s_m_title").strip()
+                    if "__tmpl_" not in raw_tag:
                         raise ValueError(
-                            f"FATAL: Failed to restore all-atom topology for GNINA pose '{m_title}': {last_err}"
+                            f"FATAL: Missing template index tag in GNINA output pose '{raw_tag}'!"
                         )
-                    restored_mol.SetProp("_Name", m_title)
+                    orig_title, idx_str = raw_tag.rsplit("__tmpl_", 1)
+                    tmpl_entry = templates_by_idx.get(int(idx_str))
+                    if tmpl_entry is None:
+                        raise KeyError(
+                            f"FATAL: Template index {idx_str} for '{orig_title}' not found in {args.ligand}!"
+                        )
+                    _, exact_tmpl = tmpl_entry
+                    restored_mol = transfer_coordinates_to_template(
+                        template_mol=exact_tmpl,
+                        source_mol=m,
+                        relax_missing_hydrogens=True,
+                    )
                     for prop in m.GetPropNames():
                         restored_mol.SetProp(prop, m.GetProp(prop))
+                    restored_mol.SetProp("_Name", orig_title)
+                    if restored_mol.HasProp("s_m_title"):
+                        restored_mol.SetProp("s_m_title", orig_title)
                     w.write(restored_mol)
 
         os.replace(tmp_sdf, args.out_sdf)
+        Path(tagged_input_sdf).unlink(missing_ok=True)
     except Exception as e:
         print(
             f"FATAL: Failed to restore and normalize GNINA SDF {args.out_sdf} via RDKit: {e}",
