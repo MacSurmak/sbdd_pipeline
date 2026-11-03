@@ -94,7 +94,7 @@ def print_tree(
     batch: str | None = None,
     substance: str | None = None,
 ) -> None:
-    from sqlalchemy import func
+    from sqlalchemy import case, func
 
     session = init_db()
 
@@ -334,8 +334,8 @@ def print_tree(
         session.query(
             Substance.batch_id,
             func.count(Substance.id).label("total"),
-            func.sum(func.case((Substance.state == "ready", 1), else_=0)).label("ready_cnt"),
-            func.sum(func.case((Substance.state == "raw", 1), else_=0)).label("raw_cnt"),
+            func.sum(case((Substance.state == "ready", 1), else_=0)).label("ready_cnt"),
+            func.sum(case((Substance.state == "raw", 1), else_=0)).label("raw_cnt"),
         )
         .filter(Substance.batch_id != "crystal_extract")
         .group_by(Substance.batch_id)
@@ -351,8 +351,11 @@ def print_tree(
         )
 
         for b_name, total_subs, ready_subs, raw_subs in batch_stats:
+            total_cnt = int(total_subs or 0)
+            ready_cnt = int(ready_subs or 0)
+            raw_cnt = int(raw_subs or 0)
             b_tag = b_name or "unspecified_batch"
-            all_ready = (ready_subs == total_subs)
+            all_ready = (ready_cnt == total_cnt and total_cnt > 0)
             b_style = "green" if all_ready else "yellow"
             b_status_str = f"[{b_style}]\\[{'ready' if all_ready else 'raw'}][/{b_style}]"
 
@@ -374,12 +377,12 @@ def print_tree(
             should_expand = bool(batch_filter) or (total_subs <= 5)
 
             batch_node = pool_branch.add(
-                f"[bold cyan]Batch: {b_tag}[/bold cyan] {b_status_str} [dim]({total_subs} substance(s): {ready_subs} ready, {raw_subs} raw)[/dim]"
+                f"[bold cyan]Batch: {b_tag}[/bold cyan] {b_status_str} [dim]({total_cnt} substance(s): {ready_cnt} ready, {raw_cnt} raw)[/dim]"
             )
 
             if docking_summary:
                 d_info = ", ".join(
-                    f"'{run_n}' ({s_cnt}/{total_subs} subs, {m_cnt} modes)"
+                    f"'{run_n}' ({s_cnt}/{total_cnt} subs, {m_cnt} modes)"
                     for run_n, s_cnt, m_cnt in docking_summary
                 )
                 batch_node.add(f"[magenta]Docking Evaluation:[/magenta] {d_info}")
@@ -397,7 +400,7 @@ def print_tree(
                     _render_detailed_substance_node(batch_node, sub, session)
             else:
                 batch_node.add(
-                    f"[dim]Run 'sbdd tree --batch {b_tag}' to inspect all {total_subs} substances or 'sbdd tree --substance <name>' for a specific molecule.[/dim]"
+                    f"[dim]Run 'sbdd tree --batch {b_tag}' to inspect all {total_cnt} substances or 'sbdd tree --substance <name>' for a specific molecule.[/dim]"
                 )
 
     session.close()
