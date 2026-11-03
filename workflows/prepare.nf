@@ -59,10 +59,7 @@ workflow PREPARE_WF {
         }
 
         def b_size = params.batch_size as int
-        def num_batches = Math.max(1, Math.ceil(ligandList.size() / (double) b_size) as int)
-        def batchedList = (0..<num_batches).collect { idx ->
-            (idx..<ligandList.size()).step(num_batches).collect { ligandList[it] }
-        }
+        def batchedList = ligandList.collate(b_size)
 
         ch_lig_batches = Channel.fromList(batchedList.withIndex()).map { batch_items, b_idx ->
             def sdf_files = batch_items.collect { lig ->

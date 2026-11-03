@@ -139,6 +139,18 @@ def run_prep(
                 }
             )
 
+    configs = load_project_configs(cwd)
+    nf_args = build_nextflow_args(configs, cwd, entrypoint="prepare")
+
+    if len(sub_plan) > 1:
+        lp_batch_size = int(configs["glide"]["ligprep"]["batch_size"])
+        num_lp_batches = max(1, (len(sub_plan) + lp_batch_size - 1) // lp_batch_size)
+        sub_plan = [
+            item
+            for idx in range(num_lp_batches)
+            for item in sub_plan[idx::num_lp_batches]
+        ]
+
     plan_data = {"receptors": rec_plan, "ligands": sub_plan}
     plan_file = cwd / "prep_plan.json"
     with open(plan_file, "w") as f:
@@ -152,8 +164,6 @@ def run_prep(
     (cwd / "prep_receipt.tsv").unlink(missing_ok=True)
     (cwd / "prep_ligand_receipt.tsv").unlink(missing_ok=True)
 
-    configs = load_project_configs(cwd)
-    nf_args = build_nextflow_args(configs, cwd, entrypoint="prepare")
     nf_args.extend(["--plan", str(plan_file.resolve())])
 
     if urgent:
