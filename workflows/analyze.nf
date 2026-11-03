@@ -152,6 +152,7 @@ workflow ANALYZE_WF {
                 rec_id: item.rec_id,
                 rep: item.rep,
                 ligand: item.ligand ?: "",
+                membrane_thickness: item.membrane_thickness,
                 project: params.project_name
             ]
             [ meta, file(item.clean_xtc), file(item.ref_pdb), file(item.dry_prmtop), file(item.clean_ndx) ]
@@ -167,7 +168,6 @@ workflow ANALYZE_WF {
             params.md_temperature,
             params.md_salt_conc,
             params.membrane,
-            params.membrane_thickness,
             params.per_residue_decomp,
             params.mmpbsa_method,
             params.mmpbsa_gb_model,

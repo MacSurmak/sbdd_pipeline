@@ -31,15 +31,18 @@ workflow ANALYZE_MD_TRAJ {
     MD_METRICS(ch_metrics_in, params.metric_heavy, params.metric_hyd, params.metric_pol)
 
     // 2. Run MM-PBSA free energy calculation
+    ch_mmpbsa_in = ch_traj_clean.map { meta, clean_xtc, ref_pdb, topol, ndx ->
+        def m_thick = meta.membrane_thickness ?: membrane_thickness
+        [ meta + [membrane_thickness: m_thick], clean_xtc, ref_pdb, topol, ndx ]
+    }
     GMX_MMPBSA(
-        ch_traj_clean,
+        ch_mmpbsa_in,
         templates_dir,
         start_ns,
         sample_interval_ps,
         temperature,
         salt_conc,
         is_membrane,
-        membrane_thickness,
         per_res_decomp,
         method,
         gb_model,

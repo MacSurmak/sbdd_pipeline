@@ -1355,6 +1355,79 @@ def run_stratify(
     console.print("[bold green]✓ All requested systems successfully stratified and synchronized with SQLite 3NF.[/bold green]")
 
 
+def _extract_mae_membrane_thickness(mae_path: Path) -> float | None:
+    """
+    Reads r_psp_Prime_Membrane_Thickness injected by APPLY_MEMBRANE from the f_m_ct header
+    of a prepared receptor .mae file without loading atom coordinates.
+    """
+    if not mae_path or not mae_path.exists():
+        return None
+    in_ct = False
+    in_vals = False
+    keys: list[str] = []
+    vals: list[str] = []
+    with open(mae_path, "r", encoding="utf-8", errors="ignore") as f:
+        for raw_line in f:
+            line = raw_line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if line.startswith("f_m_ct") and "{" in line:
+                in_ct = True
+                continue
+            if in_ct:
+                if line == ":::":
+                    in_vals = True
+                    continue
+                if not in_vals:
+                    keys.append(line.split()[0])
+                else:
+                    if line.startswith(("}", "m_")):
+                        break
+                    vals.append(line)
+                    if len(vals) >= len(keys):
+                        break
+    if "r_psp_Prime_Membrane_Thickness" in keys:
+        idx = keys.index("r_psp_Prime_Membrane_Thickness")
+        if idx < len(vals):
+            return float(vals[idx].strip('"'))
+    return None
+
+
+def _resolve_system_membrane_thickness(sys_obj: System, configs: dict) -> float | None:
+    """
+    Resolves physical membrane thickness (Å) for a System:
+    1. Checks System.environment_dict['membrane_thickness'] if recorded.
+    2. Walks ReceptorFrame -> parent_frame lineage to read r_psp_Prime_Membrane_Thickness from .mae.
+    3. Checks explicit membrane.thickness in membrane.yaml if provided.
+    """
+    is_mem = bool(configs.get("membrane", {}).get("enabled", False))
+    if not is_mem:
+        return None
+
+    env_thick = sys_obj.environment_dict.get("membrane_thickness")
+    if env_thick is not None:
+        return float(env_thick)
+
+    curr_frame = sys_obj.receptor_frame
+    visited = set()
+    while curr_frame and curr_frame.id not in visited:
+        visited.add(curr_frame.id)
+        if curr_frame.path_mae:
+            thick = _extract_mae_membrane_thickness(Path(curr_frame.path_mae).resolve())
+            if thick is not None and thick > 0.0:
+                return thick
+        curr_frame = curr_frame.parent_frame
+
+    cfg_thick = configs.get("membrane", {}).get("thickness")
+    if cfg_thick is not None:
+        return float(cfg_thick)
+
+    raise ValueError(
+        f"FATAL: Membrane is enabled for system '{sys_obj.name}', but membrane thickness could not be "
+        f"found in prepared receptor MAE ('{sys_obj.receptor_frame.path_mae}') or configs/membrane.yaml!"
+    )
+
+
 def run_mmpbsa(
     systems: list[str] | None = None,
     target: str | None = None,
@@ -1369,6 +1442,7 @@ def run_mmpbsa(
     """
     cwd = Path.cwd()
     session = get_session()
+    configs = load_project_configs(cwd)
     trajs = _query_trajectories(
         session, systems, target, traj_names, target_status="cleaned"
     )
@@ -1412,6 +1486,7 @@ def run_mmpbsa(
             )
 
         lig_code = sys_obj.pose.res_name
+        mem_thick = _resolve_system_membrane_thickness(sys_obj, configs)
 
         plan_list.append(
             {
@@ -1423,6 +1498,7 @@ def run_mmpbsa(
                 "clean_ndx": str(clean_ndx_path.resolve()),
                 "dry_prmtop": str(dry_prmtop_path),
                 "ligand": lig_code,
+                "membrane_thickness": mem_thick,
             }
         )
 

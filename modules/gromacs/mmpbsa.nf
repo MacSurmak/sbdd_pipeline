@@ -16,7 +16,6 @@ process GMX_MMPBSA {
     val(temp)
     val(salt_conc)
     val(is_membrane)
-    val(membrane_thickness)
     val(decomp)
     val(method)
     val(gb_model)
@@ -29,7 +28,10 @@ process GMX_MMPBSA {
     tuple val(meta), path("decomposition_mmpbsa_gb.csv"), path("thermodynamics_mmpbsa_gb.dat"), emit: gb_decomp_results, optional: true
 
     script:
-    def mem_arg = (is_membrane.toString() == 'true') ? "--membrane --membrane_thickness ${membrane_thickness}" : ""
+    if (is_membrane.toString() == 'true' && !meta.membrane_thickness) {
+        error "FATAL: Membrane is enabled for ${meta.id}, but meta.membrane_thickness is missing!"
+    }
+    def mem_arg = (is_membrane.toString() == 'true') ? "--membrane --membrane_thickness ${meta.membrane_thickness}" : ""
     def dec_arg = (decomp.toString() == 'true') ? "--decomp" : ""
     """
     python3 ${projectDir}/bin/wrap_gromacs.py mmpbsa \\
