@@ -481,6 +481,7 @@ def _ingest_docking_receipt(
 def run_dock(
     target: str | None = None,
     frame_names: list[str] | None = None,
+    batch_names: list[str] | None = None,
     ligand_names: list[str] | None = None,
     name: str | None = None,
     urgent: bool = False,
@@ -497,35 +498,27 @@ def run_dock(
 
     frames = _query_ready_structural_frames(session, target, frame_names)
 
+    lig_query = session.query(Substance).filter_by(substance_type="ligand", state="ready")
+    if batch_names:
+        lig_query = lig_query.filter(Substance.batch_id.in_(batch_names))
+
     if not ligand_names or ligand_names == ["all"]:
-        ligands = (
-            session.query(Substance)
-            .filter_by(substance_type="ligand", state="ready")
-            .order_by(Substance.name)
-            .all()
-        )
+        ligands = lig_query.order_by(Substance.name).all()
         if not ligands:
+            scope_desc = f" for batch(es) '{batch_names}'" if batch_names else ""
             session.close()
             console.print(
-                "[bold red]FATAL: No ready ligands found in database! Run 'sbdd add ligand' and 'sbdd prep' first.[/bold red]"
+                f"[bold red]FATAL: No ready ligands found in database{scope_desc}! Run 'sbdd add ligand' and 'sbdd prep' first.[/bold red]"
             )
             sys.exit(1)
     else:
-        ligands = (
-            session.query(Substance)
-            .filter(
-                Substance.name.in_(ligand_names),
-                Substance.substance_type == "ligand",
-            )
-            .order_by(Substance.name)
-            .all()
-        )
+        ligands = lig_query.filter(Substance.name.in_(ligand_names)).order_by(Substance.name).all()
         if len(ligands) != len(set(ligand_names)):
             found = {l.name for l in ligands}
             missing = set(ligand_names) - found
             session.close()
             console.print(
-                f"[bold red]FATAL: Ligands not found in DB: {missing}[/bold red]"
+                f"[bold red]FATAL: Ligands not found in DB or not ready: {missing}[/bold red]"
             )
             sys.exit(1)
 

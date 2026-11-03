@@ -761,16 +761,23 @@ def add_fasta(path: str) -> None:
     )
 
 
-def add_ligand(path: str, name: str | None = None, force: bool = False) -> None:
+def add_ligand(
+    path: str,
+    name: str | None = None,
+    batch: str | None = None,
+    force: bool = False,
+) -> None:
     """
     Imports chemical substances (SDF/SMILES) into the Substance table.
-    Performs topological deduplication via Standard InChIKey.
+    Performs topological deduplication via Standard InChIKey and records provenance batch_id.
     """
     session = init_db()
     target_path = Path(path).resolve()
     if not target_path.exists():
         console.print(f"[bold red]FATAL: File does not exist: {target_path}[/bold red]")
         sys.exit(1)
+
+    effective_batch = batch.strip() if batch and batch.strip() else target_path.stem
 
     try:
         from rdkit import Chem
@@ -875,6 +882,7 @@ def add_ligand(path: str, name: str | None = None, force: bool = False) -> None:
                         sub_entity.smiles = parent_smiles
                         sub_entity.path_sdf = str(base_sdf.resolve())
                         sub_entity.state = "raw"
+                        sub_entity.batch_id = effective_batch
                 else:
                     sub_entity = Substance(
                         inchikey=parent_inchikey,
@@ -883,7 +891,7 @@ def add_ligand(path: str, name: str | None = None, force: bool = False) -> None:
                         res_name=clean_res,
                         substance_type="ligand",
                         state="raw",
-                        batch_id=target_path.stem,
+                        batch_id=effective_batch,
                         path_sdf=str(base_sdf.resolve()),
                     )
                     session.add(sub_entity)
@@ -910,7 +918,7 @@ def add_ligand(path: str, name: str | None = None, force: bool = False) -> None:
         else ""
     )
     console.print(
-        f"[bold green]✓ Imported {imported} unique stereospecific substance(s)[/bold green] "
+        f"[bold green]✓ Imported {imported} unique stereospecific substance(s) into batch '{effective_batch}'[/bold green] "
         f"[dim]({skipped} duplicates skipped{exp_msg})[/dim]"
     )
 

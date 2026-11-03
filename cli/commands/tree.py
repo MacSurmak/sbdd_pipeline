@@ -178,83 +178,94 @@ def print_tree() -> None:
                     f"Frame [cyan]{f_name}[/cyan]: {len( {dp.substance_id for dp in f_poses} )} substance(s) [dim](Glide: {g_count} modes, GNINA: {n_count} modes)[/dim]"
                 )
 
-    # 2. Chemical Substances, Microstates & Their 3D Poses
+    # 2. Chemical Substances, Microstates & Their 3D Poses (Grouped by Provenance Batch)
     substances = (
         session.query(Substance)
-        .order_by(Substance.substance_type, Substance.name)
+        .order_by(Substance.batch_id, Substance.substance_type, Substance.name)
         .all()
     )
     if substances:
         sub_branch = root_tree.add(
             "[bold yellow]Chemical Substances & Microstates (3NF)[/bold yellow]"
         )
+        by_batch: dict[str, list[Substance]] = {}
         for sub in substances:
-            type_badge = f"[bold]{sub.substance_type.upper()}[/bold]"
-            sub_color = "green" if sub.state == "ready" else "yellow"
-            states = (
-                session.query(SubstanceState)
-                .filter_by(substance_id=sub.id)
-                .order_by(SubstanceState.state_hash)
-                .all()
+            b_key = sub.batch_id or "unspecified_batch"
+            by_batch.setdefault(b_key, []).append(sub)
+
+        for b_name, b_subs in sorted(by_batch.items(), key=lambda x: (x[0] != "crystal_extract", x[0])):
+            b_tag_style = "bold green" if b_name == "crystal_extract" else "bold cyan"
+            batch_node = sub_branch.add(
+                f"[{b_tag_style}]Batch: {b_name}[/{b_tag_style}] [dim]({len(b_subs)} substance(s))[/dim]"
             )
-            smi_suffix = f" [dim]SMILES: {sub.smiles}[/dim]" if not states else ""
-            sub_node = sub_branch.add(
-                f"{type_badge}: [bold cyan]{sub.name}[/bold cyan] [{sub_color}]\\[{sub.state}][/{sub_color}] [dim]({sub.inchikey})[/dim]{smi_suffix}"
-            )
-            for st in states:
-                st_color = "green" if st.state == "ready" else "yellow"
-                q_label = (
-                    f"q={st.formal_charge:+d}" if st.formal_charge != 0 else "neutral"
-                )
-                param_status = ""
-                if st.path_mol2 and st.path_frcmod:
-                    mol2_p = Path(st.path_mol2)
-                    frcmod_p = Path(st.path_frcmod)
-                    frcmod_text = (
-                        frcmod_p.read_text(encoding="utf-8", errors="ignore")
-                        if frcmod_p.exists()
-                        else ""
-                    )
-                    is_openff = "OpenFF" in frcmod_text
-                    opt_sdf = mol2_p.parent / f"{sub.res_name}_opt.sdf"
-
-                    if is_openff:
-                        ff_version = (
-                            "OpenFF-2.3.0" if "2.3.0" in frcmod_text else "OpenFF"
-                        )
-                        if opt_sdf.exists():
-                            param_status = (
-                                f" [bold green]+RESP({ff_version})[/bold green]"
-                            )
-                        elif "AshGC" in frcmod_text:
-                            param_status = (
-                                f" [bold green]+AshGC({ff_version})[/bold green]"
-                            )
-                        else:
-                            param_status = (
-                                f" [bold green]+BCC({ff_version})[/bold green]"
-                            )
-                    else:
-                        if opt_sdf.exists():
-                            param_status = " [bold green]+RESP(GAFF2)[/bold green]"
-                        else:
-                            param_status = " [bold green]+BCC(GAFF2)[/bold green]"
-
-                state_node = sub_node.add(
-                    f"State: [magenta]{st.state_hash}[/magenta] [{st_color}]\\[{st.state}][/{st_color}] [cyan]({q_label})[/cyan]{param_status} [dim]SMILES: {st.isomeric_smiles}[/dim]"
-                )
-
-                poses = (
-                    session.query(Pose)
-                    .filter_by(substance_state_id=st.id)
-                    .order_by(Pose.name)
+            for sub in b_subs:
+                type_badge = f"[bold]{sub.substance_type.upper()}[/bold]"
+                sub_color = "green" if sub.state == "ready" else "yellow"
+                states = (
+                    session.query(SubstanceState)
+                    .filter_by(substance_id=sub.id)
+                    .order_by(SubstanceState.state_hash)
                     .all()
                 )
-                for p in poses:
-                    p_color = "green" if p.state == "ready" else "yellow"
-                    state_node.add(
-                        f"Pose: [{p_color}]{p.name}[/{p_color}] [dim]({p.origin}, state={p.state})[/dim] in [cyan]{p.receptor_frame.name}[/cyan] -> {Path(p.path).name}"
+                smi_suffix = f" [dim]SMILES: {sub.smiles}[/dim]" if not states else ""
+                sub_node = batch_node.add(
+                    f"{type_badge}: [bold cyan]{sub.name}[/bold cyan] [{sub_color}]\\[{sub.state}][/{sub_color}] [dim]({sub.inchikey})[/dim]{smi_suffix}"
+                )
+
+                for st in states:
+                    st_color = "green" if st.state == "ready" else "yellow"
+                    q_label = (
+                        f"q={st.formal_charge:+d}" if st.formal_charge != 0 else "neutral"
                     )
+                    param_status = ""
+                    if st.path_mol2 and st.path_frcmod:
+                        mol2_p = Path(st.path_mol2)
+                        frcmod_p = Path(st.path_frcmod)
+                        frcmod_text = (
+                            frcmod_p.read_text(encoding="utf-8", errors="ignore")
+                            if frcmod_p.exists()
+                            else ""
+                        )
+                        is_openff = "OpenFF" in frcmod_text
+                        opt_sdf = mol2_p.parent / f"{sub.res_name}_opt.sdf"
+
+                        if is_openff:
+                            ff_version = (
+                                "OpenFF-2.3.0" if "2.3.0" in frcmod_text else "OpenFF"
+                            )
+                            if opt_sdf.exists():
+                                param_status = (
+                                    f" [bold green]+RESP({ff_version})[/bold green]"
+                                )
+                            elif "AshGC" in frcmod_text:
+                                param_status = (
+                                    f" [bold green]+AshGC({ff_version})[/bold green]"
+                                )
+                            else:
+                                param_status = (
+                                    f" [bold green]+BCC({ff_version})[/bold green]"
+                                )
+                        else:
+                            if opt_sdf.exists():
+                                param_status = " [bold green]+RESP(GAFF2)[/bold green]"
+                            else:
+                                param_status = " [bold green]+BCC(GAFF2)[/bold green]"
+
+                    state_node = sub_node.add(
+                        f"State: [magenta]{st.state_hash}[/magenta] [{st_color}]\\[{st.state}][/{st_color}] [cyan]({q_label})[/cyan]{param_status} [dim]SMILES: {st.isomeric_smiles}[/dim]"
+                    )
+
+                    poses = (
+                        session.query(Pose)
+                        .filter_by(substance_state_id=st.id)
+                        .order_by(Pose.name)
+                        .all()
+                    )
+                    for p in poses:
+                        p_color = "green" if p.state == "ready" else "yellow"
+                        state_node.add(
+                            f"Pose: [{p_color}]{p.name}[/{p_color}] [dim]({p.origin}, state={p.state})[/dim] in [cyan]{p.receptor_frame.name}[/cyan] -> {Path(p.path).name}"
+                        )
 
     session.close()
     console.print(root_tree)

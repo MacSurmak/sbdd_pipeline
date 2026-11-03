@@ -75,6 +75,10 @@ def main():
         "--name", help="Identifier for ligand (optional for multi-molecule SDF)"
     )
     p_add_lig.add_argument(
+        "--batch",
+        help="Provenance batch / library name (default: stem of input SDF file)",
+    )
+    p_add_lig.add_argument(
         "--force", action="store_true", help="Overwrite if name exists"
     )
 
@@ -214,8 +218,14 @@ def main():
         help="Comma-separated list of specific ready ReceptorFrame names",
     )
     p_dock.add_argument(
+        "--batch",
+        "--batches",
+        dest="batches",
+        help="Comma-separated list of specific provenance batch names to dock (e.g. chembl_actives)",
+    )
+    p_dock.add_argument(
         "--ligands",
-        help="Comma-separated list of ligand names from DB (default: all ready ligands)",
+        help="Comma-separated list of ligand names from DB (default: all ready ligands in selected scope)",
     )
     p_dock.add_argument("--name", help="Name for the output DockingRun in DB")
     add_common_wf_args(p_dock)
@@ -551,7 +561,12 @@ def main():
         elif args.add_type == "fasta":
             add_fasta(path=args.path)
         elif args.add_type == "ligand":
-            add_ligand(path=args.path, name=args.name, force=args.force)
+            add_ligand(
+                path=args.path,
+                name=args.name,
+                batch=args.batch,
+                force=args.force,
+            )
         elif args.add_type == "traj":
             add_traj(
                 system=args.system,
@@ -628,6 +643,11 @@ def main():
             frame_names=(
                 [f.strip() for f in args.frames.split(",") if f.strip()]
                 if args.frames
+                else None
+            ),
+            batch_names=(
+                [b.strip() for b in args.batches.split(",") if b.strip()]
+                if args.batches
                 else None
             ),
             ligand_names=(
