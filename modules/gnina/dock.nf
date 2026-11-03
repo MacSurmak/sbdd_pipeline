@@ -13,12 +13,14 @@ process GNINA_DOCK {
     val(cnn_scoring)
     val(num_modes)
     val(autobox_add)
+    val(cnn_model)
 
     output:
     tuple val(meta), path("gnina_dock.sdf"), emit: docked_sdf
     tuple val(meta), path("gnina_dock.log"), emit: log
 
     script:
+    def cnn_arg = cnn_model ? "--cnn_model ${cnn_model}" : ""
     """
     python3 ${projectDir}/bin/wrap_gnina.py dock \\
         --receptor ${receptor_pdb} \\
@@ -29,6 +31,7 @@ process GNINA_DOCK {
         --exhaustiveness ${exhaustiveness} \\
         --cnn_scoring ${cnn_scoring} \\
         --num_modes ${num_modes} \\
+        ${cnn_arg} \\
         --out_sdf gnina_dock.sdf \\
         --out_log gnina_dock.log
     """

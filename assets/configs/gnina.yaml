@@ -1,13 +1,13 @@
 gnina:
   enabled: true
-  exhaustiveness: 32                 # Thorough sampling for blind docking of flexible ligands
+  exhaustiveness: 8                  # Optimal pocket sampling for defined autobox_add: 4.0
   cnn_scoring: "rescore"             # none, rescore, refinement, all
-  num_modes: 16                      # Number of binding poses to output
+  num_modes: 3                       # Number of binding poses to output
   autobox_add: 4.0                   # Tight binding cleft focus (Å)
-  cnn_model: "crossdock_default2018" # Default GNINA CNN model
-  batch_size: 4                      # 4 substances per task to amortize CUDA/CNN initialization across GPU shards
+  cnn_model: ""                      # Empty string uses default fast GNINA 1.3 distilled ensemble
+  batch_size: 25                     # 25 substances per task to amortize CUDA/CNN initialization across GPU shards
   resources:
-    cpus: 2                          # CPU threads (--cpu) allocated per GNINA Slurm task
+    cpus: 4                          # CPU threads (--cpu) allocated per GNINA Slurm task
     memory_gb: 4                     # RAM allocation per task in GB
     slurm_gres: "shard:1"            # Slurm GRES request: "shard:1" (up to 16 concurrent tasks per GPU)
 

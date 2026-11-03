@@ -383,31 +383,19 @@ def _ingest_docking_receipt(
             c_score = _parse_mol_float_prop(m, ["CNNscore"])
             c_aff = _parse_mol_float_prop(m, ["CNNaffinity"])
 
+            mol_clean = Chem.Mol(m)
+            mol_clean.UpdatePropertyCache(strict=False)
+            Chem.SanitizeMol(mol_clean)
+
             if eng != "glide":
                 candidates = templates_by_sub_id[sub_obj.id]
-                restored_mol = None
-                last_err = None
-                for cand_tmpl in candidates:
-                    try:
-                        restored_mol = transfer_coordinates_to_template(
-                            template_mol=cand_tmpl,
-                            source_mol=m,
-                            relax_missing_hydrogens=True,
-                        )
-                        break
-                    except ValueError as e:
-                        last_err = e
-                        continue
-                if restored_mol is None:
+                valid_atom_counts = {t.GetNumAtoms() for t in candidates}
+                if mol_clean.GetNumAtoms() not in valid_atom_counts:
                     session.close()
                     raise ValueError(
-                        f"FATAL: Failed to restore all-atom topology for GNINA pose #{m_idx} of '{m_title}': {last_err}"
+                        f"FATAL: GNINA pose #{m_idx} of '{m_title}' has {mol_clean.GetNumAtoms()} atoms, "
+                        f"expected full-atom count in {valid_atom_counts}! Worker-side topology restoration failed."
                     )
-                mol_clean = restored_mol
-            else:
-                mol_clean = Chem.Mol(m)
-                mol_clean.UpdatePropertyCache(strict=False)
-                Chem.SanitizeMol(mol_clean)
 
             state_entity = _ensure_substance_state_for_pose(
                 session, cwd, sub_obj, mol_clean

@@ -30,35 +30,39 @@ def compute_pose_consensus_rmsd(df: pd.DataFrame, dock_dir: Path):
         sys.path.insert(0, str(framework_dir))
     from cli.core.chem import compute_symmetry_rmsd
 
-    def _extract_mol(filepath: Path, target_title: str):
+    def _index_top_poses(filepath: Path) -> dict[str, Chem.Mol]:
+        poses_by_title: dict[str, Chem.Mol] = {}
         if not filepath.exists() or filepath.stat().st_size == 0:
-            return None
+            return poses_by_title
         suppl = Chem.SDMolSupplier(str(filepath), removeHs=False, sanitize=False)
         for m in suppl:
             if m is not None:
                 m_title = m.GetProp("_Name").strip() if m.HasProp("_Name") else ""
                 if not m_title and m.HasProp("s_m_title"):
                     m_title = m.GetProp("s_m_title").strip()
-                if m_title == target_title:
-                    return m
-        return None
+                if m_title and m_title not in poses_by_title:
+                    poses_by_title[m_title] = m
+        return poses_by_title
+
+    glide_cache: dict[str, dict[str, Chem.Mol]] = {}
+    gnina_cache: dict[str, dict[str, Chem.Mol]] = {}
+    for rec_val in df["Receptor"].dropna().unique():
+        r_id = str(rec_val).strip()
+        glide_cache[r_id] = _index_top_poses(dock_dir / f"{r_id}_dock.sdf")
+        gnina_cache[r_id] = _index_top_poses(dock_dir / f"{r_id}_gnina_docked_all.sdf")
 
     rmsd_list = []
     for _, row in df.iterrows():
         rec_id = str(row["Receptor"]).strip()
         title = str(row["Title"]).strip()
 
-        glide_sdf = dock_dir / f"{rec_id}_dock.sdf"
-        gnina_sdf = dock_dir / f"{rec_id}_gnina_docked_all.sdf"
-
-        if glide_sdf.exists() and gnina_sdf.exists():
-            mg = _extract_mol(glide_sdf, title)
-            mn = _extract_mol(gnina_sdf, title)
-            if mg is not None and mn is not None:
-                val = compute_symmetry_rmsd(mg, mn)
-                rmsd_list.append(round(val, 3))
-                continue
-        rmsd_list.append(None)
+        mg = glide_cache.get(rec_id, {}).get(title)
+        mn = gnina_cache.get(rec_id, {}).get(title)
+        if mg is not None and mn is not None:
+            val = compute_symmetry_rmsd(mg, mn)
+            rmsd_list.append(round(val, 3))
+        else:
+            rmsd_list.append(None)
 
     df["Pose_RMSD"] = rmsd_list
     return df

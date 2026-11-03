@@ -118,9 +118,8 @@ def main() -> None:
     else:
         if args.glide_batch_size > 0:
             g_size = int(args.glide_batch_size)
-            g_batches = [
-                ligands[i : i + g_size] for i in range(0, len(ligands), g_size)
-            ]
+            num_g_chunks = max(1, (len(ligands) + g_size - 1) // g_size)
+            g_batches = [ligands[i::num_g_chunks] for i in range(num_g_chunks)]
             for idx, batch in enumerate(g_batches):
                 mae_list = [Path(item["path_mae"]).resolve() for item in batch]
                 out_mae = Path(f"glide_chunk_{idx:03d}.maegz")
@@ -138,9 +137,8 @@ def main() -> None:
 
         if args.gnina_batch_size > 0:
             n_size = int(args.gnina_batch_size)
-            n_batches = [
-                ligands[i : i + n_size] for i in range(0, len(ligands), n_size)
-            ]
+            num_n_chunks = max(1, (len(ligands) + n_size - 1) // n_size)
+            n_batches = [ligands[i::num_n_chunks] for i in range(num_n_chunks)]
             for idx, batch in enumerate(n_batches):
                 sdf_list = [Path(item["path_sdf"]).resolve() for item in batch]
                 out_sdf = Path(f"gnina_chunk_{idx:03d}.sdf")

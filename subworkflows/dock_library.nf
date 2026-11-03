@@ -169,7 +169,8 @@ workflow DOCK_LIBRARY {
             exhaustiveness,
             cnn_scoring,
             num_modes,
-            autobox_add
+            autobox_add,
+            cnn_model
         )
 
         ch_to_merge = GNINA_DOCK.out.docked_sdf

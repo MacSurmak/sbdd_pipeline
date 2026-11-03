@@ -285,8 +285,12 @@ def _build_screen_args(config: Dict[str, Any], project_dir: Path) -> list:
             ]
         )
 
-        if "cnn_model" in gnina_cfg and gnina_cfg["cnn_model"] is not None:
-            args.extend(["--cnn_model", str(gnina_cfg["cnn_model"])])
+        if (
+            "cnn_model" in gnina_cfg
+            and gnina_cfg["cnn_model"] is not None
+            and str(gnina_cfg["cnn_model"]).strip() != ""
+        ):
+            args.extend(["--cnn_model", str(gnina_cfg["cnn_model"]).strip()])
     else:
         args.extend(["--gnina_batch_size", "0"])
 

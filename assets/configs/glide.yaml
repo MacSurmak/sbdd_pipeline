@@ -1,7 +1,7 @@
 glide:
   enabled: true
   precision: "SP"                    # HTVS, SP, XP
-  poses_per_lig: 16
+  poses_per_lig: 3
   sample_rings: true
   epik_penalties: true
   forcefield: "OPLS4"
@@ -11,7 +11,7 @@ glide:
   lig_ccut: 0.15
   postdock: true
   write_csv: true
-  batch_size: 2                      # 2 substances per task for balanced CPU parallelism
+  batch_size: 25                     # 25 substances per task to amortize grid loading & license checkout
   resources:
     cpus: 1                          # Single-core per -NOJOBID Glide task
     memory_gb: 4                     # RAM allocation per Glide task in GB
@@ -24,7 +24,7 @@ glide:
     ph_tolerance: 2.0
     force_field: 16                  # 16 = OPLS4, 14 = OPLS_2005
     max_states: 32
-    batch_size: 10                   # Substances per chunk for LigPrep preparation
+    batch_size: 50                   # Substances per chunk for LigPrep preparation
     cpus: 1                          # Single-core per -NOJOBID LigPrep batch
     memory_gb: 4                     # RAM allocation per LigPrep batch in GB
 
