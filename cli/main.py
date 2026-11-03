@@ -133,6 +133,14 @@ def main():
     p_tree = subparsers.add_parser(
         "tree", aliases=["ls"], help="Show database lineage tree"
     )
+    p_tree.add_argument(
+        "--batch",
+        help="Expand detailed tree for a specific substance batch / library",
+    )
+    p_tree.add_argument(
+        "--substance",
+        help="Inspect specific substance lineage by name or InChIKey",
+    )
 
     # 0.4 rm
     p_rm = subparsers.add_parser(
@@ -582,7 +590,7 @@ def main():
     elif subcmd in ["tree", "ls"]:
         from cli.commands.tree import print_tree
 
-        print_tree()
+        print_tree(batch=args.batch, substance=args.substance)
     elif subcmd == "rm":
         from cli.commands.rm import remove_entity, remove_library_substances
 

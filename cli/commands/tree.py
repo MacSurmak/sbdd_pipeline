@@ -25,8 +25,127 @@ from cli.core.db import (
 console = Console()
 
 
-def print_tree() -> None:
+def _format_param_status(st: SubstanceState, sub: Substance) -> str:
+    if not (st.path_mol2 and st.path_frcmod):
+        return ""
+    mol2_p = Path(st.path_mol2)
+    frcmod_p = Path(st.path_frcmod)
+    frcmod_text = (
+        frcmod_p.read_text(encoding="utf-8", errors="ignore")
+        if frcmod_p.exists()
+        else ""
+    )
+    is_openff = "OpenFF" in frcmod_text
+    opt_sdf = mol2_p.parent / f"{sub.res_name}_opt.sdf"
+
+    if is_openff:
+        ff_version = "OpenFF-2.3.0" if "2.3.0" in frcmod_text else "OpenFF"
+        if opt_sdf.exists():
+            return f" [bold green]+RESP({ff_version})[/bold green]"
+        elif "AshGC" in frcmod_text:
+            return f" [bold green]+AshGC({ff_version})[/bold green]"
+        else:
+            return f" [bold green]+BCC({ff_version})[/bold green]"
+    else:
+        if opt_sdf.exists():
+            return " [bold green]+RESP(GAFF2)[/bold green]"
+        else:
+            return " [bold green]+BCC(GAFF2)[/bold green]"
+
+
+def _render_detailed_substance_node(parent_node, sub: Substance, session) -> None:
+    type_badge = f"[bold]{sub.substance_type.upper()}[/bold]"
+    sub_color = "green" if sub.state == "ready" else "yellow"
+    states = (
+        session.query(SubstanceState)
+        .filter_by(substance_id=sub.id)
+        .order_by(SubstanceState.state_hash)
+        .all()
+    )
+    smi_suffix = f" [dim]SMILES: {sub.smiles}[/dim]" if not states else ""
+    sub_node = parent_node.add(
+        f"{type_badge}: [bold cyan]{sub.name}[/bold cyan] [{sub_color}]\\[{sub.state}][/{sub_color}] [dim]({sub.inchikey})[/dim]{smi_suffix}"
+    )
+
+    for st in states:
+        st_color = "green" if st.state == "ready" else "yellow"
+        q_label = (
+            f"q={st.formal_charge:+d}" if st.formal_charge != 0 else "neutral"
+        )
+        param_status = _format_param_status(st, sub)
+        state_node = sub_node.add(
+            f"State: [magenta]{st.state_hash}[/magenta] [{st_color}]\\[{st.state}][/{st_color}] [cyan]({q_label})[/cyan]{param_status} [dim]SMILES: {st.isomeric_smiles}[/dim]"
+        )
+
+        poses = (
+            session.query(Pose)
+            .filter_by(substance_state_id=st.id)
+            .order_by(Pose.name)
+            .all()
+        )
+        for p in poses:
+            p_color = "green" if p.state == "ready" else "yellow"
+            state_node.add(
+                f"Pose: [{p_color}]{p.name}[/{p_color}] [dim]({p.origin}, state={p.state})[/dim] in [cyan]{p.receptor_frame.name}[/cyan] -> {Path(p.path).name}"
+            )
+
+
+def print_tree(
+    batch: str | None = None,
+    substance: str | None = None,
+) -> None:
+    from sqlalchemy import func
+
     session = init_db()
+
+    # Mode A: Targeted single-substance inspection
+    if substance:
+        query_val = substance.strip()
+        sub_obj = (
+            session.query(Substance)
+            .filter((Substance.name == query_val) | (Substance.inchikey == query_val))
+            .first()
+        )
+        if not sub_obj:
+            console.print(
+                f"[bold red]FATAL: Substance '{query_val}' not found in database.[/bold red]"
+            )
+            session.close()
+            return
+
+        sub_root = Tree(
+            f"[bold blue]Substance Lineage Inspection: {sub_obj.name}[/bold blue] [dim]({sub_obj.inchikey})[/dim]"
+        )
+        sub_root.add(f"Batch Provenance: [bold cyan]{sub_obj.batch_id or 'none'}[/bold cyan]")
+        _render_detailed_substance_node(sub_root, sub_obj, session)
+
+        # Show evaluation across DockingRuns
+        d_poses = (
+            session.query(DockedPose)
+            .filter_by(substance_id=sub_obj.id)
+            .order_by(DockedPose.docking_run_id, DockedPose.mode_index)
+            .all()
+        )
+        if d_poses:
+            dock_branch = sub_root.add("[bold magenta]Analytical Docking Evaluations[/bold magenta]")
+            by_run = {}
+            for dp in d_poses:
+                by_run.setdefault((dp.docking_run.name, dp.receptor_frame.name), []).append(dp)
+            for (r_name, f_name), modes in by_run.items():
+                g_modes = [m for m in modes if m.engine == "glide"]
+                n_modes = [m for m in modes if m.engine == "gnina"]
+                g_best = f"GScore: {g_modes[0].glide_score:.2f}" if g_modes and g_modes[0].glide_score is not None else ""
+                n_best = f"CNNaff: {n_modes[0].cnn_affinity:.2f}" if n_modes and n_modes[0].cnn_affinity is not None else ""
+                stats_str = ", ".join(s for s in [g_best, n_best] if s)
+                stats_label = f" [dim]({stats_str})[/dim]" if stats_str else ""
+                dock_branch.add(
+                    f"Run [cyan]{r_name}[/cyan] on Frame [cyan]{f_name}[/cyan]: {len(modes)} mode(s) (Glide: {len(g_modes)}, GNINA: {len(n_modes)}){stats_label}"
+                )
+
+        session.close()
+        console.print(sub_root)
+        return
+
     root_tree = Tree("[bold blue]SBDD Project Relational Database (3NF)[/bold blue]")
 
     # 1. Biological Targets, Frames & Systems
@@ -178,94 +297,111 @@ def print_tree() -> None:
                     f"Frame [cyan]{f_name}[/cyan]: {len( {dp.substance_id for dp in f_poses} )} substance(s) [dim](Glide: {g_count} modes, GNINA: {n_count} modes)[/dim]"
                 )
 
-    # 2. Chemical Substances, Microstates & Their 3D Poses (Grouped by Provenance Batch)
-    substances = (
+    # 2. Chemical Substances: Structural Focus Entities vs Screening Library Pools
+    sub_branch = root_tree.add(
+        "[bold yellow]Chemical Substances & Microstates (3NF)[/bold yellow]"
+    )
+
+    # 2A. Structural and Active Substances (always rendered in full detail)
+    # Includes crystal/medoid extracts and any substance that has physical Poses
+    structural_substances = (
         session.query(Substance)
-        .order_by(Substance.batch_id, Substance.substance_type, Substance.name)
+        .filter(
+            (Substance.batch_id == "crystal_extract")
+            | (
+                Substance.id.in_(
+                    session.query(SubstanceState.substance_id)
+                    .join(Pose, Pose.substance_state_id == SubstanceState.id)
+                )
+            )
+        )
+        .order_by(Substance.name)
         .all()
     )
-    if substances:
-        sub_branch = root_tree.add(
-            "[bold yellow]Chemical Substances & Microstates (3NF)[/bold yellow]"
+    if structural_substances:
+        struct_branch = sub_branch.add(
+            f"[bold green]Structural & Bound Entities[/bold green] [dim]({len(structural_substances)} entity(ies))[/dim]"
         )
-        by_batch: dict[str, list[Substance]] = {}
-        for sub in substances:
-            b_key = sub.batch_id or "unspecified_batch"
-            by_batch.setdefault(b_key, []).append(sub)
+        for sub in structural_substances:
+            _render_detailed_substance_node(struct_branch, sub, session)
 
-        for b_name, b_subs in sorted(by_batch.items(), key=lambda x: (x[0] != "crystal_extract", x[0])):
-            b_tag_style = "bold green" if b_name == "crystal_extract" else "bold cyan"
-            batch_node = sub_branch.add(
-                f"[{b_tag_style}]Batch: {b_name}[/{b_tag_style}] [dim]({len(b_subs)} substance(s))[/dim]"
+    # 2B. Screening Library Pools (batch_id != 'crystal_extract')
+    # Filter by --batch if requested
+    batch_filter = batch.strip() if batch else None
+
+    # Fast SQL aggregation per batch: total substances, ready count, raw count
+    stats_query = (
+        session.query(
+            Substance.batch_id,
+            func.count(Substance.id).label("total"),
+            func.sum(func.case((Substance.state == "ready", 1), else_=0)).label("ready_cnt"),
+            func.sum(func.case((Substance.state == "raw", 1), else_=0)).label("raw_cnt"),
+        )
+        .filter(Substance.batch_id != "crystal_extract")
+        .group_by(Substance.batch_id)
+    )
+    if batch_filter:
+        stats_query = stats_query.filter(Substance.batch_id == batch_filter)
+
+    batch_stats = stats_query.order_by(Substance.batch_id).all()
+
+    if batch_stats:
+        pool_branch = sub_branch.add(
+            f"[bold cyan]Screening Library Pools[/bold cyan] [dim]({len(batch_stats)} batch(es))[/dim]"
+        )
+
+        for b_name, total_subs, ready_subs, raw_subs in batch_stats:
+            b_tag = b_name or "unspecified_batch"
+            all_ready = (ready_subs == total_subs)
+            b_style = "green" if all_ready else "yellow"
+            b_status_str = f"[{b_style}]\\[{'ready' if all_ready else 'raw'}][/{b_style}]"
+
+            # Query docking evaluations for this batch
+            docking_summary = (
+                session.query(
+                    DockingRun.name,
+                    func.count(func.distinct(DockedPose.substance_id)),
+                    func.count(DockedPose.id),
+                )
+                .join(DockedPose, DockedPose.docking_run_id == DockingRun.id)
+                .join(Substance, DockedPose.substance_id == Substance.id)
+                .filter(Substance.batch_id == b_name)
+                .group_by(DockingRun.name)
+                .all()
             )
-            for sub in b_subs:
-                type_badge = f"[bold]{sub.substance_type.upper()}[/bold]"
-                sub_color = "green" if sub.state == "ready" else "yellow"
-                states = (
-                    session.query(SubstanceState)
-                    .filter_by(substance_id=sub.id)
-                    .order_by(SubstanceState.state_hash)
+
+            # If user explicitly requested --batch <name> or batch is tiny (<= 5), expand substances
+            should_expand = bool(batch_filter) or (total_subs <= 5)
+
+            batch_node = pool_branch.add(
+                f"[bold cyan]Batch: {b_tag}[/bold cyan] {b_status_str} [dim]({total_subs} substance(s): {ready_subs} ready, {raw_subs} raw)[/dim]"
+            )
+
+            if docking_summary:
+                d_info = ", ".join(
+                    f"'{run_n}' ({s_cnt}/{total_subs} subs, {m_cnt} modes)"
+                    for run_n, s_cnt, m_cnt in docking_summary
+                )
+                batch_node.add(f"[magenta]Docking Evaluation:[/magenta] {d_info}")
+            else:
+                batch_node.add("[dim]Docking Evaluation: not evaluated[/dim]")
+
+            if should_expand:
+                subs_in_batch = (
+                    session.query(Substance)
+                    .filter_by(batch_id=b_name)
+                    .order_by(Substance.name)
                     .all()
                 )
-                smi_suffix = f" [dim]SMILES: {sub.smiles}[/dim]" if not states else ""
-                sub_node = batch_node.add(
-                    f"{type_badge}: [bold cyan]{sub.name}[/bold cyan] [{sub_color}]\\[{sub.state}][/{sub_color}] [dim]({sub.inchikey})[/dim]{smi_suffix}"
+                for sub in subs_in_batch:
+                    _render_detailed_substance_node(batch_node, sub, session)
+            else:
+                batch_node.add(
+                    f"[dim]Run 'sbdd tree --batch {b_tag}' to inspect all {total_subs} substances or 'sbdd tree --substance <name>' for a specific molecule.[/dim]"
                 )
 
-                for st in states:
-                    st_color = "green" if st.state == "ready" else "yellow"
-                    q_label = (
-                        f"q={st.formal_charge:+d}" if st.formal_charge != 0 else "neutral"
-                    )
-                    param_status = ""
-                    if st.path_mol2 and st.path_frcmod:
-                        mol2_p = Path(st.path_mol2)
-                        frcmod_p = Path(st.path_frcmod)
-                        frcmod_text = (
-                            frcmod_p.read_text(encoding="utf-8", errors="ignore")
-                            if frcmod_p.exists()
-                            else ""
-                        )
-                        is_openff = "OpenFF" in frcmod_text
-                        opt_sdf = mol2_p.parent / f"{sub.res_name}_opt.sdf"
-
-                        if is_openff:
-                            ff_version = (
-                                "OpenFF-2.3.0" if "2.3.0" in frcmod_text else "OpenFF"
-                            )
-                            if opt_sdf.exists():
-                                param_status = (
-                                    f" [bold green]+RESP({ff_version})[/bold green]"
-                                )
-                            elif "AshGC" in frcmod_text:
-                                param_status = (
-                                    f" [bold green]+AshGC({ff_version})[/bold green]"
-                                )
-                            else:
-                                param_status = (
-                                    f" [bold green]+BCC({ff_version})[/bold green]"
-                                )
-                        else:
-                            if opt_sdf.exists():
-                                param_status = " [bold green]+RESP(GAFF2)[/bold green]"
-                            else:
-                                param_status = " [bold green]+BCC(GAFF2)[/bold green]"
-
-                    state_node = sub_node.add(
-                        f"State: [magenta]{st.state_hash}[/magenta] [{st_color}]\\[{st.state}][/{st_color}] [cyan]({q_label})[/cyan]{param_status} [dim]SMILES: {st.isomeric_smiles}[/dim]"
-                    )
-
-                    poses = (
-                        session.query(Pose)
-                        .filter_by(substance_state_id=st.id)
-                        .order_by(Pose.name)
-                        .all()
-                    )
-                    for p in poses:
-                        p_color = "green" if p.state == "ready" else "yellow"
-                        state_node.add(
-                            f"Pose: [{p_color}]{p.name}[/{p_color}] [dim]({p.origin}, state={p.state})[/dim] in [cyan]{p.receptor_frame.name}[/cyan] -> {Path(p.path).name}"
-                        )
+    session.close()
+    console.print(root_tree)
 
     session.close()
     console.print(root_tree)
