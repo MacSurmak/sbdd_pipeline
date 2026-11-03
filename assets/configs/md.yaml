@@ -14,7 +14,7 @@ md_simulation:
     neutralize: true
     salt_conc: 0.15
     hmr: true                          # Enable Hydrogen Mass Repartitioning for 4 fs timestep
-    hmr_mass: 3.024                    # Repartitioned hydrogen mass in Daltons (Da)
+    hmr_mass: 3.0                      # Repartitioned hydrogen mass in Daltons (Da)
     disp_corr: "EnerPres"              # Long-range analytical dispersion correction (EnerPres or no)
     restraint_forces: [1000, 500, 250, 100, 50, 10]
     water_names: ["SOL", "Water", "HOH", "WAT", "TIP3", "OPC"]
