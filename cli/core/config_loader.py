@@ -5,8 +5,47 @@ Zero silent fallbacks: required parameters must be explicitly specified.
 """
 
 from pathlib import Path
+import re
 from typing import Dict, Any
 import yaml
+
+SLURM_GRES_CONF_PATH = Path("/etc/slurm/gres.conf")
+
+
+def _resolve_cluster_gpu_shards(
+    gres_conf_path: Path = SLURM_GRES_CONF_PATH,
+) -> int:
+    """
+    Reads total GPU shard count per device directly from the cluster's /etc/slurm/gres.conf.
+    Enforces strict Fail-Fast validation with zero hardcoded fallbacks.
+    """
+    if not gres_conf_path.exists():
+        raise FileNotFoundError(
+            f"FATAL: Slurm GRES configuration file not found at {gres_conf_path}! "
+            "Cannot determine cluster GPU shard capacity."
+        )
+
+    content = gres_conf_path.read_text(encoding="utf-8")
+    for raw_line in content.splitlines():
+        line = raw_line.split("#", 1)[0].strip()
+        if not line:
+            continue
+        if re.search(r"\bName\s*=\s*shard\b", line, re.IGNORECASE):
+            m_count = re.search(r"\bCount\s*=\s*(\d+)\b", line, re.IGNORECASE)
+            if not m_count:
+                raise ValueError(
+                    f"FATAL: Malformed 'Name=shard' entry without 'Count=<N>' in {gres_conf_path}: '{raw_line}'"
+                )
+            total_shards = int(m_count.group(1))
+            if total_shards <= 0:
+                raise ValueError(
+                    f"FATAL: Invalid non-positive shard Count={total_shards} in {gres_conf_path}!"
+                )
+            return total_shards
+
+    raise ValueError(
+        f"FATAL: No 'Name=shard Count=<N>' declaration found in {gres_conf_path}!"
+    )
 
 
 def load_project_configs(project_dir: Path) -> Dict[str, Any]:
@@ -507,23 +546,44 @@ def _build_dynamics_args(config: Dict[str, Any], project_dir: Path) -> list:
     exec_cfg = md_cfg.get("execution")
     if not exec_cfg:
         raise ValueError("FATAL: 'md_simulation.execution' block is required!")
-    for k in ["minim_flags", "eq_flags", "prod_flags", "cpus", "memory_gb"]:
+    for k in [
+        "minim_flags",
+        "eq_flags",
+        "prod_flags",
+        "cpus",
+        "memory_gb",
+        "jobs_per_gpu",
+    ]:
         if k not in exec_cfg or exec_cfg[k] is None:
             raise ValueError(
                 f"FATAL: 'md_simulation.execution.{k}' is required in md.yaml!"
             )
-    if int(exec_cfg["cpus"]) <= 0 or int(exec_cfg["memory_gb"]) <= 0:
+    md_cpus = int(exec_cfg["cpus"])
+    md_mem_gb = int(exec_cfg["memory_gb"])
+    jobs_per_gpu = int(exec_cfg["jobs_per_gpu"])
+    if md_cpus <= 0 or md_mem_gb <= 0 or jobs_per_gpu <= 0:
         raise ValueError(
-            "FATAL: 'md_simulation.execution.cpus' and 'memory_gb' must be positive integers!"
+            "FATAL: 'md_simulation.execution.cpus', 'memory_gb', and 'jobs_per_gpu' must be positive integers!"
         )
+
+    total_gpu_shards = _resolve_cluster_gpu_shards()
+    if total_gpu_shards % jobs_per_gpu != 0:
+        raise ValueError(
+            f"FATAL: 'md_simulation.execution.jobs_per_gpu' ({jobs_per_gpu}) must evenly divide "
+            f"the cluster GPU shard capacity ({total_gpu_shards} in {SLURM_GRES_CONF_PATH})!"
+        )
+    shards_per_job = total_gpu_shards // jobs_per_gpu
+
     for k in ["minim_flags", "eq_flags", "prod_flags"]:
         args.extend([f"--{k}", str(exec_cfg[k])])
     args.extend(
         [
             "--md_cpus",
-            str(int(exec_cfg["cpus"])),
+            str(md_cpus),
             "--md_mem_gb",
-            str(int(exec_cfg["memory_gb"])),
+            str(md_mem_gb),
+            "--md_gres",
+            f"shard:{shards_per_job}",
         ]
     )
 
