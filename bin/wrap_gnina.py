@@ -152,6 +152,9 @@ def main():
                         raise ValueError(
                             f"FATAL: Failed to restore all-atom topology for GNINA pose '{m_title}': {last_err}"
                         )
+                    restored_mol.SetProp("_Name", m_title)
+                    for prop in m.GetPropNames():
+                        restored_mol.SetProp(prop, m.GetProp(prop))
                     w.write(restored_mol)
 
         os.replace(tmp_sdf, args.out_sdf)

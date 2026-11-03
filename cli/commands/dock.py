@@ -14,7 +14,6 @@ from rich.table import Table
 from cli.core.chem import (
     compute_symmetry_rmsd,
     get_microstate_identity,
-    transfer_coordinates_to_template,
 )
 from cli.core.config_loader import build_nextflow_args, load_project_configs
 from cli.core.db import (

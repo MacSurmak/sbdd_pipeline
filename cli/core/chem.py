@@ -479,10 +479,10 @@ def transfer_coordinates_to_template(
                             tmpl_hs[k], temp_c.GetAtomPosition(temp_hs[k])
                         )
 
-            for prop in src_mol.GetPropNames():
-                res_mol.SetProp(prop, src_mol.GetProp(prop))
-            if src_mol.HasProp("_Name"):
-                res_mol.SetProp("_Name", src_mol.GetProp("_Name"))
+        for prop in src_mol.GetPropNames():
+            res_mol.SetProp(prop, src_mol.GetProp(prop))
+        if src_mol.HasProp("_Name"):
+            res_mol.SetProp("_Name", src_mol.GetProp("_Name"))
 
     else:
         raise TypeError(
