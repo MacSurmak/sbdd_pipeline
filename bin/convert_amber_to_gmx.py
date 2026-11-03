@@ -33,41 +33,47 @@ def main():
     if args.inpcrd:
         print(f"Loading {args.prmtop} and {args.inpcrd}...")
         struct = pmd.load_file(args.prmtop, args.inpcrd)
+    else:
+        print(f"Loading dry topology {args.prmtop}...")
+        struct = pmd.load_file(args.prmtop)
 
-        # Sanitize atomic_number strictly from initial physical atomic masses in prmtop
-        # to prevent case-insensitive custom atom type collisions in tLEaP from corrupting HMR
-        for a in struct.atoms:
-            m = float(a.mass)
-            if m < 0.5:
-                a.atomic_number = 0
-            elif 0.8 <= m <= 2.5:
-                a.atomic_number = 1
-            else:
-                if m < 13.0:
-                    a.atomic_number = 6
-                elif m < 15.0:
-                    a.atomic_number = 7
-                elif m < 17.5:
-                    a.atomic_number = 8
-                elif m < 20.0:
-                    a.atomic_number = 9
-                elif m < 23.5:
-                    a.atomic_number = 11
-                elif m < 25.5:
-                    a.atomic_number = 12
-                elif m < 31.5:
-                    a.atomic_number = 15
-                elif m < 33.5:
-                    a.atomic_number = 16
-                elif m < 37.0:
-                    a.atomic_number = 17
-                elif m < 41.0:
-                    a.atomic_number = 19
-                elif m < 85.0:
-                    a.atomic_number = 35
-                else:
-                    a.atomic_number = 53
+    # Sanitize atomic_number on both Atom and AtomType objects strictly from initial physical masses
+    # in prmtop so both ParmEd HMR and GROMACS [ atomtypes ] column 2 receive exact element numbers
+    for a in struct.atoms:
+        m = float(a.mass)
+        if m < 0.5:
+            at_num = 0
+        elif 0.8 <= m <= 2.5:
+            at_num = 1
+        elif m < 13.0:
+            at_num = 6
+        elif m < 15.0:
+            at_num = 7
+        elif m < 17.5:
+            at_num = 8
+        elif m < 20.0:
+            at_num = 9
+        elif m < 23.5:
+            at_num = 11
+        elif m < 25.5:
+            at_num = 12
+        elif m < 31.5:
+            at_num = 15
+        elif m < 33.5:
+            at_num = 16
+        elif m < 37.0:
+            at_num = 17
+        elif m < 41.0:
+            at_num = 19
+        elif m < 85.0:
+            at_num = 35
+        else:
+            at_num = 53
+        a.atomic_number = at_num
+        if a.atom_type is not None:
+            a.atom_type.atomic_number = at_num
 
+    if args.inpcrd:
         if args.hmr:
             if args.hmr_mass is None or args.hmr_mass <= 1.008:
                 print(
@@ -116,9 +122,6 @@ def main():
         rem_q = round(sum(a.charge for a in struct.atoms), 6)
         if abs(rem_q) > 0.0 and len(struct.atoms) > 0:
             struct.atoms[0].charge = round(struct.atoms[0].charge - rem_q, 6)
-    else:
-        print(f"Loading dry topology {args.prmtop}...")
-        struct = pmd.load_file(args.prmtop)
 
     print(f"Saving GROMACS {args.out_top}...")
     struct.save(args.out_top, format="gromacs", overwrite=True)
