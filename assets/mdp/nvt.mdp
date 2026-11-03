@@ -15,7 +15,7 @@ verlet-buffer-tolerance  = 0.005
 coulombtype              = PME
 rcoulomb                 = 1.0
 vdwtype                  = Cut-off
-vdw-modifier             = None
+vdw-modifier             = Potential-shift-Verlet
 DispCorr                 = {DISPCORR}
 rvdw                     = 1.0
 pbc                      = xyz
@@ -29,8 +29,8 @@ pcoupl                   = no
 
 constraints              = h-bonds
 constraint-algorithm     = lincs
-lincs-order              = 4
-lincs-iter               = 1
+lincs-order              = {LINCS_ORDER}
+lincs-iter               = {LINCS_ITER}
 
 continuation             = no
 gen_vel                  = yes

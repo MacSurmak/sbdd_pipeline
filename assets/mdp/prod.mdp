@@ -1,7 +1,7 @@
 ; Production MD Archetype Template
 {DEFINE}
 integrator               = md
-dt                       = 0.002
+dt                       = {DT}
 nsteps                   = {NSTEPS}
 
 nstxout-compressed       = {NSTXOUT}
@@ -16,7 +16,7 @@ rlist                    = 1.0
 coulombtype              = PME
 rcoulomb                 = 1.0
 vdwtype                  = Cut-off
-vdw-modifier             = None
+vdw-modifier             = Potential-shift-Verlet
 DispCorr                 = {DISPCORR}
 rvdw                     = 1.0
 pbc                      = xyz
@@ -28,15 +28,16 @@ ref-t                    = {TEMP} {TEMP}
 
 pcoupl                   = Parrinello-Rahman
 pcoupltype               = {PCOUPL_TYPE}
-tau-p                    = 5.0
+tau-p                    = {TAU_P}
 ref-p                    = {REF_P}
 compressibility          = {COMPRESSIBILITY}
+refcoord-scaling         = com
 
 constraints              = h-bonds
 constraint-algorithm     = LINCS
 continuation             = yes
-lincs-order              = 4
-lincs-iter               = 1
+lincs-order              = {LINCS_ORDER}
+lincs-iter               = {LINCS_ITER}
 
 nstcomm                  = 100
 comm-mode                = Linear

@@ -394,13 +394,20 @@ def _build_md_setup_args(config: Dict[str, Any]) -> list:
         ("box_padding", "box_padding"),
         ("ss_cutoff", "ss_cutoff"),
         ("salt_conc", "md_salt_conc"),
+        ("hmr_mass", "hmr_mass"),
     ]
     for yaml_k, nf_k in sys_mappings:
-        if yaml_k not in sys_build:
+        if yaml_k not in sys_build or sys_build[yaml_k] is None:
             raise ValueError(
                 f"FATAL: 'md_simulation.system_build.{yaml_k}' is required!"
             )
         args.extend([f"--{nf_k}", str(sys_build[yaml_k])])
+
+    if "hmr" not in sys_build or sys_build["hmr"] is None:
+        raise ValueError("FATAL: 'md_simulation.system_build.hmr' boolean is required in md.yaml!")
+    if float(sys_build["hmr_mass"]) <= 1.008:
+        raise ValueError("FATAL: 'md_simulation.system_build.hmr_mass' must be > 1.008 Da!")
+    args.extend(["--hmr", "true" if sys_build["hmr"] else "false"])
 
     water_names = sys_build.get("water_names")
     if not isinstance(water_names, list) or not water_names:
@@ -591,6 +598,10 @@ def _build_dynamics_args(config: Dict[str, Any], project_dir: Path) -> list:
     if not prod_cfg:
         raise ValueError("FATAL: 'md_simulation.production' is required!")
 
+    sys_build = md_cfg.get("system_build", {})
+    if "hmr" not in sys_build or sys_build["hmr"] is None:
+        raise ValueError("FATAL: 'md_simulation.system_build.hmr' is required in md.yaml!")
+
     prod_mappings = [
         ("total_time_ns", "md_total_ns"),
         ("chunk_size_ns", "md_chunk_ns"),
@@ -603,6 +614,11 @@ def _build_dynamics_args(config: Dict[str, Any], project_dir: Path) -> list:
         if yaml_k not in prod_cfg or prod_cfg[yaml_k] is None:
             raise ValueError(f"FATAL: 'md_simulation.production.{yaml_k}' is required!")
         args.extend([f"--{nf_k}", str(prod_cfg[yaml_k])])
+
+    if float(prod_cfg["dt_ps"]) > 0.0025 and not bool(sys_build["hmr"]):
+        raise ValueError(
+            "FATAL: Timestep dt_ps > 0.0025 ps requires 'md_simulation.system_build.hmr: true' in md.yaml!"
+        )
 
     tot_ns = float(prod_cfg["total_time_ns"])
     chk_ns = float(prod_cfg["chunk_size_ns"])

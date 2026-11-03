@@ -261,8 +261,10 @@ def generate_posre(
             parts = stripped.split()
             if len(parts) >= 8:
                 atom_nr = parts[0]
+                atom_name = parts[4]
                 mass = float(parts[7])
-                if mass > 1.5:
+                # Heavy atoms always exceed 4.5 Da even after HMR mass subtraction (lightest C in -CH3 is ~5.96 Da)
+                if mass > 4.5 and not atom_name.upper().startswith("EP"):
                     mols[current_mol].append(atom_nr)
 
     ions = {x.strip() for x in ion_names.split(",") if x.strip()}

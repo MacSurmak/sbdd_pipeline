@@ -104,13 +104,34 @@ def run_md_init() -> None:
         )
         sys.exit(1)
 
+    sys_build = configs.get("md_simulation", {}).get("system_build", {})
+    for req_sys_key in ["hmr", "hmr_mass", "disp_corr"]:
+        if req_sys_key not in sys_build or sys_build[req_sys_key] is None:
+            console.print(
+                f"[bold red]FATAL: Missing 'md_simulation.system_build.{req_sys_key}' in configs/md.yaml![/bold red]"
+            )
+            sys.exit(1)
+
     prod = configs.get("md_simulation", {}).get("production", {})
-    for req_prod_key in ["chunk_size_ns", "dt_ps", "compressibility", "tau_p"]:
+    for req_prod_key in [
+        "chunk_size_ns",
+        "dt_ps",
+        "lincs_order",
+        "lincs_iter",
+        "compressibility",
+        "tau_p",
+    ]:
         if req_prod_key not in prod or prod[req_prod_key] is None:
             console.print(
                 f"[bold red]FATAL: Missing 'md_simulation.production.{req_prod_key}' in configs/md.yaml![/bold red]"
             )
             sys.exit(1)
+
+    if float(prod["dt_ps"]) > 0.0025 and not bool(sys_build["hmr"]):
+        console.print(
+            "[bold red]FATAL: Timestep dt_ps > 0.0025 ps requires 'md_simulation.system_build.hmr: true' in configs/md.yaml![/bold red]"
+        )
+        sys.exit(1)
 
     cmd = [
         sys.executable,
@@ -131,6 +152,12 @@ def run_md_init() -> None:
         str(prod["compressibility"]),
         "--tau_p",
         str(prod["tau_p"]),
+        "--disp_corr",
+        str(sys_build["disp_corr"]),
+        "--lincs_order",
+        str(int(prod["lincs_order"])),
+        "--lincs_iter",
+        str(int(prod["lincs_iter"])),
         "--prod_restraints_fc",
         str(prod.get("restraints_fc", 0)),
     ]

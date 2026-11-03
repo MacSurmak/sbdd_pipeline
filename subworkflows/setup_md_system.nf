@@ -41,6 +41,8 @@ workflow SETUP_MD_SYSTEM {
     protein_ff
     gaff_ff
     lipid_ff
+    hmr_enabled
+    hmr_mass
 
     main:
     // 1. Clean merge of standardized apo protein with strictly typed ligands, ions, and cofactors
@@ -104,7 +106,7 @@ workflow SETUP_MD_SYSTEM {
     )
 
     // 6. ParmEd conversion to GROMACS
-    PARMED(TLEAP.out.amber_system)
+    PARMED(TLEAP.out.amber_system, hmr_enabled, hmr_mass)
 
     // 7. Declash (Molecules-based)
     if (is_membrane.toString() == 'true') {

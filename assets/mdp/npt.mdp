@@ -1,7 +1,7 @@
 ; NPT Equilibration Archetype Template
 define                   = {DEFINE}
 integrator               = md
-dt                       = 0.002
+dt                       = {DT}
 nsteps                   = {NSTEPS}
 
 nstxout-compressed       = 5000
@@ -15,7 +15,7 @@ verlet-buffer-tolerance  = 0.005
 coulombtype              = PME
 rcoulomb                 = 1.0
 vdwtype                  = Cut-off
-vdw-modifier             = None
+vdw-modifier             = Potential-shift-Verlet
 DispCorr                 = {DISPCORR}
 rvdw                     = 1.0
 pbc                      = xyz
@@ -34,8 +34,8 @@ refcoord-scaling         = com
 
 constraints              = h-bonds
 constraint-algorithm     = lincs
-lincs-order              = 4
-lincs-iter               = 1
+lincs-order              = {LINCS_ORDER}
+lincs-iter               = {LINCS_ITER}
 
 continuation             = yes
 gen_vel                  = no

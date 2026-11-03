@@ -297,6 +297,7 @@ def cmd_tleap(args):
                 f.write(f"addIonsRand complex K+ {salt_pairs} Cl- {salt_pairs}\n")
         else:
             f.write("setBox complex vdw\n")
+            f.write("addIonsRand complex Cl- 0\naddIonsRand complex K+ 0\n")
         f.write("charge complex\n")
         f.write(
             "saveAmberParm complex complex.prmtop complex.inpcrd\nsavepdb complex complex_tleap.pdb\nquit\n"

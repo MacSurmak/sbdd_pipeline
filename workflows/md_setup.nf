@@ -79,7 +79,9 @@ workflow MD_SETUP_WF {
         params.declash_tol,
         params.protein_forcefield,
         params.gaff_forcefield,
-        params.lipid_forcefield
+        params.lipid_forcefield,
+        params.hmr,
+        params.hmr_mass
     )
 
     PUBLISH_MD_SYSTEM(SETUP_MD_SYSTEM.out.system_ready)

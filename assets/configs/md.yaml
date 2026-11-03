@@ -13,11 +13,14 @@ md_simulation:
     ss_cutoff: 3.0
     neutralize: true
     salt_conc: 0.15
+    hmr: true                          # Enable Hydrogen Mass Repartitioning for 4 fs timestep
+    hmr_mass: 3.024                    # Repartitioned hydrogen mass in Daltons (Da)
+    disp_corr: "EnerPres"              # Long-range analytical dispersion correction (EnerPres or no)
     restraint_forces: [1000, 500, 250, 100, 50, 10]
     water_names: ["SOL", "Water", "HOH", "WAT", "TIP3", "OPC"]
     ion_names: ["K+", "Cl-", "NA+", "CL-", "NA", "CL", "K", "POT", "CLA", "SOD", "MG", "ZN", "CA", "CAL", "MG2+", "CA2+", "ZN2+"]
   ligand_parametrization:
-    method: "ashgc"                    # "ashgc" (OpenFF GNN), "resp" (ORCA 6 quantum ESP), or "bcc" (Antechamber AM1-BCC)
+    method: "resp"                     # "resp" (ORCA 6 quantum ESP), "ashgc" (OpenFF GNN), or "bcc" (Antechamber AM1-BCC)
     forcefield: "openff-2.3.0"         # Small molecule force field: openff-2.3.0, openff-2.2.1, gaff2, gaff
     orca:
       nprocs: 8                         # Parallel CPU threads (%pal nprocs)
@@ -44,7 +47,9 @@ md_simulation:
     total_time_ns: 100
     chunk_size_ns: 10
     replicates: 3
-    dt_ps: 0.002
+    dt_ps: 0.004
+    lincs_order: 6
+    lincs_iter: 2
     compressibility: "4.5e-5"
     tau_p: 5.0
     restraints_group: "C-alpha"

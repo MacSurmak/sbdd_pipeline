@@ -272,11 +272,6 @@ def cmd_equilibration(args):
             stage = Path(mdp).stem
             last_stage = stage
 
-            # ARCHITECTURAL NOTE: -maxwarn 2 is currently required to permit minor non-fatal warnings
-            # generated during ParmEd AMBER-to-GROMACS topology conversion (e.g. 1-4 interaction exclusions
-            # and virtual site declarations in ff19SB/lipid21).
-            # FUTURE RESOLUTION: Fix ParmEd conversion templates upstream to eliminate warnings natively,
-            # allowing strict -maxwarn 0 enforcement.
             cmd = [
                 "gmx",
                 "grompp",
@@ -293,7 +288,7 @@ def cmd_equilibration(args):
                 "-n",
                 args.ndx,
                 "-maxwarn",
-                "2",
+                "0",
             ]
 
             # Checkpoint file (-t) is passed strictly if it physically exists from a prior dynamical step
@@ -372,20 +367,11 @@ def cmd_run_chunk(args):
     dt_ps = float(dt_match.group(1))
     steps = int(round((float(args.chunk_ns) * 1000.0) / dt_ps))
     ext_ps = int(round(float(args.chunk_ns) * 1000.0))
-    nstxout = max(1, min(5000, steps // 10))
-    nstenergy = max(1, min(1000, steps // 10))
 
     if int(args.chunk_idx) == 1:
         mdp = re.sub(r"nsteps\s*=.*", f"nsteps = {steps}", mdp_content)
-        mdp = re.sub(
-            r"nstxout-compressed\s*=.*", f"nstxout-compressed = {nstxout}", mdp
-        )
-        mdp = re.sub(r"nstenergy\s*=.*", f"nstenergy = {nstenergy}", mdp)
         Path("md_run.mdp").write_text(mdp)
 
-        # ARCHITECTURAL NOTE: -maxwarn 3 is currently required during chunk 1 grompp because
-        # continuation velocity matching and ParmEd 1-4 scaling pair warnings are triggered simultaneously.
-        # FUTURE RESOLUTION: Enforce clean mdp generation and topology sanitization so -maxwarn 0 is viable.
         run_gmx(
             [
                 "gmx",
@@ -405,7 +391,7 @@ def cmd_run_chunk(args):
                 "-n",
                 args.ndx,
                 "-maxwarn",
-                "3",
+                "0",
             ]
         )
         run_cmd = [

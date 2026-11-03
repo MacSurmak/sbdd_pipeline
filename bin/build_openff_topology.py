@@ -239,12 +239,17 @@ def main():
         mol.assign_partial_charges(partial_charge_method="am1bcc")
         charges_f = [float(q.m_as("elementary_charge")) for q in mol.partial_charges]
 
-    # Verify charge neutrality / formal charge conservation
+    # Verify charge neutrality / formal charge conservation and eliminate 6-decimal rounding drift
     sum_q = sum(charges_f)
     if abs(sum_q - float(args.charge)) > 1e-3:
         raise ValueError(
             f"FATAL: Sum of partial charges ({sum_q:.4f}) deviates from formal charge ({args.charge})!"
         )
+    drift_per_atom = (float(args.charge) - sum_q) / float(mol.n_atoms)
+    charges_f = [round(q + drift_per_atom, 6) for q in charges_f]
+    rem_q = round(float(args.charge) - sum(charges_f), 6)
+    if abs(rem_q) > 0.0:
+        charges_f[0] = round(charges_f[0] + rem_q, 6)
 
     # 4. Resolve SMIRNOFF potentials via Interchange
     ff_name = (
