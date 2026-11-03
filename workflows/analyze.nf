@@ -44,11 +44,8 @@ workflow ANALYZE_WF {
             "${meta.id}\t${clean_xtc.name}\t${ref_pdb.name}\t${clean_ndx.name}"
         }.collectFile(name: 'clean_receipt.tsv', storeDir: params.outdir, newLine: true)
 
-        return
-    }
-
-    // MODE 1.5: Distributed Slurm Extraction of Medoid Complexes
-    if (params.extract_medoids_plan) {
+    } else if (params.extract_medoids_plan) {
+        // MODE 1.5: Distributed Slurm Extraction of Medoid Complexes
         def planFile = file(params.extract_medoids_plan)
         def planList = new groovy.json.JsonSlurperClassic().parseText(planFile.text)
 
@@ -74,11 +71,9 @@ workflow ANALYZE_WF {
             storeDir: params.outdir,
             keepHeader: false
         )
-        return
-    }
 
-    // MODE 2: Ensemble Clustering on Clean Trajectories (Analytical Subworkflow)
-    if (params.cluster_plan) {
+    } else if (params.cluster_plan) {
+        // MODE 2: Ensemble Clustering on Clean Trajectories (Analytical Subworkflow)
         def planFile = file(params.cluster_plan)
         def planList = new groovy.json.JsonSlurperClassic().parseText(planFile.text)
 
@@ -126,11 +121,8 @@ workflow ANALYZE_WF {
             "${meta.system}\t${meta.align_group}\t${meta.cluster_group}\t${published_manifest}"
         }.collectFile(name: 'cluster_receipt.tsv', storeDir: params.outdir, newLine: true)
 
-        return
-    }
-
-    // MODE 3: Trajectory Metrics (RMSD, RMSF, Contacts)
-    if (params.metrics_plan) {
+    } else if (params.metrics_plan) {
+        // MODE 3: Trajectory Metrics (RMSD, RMSF, Contacts)
         def planFile = file(params.metrics_plan)
         def planList = new groovy.json.JsonSlurperClassic().parseText(planFile.text)
 
@@ -148,11 +140,9 @@ workflow ANALYZE_WF {
         }
 
         MD_METRICS(ch_metrics_in, params.metric_heavy, params.metric_hyd, params.metric_pol)
-        return
-    }
 
-    // MODE 4: Standalone MM-PBSA from DB
-    if (params.mmpbsa_plan) {
+    } else if (params.mmpbsa_plan) {
+        // MODE 4: Standalone MM-PBSA from DB
         def planFile = file(params.mmpbsa_plan)
         def planList = new groovy.json.JsonSlurperClassic().parseText(planFile.text)
 
@@ -191,55 +181,53 @@ workflow ANALYZE_WF {
             "${meta.rec_id}\t${meta.rep}\t${pub_dir}/${pb_csv.name}"
         }.collectFile(name: 'mmpbsa_receipt.tsv', storeDir: params.outdir, newLine: true)
 
-        return
+    } else {
+        // MODE 5: Legacy manual analysis
+        if (!params.traj || !params.tpr || !params.topol || !params.ndx) {
+            error "Analysis workflow requires explicitly provided --traj, --tpr, --topol, and --ndx parameters."
+        }
+
+        ch_traj  = Channel.fromPath(params.traj, checkIfExists: true)
+        ch_tpr   = Channel.fromPath(params.tpr, checkIfExists: true)
+        ch_topol = Channel.fromPath(params.topol, checkIfExists: true)
+        ch_ndx   = Channel.fromPath(params.ndx, checkIfExists: true)
+
+        def meta = [id: params.project_name ?: "md_analysis", rep: 1, ligand: params.native_ligand ?: ""]
+
+        ch_trjconv_in = Channel.value(meta)
+            .combine(ch_traj)
+            .combine(ch_tpr)
+            .map { m, traj, tpr -> [m, traj, tpr, []] }
+
+        TRJCONV(
+            ch_trjconv_in,
+            params.pbc_center,
+            params.pbc_extract,
+            params.water_names,
+            params.ion_names,
+            params.lipid_names
+        )
+
+        ch_analyze_in = TRJCONV.out.clean_traj
+            .combine(ch_topol)
+            .combine(ch_ndx)
+            .map { m, clean_xtc, ref_pdb, top, ndx -> [m, clean_xtc, ref_pdb, top, ndx] }
+
+        ANALYZE_MD_TRAJ(
+            ch_analyze_in,
+            file(params.mmpbsa_templates),
+            params.mmpbsa_start_ns,
+            params.mmpbsa_sample_interval_ps,
+            params.md_temperature,
+            params.md_salt_conc,
+            params.membrane,
+            params.membrane_thickness,
+            params.per_residue_decomp,
+            params.mmpbsa_method ?: "auto",
+            params.mmpbsa_gb_model ?: 2,
+            params.mmpbsa_emem ?: 7.0,
+            params.mmpbsa_indi ?: 4.0,
+            params.mmpbsa_fillratio ?: 1.25
+        )
     }
-
-    // MODE 5: Legacy manual analysis
-    if (!params.traj || !params.tpr || !params.topol || !params.ndx) {
-        error "Analysis workflow requires explicitly provided --traj, --tpr, --topol, and --ndx parameters."
-    }
-
-    ch_traj  = Channel.fromPath(params.traj, checkIfExists: true)
-    ch_tpr   = Channel.fromPath(params.tpr, checkIfExists: true)
-    ch_topol = Channel.fromPath(params.topol, checkIfExists: true)
-    ch_ndx   = Channel.fromPath(params.ndx, checkIfExists: true)
-
-    // Dummy meta block since we operate on single trajectories in standalone mode
-    def meta = [id: params.project_name ?: "md_analysis", rep: 1, ligand: params.native_ligand ?: ""]
-
-    ch_trjconv_in = Channel.value(meta)
-        .combine(ch_traj)
-        .combine(ch_tpr)
-        .map { m, traj, tpr -> [m, traj, tpr, []] }
-
-    TRJCONV(
-        ch_trjconv_in,
-        params.pbc_center,
-        params.pbc_extract,
-        params.water_names,
-        params.ion_names,
-        params.lipid_names
-    )
-
-    ch_analyze_in = TRJCONV.out.clean_traj
-        .combine(ch_topol)
-        .combine(ch_ndx)
-        .map { m, clean_xtc, ref_pdb, top, ndx -> [m, clean_xtc, ref_pdb, top, ndx] }
-
-    ANALYZE_MD_TRAJ(
-        ch_analyze_in,
-        file(params.mmpbsa_templates),
-        params.mmpbsa_start_ns,
-        params.mmpbsa_sample_interval_ps,
-        params.md_temperature,
-        params.md_salt_conc,
-        params.membrane,
-        params.membrane_thickness,
-        params.per_residue_decomp,
-        params.mmpbsa_method ?: "auto",
-        params.mmpbsa_gb_model ?: 2,
-        params.mmpbsa_emem ?: 7.0,
-        params.mmpbsa_indi ?: 4.0,
-        params.mmpbsa_fillratio ?: 1.25
-    )
 }

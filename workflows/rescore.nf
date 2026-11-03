@@ -11,14 +11,12 @@ include { MERGE_CSV }               from '../modules/common/helpers'
 
 workflow RESCORE_WF {
     if (!params.rescore_plan) {
-        log.error "FATAL: Parameter --rescore_plan (JSON) is required."
-        return
+        error "FATAL: Parameter --rescore_plan (JSON) is required."
     }
 
     def planFile = file(params.rescore_plan)
     if (!planFile.exists()) {
-        log.error "FATAL: Rescore plan file not found: ${params.rescore_plan}"
-        return
+        error "FATAL: Rescore plan file not found: ${params.rescore_plan}"
     }
 
     def planData = new groovy.json.JsonSlurperClassic().parseText(planFile.text)
