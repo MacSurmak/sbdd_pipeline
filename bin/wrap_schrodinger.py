@@ -256,6 +256,12 @@ def cmd_ligprep(args):
                 st.property["s_m_title"] = item["name"]
                 writer.append(st)
 
+        # ARCHITECTURAL INVARIANT ON STEREOCHEMISTRY:
+        # Covenant carbon stereocenters (R/S) and double-bond geometries (E/Z, syn/anti oximes)
+        # are strictly determined by the input structure and MUST NEVER be mutated or expanded.
+        # The '-g' flag enforces strict retention of all specified input chiralities and double-bond
+        # geometries, while '-epik' and '-s' are permitted exclusively to sample physiological
+        # protonation microstates, tautomers, and labile pyramidal tertiary nitrogen inversions in solution.
         batch_out_maegz = Path("batch_out.maegz")
         run_cmd(
             get_tool("ligprep")

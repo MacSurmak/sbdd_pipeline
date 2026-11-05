@@ -20,7 +20,6 @@ from cli.core.db import (
 )
 from cli.core.chem import (
     _format_stereo_tag,
-    expand_stereoisomers,
     get_microstate_identity,
     get_mol_identity,
 )
@@ -806,9 +805,12 @@ def add_ligand(
 
     imported = 0
     skipped = 0
-    expanded_count = 0
     cwd = Path.cwd()
 
+    # STRICT STEREOCHEMICAL INVARIANT:
+    # Input stereochemistry (tetrahedral R/S centers and E/Z double-bond geometries such as syn/anti oximes)
+    # is taken strictly from the input structure and MUST NEVER be stripped, re-embedded, or enumerated
+    # during import. Any conformer removal or vacuum UFF re-optimization would corrupt defined E/Z and R/S parities.
     for idx, raw_mol in enumerate(raw_mols, start=1):
         try:
             if len(raw_mols) == 1 and name:
@@ -820,90 +822,86 @@ def add_ligand(
             else:
                 base_title = f"{target_path.stem}_{idx:05d}"
 
-            iso_list = expand_stereoisomers(raw_mol, base_title)
-            if len(iso_list) > 1:
-                expanded_count += len(iso_list)
+            mol = Chem.Mol(raw_mol)
+            (
+                parent_inchikey,
+                parent_smiles,
+                _,
+                state_hash,
+                isomeric_smiles,
+                formal_charge,
+            ) = get_microstate_identity(mol)
 
-            for mol, iso_title in iso_list:
-                (
-                    parent_inchikey,
-                    parent_smiles,
-                    _,
-                    state_hash,
-                    isomeric_smiles,
-                    formal_charge,
-                ) = get_microstate_identity(mol)
-
-                mol_title = iso_title
-                # Disambiguate if another distinct substance (different stereoisomer/InChIKey) already uses mol_title
-                name_collision = (
+            mol_title = base_title
+            # Disambiguate if another distinct substance (different stereoisomer/InChIKey) already uses mol_title
+            name_collision = (
+                session.query(Substance)
+                .filter(
+                    Substance.name == mol_title,
+                    Substance.inchikey != parent_inchikey,
+                )
+                .first()
+            )
+            if name_collision:
+                stereo_suffix = _format_stereo_tag(mol, parent_inchikey)
+                mol_title = f"{mol_title}_{stereo_suffix}"
+                if (
                     session.query(Substance)
                     .filter(
                         Substance.name == mol_title,
                         Substance.inchikey != parent_inchikey,
                     )
                     .first()
+                ):
+                    mol_title = f"{base_title}_{parent_inchikey.split('-')[1]}"
+
+            mol.SetProp("_Name", mol_title)
+
+            # Canonical physical substance storage: substances/<inchikey>/<res>_base.sdf
+            sub_dir = cwd / "substances" / parent_inchikey
+            sub_dir.mkdir(parents=True, exist_ok=True)
+            clean_res = (
+                "".join(c for c in mol_title if c.isalnum())[:4].upper() or "LIG"
+            )
+            base_sdf = sub_dir / f"{clean_res}_base.sdf"
+            if not base_sdf.exists() or force:
+                with Chem.SDWriter(str(base_sdf)) as w:
+                    w.write(mol)
+
+            ex_sub = (
+                session.query(Substance)
+                .filter_by(inchikey=parent_inchikey)
+                .first()
+            )
+            if ex_sub:
+                sub_entity = ex_sub
+                if force:
+                    sub_entity.name = mol_title
+                    sub_entity.smiles = parent_smiles
+                    sub_entity.path_sdf = str(base_sdf.resolve())
+                    sub_entity.state = "raw"
+                    sub_entity.batch_id = effective_batch
+            else:
+                sub_entity = Substance(
+                    inchikey=parent_inchikey,
+                    smiles=parent_smiles,
+                    name=mol_title,
+                    res_name=clean_res,
+                    substance_type="ligand",
+                    state="raw",
+                    batch_id=effective_batch,
+                    path_sdf=str(base_sdf.resolve()),
                 )
-                if name_collision:
-                    stereo_suffix = _format_stereo_tag(mol, parent_inchikey)
-                    mol_title = f"{mol_title}_{stereo_suffix}"
-                    if (
-                        session.query(Substance)
-                        .filter(
-                            Substance.name == mol_title,
-                            Substance.inchikey != parent_inchikey,
-                        )
-                        .first()
-                    ):
-                        mol_title = f"{iso_title}_{parent_inchikey.split('-')[1]}"
+                session.add(sub_entity)
+                session.flush()
 
-                mol.SetProp("_Name", mol_title)
+            if ex_sub and not force:
+                skipped += 1
+                continue
 
-                # Canonical physical substance storage: substances/<inchikey>/<res>_base.sdf
-                sub_dir = cwd / "substances" / parent_inchikey
-                sub_dir.mkdir(parents=True, exist_ok=True)
-                clean_res = (
-                    "".join(c for c in mol_title if c.isalnum())[:4].upper() or "LIG"
-                )
-                base_sdf = sub_dir / f"{clean_res}_base.sdf"
-                if not base_sdf.exists() or force:
-                    with Chem.SDWriter(str(base_sdf)) as w:
-                        w.write(mol)
-
-                ex_sub = (
-                    session.query(Substance)
-                    .filter_by(inchikey=parent_inchikey)
-                    .first()
-                )
-                if ex_sub:
-                    sub_entity = ex_sub
-                    if force:
-                        sub_entity.name = mol_title
-                        sub_entity.smiles = parent_smiles
-                        sub_entity.path_sdf = str(base_sdf.resolve())
-                        sub_entity.state = "raw"
-                        sub_entity.batch_id = effective_batch
-                else:
-                    sub_entity = Substance(
-                        inchikey=parent_inchikey,
-                        smiles=parent_smiles,
-                        name=mol_title,
-                        res_name=clean_res,
-                        substance_type="ligand",
-                        state="raw",
-                        batch_id=effective_batch,
-                        path_sdf=str(base_sdf.resolve()),
-                    )
-                    session.add(sub_entity)
-                    session.flush()
-
-                if ex_sub and not force:
-                    skipped += 1
-                    continue
-
-                imported += 1
-                if imported % 500 == 0:
-                    session.commit()
+            imported += 1
+            if imported % 500 == 0:
+                session.commit()
         except Exception as e:
             console.print(
                 f"[bold red]FATAL: Substance parsing failed at index {idx}: {e}[/bold red]"
@@ -912,14 +910,9 @@ def add_ligand(
 
     session.commit()
     session.close()
-    exp_msg = (
-        f", {expanded_count} stereoisomers enumerated from unassigned centers"
-        if expanded_count > 0
-        else ""
-    )
     console.print(
         f"[bold green]✓ Imported {imported} unique stereospecific substance(s) into batch '{effective_batch}'[/bold green] "
-        f"[dim]({skipped} duplicates skipped{exp_msg})[/dim]"
+        f"[dim]({skipped} duplicates skipped)[/dim]"
     )
 
 

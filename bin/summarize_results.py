@@ -201,6 +201,14 @@ def main():
         )
         matrix_df.to_csv(out_dir / "cross_frame_matrix.csv")
 
+    # TODO (Methodological / Conformational Selection Audit):
+    # 1. Cross-Frame Deduplication: Currently .drop_duplicates(subset=["Title", "Frame"]) retains
+    #    a separate row for EVERY receptor frame per ligand, rather than selecting the single best
+    #    conformational frame per compound (.drop_duplicates(subset="Title")) as in the legacy
+    #    conformational selection pipeline. This dilutes percentile ranks across frames.
+    # 2. Consensus Score Composition: When SUMMARIZE_DOCKING runs during 'sbdd dock' prior to
+    #    'sbdd rescore' (MM-GBSA), Ultimate_Score is computed without MM-GBSA and excludes
+    #    independent GNINA docking (PR_GNINA_Dock) whenever Glide is active.
     # Resolved top hit per ligand (best conformational frame)
     df_resolved = (
         df.sort_values("Ultimate_Score", ascending=False)

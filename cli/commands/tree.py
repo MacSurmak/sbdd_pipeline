@@ -405,6 +405,3 @@ def print_tree(
 
     session.close()
     console.print(root_tree)
-
-    session.close()
-    console.print(root_tree)
