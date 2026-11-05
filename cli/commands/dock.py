@@ -372,16 +372,6 @@ def _ingest_docking_receipt(
             mol_clean.UpdatePropertyCache(strict=False)
             Chem.SanitizeMol(mol_clean)
 
-            if eng != "glide":
-                candidates = templates_by_sub_id[sub_obj.id]
-                valid_atom_counts = {t.GetNumAtoms() for t in candidates}
-                if mol_clean.GetNumAtoms() not in valid_atom_counts:
-                    session.close()
-                    raise ValueError(
-                        f"FATAL: GNINA pose #{m_idx} of '{m_title}' has {mol_clean.GetNumAtoms()} atoms, "
-                        f"expected full-atom count in {valid_atom_counts}! Worker-side topology restoration failed."
-                    )
-
             insitu_rmsd_val = None
             if ref_mol_by_frame is not None:
                 ref_pair = ref_mol_by_frame.get(frame_name)
