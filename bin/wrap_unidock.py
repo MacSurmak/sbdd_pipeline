@@ -33,12 +33,15 @@ from cli.core.chem import (
 def _extract_unidock_score(mol: Chem.Mol) -> float:
     """Extracts Vina affinity (kcal/mol) from Uni-Dock output SDF properties."""
     for prop_name in mol.GetPropNames():
-        p_low = prop_name.strip().lower()
-        if p_low in ("energy", "affinity", "minimizedaffinity", "vina result"):
-            raw = mol.GetProp(prop_name).strip()
-            first_token = raw.split()[0] if raw else ""
-            if first_token:
-                return float(first_token)
+        p_clean = prop_name.strip()
+        if p_clean.lower() in ("uni-dock result", "energy", "affinity", "minimizedaffinity", "vina result"):
+            raw = mol.GetProp(prop_name)
+            m = re.search(r"ENERGY\s*=\s*([-+]?\d+(?:\.\d+)?)", raw, re.IGNORECASE)
+            if m:
+                return float(m.group(1))
+            m = re.search(r"[-+]?\d+(?:\.\d+)?", raw)
+            if m:
+                return float(m.group(0))
     raise ValueError(
         f"FATAL: Uni-Dock output pose '{mol.GetProp('_Name') if mol.HasProp('_Name') else '?'}' "
         f"is missing energy property! Available properties: {list(mol.GetPropNames())}"
@@ -197,7 +200,7 @@ def main() -> None:
                 restored_mol = transfer_coordinates_to_template(
                     template_mol=exact_tmpl,
                     source_mol=pose_mol,
-                    relax_missing_hydrogens=True,
+                    relax_missing_hydrogens=False,
                 )
                 restored_mol.SetProp("_Name", orig_title)
                 restored_mol.SetProp("s_m_title", orig_title)
