@@ -169,17 +169,21 @@ def main():
             )
             t_post_start = time.monotonic()
 
-            def _emit_post_udp(p_idx: int, ev: str = "update"):
+            def _emit_post_udp(p_idx: int, cur_title: str = "", ev: str = "update"):
                 if total_poses == 0:
                     return
                 el = max(0.001, time.monotonic() - t_post_start)
                 rate = p_idx / el if p_idx > 0 else 0.0
                 rem = max(0, total_poses - p_idx)
                 eta_s = f"{int(rem / rate)}s" if rate > 0 and rem > 0 else "done"
+                sub_label = f"[Restore H] {cur_title} ({p_idx}/{total_poses})" if cur_title else f"[Restore H] ({p_idx}/{total_poses})"
                 payload = {
                     "tool": "gnina",
-                    "task": task_id,
-                    "session_id": f"gnina_{task_id}",
+                    "task": f"{task_id}::restore",
+                    "parent_task": task_id,
+                    "is_subtask": True,
+                    "subtask_label": sub_label,
+                    "session_id": f"gnina_{task_id}_cur",
                     "stage": "Restore H",
                     "node": node_name,
                     "event": ev,
@@ -191,7 +195,7 @@ def main():
                     "performance": {"elapsed_s": round(el, 1)},
                     "display_step": p_idx,
                     "display_total": total_poses,
-                    "step_info": f"[cyan]{p_idx}/{total_poses} pose[/cyan] [dim](Restore H)[/dim]",
+                    "step_info": f"[cyan]{p_idx}/{total_poses} pose[/cyan]",
                     "speed": f"{rate:>5.1f} pose/s" if rate > 0 else "-- pose/s",
                     "eta": eta_s,
                 }
@@ -231,9 +235,9 @@ def main():
                         restored_mol.SetProp("s_m_title", orig_title)
                     w.write(restored_mol)
                     if p_idx % 5 == 0 or p_idx == total_poses:
-                        _emit_post_udp(p_idx)
+                        _emit_post_udp(p_idx, cur_title=orig_title)
 
-            _emit_post_udp(total_poses, ev="exit")
+            _emit_post_udp(total_poses, cur_title="", ev="exit")
 
         os.replace(tmp_sdf, args.out_sdf)
         Path(tagged_input_sdf).unlink(missing_ok=True)

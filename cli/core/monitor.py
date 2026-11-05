@@ -114,7 +114,7 @@ def run_monitor(port: int = 8088):
 
     progress = Progress(
         TextColumn("[bold cyan]{task.description}"),
-        TextColumn("[bold yellow]({task.fields[node]})[/bold yellow]"),
+        TextColumn("[bold yellow]{task.fields[node_display]}[/bold yellow]"),
         BarColumn(),
         TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
         TextColumn("{task.fields[step_info]}"),
@@ -140,6 +140,11 @@ def run_monitor(port: int = 8088):
     task_speeds = {}
     task_etas = {}
     task_names = {}
+
+    task_parents = {}
+    task_children = {}
+    task_is_subtask = {}
+    task_subtask_label = {}
 
     cpu_only_tools = {
         "glide",
@@ -168,12 +173,32 @@ def run_monitor(port: int = 8088):
                             if t_id in task_bars:
                                 progress.remove_task(task_bars[t_id])
                                 del task_bars[t_id]
+                            p_id = task_parents.pop(t_id, None)
+                            if p_id and p_id in task_children:
+                                task_children[p_id].discard(t_id)
+                            for child_id in list(task_children.pop(t_id, set())):
+                                if child_id in task_bars:
+                                    progress.remove_task(task_bars[child_id])
+                                    del task_bars[child_id]
+                                task_parents.pop(child_id, None)
+                                last_seen.pop(child_id, None)
+                                task_real_step.pop(child_id, None)
+
                             last_seen.pop(t_id, None)
                             task_real_step.pop(t_id, None)
                             continue
 
                         last_seen[t_id] = now
                         tool_raw = (payload.get("tool") or "mdrun").lower()
+                        parent_id = payload.get("parent_task")
+                        is_sub = bool(payload.get("is_subtask") or parent_id)
+                        task_is_subtask[t_id] = is_sub
+
+                        if is_sub and parent_id:
+                            task_parents[t_id] = parent_id
+                            task_children.setdefault(parent_id, set()).add(t_id)
+                            task_subtask_label[t_id] = payload.get("subtask_label") or t_id
+
                         step = payload.get("display_step", payload.get("step")) or 0
                         total = payload.get("display_total", payload.get("total")) or 1
                         dt_ps = payload.get("dt_ps")
@@ -282,6 +307,16 @@ def run_monitor(port: int = 8088):
                     if now - last_seen.get(t_id, now) > 20.0:
                         progress.remove_task(task_bars[t_id])
                         del task_bars[t_id]
+                        p_id = task_parents.pop(t_id, None)
+                        if p_id and p_id in task_children:
+                            task_children[p_id].discard(t_id)
+                        for child_id in list(task_children.pop(t_id, set())):
+                            if child_id in task_bars:
+                                progress.remove_task(task_bars[child_id])
+                                del task_bars[child_id]
+                            task_parents.pop(child_id, None)
+                            last_seen.pop(child_id, None)
+                            task_real_step.pop(child_id, None)
                         last_seen.pop(t_id, None)
                         task_real_step.pop(t_id, None)
 
@@ -293,6 +328,7 @@ def run_monitor(port: int = 8088):
                     time_delta = now - task_packet_time.get(t_id, now)
                     total_st = task_totals.get(t_id, 1)
                     dt_ps = task_dts.get(t_id)
+                    is_sub = task_is_subtask.get(t_id, False)
 
                     if dt_ps is not None and dt_ps > 0:
                         if rate_s > 0 and time_delta > 0:
@@ -310,17 +346,33 @@ def run_monitor(port: int = 8088):
                             or f"[cyan]{format_steps(interpolated_st)}/{format_steps(total_st)}[/cyan]"
                         )
 
+                    if is_sub:
+                        lbl = task_subtask_label.get(t_id) or task_names.get(t_id, t_id)
+                        desc = f"  [dim]└──[/dim] [bold cyan]{escape(lbl)}[/bold cyan]"
+                        f_node_display = ""
+                        f_gpu = ""
+                        f_power = ""
+                        f_speed = task_speeds.get(t_id, "")
+                        f_eta = ""
+                    else:
+                        desc = f"[green]{escape(task_names.get(t_id, t_id))}[/green]"
+                        f_node_display = f"({escape(task_nodes.get(t_id, 'node'))})"
+                        f_gpu = escape(task_gpus.get(t_id, "GPU"))
+                        f_power = task_powers.get(t_id, "-- W")
+                        f_speed = task_speeds.get(t_id, "--")
+                        f_eta = task_etas.get(t_id, "--:--")
+
                     if t_id not in task_bars:
                         task_bars[t_id] = progress.add_task(
-                            f"[green]{escape(task_names.get(t_id, t_id))}",
+                            desc,
                             total=total_st,
                             completed=interpolated_st,
-                            node=escape(task_nodes.get(t_id, "node")),
-                            gpu=escape(task_gpus.get(t_id, "GPU")),
-                            power=task_powers.get(t_id, "-- W"),
-                            speed=task_speeds.get(t_id, "--"),
+                            node_display=f_node_display,
+                            gpu=f_gpu,
+                            power=f_power,
+                            speed=f_speed,
                             step_info=step_info,
-                            eta=task_etas.get(t_id, "--:--"),
+                            eta=f_eta,
                         )
                     else:
                         task_obj = progress._tasks[task_bars[t_id]]
@@ -329,14 +381,33 @@ def run_monitor(port: int = 8088):
 
                         progress.update(
                             task_bars[t_id],
+                            description=desc,
                             completed=interpolated_st,
-                            node=escape(task_nodes.get(t_id, "node")),
-                            gpu=escape(task_gpus.get(t_id, "GPU")),
-                            power=task_powers.get(t_id, "-- W"),
-                            speed=task_speeds.get(t_id, "--"),
+                            node_display=f_node_display,
+                            gpu=f_gpu,
+                            power=f_power,
+                            speed=f_speed,
                             step_info=step_info,
-                            eta=task_etas.get(t_id, "--:--"),
+                            eta=f_eta,
                         )
+
+                # Reorder progress._tasks so child tasks are strictly nested directly below their parent
+                ordered_tasks = {}
+                root_ids = [t for t in task_bars.keys() if not task_is_subtask.get(t, False)]
+                for r_id in root_ids:
+                    if r_id in task_bars:
+                        r_bar_id = task_bars[r_id]
+                        if r_bar_id in progress._tasks:
+                            ordered_tasks[r_bar_id] = progress._tasks[r_bar_id]
+                        for c_id in sorted(task_children.get(r_id, set())):
+                            if c_id in task_bars:
+                                c_bar_id = task_bars[c_id]
+                                if c_bar_id in progress._tasks:
+                                    ordered_tasks[c_bar_id] = progress._tasks[c_bar_id]
+                for t_id, b_id in task_bars.items():
+                    if b_id in progress._tasks and b_id not in ordered_tasks:
+                        ordered_tasks[b_id] = progress._tasks[b_id]
+                progress._tasks = ordered_tasks
 
                 time.sleep(0.05)
 
