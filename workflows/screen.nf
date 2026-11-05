@@ -10,8 +10,8 @@ include { BATCH_DOCK_LIGANDS } from "../modules/common/helpers"
 
 workflow SCREEN_WF {
     if (!params.dock_plan) { error "FATAL: Parameter --dock_plan (JSON) is required." }
-    if (params.glide_batch_size == null || params.gnina_batch_size == null) {
-        error "FATAL: Parameters --glide_batch_size and --gnina_batch_size are required for docking."
+    if (params.glide_batch_size == null || params.unidock_batch_size == null) {
+        error "FATAL: Parameters --glide_batch_size and --unidock_batch_size are required for docking."
     }
 
     def planFile = file(params.dock_plan)
@@ -58,28 +58,28 @@ workflow SCREEN_WF {
     ch_cof_sdfs = ch_targets.map { meta, pdb, mae, rsdf, rmae, isdf, imae, csdf, cmae -> [meta, csdf] }
     ch_cof_maes = ch_targets.map { meta, pdb, mae, rsdf, rmae, isdf, imae, csdf, cmae -> [meta, cmae] }
 
-    // 2. Batch Pre-prepared Ligands into independent chunks for Glide (.maegz) and GNINA (.sdf)
+    // 2. Batch Pre-prepared Ligands into independent chunks for Glide (.maegz) and Uni-Dock (.sdf)
     ch_dock_plan_file = Channel.fromPath(params.dock_plan, checkIfExists: true)
     BATCH_DOCK_LIGANDS(
         params.project_name,
         ch_dock_plan_file,
         params.glide_batch_size,
-        params.gnina_batch_size
+        params.unidock_batch_size
     )
 
     ch_glide_manifest = BATCH_DOCK_LIGANDS.out.manifest.flatMap { mf ->
         def parsed = new groovy.json.JsonSlurperClassic().parseText(mf.text)
         parsed.glide_chunks ?: []
     }
-    ch_gnina_manifest = BATCH_DOCK_LIGANDS.out.manifest.flatMap { mf ->
+    ch_unidock_manifest = BATCH_DOCK_LIGANDS.out.manifest.flatMap { mf ->
         def parsed = new groovy.json.JsonSlurperClassic().parseText(mf.text)
-        parsed.gnina_chunks ?: []
+        parsed.unidock_chunks ?: []
     }
 
     ch_sdf_map = BATCH_DOCK_LIGANDS.out.sdf_chunks.flatten().map { f -> [ f.name, f ] }
     ch_mae_map = BATCH_DOCK_LIGANDS.out.mae_chunks.flatten().map { f -> [ f.name, f ] }
 
-    ch_chunks_sdf = ch_gnina_manifest
+    ch_chunks_sdf = ch_unidock_manifest
         .map { item -> [ item.file, item ] }
         .join(ch_sdf_map, by: 0)
         .map { sdf_name, item, sdf_file ->
@@ -111,13 +111,13 @@ workflow SCREEN_WF {
             error "FATAL: Glide docking parameters missing in configuration! Check glide.yaml."
         }
     }
-    if (params.dock_engine in ["gnina", "both"]) {
-        if (!params.exhaustiveness || !params.cnn_scoring || !params.num_modes || !params.autobox_add) {
-            error "FATAL: GNINA docking parameters missing in configuration! Check gnina.yaml."
+    if (params.dock_engine in ["unidock", "both"]) {
+        if (!params.unidock_search_mode || !params.unidock_scoring || params.unidock_refine_step == null || !params.unidock_num_modes || params.unidock_energy_range == null || !params.autobox_add || params.unidock_seed == null) {
+            error "FATAL: Uni-Dock docking parameters missing in configuration! Check unidock.yaml."
         }
     }
 
-    // 3. Parallel Docking
+    // 3. Parallel Docking & Universal 3D-CNN Rescoring
     DOCK_LIBRARY(
         ch_rec_pdb,
         ch_ref_sdf,
@@ -130,15 +130,20 @@ workflow SCREEN_WF {
         ch_cof_sdfs,
         ch_cof_maes,
         params.dock_engine,
-        params.exhaustiveness,
-        params.cnn_scoring,
-        params.num_modes,
-        params.autobox_add,
-        params.inner_box,
-        params.outer_box,
+        params.unidock_search_mode,
+        params.unidock_scoring,
+        params.unidock_refine_step,
+        params.unidock_num_modes,
+        params.unidock_energy_range,
+        params.unidock_seed,
+        params.autobox_add ?: 4.0,
+        params.inner_box ?: "10, 10, 10",
+        params.outer_box ?: "26, 26, 26",
         params.glide_forcefield,
         params.glide_precision,
         params.poses_per_lig,
+        params.gnina_enabled,
+        params.gnina_rescore_mode ?: "score_only",
         params.cnn_model ?: "",
         params.glide_postdock,
         params.glide_recep_vscale,

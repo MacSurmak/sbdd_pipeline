@@ -6,7 +6,7 @@ process ASSEMBLE_DOCKING_RECEPTOR {
     tuple val(meta), path(rec_pdb), path(rec_mae), path(ion_sdfs), path(ion_maes), path(cof_sdfs), path(cof_maes)
 
     output:
-    tuple val(meta), path("${meta.id}_dock_receptor.pdb"), path("${meta.id}_dock_receptor.mae"), emit: assembled_receptors
+    tuple val(meta), path("${meta.id}_dock_receptor.pdb"), path("${meta.id}_dock_receptor.mae"), path("${meta.id}_dock_receptor.pdbqt"), emit: assembled_receptors
 
     script:
     def ion_sdfs_arg = (ion_sdfs && ion_sdfs.size() > 0) ? "--ion_sdfs ${ion_sdfs}" : ""
@@ -20,10 +20,11 @@ process ASSEMBLE_DOCKING_RECEPTOR {
     def hetero_maes_arg = all_hetero_maes ? "--hetero_maes ${all_hetero_maes.join(' ')}" : ""
 
     """
-    # PDB Assembly (for GNINA and scoring)
+    # PDB and PDBQT Assembly (once per frame for GNINA rescoring and Uni-Dock GPU sampling)
     python3 ${projectDir}/bin/merge_complex.py \\
         --rec_pdb ${rec_pdb} \\
         --out_pdb ${meta.id}_dock_receptor.pdb \\
+        --out_pdbqt ${meta.id}_dock_receptor.pdbqt \\
         ${ion_sdfs_arg} \\
         ${ion_res_arg} \\
         ${cof_sdfs_arg} \\
@@ -88,7 +89,7 @@ process CALC_RMSD {
     """
 }
 
-process MERGE_GNINA_DOCK {
+process MERGE_UNIDOCK_DOCK {
     tag "${meta.id}"
     executor 'local'
     scratch false
@@ -98,11 +99,11 @@ process MERGE_GNINA_DOCK {
     tuple val(meta), path(chunk_sdfs, stageAs: 'sdfs_?/*')
 
     output:
-    tuple val(meta), path("${meta.id}_gnina_docked_all.sdf"), emit: merged_sdf
+    tuple val(meta), path("${meta.id}_unidock_dock.sdf"), emit: merged_sdf
 
     script:
     """
-    python3 ${projectDir}/bin/wrap_utils.py merge_sdf --in_sdfs ${chunk_sdfs} --out_sdf ${meta.id}_gnina_docked_all.sdf
+    python3 ${projectDir}/bin/wrap_utils.py merge_sdf --in_sdfs ${chunk_sdfs} --out_sdf ${meta.id}_unidock_dock.sdf
     """
 }
 

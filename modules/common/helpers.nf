@@ -30,11 +30,11 @@ process BATCH_DOCK_LIGANDS {
     val(project_name)
     path(dock_plan_json)
     val(glide_batch_size)
-    val(gnina_batch_size)
+    val(unidock_batch_size)
 
     output:
     path("chunks_manifest.json"), emit: manifest
-    path("gnina_chunk_*.sdf"), emit: sdf_chunks, optional: true
+    path("unidock_chunk_*.sdf"), emit: sdf_chunks, optional: true
     path("glide_chunk_*.maegz"), emit: mae_chunks, optional: true
 
     script:
@@ -42,7 +42,7 @@ process BATCH_DOCK_LIGANDS {
     python3 ${projectDir}/bin/batch_dock_ligands.py \\
         --dock_plan ${dock_plan_json} \\
         --glide_batch_size ${glide_batch_size} \\
-        --gnina_batch_size ${gnina_batch_size} \\
+        --unidock_batch_size ${unidock_batch_size} \\
         --out_manifest chunks_manifest.json
     """
 }
