@@ -8,40 +8,13 @@ generating a ready-to-use PyMOL script (.pml) with CGO 3D wireframe boxes.
 import argparse
 import sys
 from pathlib import Path
-from typing import List, Tuple
+from typing import Tuple
 
+FRAMEWORK_DIR = Path(__file__).resolve().parent.parent
+if str(FRAMEWORK_DIR) not in sys.path:
+    sys.path.insert(0, str(FRAMEWORK_DIR))
 
-def get_coords_rdkit(path: Path) -> List[Tuple[float, float, float]]:
-    from rdkit import Chem
-
-    mols = []
-    if path.suffix.lower() == ".sdf":
-        suppl = Chem.SDMolSupplier(str(path), sanitize=False, removeHs=False)
-        mols = [m for m in suppl if m is not None]
-    elif path.suffix.lower() == ".pdb":
-        m = Chem.MolFromPDBFile(str(path), sanitize=False, removeHs=False)
-        if m:
-            mols = [m]
-
-    if not mols:
-        return []
-
-    conf = mols[0].GetConformer()
-    return [
-        (
-            float(conf.GetAtomPosition(i).x),
-            float(conf.GetAtomPosition(i).y),
-            float(conf.GetAtomPosition(i).z),
-        )
-        for i in range(mols[0].GetNumAtoms())
-    ]
-
-
-def get_coords_schrodinger(path: Path) -> List[Tuple[float, float, float]]:
-    from schrodinger import structure
-
-    st = structure.StructureReader.read(str(path))
-    return [(float(a.x), float(a.y), float(a.z)) for a in st.atom]
+from cli.core.chem import compute_autobox_geometry
 
 
 def parse_box_dims(val: str) -> Tuple[float, float, float]:
@@ -104,34 +77,14 @@ def main():
     args = parser.parse_args()
 
     ref_p = Path(args.reference).resolve()
-    coords = []
+    auto_pad = float(args.autobox_add)
+    geom = compute_autobox_geometry(ref_p, auto_pad)
 
-    if ref_p.suffix.lower() in [".sdf", ".pdb"]:
-        coords = get_coords_rdkit(ref_p)
-    elif ref_p.suffix.lower() in [".mae", ".maegz"]:
-        coords = get_coords_schrodinger(ref_p)
-    else:
-        raise ValueError(
-            f"FATAL: Unsupported reference format for docking box: {ref_p.suffix}"
-        )
+    cx, cy, cz = geom["centroid"]
+    gn_min_x, gn_max_x, gn_min_y, gn_max_y, gn_min_z, gn_max_z = geom["autobox_bounds"]
 
-    if not coords:
-        print(f"FATAL: No atoms found in reference ligand {ref_p}", file=sys.stderr)
-        sys.exit(1)
-
-    # 1. Centroid and bounding box
-    xs = [c[0] for c in coords]
-    ys = [c[1] for c in coords]
-    zs = [c[2] for c in coords]
-
-    cx = sum(xs) / len(xs)
-    cy = sum(ys) / len(ys)
-    cz = sum(zs) / len(zs)
-
-    # 2. Dimensions
     inner_w, inner_h, inner_d = parse_box_dims(args.inner_box)
     outer_w, outer_h, outer_d = parse_box_dims(args.outer_box)
-    auto_pad = float(args.autobox_add)
 
     # Glide Outer box
     go_min_x, go_max_x = cx - outer_w / 2.0, cx + outer_w / 2.0
@@ -142,11 +95,6 @@ def main():
     gi_min_x, gi_max_x = cx - inner_w / 2.0, cx + inner_w / 2.0
     gi_min_y, gi_max_y = cy - inner_h / 2.0, cy + inner_h / 2.0
     gi_min_z, gi_max_z = cz - inner_d / 2.0, cz + inner_d / 2.0
-
-    # GNINA Autobox
-    gn_min_x, gn_max_x = min(xs) - auto_pad, max(xs) + auto_pad
-    gn_min_y, gn_max_y = min(ys) - auto_pad, max(ys) + auto_pad
-    gn_min_z, gn_max_z = min(zs) - auto_pad, max(zs) + auto_pad
 
     pml_content = f"""# PyMOL Docking Grid & Autobox Visualization
 # Receptor: {args.receptor_name}

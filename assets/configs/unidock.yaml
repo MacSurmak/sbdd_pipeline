@@ -1,0 +1,14 @@
+unidock:
+  enabled: true
+  search_mode: "balance"             # Preset: "fast" (128/20), "balance" (384/40), "detail" (512/40)
+  scoring: "vina"                    # Scoring function: "vina", "vinardo", or "ad4"
+  refine_step: 3                     # Off-grid analytical refinement steps (3 for fast/balance, 5 for detail)
+  num_modes: 9                       # Number of binding poses to output per ligand state
+  energy_range: 5.0                  # Max energy difference from best pose (kcal/mol)
+  autobox_add: 4.0                   # Pocket bounding box padding around reference ligand (Å)
+  seed: 42                           # Deterministic random seed
+  batch_size: 500                    # 500 substances per GPU batch to fully saturate CUDA SMs
+  resources:
+    cpus: 1                          # 1 CPU core (leaves remaining CPU cores free for parallel Glide tasks)
+    memory_gb: 6                     # RAM allocation per task in GB
+    slurm_gres: "shard:4"            # Slurm GPU GRES request

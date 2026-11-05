@@ -13,7 +13,10 @@ FRAMEWORK_DIR = Path(__file__).resolve().parent.parent
 if str(FRAMEWORK_DIR) not in sys.path:
     sys.path.insert(0, str(FRAMEWORK_DIR))
 
-from cli.core.chem import transfer_coordinates_to_template
+from cli.core.chem import (
+    convert_receptor_pdb_to_pdbqt,
+    transfer_coordinates_to_template,
+)
 
 
 def main():
@@ -67,6 +70,11 @@ def main():
         help="Comma-separated water residue names to strip from receptor before assembly",
     )
     parser.add_argument("--out_pdb", required=True, help="Output complex PDB")
+    parser.add_argument(
+        "--out_pdbqt",
+        default=None,
+        help="Optional output rigid receptor PDBQT for Uni-Dock",
+    )
     args = parser.parse_args()
 
     # Strict Fail-Fast: mutually conditional validation between ligand coordinates and residue name
@@ -276,6 +284,8 @@ def main():
     out_lines.extend(topology_lines)
     out_lines.append("END")
     Path(args.out_pdb).write_text("\n".join(out_lines) + "\n")
+    if args.out_pdbqt:
+        convert_receptor_pdb_to_pdbqt(args.out_pdb, args.out_pdbqt)
     print(
         f"Successfully assembled {args.out_pdb} with {bool(args.lig_sdf)} ligand, {len(args.ion_sdfs)} ion(s), and {len(args.cofactor_sdfs)} cofactor(s)."
     )

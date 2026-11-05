@@ -628,3 +628,154 @@ def compute_pairwise_symmetry_rmsd_matrix(
     min_for_a = np.min(rmsd_mat, axis=1).round(3).tolist()
     min_for_b = np.min(rmsd_mat, axis=0).round(3).tolist()
     return min_for_a, min_for_b
+
+
+def compute_autobox_geometry(ref_path: str | Path, autobox_add: float) -> dict:
+    """
+    Single Source of Truth (SSOT) for pocket bounding box and centroid geometry.
+    Reads reference ligand 3D coordinates (.sdf, .pdb, .mae, .maegz) and computes:
+      - centroid: arithmetic mean (cx, cy, cz) for Glide GRID_CENTER
+      - autobox_center: bounding box center (bc_x, bc_y, bc_z) for Uni-Dock / GNINA
+      - autobox_size: padded box dimensions (sx, sy, sz) = span + 2 * autobox_add
+      - autobox_bounds: (min_x, max_x, min_y, max_y, min_z, max_z) for PyMOL CGO
+    """
+    p = Path(ref_path).resolve()
+    if not p.exists() or p.stat().st_size == 0:
+        raise FileNotFoundError(
+            f"FATAL: Reference ligand file missing or empty: {p}"
+        )
+
+    pad = float(autobox_add)
+    if pad < 0.0:
+        raise ValueError(
+            f"FATAL: autobox_add must be non-negative, got: {pad}"
+        )
+
+    coords: list[tuple[float, float, float]] = []
+    suffix = p.suffix.lower()
+    if suffix in (".sdf", ".mol", ".pdb"):
+        mol, _ = _load_rdkit_mol(p)
+        if mol.GetNumConformers() == 0:
+            raise ValueError(f"FATAL: Reference ligand in {p} has no 3D conformer!")
+        conf = mol.GetConformer()
+        for i in range(mol.GetNumAtoms()):
+            pos = conf.GetAtomPosition(i)
+            coords.append((float(pos.x), float(pos.y), float(pos.z)))
+    elif suffix in (".mae", ".maegz"):
+        from schrodinger import structure
+
+        st = structure.StructureReader.read(str(p))
+        coords = [(float(a.x), float(a.y), float(a.z)) for a in st.atom]
+    else:
+        raise ValueError(
+            f"FATAL: Unsupported reference ligand format '{suffix}' for {p}"
+        )
+
+    if not coords:
+        raise ValueError(f"FATAL: Zero atom coordinates extracted from {p}")
+
+    xs = [c[0] for c in coords]
+    ys = [c[1] for c in coords]
+    zs = [c[2] for c in coords]
+
+    cx = sum(xs) / len(xs)
+    cy = sum(ys) / len(ys)
+    cz = sum(zs) / len(zs)
+
+    min_x, max_x = min(xs), max(xs)
+    min_y, max_y = min(ys), max(ys)
+    min_z, max_z = min(zs), max(zs)
+
+    bc_x = 0.5 * (min_x + max_x)
+    bc_y = 0.5 * (min_y + max_y)
+    bc_z = 0.5 * (min_z + max_z)
+
+    sx = (max_x - min_x) + 2.0 * pad
+    sy = (max_y - min_y) + 2.0 * pad
+    sz = (max_z - min_z) + 2.0 * pad
+
+    return {
+        "centroid": (cx, cy, cz),
+        "autobox_center": (bc_x, bc_y, bc_z),
+        "autobox_size": (sx, sy, sz),
+        "autobox_bounds": (
+            min_x - pad,
+            max_x + pad,
+            min_y - pad,
+            max_y + pad,
+            min_z - pad,
+            max_z + pad,
+        ),
+    }
+
+
+def convert_receptor_pdb_to_pdbqt(pdb_path: str | Path, out_pdbqt: str | Path) -> None:
+    """
+    Single Source of Truth (SSOT) rigid receptor converter from PrepWizard-prepared PDB to AutoDock4 PDBQT.
+    Strictly preserves PrepWizard protonation states, histidine tautomers, cofactors, and metal ions.
+    Strips only non-polar hydrogens (bonded to carbon) as required by Vina/Uni-Dock united-atom potentials
+    and assigns exact AutoDock4 atom types in columns 78-79.
+    """
+    in_p = Path(pdb_path).resolve()
+    out_p = Path(out_pdbqt).resolve()
+    if not in_p.exists() or in_p.stat().st_size == 0:
+        raise FileNotFoundError(f"FATAL: Input receptor PDB missing or empty: {in_p}")
+
+    mol = Chem.MolFromPDBFile(str(in_p), removeHs=False, sanitize=False)
+    if mol is None or mol.GetNumAtoms() == 0:
+        raise ValueError(f"FATAL: RDKit failed to parse receptor PDB: {in_p}")
+    mol.UpdatePropertyCache(strict=False)
+    Chem.GetSymmSSSR(mol)
+    Chem.SetAromaticity(mol)
+
+    raw_atom_lines = [
+        line
+        for line in in_p.read_text(encoding="utf-8", errors="ignore").splitlines()
+        if line.startswith(("ATOM  ", "HETATM"))
+    ]
+    if len(raw_atom_lines) != mol.GetNumAtoms():
+        raise ValueError(
+            f"FATAL: Atom count mismatch in {in_p.name}: PDB has {len(raw_atom_lines)} ATOM/HETATM lines, "
+            f"RDKit parsed {mol.GetNumAtoms()} atoms!"
+        )
+
+    out_lines: list[str] = []
+    for idx, atom in enumerate(mol.GetAtoms()):
+        line = raw_atom_lines[idx]
+        elem = atom.GetSymbol().strip().upper()
+        nbrs = atom.GetNeighbors()
+
+        if elem == "H":
+            # Retain polar hydrogens (bonded to N, O, S, P); omit non-polar carbon-bound hydrogens
+            if not nbrs or nbrs[0].GetSymbol().strip().upper() == "C":
+                continue
+            ad4_type = "HD"
+        elif elem == "C":
+            ad4_type = "A" if atom.GetIsAromatic() else "C"
+        elif elem == "N":
+            num_h = sum(1 for n in nbrs if n.GetSymbol().strip().upper() == "H")
+            # Unprotonated sp2/aromatic or nitrile nitrogen with lone pair is H-bond acceptor (NA)
+            if num_h == 0 and len(nbrs) <= 2:
+                ad4_type = "NA"
+            else:
+                ad4_type = "N"
+        elif elem == "O":
+            ad4_type = "OA"
+        elif elem == "S":
+            ad4_type = "SA"
+        elif elem in {"P", "F", "B", "I"}:
+            ad4_type = elem
+        elif elem in {"CL", "BR", "MG", "ZN", "MN", "FE", "CA", "CU", "NA", "K"}:
+            ad4_type = elem.capitalize() if elem in {"CL", "BR"} else elem
+        else:
+            ad4_type = elem[:2]
+
+        base_cols = line[:54].ljust(54)
+        pdbqt_line = f"{base_cols}  1.00  0.00    +0.000 {ad4_type:<2s}"
+        out_lines.append(pdbqt_line)
+
+    if not out_lines:
+        raise ValueError(f"FATAL: Zero receptor atoms written to {out_p}!")
+
+    out_p.parent.mkdir(parents=True, exist_ok=True)
+    out_p.write_text("\n".join(out_lines) + "\n", encoding="utf-8")

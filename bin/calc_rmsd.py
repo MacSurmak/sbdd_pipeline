@@ -109,7 +109,7 @@ def main():
     parser.add_argument(
         "--engine",
         default="generic",
-        choices=["glide", "gnina", "generic"],
+        choices=["glide", "unidock", "gnina", "generic"],
         help="Docking engine name",
     )
     parser.add_argument("--output", required=True, help="Path to output CSV")
@@ -155,7 +155,11 @@ def main():
     engine_col = (
         "InSitu_RMSD_Glide_A"
         if args.engine == "glide"
-        else ("InSitu_RMSD_GNINA_A" if args.engine == "gnina" else "InSitu_RMSD_A")
+        else (
+            "InSitu_RMSD_UniDock_A"
+            if args.engine in ("unidock", "gnina")
+            else "InSitu_RMSD_A"
+        )
     )
 
     final_title = matched_title or args.title

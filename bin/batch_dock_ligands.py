@@ -41,7 +41,7 @@ def merge_maegz_files(mae_paths: list[Path], out_maegz: Path) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Batch prepared ligands into independent SDF (GNINA) and MAEGZ (Glide) chunks"
+        description="Batch prepared ligands into independent SDF (Uni-Dock) and MAEGZ (Glide) chunks"
     )
     parser.add_argument("--dock_plan", required=True, help="Input dock_plan.json")
     parser.add_argument(
@@ -51,10 +51,10 @@ def main() -> None:
         help="Substances per Glide chunk (0 if Glide disabled)",
     )
     parser.add_argument(
-        "--gnina_batch_size",
+        "--unidock_batch_size",
         type=int,
         required=True,
-        help="Substances per GNINA chunk (0 if GNINA disabled)",
+        help="Substances per Uni-Dock chunk (0 if Uni-Dock disabled)",
     )
     parser.add_argument(
         "--out_manifest",
@@ -63,9 +63,9 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    if args.glide_batch_size <= 0 and args.gnina_batch_size <= 0:
+    if args.glide_batch_size <= 0 and args.unidock_batch_size <= 0:
         print(
-            "FATAL: At least one of --glide_batch_size or --gnina_batch_size must be positive!",
+            "FATAL: At least one of --glide_batch_size or --unidock_batch_size must be positive!",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -83,7 +83,7 @@ def main() -> None:
         sys.exit(1)
 
     glide_chunks = []
-    gnina_chunks = []
+    unidock_chunks = []
 
     if mode == "self":
         for idx, lig in enumerate(ligands):
@@ -99,11 +99,11 @@ def main() -> None:
                         "substances": [lig.get("ligand_title", lig["name"])],
                     }
                 )
-            if args.gnina_batch_size > 0:
+            if args.unidock_batch_size > 0:
                 sdf_in = Path(lig["path_sdf"]).resolve()
-                out_sdf = Path(f"gnina_chunk_{idx:03d}.sdf")
+                out_sdf = Path(f"unidock_chunk_{idx:03d}.sdf")
                 merge_sdf_files([sdf_in], out_sdf)
-                gnina_chunks.append(
+                unidock_chunks.append(
                     {
                         "chunk_idx": idx,
                         "receptor": lig.get("receptor", ""),
@@ -131,15 +131,15 @@ def main() -> None:
                     }
                 )
 
-        if args.gnina_batch_size > 0:
-            n_size = int(args.gnina_batch_size)
-            num_n_chunks = max(1, (len(ligands) + n_size - 1) // n_size)
-            n_batches = [ligands[i::num_n_chunks] for i in range(num_n_chunks)]
-            for idx, batch in enumerate(n_batches):
+        if args.unidock_batch_size > 0:
+            u_size = int(args.unidock_batch_size)
+            num_u_chunks = max(1, (len(ligands) + u_size - 1) // u_size)
+            u_batches = [ligands[i::num_u_chunks] for i in range(num_u_chunks)]
+            for idx, batch in enumerate(u_batches):
                 sdf_list = [Path(item["path_sdf"]).resolve() for item in batch]
-                out_sdf = Path(f"gnina_chunk_{idx:03d}.sdf")
+                out_sdf = Path(f"unidock_chunk_{idx:03d}.sdf")
                 merge_sdf_files(sdf_list, out_sdf)
-                gnina_chunks.append(
+                unidock_chunks.append(
                     {
                         "chunk_idx": idx,
                         "receptor": "",
@@ -150,13 +150,13 @@ def main() -> None:
                     }
                 )
 
-    manifest = {"glide_chunks": glide_chunks, "gnina_chunks": gnina_chunks}
+    manifest = {"glide_chunks": glide_chunks, "unidock_chunks": unidock_chunks}
     Path(args.out_manifest).write_text(
         json.dumps(manifest, indent=2), encoding="utf-8"
     )
     print(
         f"Batched {len(ligands)} substance(s): {len(glide_chunks)} Glide chunk(s) (size={args.glide_batch_size}), "
-        f"{len(gnina_chunks)} GNINA chunk(s) (size={args.gnina_batch_size}) [mode={mode}]."
+        f"{len(unidock_chunks)} Uni-Dock chunk(s) (size={args.unidock_batch_size}) [mode={mode}]."
     )
 
 
