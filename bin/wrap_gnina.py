@@ -148,11 +148,67 @@ def main():
                         orig_m.SetProp(prop, sc_m.GetProp(prop))
                     w.write(orig_m)
         else:
+            import json
+            import socket
+            import time
+
+            raw_poses = [m for m in out_suppl if m is not None]
+            total_poses = len(raw_poses)
+            udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            master_ip = os.environ.get("MASTER_IP", "192.168.1.101")
+            udp_port = int(os.environ.get("UDP_PORT", "8089"))
+            node_name = (
+                os.environ.get("SLURM_NODENAME")
+                or os.environ.get("SLURMD_NODENAME")
+                or socket.gethostname().split(".")[0]
+            )
+            task_id = (
+                os.environ.get("NXF_TASK_NAME")
+                or (
+                    f"{os.environ.get('SLURM_JOB_NAME')} (#{os.environ.get('SLURM_JOB_ID', 0)})"
+                    if os.environ.get("SLURM_JOB_NAME")
+                    else None
+                )
+                or f"gnina_post_{os.getpid()}"
+            )
+            t_post_start = time.monotonic()
+
+            def _emit_post_udp(p_idx: int, ev: str = "update"):
+                if total_poses == 0:
+                    return
+                el = max(0.001, time.monotonic() - t_post_start)
+                rate = p_idx / el if p_idx > 0 else 0.0
+                rem = max(0, total_poses - p_idx)
+                eta_s = f"{int(rem / rate)}s" if rate > 0 and rem > 0 else "done"
+                payload = {
+                    "tool": "gnina",
+                    "task": task_id,
+                    "session_id": f"gnina_{task_id}",
+                    "stage": "Restore H",
+                    "node": node_name,
+                    "event": ev,
+                    "step": p_idx,
+                    "total": total_poses,
+                    "dt_ps": None,
+                    "unit": "pose",
+                    "hardware": {"cpu": {"allocated_cores": args.cpus}},
+                    "performance": {"elapsed_s": round(el, 1)},
+                    "display_step": p_idx,
+                    "display_total": total_poses,
+                    "step_info": f"[cyan]{p_idx}/{total_poses} pose[/cyan] [dim](Restore H)[/dim]",
+                    "speed": f"{rate:>5.1f} pose/s" if rate > 0 else "-- pose/s",
+                    "eta": eta_s,
+                }
+                try:
+                    udp_sock.sendto(
+                        json.dumps(payload).encode("utf-8"), (master_ip, udp_port)
+                    )
+                except Exception:
+                    pass
+
             with Chem.SDWriter(tmp_sdf) as w:
                 w.SetForceV3000(False)
-                for m in out_suppl:
-                    if m is None:
-                        continue
+                for p_idx, m in enumerate(raw_poses, 1):
                     raw_tag = m.GetProp("_Name").strip() if m.HasProp("_Name") else ""
                     if not raw_tag and m.HasProp("s_m_title"):
                         raw_tag = m.GetProp("s_m_title").strip()
@@ -178,6 +234,10 @@ def main():
                     if restored_mol.HasProp("s_m_title"):
                         restored_mol.SetProp("s_m_title", orig_title)
                     w.write(restored_mol)
+                    if p_idx % 5 == 0 or p_idx == total_poses:
+                        _emit_post_udp(p_idx)
+
+            _emit_post_udp(total_poses, ev="exit")
 
         os.replace(tmp_sdf, args.out_sdf)
         Path(tagged_input_sdf).unlink(missing_ok=True)

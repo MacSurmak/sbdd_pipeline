@@ -359,6 +359,57 @@ def declash_sequential(
     mol_slices = [slice(m.start, m.end) for m in mol_ranges]
     coords = wrap_molecules(coords.astype(np.float64), L, mol_slices)
 
+    import json
+    import os
+    import socket
+    import time
+
+    udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    master_ip = os.environ.get("MASTER_IP", "192.168.1.101")
+    udp_port = int(os.environ.get("UDP_PORT", "8089"))
+    node_name = (
+        os.environ.get("SLURM_NODENAME")
+        or os.environ.get("SLURMD_NODENAME")
+        or socket.gethostname().split(".")[0]
+    )
+    task_id = (
+        os.environ.get("NXF_TASK_NAME")
+        or (
+            f"{os.environ.get('SLURM_JOB_NAME')} (#{os.environ.get('SLURM_JOB_ID', 0)})"
+            if os.environ.get("SLURM_JOB_NAME")
+            else None
+        )
+        or f"declash_{os.getpid()}"
+    )
+    t_start = time.monotonic()
+
+    def _emit_declash_udp(step_i: int, n_clashes: int, event: str = "update"):
+        elapsed = max(0.001, time.monotonic() - t_start)
+        rate = step_i / elapsed if step_i > 0 else 0.0
+        payload = {
+            "tool": "declash",
+            "task": task_id,
+            "session_id": f"declash_{task_id}",
+            "stage": f"clashes:{n_clashes}",
+            "node": node_name,
+            "event": event,
+            "step": step_i,
+            "total": niter,
+            "dt_ps": None,
+            "unit": "it",
+            "hardware": {"cpu": {"allocated_cores": 1}},
+            "performance": {"elapsed_s": round(elapsed, 1)},
+            "display_step": step_i,
+            "display_total": niter,
+            "step_info": f"[cyan]{step_i}/{niter} it[/cyan] [dim](clashes: {n_clashes})[/dim]",
+            "speed": f"{rate:>5.1f} it/s" if rate > 0 else "-- it/s",
+            "eta": f"{int((niter - step_i) / rate)}s" if rate > 0 and step_i < niter else "done",
+        }
+        try:
+            udp_sock.sendto(json.dumps(payload).encode("utf-8"), (master_ip, udp_port))
+        except Exception:
+            pass
+
     for it in range(niter):
         clashes = find_clashes(
             coords,
@@ -369,7 +420,9 @@ def declash_sequential(
             max_pairs=max_pairs,
             heavy_only=heavy_only,
         )
+        _emit_declash_udp(it + 1, len(clashes))
         if not clashes:
+            _emit_declash_udp(niter, 0, event="exit")
             if verbose:
                 print(f"iter {it:3d}: clashes=0")
             return coords, {
@@ -456,6 +509,7 @@ def declash_sequential(
     final = find_clashes(
         coords, L, atom_molid, atomname, cutoff, max_pairs=500000, heavy_only=heavy_only
     )
+    _emit_declash_udp(niter, len(final), event="exit")
     return coords, {
         "cutoff_nm": float(cutoff),
         "iterations": float(niter),
