@@ -263,7 +263,7 @@ def cmd_ligprep(args):
         # geometries, while '-epik' and '-s' are permitted exclusively to sample physiological
         # protonation microstates, tautomers, and labile pyramidal tertiary nitrogen inversions in solution.
         batch_out_maegz = Path("batch_out.maegz")
-        run_cmd(
+        res = run_cmd(
             get_tool("ligprep")
             + [
                 "-isd",
@@ -293,6 +293,8 @@ def cmd_ligprep(args):
             ]
             print(
                 f"FATAL: Ligprep batch output missing or empty!\n"
+                f"--- LIGPREP STDOUT ---\n{res.stdout}\n"
+                f"--- LIGPREP STDERR ---\n{res.stderr}\n"
                 + ("\n".join(logs_dump) if logs_dump else "No .log files found."),
                 file=sys.stderr,
             )
@@ -352,7 +354,7 @@ def cmd_ligprep(args):
         else "-isd"
     )
     job_stem = Path(args.out_maegz).stem
-    run_cmd(
+    res = run_cmd(
         get_tool("ligprep")
         + [
             in_flag,
@@ -382,7 +384,10 @@ def cmd_ligprep(args):
             "\n".join(logs_dump) if logs_dump else "No .log files found in scratch."
         )
         print(
-            f"FATAL: Ligprep output missing or empty: {args.out_maegz}\n{logs_str}",
+            f"FATAL: Ligprep output missing or empty: {args.out_maegz}\n"
+            f"--- LIGPREP STDOUT ---\n{res.stdout}\n"
+            f"--- LIGPREP STDERR ---\n{res.stderr}\n"
+            f"{logs_str}",
             file=sys.stderr,
         )
         sys.exit(1)
