@@ -57,7 +57,11 @@ def main():
     gnina_by_frame = defaultdict(list)
     for f in args.gnina_sdfs:
         p = Path(f)
-        frame_id = p.stem.replace("_rescored", "")
+        frame_id = (
+            p.stem.replace("_glide_rescored", "")
+            .replace("_unidock_rescored", "")
+            .replace("_rescored", "")
+        )
         gnina_by_frame[frame_id].append(p)
 
     all_data = []

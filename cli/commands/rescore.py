@@ -62,13 +62,15 @@ def run_rescore(
         expected_artifacts = [
             frame_dir / f"{frame.name}_dock.csv",
             frame_dir / f"{frame.name}_dock.sdf",
-            frame_dir / f"{frame.name}_rescored.sdf",
+            frame_dir / f"{frame.name}_glide_rescored.sdf",
             frame_dir / f"{frame.name}_glide_rmsd.csv",
-            frame_dir / f"{frame.name}_gnina_docked_all.sdf",
-            frame_dir / f"{frame.name}_gnina_rmsd.csv",
+            frame_dir / f"{frame.name}_unidock_dock.sdf",
+            frame_dir / f"{frame.name}_unidock_rescored.sdf",
+            frame_dir / f"{frame.name}_unidock_rmsd.csv",
         ]
         for art in expected_artifacts:
-            dock_summary_files.add(str(art))
+            if art.exists():
+                dock_summary_files.add(str(art))
 
     if not tasks:
         console.print(
@@ -194,10 +196,11 @@ def run_rescore(
     table.add_column("Receptor", style="cyan")
     table.add_column("Ligand", style="bold")
     table.add_column("GlideScore", justify="right")
+    table.add_column("UniDock Vina", justify="right")
     table.add_column("CNN Affinity", justify="right")
     table.add_column("MM-GBSA (kcal/mol)", justify="right", style="bold magenta")
     table.add_column("Glide RMSD (Å)", justify="center")
-    table.add_column("GNINA RMSD (Å)", justify="center")
+    table.add_column("UniDock RMSD (Å)", justify="center")
     table.add_column("Verdict", justify="center")
 
     with open(res_csv, "r", encoding="utf-8") as f:
@@ -206,10 +209,11 @@ def run_rescore(
             rec = row.get("Receptor", row.get("Frame", "-"))
             lig = row.get("Title", "-")
             gscore = row.get("GlideScore", "-")
-            cnn = row.get("Resc_CNNaffinity") or row.get("Dock_CNNaffinity") or "-"
+            uscore = row.get("UniDock_Vina", "-")
+            cnn = row.get("Glide_CNNaffinity") or row.get("UniDock_CNNaffinity") or "-"
             mmgbsa = row.get("MMGBSA", "-")
             g_rmsd = row.get("InSitu_RMSD_Glide_A", "-")
-            n_rmsd = row.get("InSitu_RMSD_GNINA_A", "-")
+            n_rmsd = row.get("InSitu_RMSD_UniDock_A", "-")
 
             def _fmt(val):
                 try:
@@ -245,6 +249,7 @@ def run_rescore(
                 rec,
                 lig,
                 _fmt(gscore),
+                _fmt(uscore),
                 _fmt(cnn),
                 _fmt(mmgbsa),
                 _color_rmsd(g_rmsd),

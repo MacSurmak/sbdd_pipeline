@@ -57,6 +57,7 @@ def load_project_configs(project_dir: Path) -> Dict[str, Any]:
     expected_configs = [
         "project.yaml",
         "glide.yaml",
+        "unidock.yaml",
         "gnina.yaml",
         "md.yaml",
         "membrane.yaml",
@@ -225,37 +226,99 @@ def _build_screen_args(config: Dict[str, Any], project_dir: Path) -> list:
             )
 
     glide_cfg = config.get("glide", {})
+    unidock_cfg = config.get("unidock", {})
     gnina_cfg = config.get("gnina", {})
-    g_en = glide_cfg.get("enabled", False)
-    n_en = gnina_cfg.get("enabled", False)
+    g_en = bool(glide_cfg.get("enabled", False))
+    u_en = bool(unidock_cfg.get("enabled", False))
+    n_en = bool(gnina_cfg.get("enabled", False))
 
-    if g_en and n_en:
+    if g_en and u_en:
         args.extend(["--dock_engine", "both"])
     elif g_en:
         args.extend(["--dock_engine", "glide"])
-    elif n_en:
-        args.extend(["--dock_engine", "gnina"])
+    elif u_en:
+        args.extend(["--dock_engine", "unidock"])
     else:
         raise ValueError(
-            "FATAL: At least one docking engine (glide or gnina) must be enabled for screening!"
+            "FATAL: At least one pose sampling engine (glide in glide.yaml or unidock in unidock.yaml) must be enabled!"
         )
 
-    if n_en:
-        gnina_mappings = [
-            ("exhaustiveness", "exhaustiveness"),
-            ("cnn_scoring", "cnn_scoring"),
-            ("num_modes", "num_modes"),
+    if u_en:
+        unidock_mappings = [
+            ("search_mode", "unidock_search_mode"),
+            ("scoring", "unidock_scoring"),
+            ("refine_step", "unidock_refine_step"),
+            ("num_modes", "unidock_num_modes"),
+            ("energy_range", "unidock_energy_range"),
             ("autobox_add", "autobox_add"),
-            ("batch_size", "gnina_batch_size"),
+            ("seed", "unidock_seed"),
+            ("batch_size", "unidock_batch_size"),
         ]
-        for yaml_k, nf_k in gnina_mappings:
-            if yaml_k not in gnina_cfg or gnina_cfg[yaml_k] is None:
+        for yaml_k, nf_k in unidock_mappings:
+            if yaml_k not in unidock_cfg or unidock_cfg[yaml_k] is None:
                 raise ValueError(
-                    f"FATAL: 'gnina.{yaml_k}' is required in gnina.yaml when GNINA is enabled!"
+                    f"FATAL: 'unidock.{yaml_k}' is required in unidock.yaml when Uni-Dock is enabled!"
                 )
-            args.extend([f"--{nf_k}", str(gnina_cfg[yaml_k])])
-        if int(gnina_cfg["batch_size"]) <= 0:
-            raise ValueError("FATAL: 'gnina.batch_size' must be a positive integer!")
+            args.extend([f"--{nf_k}", str(unidock_cfg[yaml_k])])
+
+        if str(unidock_cfg["search_mode"]) not in ("fast", "balance", "detail"):
+            raise ValueError(
+                f"FATAL: 'unidock.search_mode' must be 'fast', 'balance', or 'detail', got: '{unidock_cfg['search_mode']}'!"
+            )
+        if str(unidock_cfg["scoring"]) not in ("vina", "vinardo", "ad4"):
+            raise ValueError(
+                f"FATAL: 'unidock.scoring' must be 'vina', 'vinardo', or 'ad4', got: '{unidock_cfg['scoring']}'!"
+            )
+        if int(unidock_cfg["batch_size"]) <= 0 or int(unidock_cfg["num_modes"]) <= 0:
+            raise ValueError(
+                "FATAL: 'unidock.batch_size' and 'num_modes' must be positive integers!"
+            )
+
+        u_res = unidock_cfg.get("resources")
+        if not isinstance(u_res, dict):
+            raise ValueError(
+                "FATAL: 'unidock.resources' block is required in unidock.yaml!"
+            )
+        for rk in ["cpus", "memory_gb", "slurm_gres"]:
+            if rk not in u_res or u_res[rk] is None or str(u_res[rk]).strip() == "":
+                raise ValueError(
+                    f"FATAL: 'unidock.resources.{rk}' is required in unidock.yaml!"
+                )
+        u_cpus = int(u_res["cpus"])
+        u_mem = int(u_res["memory_gb"])
+        u_gres = str(u_res["slurm_gres"]).strip()
+        if u_cpus <= 0 or u_mem <= 0:
+            raise ValueError(
+                "FATAL: 'unidock.resources.cpus' and 'memory_gb' must be positive integers!"
+            )
+        args.extend(
+            [
+                "--unidock_cpus",
+                str(u_cpus),
+                "--unidock_mem_gb",
+                str(u_mem),
+                "--unidock_gres",
+                u_gres,
+            ]
+        )
+    else:
+        args.extend(["--unidock_batch_size", "0"])
+
+    args.extend(["--gnina_enabled", "true" if n_en else "false"])
+    if n_en:
+        for req_gk in ["rescore_mode", "autobox_add"]:
+            if req_gk not in gnina_cfg or gnina_cfg[req_gk] is None:
+                raise ValueError(
+                    f"FATAL: 'gnina.{req_gk}' is required in gnina.yaml when GNINA rescoring is enabled!"
+                )
+        r_mode = str(gnina_cfg["rescore_mode"]).strip()
+        if r_mode not in ("score_only", "minimize"):
+            raise ValueError(
+                f"FATAL: 'gnina.rescore_mode' must be 'score_only' or 'minimize', got: '{r_mode}'!"
+            )
+        args.extend(["--gnina_rescore_mode", r_mode])
+        if not u_en:
+            args.extend(["--autobox_add", str(gnina_cfg["autobox_add"])])
 
         g_res = gnina_cfg.get("resources")
         if not isinstance(g_res, dict):
@@ -291,8 +354,6 @@ def _build_screen_args(config: Dict[str, Any], project_dir: Path) -> list:
             and str(gnina_cfg["cnn_model"]).strip() != ""
         ):
             args.extend(["--cnn_model", str(gnina_cfg["cnn_model"]).strip()])
-    else:
-        args.extend(["--gnina_batch_size", "0"])
 
     if g_en:
         glide_mappings = [

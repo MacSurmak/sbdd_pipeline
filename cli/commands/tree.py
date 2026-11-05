@@ -133,13 +133,13 @@ def print_tree(
                 by_run.setdefault((dp.docking_run.name, dp.receptor_frame.name), []).append(dp)
             for (r_name, f_name), modes in by_run.items():
                 g_modes = [m for m in modes if m.engine == "glide"]
-                n_modes = [m for m in modes if m.engine == "gnina"]
+                u_modes = [m for m in modes if m.engine in ("unidock", "gnina")]
                 g_best = f"GScore: {g_modes[0].glide_score:.2f}" if g_modes and g_modes[0].glide_score is not None else ""
-                n_best = f"CNNaff: {n_modes[0].cnn_affinity:.2f}" if n_modes and n_modes[0].cnn_affinity is not None else ""
-                stats_str = ", ".join(s for s in [g_best, n_best] if s)
+                u_best = f"Vina: {u_modes[0].vina_affinity:.2f}" if u_modes and u_modes[0].vina_affinity is not None else ""
+                stats_str = ", ".join(s for s in [g_best, u_best] if s)
                 stats_label = f" [dim]({stats_str})[/dim]" if stats_str else ""
                 dock_branch.add(
-                    f"Run [cyan]{r_name}[/cyan] on Frame [cyan]{f_name}[/cyan]: {len(modes)} mode(s) (Glide: {len(g_modes)}, GNINA: {len(n_modes)}){stats_label}"
+                    f"Run [cyan]{r_name}[/cyan] on Frame [cyan]{f_name}[/cyan]: {len(modes)} mode(s) (Glide: {len(g_modes)}, UniDock: {len(u_modes)}){stats_label}"
                 )
 
         session.close()
@@ -292,9 +292,9 @@ def print_tree(
                     dp for dp in dr.docked_poses if dp.receptor_frame.name == f_name
                 ]
                 g_count = sum(1 for dp in f_poses if dp.engine == "glide")
-                n_count = sum(1 for dp in f_poses if dp.engine == "gnina")
+                u_count = sum(1 for dp in f_poses if dp.engine in ("unidock", "gnina"))
                 dr_node.add(
-                    f"Frame [cyan]{f_name}[/cyan]: {len( {dp.substance_id for dp in f_poses} )} substance(s) [dim](Glide: {g_count} modes, GNINA: {n_count} modes)[/dim]"
+                    f"Frame [cyan]{f_name}[/cyan]: {len( {dp.substance_id for dp in f_poses} )} substance(s) [dim](Glide: {g_count} modes, UniDock: {u_count} modes)[/dim]"
                 )
 
     # 2. Chemical Substances: Structural Focus Entities vs Screening Library Pools

@@ -45,11 +45,21 @@ def compute_pose_consensus_rmsd(df: pd.DataFrame, dock_dir: Path):
         return poses_by_title
 
     glide_cache: dict[str, dict[str, Chem.Mol]] = {}
-    gnina_cache: dict[str, dict[str, Chem.Mol]] = {}
+    unidock_cache: dict[str, dict[str, Chem.Mol]] = {}
     for rec_val in df["Receptor"].dropna().unique():
         r_id = str(rec_val).strip()
-        glide_cache[r_id] = _index_top_poses(dock_dir / f"{r_id}_dock.sdf")
-        gnina_cache[r_id] = _index_top_poses(dock_dir / f"{r_id}_gnina_docked_all.sdf")
+        glide_sdf = (
+            dock_dir / f"{r_id}_glide_rescored.sdf"
+            if (dock_dir / f"{r_id}_glide_rescored.sdf").exists()
+            else dock_dir / f"{r_id}_dock.sdf"
+        )
+        unidock_sdf = (
+            dock_dir / f"{r_id}_unidock_rescored.sdf"
+            if (dock_dir / f"{r_id}_unidock_rescored.sdf").exists()
+            else dock_dir / f"{r_id}_unidock_dock.sdf"
+        )
+        glide_cache[r_id] = _index_top_poses(glide_sdf)
+        unidock_cache[r_id] = _index_top_poses(unidock_sdf)
 
     rmsd_list = []
     for _, row in df.iterrows():
@@ -57,9 +67,9 @@ def compute_pose_consensus_rmsd(df: pd.DataFrame, dock_dir: Path):
         title = str(row["Title"]).strip()
 
         mg = glide_cache.get(rec_id, {}).get(title)
-        mn = gnina_cache.get(rec_id, {}).get(title)
-        if mg is not None and mn is not None:
-            val = compute_symmetry_rmsd(mg, mn)
+        mu = unidock_cache.get(rec_id, {}).get(title)
+        if mg is not None and mu is not None:
+            val = compute_symmetry_rmsd(mg, mu)
             rmsd_list.append(round(val, 3))
         else:
             rmsd_list.append(None)
@@ -69,25 +79,28 @@ def compute_pose_consensus_rmsd(df: pd.DataFrame, dock_dir: Path):
 
 
 def calculate_consensus_score(df: pd.DataFrame) -> pd.DataFrame:
-    """Computes Percentile Rank consensus score (0-100) exactly matching original pipeline."""
-    if "GlideScore" in df.columns:
+    """
+    Computes symmetric Percentile Rank score (0-100) strictly from native physical scores
+    (GlideScore and UniDock_Vina, plus MMGBSA when executed), keeping GNINA CNN metrics
+    recorded as separate orthogonal columns.
+    """
+    if "GlideScore" in df.columns and df["GlideScore"].notna().any():
         df["PR_Glide"] = df["GlideScore"].rank(ascending=False, pct=True).fillna(0.0)
-    if "MMGBSA" in df.columns:
+    if "UniDock_Vina" in df.columns and df["UniDock_Vina"].notna().any():
+        df["PR_UniDock"] = df["UniDock_Vina"].rank(ascending=False, pct=True).fillna(0.0)
+    if "MMGBSA" in df.columns and df["MMGBSA"].notna().any():
         df["PR_MMGBSA"] = df["MMGBSA"].rank(ascending=False, pct=True).fillna(0.0)
-    if "Resc_CNNaffinity" in df.columns:
-        df["PR_CNN_Resc"] = (
-            df["Resc_CNNaffinity"].rank(ascending=True, pct=True).fillna(0.0)
+    if "Glide_CNNaffinity" in df.columns and df["Glide_CNNaffinity"].notna().any():
+        df["PR_Glide_CNN"] = (
+            df["Glide_CNNaffinity"].rank(ascending=True, pct=True).fillna(0.0)
         )
-    if "Dock_CNNaffinity" in df.columns:
-        df["PR_GNINA_Dock"] = (
-            df["Dock_CNNaffinity"].rank(ascending=True, pct=True).fillna(0.0)
+    if "UniDock_CNNaffinity" in df.columns and df["UniDock_CNNaffinity"].notna().any():
+        df["PR_UniDock_CNN"] = (
+            df["UniDock_CNNaffinity"].rank(ascending=True, pct=True).fillna(0.0)
         )
 
-    # Gracefully adapt consensus ranking whether MM-GBSA was executed or deferred
-    candidate_cols = ["PR_Glide", "PR_MMGBSA", "PR_CNN_Resc"]
+    candidate_cols = ["PR_Glide", "PR_UniDock", "PR_MMGBSA"]
     pr_cols = [c for c in candidate_cols if c in df.columns and df[c].notna().any()]
-    if not pr_cols:
-        pr_cols = [c for c in ["PR_GNINA_Dock"] if c in df.columns]
 
     if not pr_cols:
         df["Ultimate_Score"] = 0.0
@@ -156,29 +169,37 @@ def main():
     for rec_id in receptors_ordered:
         g_file = dock_dir / f"{rec_id}_dock.csv"
         m_file = analysis_dir / f"{rec_id}_mmgbsa-out.csv"
-        r_file = dock_dir / f"{rec_id}_rescored.sdf"
-        d_file = dock_dir / f"{rec_id}_gnina_docked_all.sdf"
+        g_resc_file = dock_dir / f"{rec_id}_glide_rescored.sdf"
+        u_resc_file = (
+            dock_dir / f"{rec_id}_unidock_rescored.sdf"
+            if (dock_dir / f"{rec_id}_unidock_rescored.sdf").exists()
+            else dock_dir / f"{rec_id}_unidock_dock.sdf"
+        )
 
         glide_data = parse_glide_csv(g_file) if g_file.exists() else {}
         prime_data = parse_prime_csv(m_file) if m_file.exists() else {}
-        resc_data = parse_gnina_sdf(r_file, prefix="Resc_") if r_file.exists() else {}
-        dock_data = parse_gnina_sdf(d_file, prefix="Dock_") if d_file.exists() else {}
+        glide_cnn_data = (
+            parse_gnina_sdf(g_resc_file, prefix="Glide_") if g_resc_file.exists() else {}
+        )
+        unidock_data = (
+            parse_gnina_sdf(u_resc_file, prefix="UniDock_") if u_resc_file.exists() else {}
+        )
 
         titles = sorted(
             list(
                 set(glide_data.keys())
                 | set(prime_data.keys())
-                | set(resc_data.keys())
-                | set(dock_data.keys())
+                | set(glide_cnn_data.keys())
+                | set(unidock_data.keys())
             )
         )
 
         for t in titles:
             r = {"Title": t, "Receptor": rec_id, "Frame": rec_id}
             r.update(glide_data.get(t, {}))
+            r.update(glide_cnn_data.get(t, {}))
+            r.update(unidock_data.get(t, {}))
             r.update(prime_data.get(t, {}))
-            r.update(resc_data.get(t, {}))
-            r.update(dock_data.get(t, {}))
             rows.append(r)
 
     df = pd.DataFrame(rows)
@@ -217,15 +238,15 @@ def main():
     )
     df_resolved = compute_pose_consensus_rmsd(df_resolved, dock_dir)
 
-    # Read separate Glide and GNINA in-situ RMSD directly from calculated CSVs
+    # Read separate Glide and Uni-Dock in-situ RMSD directly from calculated CSVs
     glide_rmsd_map = {}
-    gnina_rmsd_map = {}
+    unidock_rmsd_map = {}
 
     # Deterministic lookup per target receptor from manifest without filesystem glob scanning
     for rec_id in receptors_ordered:
         for engine, target_map, col_name in [
             ("glide", glide_rmsd_map, "InSitu_RMSD_Glide_A"),
-            ("gnina", gnina_rmsd_map, "InSitu_RMSD_GNINA_A"),
+            ("unidock", unidock_rmsd_map, "InSitu_RMSD_UniDock_A"),
         ]:
             rmsd_csv = dock_dir / f"{rec_id}_{engine}_rmsd.csv"
             if rmsd_csv.exists() and rmsd_csv.stat().st_size > 0:
@@ -237,21 +258,20 @@ def main():
                         target_map[(r_rec, r_title)] = float(r_row[col_name])
 
     glide_rmsds = []
-    gnina_rmsds = []
+    unidock_rmsds = []
     combined_rmsds = []
 
     for _, row in df_resolved.iterrows():
         rec_id = str(row["Receptor"]).strip()
         title = str(row["Title"]).strip()
         val_glide = glide_rmsd_map.get((rec_id, title), np.nan)
-        val_gnina = gnina_rmsd_map.get((rec_id, title), np.nan)
+        val_unidock = unidock_rmsd_map.get((rec_id, title), np.nan)
         glide_rmsds.append(val_glide)
-        gnina_rmsds.append(val_gnina)
-        # Primary RMSD defaults to Glide if available, otherwise GNINA
-        combined_rmsds.append(val_glide if not np.isnan(val_glide) else val_gnina)
+        unidock_rmsds.append(val_unidock)
+        combined_rmsds.append(val_glide if not np.isnan(val_glide) else val_unidock)
 
     df_resolved["InSitu_RMSD_Glide_A"] = glide_rmsds
-    df_resolved["InSitu_RMSD_GNINA_A"] = gnina_rmsds
+    df_resolved["InSitu_RMSD_UniDock_A"] = unidock_rmsds
     df_resolved["InSitu_RMSD_A"] = combined_rmsds
 
     # Delta score relative to native ligand if present

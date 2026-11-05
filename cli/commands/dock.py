@@ -306,10 +306,10 @@ def _ingest_docking_receipt(
             )
 
         frame_dir = sdf_file.parent
-        resc_sdf = frame_dir / f"{frame_name}_rescored.sdf"
+        resc_sdf = frame_dir / f"{frame_name}_{eng}_rescored.sdf"
         source_sdf_for_props = (
             resc_sdf
-            if (eng == "glide" and resc_sdf.exists() and resc_sdf.stat().st_size > 0)
+            if (resc_sdf.exists() and resc_sdf.stat().st_size > 0)
             else sdf_file
         )
 
@@ -364,7 +364,9 @@ def _ingest_docking_receipt(
                 if m_idx <= len(csv_list):
                     g_score = csv_list[m_idx - 1]
 
-            v_aff = _parse_mol_float_prop(m, ["minimizedAffinity", "affinity"])
+            v_aff = _parse_mol_float_prop(
+                m, ["unidock_vina_score", "minimizedAffinity", "affinity"]
+            )
             c_score = _parse_mol_float_prop(m, ["CNNscore"])
             c_aff = _parse_mol_float_prop(m, ["CNNaffinity"])
 
@@ -401,20 +403,20 @@ def _ingest_docking_receipt(
             ).append((dp, mol_clean))
             total_modes_saved += 1
 
-    # Compute exact symmetry-aware Cross-Engine RMSD between Glide modes and GNINA modes
+    # Compute exact symmetry-aware Cross-Engine RMSD between Glide modes and Uni-Dock modes
     from cli.core.chem import compute_pairwise_symmetry_rmsd_matrix
 
     for (frame_name, m_title), eng_dict in parsed_modes.items():
         glide_list = eng_dict.get("glide", [])
-        gnina_list = eng_dict.get("gnina", [])
-        if glide_list and gnina_list:
+        unidock_list = eng_dict.get("unidock", [])
+        if glide_list and unidock_list:
             g_mols = [item[1] for item in glide_list]
-            n_mols = [item[1] for item in gnina_list]
-            min_for_g, min_for_n = compute_pairwise_symmetry_rmsd_matrix(g_mols, n_mols)
+            u_mols = [item[1] for item in unidock_list]
+            min_for_g, min_for_u = compute_pairwise_symmetry_rmsd_matrix(g_mols, u_mols)
             for g_idx, (g_dp, _) in enumerate(glide_list):
                 g_dp.cross_engine_rmsd = min_for_g[g_idx]
-            for n_idx, (n_dp, _) in enumerate(gnina_list):
-                n_dp.cross_engine_rmsd = min_for_n[n_idx]
+            for u_idx, (u_dp, _) in enumerate(unidock_list):
+                u_dp.cross_engine_rmsd = min_for_u[u_idx]
 
     session.commit()
     return dock_run, parsed_modes, total_modes_saved
@@ -552,9 +554,9 @@ def run_dock(
     summary_rows = []
     for (frame_name, m_title), eng_dict in parsed_modes.items():
         glide_list = eng_dict.get("glide", [])
-        gnina_list = eng_dict.get("gnina", [])
+        unidock_list = eng_dict.get("unidock", [])
 
-        # Select representative pose strictly by best scoring energy/affinity
+        # Select representative pose strictly by each engine's native physical score
         g_best = (
             min(
                 glide_list,
@@ -565,40 +567,40 @@ def run_dock(
             if glide_list
             else None
         )
-        n_best = (
-            max(
-                gnina_list,
+        u_best = (
+            min(
+                unidock_list,
                 key=lambda x: (
-                    x[0].cnn_affinity
-                    if x[0].cnn_affinity is not None
-                    else float("-inf")
+                    x[0].vina_affinity
+                    if x[0].vina_affinity is not None
+                    else float("inf")
                 ),
             )
-            if gnina_list
+            if unidock_list
             else None
         )
 
         g_top = g_best[0] if g_best else None
-        n_top = n_best[0] if n_best else None
+        u_top = u_best[0] if u_best else None
 
         top_pair_rmsd = None
-        if g_best and n_best:
-            top_pair_rmsd = round(compute_symmetry_rmsd(g_best[1], n_best[1]), 3)
+        if g_best and u_best:
+            top_pair_rmsd = round(compute_symmetry_rmsd(g_best[1], u_best[1]), 3)
 
         summary_rows.append(
             {
                 "frame": frame_name,
                 "title": m_title,
                 "n_glide": len(glide_list),
-                "n_gnina": len(gnina_list),
+                "n_unidock": len(unidock_list),
                 "g_mode": g_top.mode_index if g_top else None,
                 "g_score": g_top.glide_score if g_top else None,
                 "g_cnn_aff": g_top.cnn_affinity if g_top else None,
                 "g_cnn_sc": g_top.cnn_score if g_top else None,
-                "n_mode": n_top.mode_index if n_top else None,
-                "n_vina": n_top.vina_affinity if n_top else None,
-                "n_cnn_aff": n_top.cnn_affinity if n_top else None,
-                "n_cnn_sc": n_top.cnn_score if n_top else None,
+                "u_mode": u_top.mode_index if u_top else None,
+                "u_vina": u_top.vina_affinity if u_top else None,
+                "u_cnn_aff": u_top.cnn_affinity if u_top else None,
+                "u_cnn_sc": u_top.cnn_score if u_top else None,
                 "pair_rmsd": top_pair_rmsd,
             }
         )
@@ -606,23 +608,23 @@ def run_dock(
     summary_rows.sort(
         key=lambda r: (
             (r["g_score"] if r["g_score"] is not None else 0.0)
-            - (r["n_cnn_aff"] if r["n_cnn_aff"] is not None else 0.0)
+            + (r["u_vina"] if r["u_vina"] is not None else 0.0)
         )
     )
 
     table = Table(
-        title=f"🎯 Virtual Screening Run '{run_name}' Summary (Best Energy Poses | Total Modes in DB: {total_modes_saved})",
+        title=f"🎯 Virtual Screening Run '{run_name}' Summary (Best Native Score Poses | Total Modes in DB: {total_modes_saved})",
         show_header=True,
     )
     table.add_column("Rank", justify="right", style="bold")
     table.add_column("Frame", style="cyan")
     table.add_column("Substance", style="bold")
-    table.add_column("Modes (G/N)", justify="center", style="dim")
+    table.add_column("Modes (G/U)", justify="center", style="dim")
     table.add_column("Glide Score", justify="right")
     table.add_column("Glide CNNaff (p)", justify="right")
-    table.add_column("GNINA CNNaff (p)", justify="right")
-    table.add_column("GNINA Vina", justify="right")
-    table.add_column("Glide↔GNINA ΔRMSD (Å)", justify="center")
+    table.add_column("UniDock Vina", justify="right")
+    table.add_column("UniDock CNNaff (p)", justify="right")
+    table.add_column("Glide↔UniDock ΔRMSD (Å)", justify="center")
 
     for rank_idx, r in enumerate(summary_rows, start=1):
         g_cnn_str = (
@@ -630,20 +632,20 @@ def run_dock(
             if (r["g_cnn_aff"] is not None and r["g_cnn_sc"] is not None)
             else _format_metric(r["g_cnn_aff"])
         )
-        n_cnn_str = (
-            f"{r['n_cnn_aff']:.2f} ({r['n_cnn_sc']:.2f})"
-            if (r["n_cnn_aff"] is not None and r["n_cnn_sc"] is not None)
-            else _format_metric(r["n_cnn_aff"])
+        u_cnn_str = (
+            f"{r['u_cnn_aff']:.2f} ({r['u_cnn_sc']:.2f})"
+            if (r["u_cnn_aff"] is not None and r["u_cnn_sc"] is not None)
+            else _format_metric(r["u_cnn_aff"])
         )
         table.add_row(
             str(rank_idx),
             r["frame"],
             r["title"],
-            f"{r['n_glide']}/{r['n_gnina']}",
+            f"{r['n_glide']}/{r['n_unidock']}",
             _format_metric(r["g_score"]),
             g_cnn_str,
-            n_cnn_str,
-            _format_metric(r["n_vina"]),
+            _format_metric(r["u_vina"]),
+            u_cnn_str,
             _color_rmsd(r["pair_rmsd"]),
         )
 
@@ -781,7 +783,7 @@ def run_redock(
     summary_rows = []
     for (frame_name, m_title), eng_dict in parsed_modes.items():
         glide_list = eng_dict.get("glide", [])
-        gnina_list = eng_dict.get("gnina", [])
+        unidock_list = eng_dict.get("unidock", [])
 
         # Select representative pose strictly by minimum symmetry-aware In-Situ RMSD to native pose
         g_best = (
@@ -794,40 +796,40 @@ def run_redock(
             if glide_list
             else None
         )
-        n_best = (
+        u_best = (
             min(
-                gnina_list,
+                unidock_list,
                 key=lambda x: (
                     x[0].insitu_rmsd if x[0].insitu_rmsd is not None else float("inf")
                 ),
             )
-            if gnina_list
+            if unidock_list
             else None
         )
 
         g_top = g_best[0] if g_best else None
-        n_top = n_best[0] if n_best else None
+        u_top = u_best[0] if u_best else None
 
         best_pair_rmsd = None
-        if g_best and n_best:
-            best_pair_rmsd = round(compute_symmetry_rmsd(g_best[1], n_best[1]), 3)
+        if g_best and u_best:
+            best_pair_rmsd = round(compute_symmetry_rmsd(g_best[1], u_best[1]), 3)
 
         summary_rows.append(
             {
                 "frame": frame_name,
                 "title": m_title,
                 "n_glide": len(glide_list),
-                "n_gnina": len(gnina_list),
+                "n_unidock": len(unidock_list),
                 "g_mode": g_top.mode_index if g_top else None,
                 "g_score": g_top.glide_score if g_top else None,
                 "g_cnn_aff": g_top.cnn_affinity if g_top else None,
                 "g_cnn_sc": g_top.cnn_score if g_top else None,
                 "g_rmsd": g_top.insitu_rmsd if g_top else None,
-                "n_mode": n_top.mode_index if n_top else None,
-                "n_vina": n_top.vina_affinity if n_top else None,
-                "n_cnn_aff": n_top.cnn_affinity if n_top else None,
-                "n_cnn_sc": n_top.cnn_score if n_top else None,
-                "n_rmsd": n_top.insitu_rmsd if n_top else None,
+                "u_mode": u_top.mode_index if u_top else None,
+                "u_vina": u_top.vina_affinity if u_top else None,
+                "u_cnn_aff": u_top.cnn_affinity if u_top else None,
+                "u_cnn_sc": u_top.cnn_score if u_top else None,
+                "u_rmsd": u_top.insitu_rmsd if u_top else None,
                 "pair_rmsd": best_pair_rmsd,
             }
         )
@@ -835,7 +837,7 @@ def run_redock(
     summary_rows.sort(
         key=lambda r: min(
             r["g_rmsd"] if r["g_rmsd"] is not None else float("inf"),
-            r["n_rmsd"] if r["n_rmsd"] is not None else float("inf"),
+            r["u_rmsd"] if r["u_rmsd"] is not None else float("inf"),
         )
     )
 
@@ -847,28 +849,34 @@ def run_redock(
     table.add_column("Native Ligand", style="bold")
     table.add_column("Glide Best Mode", justify="center")
     table.add_column("Glide Score", justify="right")
+    table.add_column("Glide CNNaff (p)", justify="right")
     table.add_column("Glide Ref RMSD (Å)", justify="center")
-    table.add_column("GNINA Best Mode", justify="center")
-    table.add_column("GNINA CNNaff (p)", justify="right")
-    table.add_column("GNINA Vina", justify="right")
-    table.add_column("GNINA Ref RMSD (Å)", justify="center")
-    table.add_column("Glide↔GNINA ΔRMSD (Å)", justify="center")
+    table.add_column("UniDock Best Mode", justify="center")
+    table.add_column("UniDock Vina", justify="right")
+    table.add_column("UniDock CNNaff (p)", justify="right")
+    table.add_column("UniDock Ref RMSD (Å)", justify="center")
+    table.add_column("Glide↔UniDock ΔRMSD (Å)", justify="center")
     table.add_column("Verdict", justify="center")
 
     for r in summary_rows:
         g_mode_str = f"#{r['g_mode']}/{r['n_glide']}" if r["g_mode"] else "-"
-        n_mode_str = f"#{r['n_mode']}/{r['n_gnina']}" if r["n_mode"] else "-"
-        n_cnn_str = (
-            f"{r['n_cnn_aff']:.2f} ({r['n_cnn_sc']:.2f})"
-            if (r["n_cnn_aff"] is not None and r["n_cnn_sc"] is not None)
-            else _format_metric(r["n_cnn_aff"])
+        u_mode_str = f"#{r['u_mode']}/{r['n_unidock']}" if r["u_mode"] else "-"
+        g_cnn_str = (
+            f"{r['g_cnn_aff']:.2f} ({r['g_cnn_sc']:.2f})"
+            if (r["g_cnn_aff"] is not None and r["g_cnn_sc"] is not None)
+            else _format_metric(r["g_cnn_aff"])
+        )
+        u_cnn_str = (
+            f"{r['u_cnn_aff']:.2f} ({r['u_cnn_sc']:.2f})"
+            if (r["u_cnn_aff"] is not None and r["u_cnn_sc"] is not None)
+            else _format_metric(r["u_cnn_aff"])
         )
 
         vg = r["g_rmsd"]
-        vn = r["n_rmsd"]
+        vu = r["u_rmsd"]
         best_r = min(
             vg if vg is not None else float("inf"),
-            vn if vn is not None else float("inf"),
+            vu if vu is not None else float("inf"),
         )
         if best_r <= 2.0:
             verdict = "[bold green]✓ SUCCESS[/bold green]"
@@ -882,11 +890,12 @@ def run_redock(
             r["title"],
             g_mode_str,
             _format_metric(r["g_score"]),
+            g_cnn_str,
             _color_rmsd(vg),
-            n_mode_str,
-            n_cnn_str,
-            _format_metric(r["n_vina"]),
-            _color_rmsd(vn),
+            u_mode_str,
+            _format_metric(r["u_vina"]),
+            u_cnn_str,
+            _color_rmsd(vu),
             _color_rmsd(r["pair_rmsd"]),
             verdict,
         )
