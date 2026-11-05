@@ -6,6 +6,12 @@ import os
 import re
 from pathlib import Path
 
+# Prevent Intel MKL libiomp5.so vs GNU libgomp.so collision (OMP: Error #15 SIGABRT)
+# inside Schrodinger 2025-3 internal Python numpy.linalg.svd (ligprep3/htreat.py)
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+
 
 def get_tool(tool_name: str) -> list:
     if "SCHRODINGER" not in os.environ:
