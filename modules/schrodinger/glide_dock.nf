@@ -12,6 +12,7 @@ process GLIDE_DOCK {
     val(precision)
     val(poses_per_lig)
     val(forcefield)
+    val(postdock)
     val(lig_vscale)
     val(lig_ccut)
 
@@ -28,6 +29,7 @@ process GLIDE_DOCK {
         --precision ${precision} \\
         --poses_per_lig ${poses_per_lig} \\
         --forcefield ${forcefield} \\
+        --postdock "${postdock}" \\
         --lig_vscale ${lig_vscale} \\
         --lig_ccut ${lig_ccut} \\
         --out_pv glide_dock_pv.maegz \\

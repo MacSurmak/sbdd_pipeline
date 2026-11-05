@@ -32,6 +32,7 @@ workflow DOCK_LIBRARY {
     glide_precision     // val: "SP"
     poses_per_lig       // val: 16
     cnn_model           // val: "crossdock_default2018"
+    glide_postdock      // val: true/false
     glide_recep_vscale  // val: 1.0
     glide_lig_vscale    // val: 1.0
     glide_recep_ccut    // val: 0.25
@@ -97,6 +98,7 @@ workflow DOCK_LIBRARY {
             glide_precision,
             poses_per_lig,
             glide_forcefield,
+            glide_postdock,
             glide_lig_vscale,
             glide_lig_ccut
         )

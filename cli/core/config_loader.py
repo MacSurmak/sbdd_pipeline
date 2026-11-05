@@ -304,6 +304,7 @@ def _build_screen_args(config: Dict[str, Any], project_dir: Path) -> list:
             ("recep_ccut", "glide_recep_ccut"),
             ("lig_ccut", "glide_lig_ccut"),
             ("batch_size", "glide_batch_size"),
+            ("postdock", "glide_postdock"),
         ]
         for yaml_k, nf_k in glide_mappings:
             if yaml_k not in glide_cfg or glide_cfg[yaml_k] is None:

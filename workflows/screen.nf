@@ -107,7 +107,7 @@ workflow SCREEN_WF {
 
     // Validate Fail-Fast parameters before dispatching tasks
     if (params.dock_engine in ["glide", "both"]) {
-        if (!params.inner_box || !params.outer_box || !params.glide_forcefield || !params.glide_precision || !params.poses_per_lig || !params.glide_recep_vscale || !params.glide_lig_vscale || !params.glide_recep_ccut || !params.glide_lig_ccut) {
+        if (!params.inner_box || !params.outer_box || !params.glide_forcefield || !params.glide_precision || !params.poses_per_lig || params.glide_postdock == null || !params.glide_recep_vscale || !params.glide_lig_vscale || !params.glide_recep_ccut || !params.glide_lig_ccut) {
             error "FATAL: Glide docking parameters missing in configuration! Check glide.yaml."
         }
     }
@@ -140,6 +140,7 @@ workflow SCREEN_WF {
         params.glide_precision,
         params.poses_per_lig,
         params.cnn_model ?: "",
+        params.glide_postdock,
         params.glide_recep_vscale,
         params.glide_lig_vscale,
         params.glide_recep_ccut,
