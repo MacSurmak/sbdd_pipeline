@@ -135,15 +135,11 @@ def main():
 
         if args.mode == "rescore":
             in_suppl = Chem.SDMolSupplier(args.ligand, removeHs=False, sanitize=False)
-            in_mols = [m for m in in_suppl if m is not None]
-            scored_mols = [m for m in out_suppl if m is not None]
-            if len(in_mols) != len(scored_mols):
-                raise ValueError(
-                    f"FATAL: GNINA rescore count mismatch: input had {len(in_mols)} poses, output has {len(scored_mols)}"
-                )
             with Chem.SDWriter(tmp_sdf) as w:
                 w.SetForceV3000(False)
-                for orig_m, sc_m in zip(in_mols, scored_mols):
+                for orig_m, sc_m in zip(in_suppl, out_suppl):
+                    if orig_m is None or sc_m is None:
+                        continue
                     for prop in sc_m.GetPropNames():
                         orig_m.SetProp(prop, sc_m.GetProp(prop))
                     w.write(orig_m)

@@ -450,18 +450,6 @@ def transfer_coordinates_to_template(
             if src_n_atoms < tmpl_n_atoms and relax_missing_hydrogens:
                 temp_h = Chem.RemoveHs(res_mol)
                 temp_h = Chem.AddHs(temp_h, addCoords=True)
-                mp = AllChem.MMFFGetMoleculeProperties(temp_h)
-                ff = (
-                    AllChem.MMFFGetMoleculeForceField(temp_h, mp)
-                    if mp
-                    else AllChem.UFFGetMoleculeForceField(temp_h)
-                )
-                if ff:
-                    for a in temp_h.GetAtoms():
-                        if a.GetAtomicNum() != 1:
-                            ff.AddFixedPoint(a.GetIdx())
-                    ff.Minimize(maxIts=500)
-
                 temp_c = temp_h.GetConformer()
                 for orig_t, orig_s in heavy_map.items():
                     tmpl_hs = [
@@ -574,3 +562,69 @@ def compute_symmetry_rmsd(template_mol, target_mol) -> float:
             best_sq_dist = sq_dist
 
     return float(np.sqrt(best_sq_dist / float(n_atoms)))
+
+
+def compute_pairwise_symmetry_rmsd_matrix(
+    mols_a: list[Chem.Mol], mols_b: list[Chem.Mol]
+) -> tuple[list[float], list[float]]:
+    """
+    Computes all-against-all symmetry-aware heavy-atom RMSD matrix between two sets of poses
+    for the exact same substance (e.g. Glide modes vs GNINA modes) using single graph isomorphism
+    and vectorized NumPy tensor broadcasting.
+    Returns:
+        (min_rmsd_for_each_a, min_rmsd_for_each_b)
+    """
+    from rdkit import Chem
+    import numpy as np
+
+    if not mols_a or not mols_b:
+        return ([float("inf")] * len(mols_a), [float("inf")] * len(mols_b))
+
+    tmpl_heavy = Chem.RemoveHs(mols_a[0], sanitize=False)
+    n_heavy = tmpl_heavy.GetNumAtoms()
+    if n_heavy == 0:
+        return ([0.0] * len(mols_a), [0.0] * len(mols_b))
+
+    q_tmpl = Chem.Mol(tmpl_heavy)
+    for b in q_tmpl.GetBonds():
+        b.SetBondType(Chem.BondType.SINGLE)
+        b.SetIsAromatic(False)
+    for a in q_tmpl.GetAtoms():
+        a.SetFormalCharge(0)
+        a.SetIsotope(0)
+        a.SetNumExplicitHs(0)
+        a.SetNoImplicit(False)
+        a.SetNumRadicalElectrons(0)
+    q_tmpl.UpdatePropertyCache(strict=False)
+
+    matches = q_tmpl.GetSubstructMatches(q_tmpl, uniquify=False)
+    if not matches:
+        matches = [tuple(range(n_heavy))]
+
+    def _extract_heavy_coords(mol_list):
+        coords_arr = np.empty((len(mol_list), n_heavy, 3), dtype=np.float64)
+        for m_i, m in enumerate(mol_list):
+            m_h = Chem.RemoveHs(m, sanitize=False)
+            conf = m_h.GetConformer()
+            for a_i in range(n_heavy):
+                pos = conf.GetAtomPosition(a_i)
+                coords_arr[m_i, a_i, 0] = pos.x
+                coords_arr[m_i, a_i, 1] = pos.y
+                coords_arr[m_i, a_i, 2] = pos.z
+        return coords_arr
+
+    coords_a = _extract_heavy_coords(mols_a)
+    coords_b = _extract_heavy_coords(mols_b)
+
+    best_sq_dist = np.full((len(mols_a), len(mols_b)), np.inf, dtype=np.float64)
+
+    for match in matches:
+        perm_b = coords_b[:, match, :]
+        diff = coords_a[:, np.newaxis, :, :] - perm_b[np.newaxis, :, :, :]
+        sq_dist = np.sum(diff ** 2, axis=(2, 3)) / float(n_heavy)
+        best_sq_dist = np.minimum(best_sq_dist, sq_dist)
+
+    rmsd_mat = np.sqrt(best_sq_dist)
+    min_for_a = np.min(rmsd_mat, axis=1).round(3).tolist()
+    min_for_b = np.min(rmsd_mat, axis=0).round(3).tolist()
+    return min_for_a, min_for_b

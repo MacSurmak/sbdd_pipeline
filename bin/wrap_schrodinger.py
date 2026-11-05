@@ -136,21 +136,20 @@ def cmd_glide_dock(args):
     if Path("dock.csv").exists():
         Path("dock.csv").rename(args.out_csv)
 
-    # Strictly process pose geometries only if Glide successfully docked at least one molecule
+    # Export all docked ligand poses directly inline without spawning child Python interpreter
     if Path(args.out_pv).exists():
-        run_cmd(
-            get_tool("run")
-            + [
-                "python3",
-                f"{Path(__file__).parent}/pv_to_sdf.py",
-                "--pv",
-                args.out_pv,
-                "--sdf",
-                args.out_sdf,
-                "--max_poses",
-                args.poses_per_lig,
-            ]
-        )
+        from schrodinger import structure
+
+        with (
+            structure.StructureReader(args.out_pv) as reader,
+            structure.StructureWriter(args.out_sdf) as writer,
+        ):
+            for i, st in enumerate(reader):
+                if i == 0 and (
+                    st.property.get("b_glide_receptor", 0) == 1 or st.atom_total > 500
+                ):
+                    continue
+                writer.append(st)
     else:
         print(
             f"Notice: Glide found 0 valid poses for {args.ligands_mae} (steric clash). Legitimate negative result. Dropping from data stream."
@@ -344,7 +343,6 @@ def cmd_ligprep(args):
                     w_mae.append(st)
                     w_sdf.append(st)
 
-            _normalize_sdf_v2000(out_sdf)
             abs_mae = outdir_abs / out_mae
             abs_sdf = outdir_abs / out_sdf
             receipt_lines.append(f"{sub_name}\t{abs_mae}\t{abs_sdf}")

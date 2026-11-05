@@ -29,18 +29,14 @@ def merge_sdf_files(sdf_paths: list[Path], out_sdf: Path) -> None:
 
 
 def merge_maegz_files(mae_paths: list[Path], out_maegz: Path) -> None:
-    with gzip.open(out_maegz, "wb") as out_gz:
+    with open(out_maegz, "wb") as out_gz:
         for p in mae_paths:
             if not p.exists() or p.stat().st_size == 0:
                 raise FileNotFoundError(
                     f"FATAL: Prepared ligand MAEGZ missing or empty: {p}"
                 )
-            if p.suffix.lower() == ".maegz":
-                with gzip.open(p, "rb") as in_gz:
-                    shutil.copyfileobj(in_gz, out_gz)
-            else:
-                with open(p, "rb") as in_f:
-                    shutil.copyfileobj(in_f, out_gz)
+            with open(p, "rb") as in_f:
+                shutil.copyfileobj(in_f, out_gz)
 
 
 def main() -> None:

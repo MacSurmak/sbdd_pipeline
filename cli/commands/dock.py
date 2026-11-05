@@ -262,20 +262,6 @@ def _ingest_docking_receipt(
         )
         for item in plan["ligands"]
     }
-    templates_by_sub_id: dict[int, list[Chem.Mol]] = {}
-    for sub_obj in substance_by_title.values():
-        if sub_obj.id not in templates_by_sub_id:
-            suppl = Chem.SDMolSupplier(
-                str(Path(sub_obj.path_sdf).resolve()), removeHs=False, sanitize=False
-            )
-            m_list = [m for m in suppl if m is not None]
-            if not m_list:
-                session.close()
-                raise ValueError(
-                    f"FATAL: Failed to load LigPrep templates for '{sub_obj.name}' from {sub_obj.path_sdf}"
-                )
-            templates_by_sub_id[sub_obj.id] = m_list
-
     receipt_map: dict[tuple[str, str], Path] = {}
     with open(receipt_file, "r", encoding="utf-8") as rf:
         for line_num, line in enumerate(rf, start=1):
@@ -426,20 +412,19 @@ def _ingest_docking_receipt(
             total_modes_saved += 1
 
     # Compute exact symmetry-aware Cross-Engine RMSD between Glide modes and GNINA modes
+    from cli.core.chem import compute_pairwise_symmetry_rmsd_matrix
+
     for (frame_name, m_title), eng_dict in parsed_modes.items():
         glide_list = eng_dict.get("glide", [])
         gnina_list = eng_dict.get("gnina", [])
         if glide_list and gnina_list:
-            for g_dp, g_mol in glide_list:
-                g_dp.cross_engine_rmsd = round(
-                    min(compute_symmetry_rmsd(g_mol, n_mol) for _, n_mol in gnina_list),
-                    3,
-                )
-            for n_dp, n_mol in gnina_list:
-                n_dp.cross_engine_rmsd = round(
-                    min(compute_symmetry_rmsd(n_mol, g_mol) for _, g_mol in glide_list),
-                    3,
-                )
+            g_mols = [item[1] for item in glide_list]
+            n_mols = [item[1] for item in gnina_list]
+            min_for_g, min_for_n = compute_pairwise_symmetry_rmsd_matrix(g_mols, n_mols)
+            for g_idx, (g_dp, _) in enumerate(glide_list):
+                g_dp.cross_engine_rmsd = min_for_g[g_idx]
+            for n_idx, (n_dp, _) in enumerate(gnina_list):
+                n_dp.cross_engine_rmsd = min_for_n[n_idx]
 
     session.commit()
     return dock_run, parsed_modes, total_modes_saved

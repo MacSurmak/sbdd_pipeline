@@ -93,7 +93,7 @@ def run_monitor(port: int = 8088):
     """
     Renders high-frequency (20 FPS) real-time cluster progress bars by listening to the local
     UDP fanout stream on 127.0.0.1:8088 relayed by sbdd-telemetry.
-    Supports GROMACS MD trajectories as well as Glide, GNINA, LigPrep, Prime, MM-PBSA, Packmol, Declash, and ORCA.
+    Monitors all atomic cluster tasks: GROMACS MD, Glide, GNINA, Prime, MM-PBSA, Packmol, Declash, and ORCA.
     """
     console.rule(
         "[bold cyan]SBDD Cluster Live Monitor (MD / Docking / QM / Analysis)[/bold cyan]"
@@ -128,7 +128,6 @@ def run_monitor(port: int = 8088):
     task_bars = {}
     last_seen = {}
 
-    # Real-time state trackers
     task_real_step = {}
     task_packet_time = {}
     task_rate_steps_s = {}
@@ -142,14 +141,21 @@ def run_monitor(port: int = 8088):
     task_etas = {}
     task_names = {}
 
-    cpu_only_tools = {"glide", "ligprep", "prime", "prepwizard", "orca", "mmpbsa", "packmol", "declash"}
+    cpu_only_tools = {
+        "glide",
+        "prime",
+        "prepwizard",
+        "orca",
+        "mmpbsa",
+        "packmol",
+        "declash",
+    }
 
     try:
         with progress:
             while True:
                 now = time.time()
 
-                # Process all incoming UDP packets (non-blocking batch)
                 while True:
                     try:
                         data, _ = sock.recvfrom(65535)
@@ -260,7 +266,7 @@ def run_monitor(port: int = 8088):
                         ):
                             clean_name = clean_name.split(":")[-1].strip()
 
-                        if tool_raw not in ("mdrun", "gromacs"):
+                        if tool_raw not in ("mdrun", "gmx", "gromacs"):
                             tag_prefix = f"[{tool_raw.upper()}] "
                             if not clean_name.upper().startswith(f"[{tool_raw.upper()}]"):
                                 clean_name = tag_prefix + clean_name
@@ -272,17 +278,15 @@ def run_monitor(port: int = 8088):
                     except Exception:
                         break
 
-                # Remove stalled tasks after 25 seconds of silence
                 for t_id in list(task_bars.keys()):
-                    if now - last_seen.get(t_id, now) > 25.0:
+                    if now - last_seen.get(t_id, now) > 20.0:
                         progress.remove_task(task_bars[t_id])
                         del task_bars[t_id]
                         last_seen.pop(t_id, None)
                         task_real_step.pop(t_id, None)
 
-                # 20 FPS Rendering Loop
                 for t_id, real_st in list(task_real_step.items()):
-                    if now - last_seen.get(t_id, now) > 25.0:
+                    if now - last_seen.get(t_id, now) > 20.0:
                         continue
 
                     rate_s = task_rate_steps_s.get(t_id, 0.0)
