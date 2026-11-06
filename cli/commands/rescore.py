@@ -7,79 +7,105 @@ import csv
 import json
 import sys
 from pathlib import Path
+from typing import Final
 from rich.console import Console
 from rich.table import Table
-from cli.core.db import init_db, Target, ReceptorFrame, Pose, System
+from cli.core.db import (
+    DockedPose,
+    DockingRun,
+    ReceptorFrame,
+    Substance,
+    System,
+    init_db,
+)
 from cli.core.runner import execute_nextflow
 from cli.core.config_loader import load_project_configs, build_nextflow_args
 
-console = Console()
+console: Final[Console] = Console()
 
 
 def run_rescore(
-    use_whitelist: bool = False,
-    urgent: bool = False,
-    local: bool = False,
-    resume: bool = True,
+    use_whitelist: bool,
+    urgent: bool,
+    local: bool,
+    resume: bool,
 ) -> None:
-    """Runs standalone Prime MM-GBSA and Consensus rescoring."""
+    """Runs standalone Prime MM-GBSA and Consensus rescoring on the latest 3NF DockingRun."""
     cwd = Path.cwd()
     session = init_db()
 
-    # Query ready ReceptorFrames directly from SQLite (SSOT)
-    ready_frames = session.query(ReceptorFrame).filter_by(state="ready").all()
-    if not ready_frames:
-        console.print(
-            "[bold red]FATAL: No ready ReceptorFrame entities found in database. Run 'sbdd prep' first.[/bold red]"
-        )
+    dock_run = (
+        session.query(DockingRun)
+        .order_by(DockingRun.created_at.desc())
+        .first()
+    )
+    if not dock_run:
         session.close()
+        console.print(
+            "[bold red]FATAL: No DockingRun entities found in 3NF database. Run 'sbdd dock' or 'sbdd redock' first.[/bold red]"
+        )
         sys.exit(1)
 
-    tasks = []
-    dock_summary_files = set()
-
-    for frame in ready_frames:
-        # Strict SSOT: Process frames that have docking or redocking poses registered in the DB
-        docked_poses = (
-            session.query(Pose)
-            .filter(
-                Pose.receptor_frame_id == frame.id,
-                Pose.origin.in_(
-                    ["docking_glide", "docking_gnina", "redock_glide", "redock_gnina"]
-                ),
-            )
-            .all()
+    frame_ids = sorted(
+        list({dp.receptor_frame_id for dp in dock_run.docked_poses})
+    )
+    if not frame_ids:
+        session.close()
+        console.print(
+            f"[bold red]FATAL: DockingRun '{dock_run.name}' contains zero DockedPose records.[/bold red]"
         )
+        sys.exit(1)
 
-        if not docked_poses:
+    tasks: list[dict[str, str]] = []
+    dock_summary_files: set[str] = set()
+
+    for dp in dock_run.docked_poses:
+        p_sdf = Path(dp.path_sdf).resolve()
+        if not p_sdf.exists():
+            session.close()
+            raise FileNotFoundError(
+                f"FATAL: Registered DockedPose SDF missing on disk: {p_sdf}"
+            )
+        dock_summary_files.add(str(p_sdf))
+
+    for f_id in frame_ids:
+        frame = session.query(ReceptorFrame).get(f_id)
+        if not frame:
+            continue
+        frame_poses = [
+            dp for dp in dock_run.docked_poses if dp.receptor_frame_id == frame.id
+        ]
+        if not frame_poses:
             continue
 
-        frame_dir = (cwd / "docking" / frame.name).resolve()
+        frame_dir = Path(frame_poses[0].path_sdf).resolve().parent
         pv_file = frame_dir / f"{frame.name}_dock_pv.maegz"
+        if not pv_file.exists() or pv_file.stat().st_size == 0:
+            session.close()
+            raise FileNotFoundError(
+                f"FATAL: Glide Pose Viewer file '{pv_file}' not found for frame '{frame.name}' in DockingRun '{dock_run.name}'. "
+                "Prime MM-GBSA rescoring requires Glide Pose Viewer (_dock_pv.maegz) output."
+            )
 
         tasks.append({"name": frame.name, "pv_path": str(pv_file), "frame": frame.name})
 
-        expected_artifacts = [
-            frame_dir / f"{frame.name}_dock.csv",
-            frame_dir / f"{frame.name}_dock.sdf",
-            frame_dir / f"{frame.name}_glide_rescored.sdf",
-            frame_dir / f"{frame.name}_glide_rmsd.csv",
-            frame_dir / f"{frame.name}_unidock_dock.sdf",
-            frame_dir / f"{frame.name}_unidock_rescored.sdf",
-            frame_dir / f"{frame.name}_unidock_rmsd.csv",
-        ]
-        for art in expected_artifacts:
-            if art.exists():
-                dock_summary_files.add(str(art))
+        glide_csv = frame_dir / f"{frame.name}_dock.csv"
+        if glide_csv.exists():
+            dock_summary_files.add(str(glide_csv))
+
+        if dock_run.mode == "self":
+            for eng in ("glide", "unidock"):
+                rmsd_csv = frame_dir / f"{frame.name}_{eng}_rmsd.csv"
+                if rmsd_csv.exists():
+                    dock_summary_files.add(str(rmsd_csv))
 
     if not tasks:
-        console.print(
-            "[bold red]FATAL: No Pose Viewer artifacts found for registered ready frames in docking/<frame>/. Run 'sbdd dock' first.[/bold red]"
-        )
         session.close()
+        console.print(
+            "[bold red]FATAL: No Pose Viewer tasks constructed for Prime MM-GBSA rescoring.[/bold red]"
+        )
         sys.exit(1)
 
-    # Determine reference native ligand strictly from database
     native_ligand_name = ""
     for s in session.query(System).all():
         if s.pose and s.pose.origin == "crystal" and s.pose.substance:
@@ -105,7 +131,7 @@ def run_rescore(
         json.dump(plan, f, indent=2)
 
     console.print(
-        f"[bold cyan]Generated rescore_plan.json for {len(tasks)} target frame(s) with {len(dock_summary_files)} docking artifact(s)...[/bold cyan]"
+        f"[bold cyan]Generated rescore_plan.json for DockingRun '{dock_run.name}' ({len(tasks)} frame(s))...[/bold cyan]"
     )
 
     configs = load_project_configs(cwd)
@@ -133,7 +159,6 @@ def run_rescore(
         console.print("[bold red]Nextflow MM-GBSA rescoring failed.[/bold red]")
         sys.exit(ret_code)
 
-    # Atomically synchronize results into SQLite strictly via rescore_receipt.tsv
     receipt_file = cwd / "rescore_receipt.tsv"
     if not receipt_file.exists() or receipt_file.stat().st_size == 0:
         session.close()
@@ -149,44 +174,59 @@ def run_rescore(
             f"FATAL: Consolidated ranking {res_csv} is missing. Process aborted."
         )
 
-    from cli.core.db import Substance, SubstanceState
-
     with open(res_csv, "r", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
-            title = row.get("Title", "").strip()
-            frame_name = row.get("Receptor", row.get("Frame", "")).strip()
+            raw_title = row.get("Title")
+            raw_frame = (
+                row.get("Receptor")
+                if row.get("Receptor") is not None
+                else row.get("Frame")
+            )
+            title = raw_title.strip() if raw_title else ""
+            frame_name = raw_frame.strip() if raw_frame else ""
             if not title or not frame_name:
                 continue
 
-            scores_dict = {
-                k: float(v)
-                for k, v in row.items()
-                if k not in ["Rank", "Title", "Receptor", "Frame"]
-                and v
-                and v != "nan"
-                and v != ""
-            }
+            mmgbsa_raw = row.get("MMGBSA")
+            strain_raw = row.get("Lig_Strain")
+            ult_raw = row.get("Ultimate_Score")
+
+            mmgbsa_val = (
+                float(mmgbsa_raw)
+                if (mmgbsa_raw and mmgbsa_raw.lower() != "nan")
+                else None
+            )
+            strain_val = (
+                float(strain_raw)
+                if (strain_raw and strain_raw.lower() != "nan")
+                else None
+            )
+            ult_val = (
+                float(ult_raw)
+                if (ult_raw and ult_raw.lower() != "nan")
+                else None
+            )
 
             r_frame = session.query(ReceptorFrame).filter_by(name=frame_name).first()
             sub_obj = session.query(Substance).filter_by(name=title).first()
             if r_frame and sub_obj:
-                matched_poses = (
-                    session.query(Pose)
-                    .join(SubstanceState, Pose.substance_state_id == SubstanceState.id)
-                    .filter(
-                        Pose.receptor_frame_id == r_frame.id,
-                        SubstanceState.substance_id == sub_obj.id,
-                        Pose.origin.in_(
-                            ["docking_glide", "docking_gnina", "redock_glide", "redock_gnina"]
-                        ),
+                matched_dps = (
+                    session.query(DockedPose)
+                    .filter_by(
+                        docking_run_id=dock_run.id,
+                        receptor_frame_id=r_frame.id,
+                        substance_id=sub_obj.id,
                     )
                     .all()
                 )
-                for pose_obj in matched_poses:
-                    merged_scores = pose_obj.scores_dict
-                    merged_scores.update(scores_dict)
-                    pose_obj.scores_dict = merged_scores
+                for dp in matched_dps:
+                    if mmgbsa_val is not None:
+                        dp.mmgbsa_dg_bind = mmgbsa_val
+                    if strain_val is not None:
+                        dp.lig_strain_energy = strain_val
+                    if ult_val is not None:
+                        dp.consensus_score = ult_val
 
     session.commit()
     session.close()

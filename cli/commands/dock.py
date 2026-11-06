@@ -12,6 +12,7 @@ from rdkit import Chem
 from rich.console import Console
 from rich.table import Table
 from cli.core.chem import (
+    compute_pairwise_symmetry_rmsd_matrix,
     compute_symmetry_rmsd,
     get_microstate_identity,
 )
@@ -306,61 +307,69 @@ def _ingest_docking_receipt(
             )
 
         frame_dir = sdf_file.parent
-        resc_sdf = frame_dir / f"{frame_name}_{eng}_rescored.sdf"
-        source_sdf_for_props = (
-            resc_sdf
-            if (resc_sdf.exists() and resc_sdf.stat().st_size > 0)
-            else sdf_file
-        )
-
         glide_csv_scores: dict[str, list[float]] = {}
         glide_csv = frame_dir / f"{frame_name}_dock.csv"
         if eng == "glide" and glide_csv.exists() and glide_csv.stat().st_size > 0:
             with open(glide_csv, "r", encoding="utf-8", errors="ignore") as cf:
                 for row in csv.DictReader(cf):
-                    t_str = (
+                    t_raw = (
                         row.get("title")
-                        or row.get("Title")
-                        or row.get("s_m_title")
-                        or ""
-                    ).strip()
+                        if row.get("title") is not None
+                        else (
+                            row.get("Title")
+                            if row.get("Title") is not None
+                            else row.get("s_m_title")
+                        )
+                    )
+                    t_str = t_raw.strip() if t_raw else ""
                     sc_raw = (
                         row.get("r_i_docking_score")
-                        or row.get("docking_score")
-                        or row.get("r_i_glide_gscore")
+                        if row.get("r_i_docking_score") is not None
+                        else (
+                            row.get("docking_score")
+                            if row.get("docking_score") is not None
+                            else row.get("r_i_glide_gscore")
+                        )
                     )
                     if t_str and sc_raw:
-                        glide_csv_scores.setdefault(t_str, []).append(float(sc_raw))
+                        if t_str not in glide_csv_scores:
+                            glide_csv_scores[t_str] = []
+                        glide_csv_scores[t_str].append(float(sc_raw))
 
-        suppl = Chem.SDMolSupplier(
-            str(source_sdf_for_props), removeHs=False, sanitize=False
-        )
+        suppl = Chem.SDMolSupplier(str(sdf_file), removeHs=False, sanitize=False)
         mode_counters: dict[str, int] = {}
 
-        for m in suppl:
+        for record_idx, m in enumerate(suppl, start=1):
             if m is None:
-                continue
+                session.close()
+                raise ValueError(
+                    f"FATAL: Corrupted molecule record at index {record_idx} in {sdf_file}!"
+                )
             m_title = m.GetProp("_Name").strip() if m.HasProp("_Name") else ""
             if not m_title and m.HasProp("s_m_title"):
                 m_title = m.GetProp("s_m_title").strip()
             if not m_title:
-                continue
+                session.close()
+                raise ValueError(
+                    f"FATAL: Unnamed molecule record at index {record_idx} in {sdf_file}!"
+                )
 
             sub_obj = substance_by_title.get(m_title)
             if not sub_obj:
                 session.close()
                 raise KeyError(
-                    f"FATAL: Molecule title '{m_title}' in {source_sdf_for_props} was not declared in docking plan!"
+                    f"FATAL: Molecule title '{m_title}' in {sdf_file} was not declared in docking plan!"
                 )
 
-            mode_counters[m_title] = mode_counters.get(m_title, 0) + 1
-            m_idx = mode_counters[m_title]
+            prev_count = mode_counters[m_title] if m_title in mode_counters else 0
+            m_idx = prev_count + 1
+            mode_counters[m_title] = m_idx
 
             g_score = _parse_mol_float_prop(
                 m, ["r_i_docking_score", "docking_score", "r_i_glide_gscore", "gscore"]
             )
-            if g_score is None and eng == "glide":
-                csv_list = glide_csv_scores.get(m_title, [])
+            if g_score is None and eng == "glide" and m_title in glide_csv_scores:
+                csv_list = glide_csv_scores[m_title]
                 if m_idx <= len(csv_list):
                     g_score = csv_list[m_idx - 1]
 
@@ -374,10 +383,10 @@ def _ingest_docking_receipt(
             mol_clean.UpdatePropertyCache(strict=False)
             Chem.SanitizeMol(mol_clean)
 
-            insitu_rmsd_val = None
-            if ref_mol_by_frame is not None:
-                ref_pair = ref_mol_by_frame.get(frame_name)
-                if ref_pair and ref_pair[0].id == sub_obj.id:
+            insitu_rmsd_val: float | None = None
+            if ref_mol_by_frame is not None and frame_name in ref_mol_by_frame:
+                ref_pair = ref_mol_by_frame[frame_name]
+                if ref_pair[0].id == sub_obj.id:
                     insitu_rmsd_val = round(
                         compute_symmetry_rmsd(ref_pair[1], mol_clean), 3
                     )
@@ -398,17 +407,18 @@ def _ingest_docking_receipt(
                 mol_block=Chem.MolToMolBlock(mol_clean),
             )
             session.add(dp)
-            parsed_modes.setdefault((frame_name, m_title), {}).setdefault(
-                eng, []
-            ).append((dp, mol_clean))
+            pair_key = (frame_name, m_title)
+            if pair_key not in parsed_modes:
+                parsed_modes[pair_key] = {}
+            if eng not in parsed_modes[pair_key]:
+                parsed_modes[pair_key][eng] = []
+            parsed_modes[pair_key][eng].append((dp, mol_clean))
             total_modes_saved += 1
 
     # Compute exact symmetry-aware Cross-Engine RMSD between Glide modes and Uni-Dock modes
-    from cli.core.chem import compute_pairwise_symmetry_rmsd_matrix
-
-    for (frame_name, m_title), eng_dict in parsed_modes.items():
-        glide_list = eng_dict.get("glide", [])
-        unidock_list = eng_dict.get("unidock", [])
+    for eng_dict in parsed_modes.values():
+        glide_list = eng_dict["glide"] if "glide" in eng_dict else []
+        unidock_list = eng_dict["unidock"] if "unidock" in eng_dict else []
         if glide_list and unidock_list:
             g_mols = [item[1] for item in glide_list]
             u_mols = [item[1] for item in unidock_list]
