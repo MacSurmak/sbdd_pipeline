@@ -9,6 +9,6 @@ unidock:
   seed: 42                           # Deterministic random seed
   batch_size: 500                    # 500 substances per GPU batch to fully saturate CUDA SMs
   resources:
-    cpus: 1                          # 1 CPU core (leaves remaining CPU cores free for parallel Glide tasks)
-    memory_gb: 6                     # RAM allocation per task in GB
-    slurm_gres: "shard:4"            # Slurm GPU GRES request
+    cpus: 4                          # CPU threads for parallel batch I/O and topology preparation
+    memory_gb: 8                     # RAM allocation per task in GB
+    slurm_gres: "gpu:1"              # Exclusive physical GPU allocation (sharding is forbidden for Uni-Dock)

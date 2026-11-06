@@ -1,7 +1,6 @@
 gnina:
   enabled: true                      # Universal 3D-CNN rescoring for both Glide and Uni-Dock poses
   rescore_mode: "score_only"         # "score_only" (instant 3D-CNN evaluation) or "minimize" (local BFGS + CNN)
-  autobox_add: 4.0                   # Tight binding cleft focus (Å)
   cnn_model: ""                      # Empty string uses default fast GNINA 1.3 distilled ensemble
   resources:
     cpus: 2                          # CPU threads (--cpu) allocated per GNINA rescoring task

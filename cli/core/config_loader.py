@@ -225,12 +225,26 @@ def _build_screen_args(config: Dict[str, Any], project_dir: Path) -> list:
                 ]
             )
 
-    glide_cfg = config.get("glide", {})
-    unidock_cfg = config.get("unidock", {})
-    gnina_cfg = config.get("gnina", {})
-    g_en = bool(glide_cfg.get("enabled", False))
-    u_en = bool(unidock_cfg.get("enabled", False))
-    n_en = bool(gnina_cfg.get("enabled", False))
+    glide_cfg = config.get("glide")
+    unidock_cfg = config.get("unidock")
+    gnina_cfg = config.get("gnina")
+    if not isinstance(glide_cfg, dict):
+        raise ValueError("FATAL: 'glide' configuration block is missing in glide.yaml!")
+    if not isinstance(unidock_cfg, dict):
+        raise ValueError("FATAL: 'unidock' configuration block is missing in unidock.yaml!")
+    if not isinstance(gnina_cfg, dict):
+        raise ValueError("FATAL: 'gnina' configuration block is missing in gnina.yaml!")
+
+    if "enabled" not in glide_cfg or glide_cfg["enabled"] is None:
+        raise ValueError("FATAL: 'glide.enabled' boolean is required in glide.yaml!")
+    if "enabled" not in unidock_cfg or unidock_cfg["enabled"] is None:
+        raise ValueError("FATAL: 'unidock.enabled' boolean is required in unidock.yaml!")
+    if "enabled" not in gnina_cfg or gnina_cfg["enabled"] is None:
+        raise ValueError("FATAL: 'gnina.enabled' boolean is required in gnina.yaml!")
+
+    g_en = bool(glide_cfg["enabled"])
+    u_en = bool(unidock_cfg["enabled"])
+    n_en = bool(gnina_cfg["enabled"])
 
     if g_en and u_en:
         args.extend(["--dock_engine", "both"])
@@ -243,6 +257,29 @@ def _build_screen_args(config: Dict[str, Any], project_dir: Path) -> list:
             "FATAL: At least one pose sampling engine (glide in glide.yaml or unidock in unidock.yaml) must be enabled!"
         )
 
+    # Single Source of Truth for pocket box geometry (required unconditionally for GENERATE_DOCKING_BOX and sampling)
+    if "autobox_add" not in unidock_cfg or unidock_cfg["autobox_add"] is None:
+        raise ValueError("FATAL: 'unidock.autobox_add' is required in unidock.yaml!")
+    if float(unidock_cfg["autobox_add"]) <= 0.0:
+        raise ValueError(
+            f"FATAL: 'unidock.autobox_add' must be positive, got: {unidock_cfg['autobox_add']}!"
+        )
+    args.extend(["--autobox_add", str(unidock_cfg["autobox_add"])])
+
+    grid_cfg = glide_cfg.get("grid")
+    if not isinstance(grid_cfg, dict):
+        raise ValueError("FATAL: 'glide.grid' section is required in glide.yaml!")
+    for yaml_k in ["inner_box", "outer_box"]:
+        if yaml_k not in grid_cfg or grid_cfg[yaml_k] is None:
+            raise ValueError(f"FATAL: 'glide.grid.{yaml_k}' is required in glide.yaml!")
+        val = grid_cfg[yaml_k]
+        args.extend(
+            [
+                f"--{yaml_k}",
+                ", ".join(map(str, val)) if isinstance(val, list) else str(val),
+            ]
+        )
+
     if u_en:
         unidock_mappings = [
             ("search_mode", "unidock_search_mode"),
@@ -250,7 +287,6 @@ def _build_screen_args(config: Dict[str, Any], project_dir: Path) -> list:
             ("refine_step", "unidock_refine_step"),
             ("num_modes", "unidock_num_modes"),
             ("energy_range", "unidock_energy_range"),
-            ("autobox_add", "autobox_add"),
             ("seed", "unidock_seed"),
             ("batch_size", "unidock_batch_size"),
         ]
@@ -291,6 +327,12 @@ def _build_screen_args(config: Dict[str, Any], project_dir: Path) -> list:
             raise ValueError(
                 "FATAL: 'unidock.resources.cpus' and 'memory_gb' must be positive integers!"
             )
+        if not u_gres.startswith("gpu:"):
+            raise ValueError(
+                f"FATAL CONFIGURATION ERROR: 'unidock.resources.slurm_gres' is set to '{u_gres}', "
+                "but GPU sharding is strictly forbidden for Uni-Dock! "
+                "Uni-Dock requires an exclusive physical GPU allocation (set slurm_gres: \"gpu:1\" in configs/unidock.yaml)."
+            )
         args.extend(
             [
                 "--unidock_cpus",
@@ -306,19 +348,16 @@ def _build_screen_args(config: Dict[str, Any], project_dir: Path) -> list:
 
     args.extend(["--gnina_enabled", "true" if n_en else "false"])
     if n_en:
-        for req_gk in ["rescore_mode", "autobox_add"]:
-            if req_gk not in gnina_cfg or gnina_cfg[req_gk] is None:
-                raise ValueError(
-                    f"FATAL: 'gnina.{req_gk}' is required in gnina.yaml when GNINA rescoring is enabled!"
-                )
+        if "rescore_mode" not in gnina_cfg or gnina_cfg["rescore_mode"] is None:
+            raise ValueError(
+                "FATAL: 'gnina.rescore_mode' is required in gnina.yaml when GNINA rescoring is enabled!"
+            )
         r_mode = str(gnina_cfg["rescore_mode"]).strip()
         if r_mode not in ("score_only", "minimize"):
             raise ValueError(
                 f"FATAL: 'gnina.rescore_mode' must be 'score_only' or 'minimize', got: '{r_mode}'!"
             )
         args.extend(["--gnina_rescore_mode", r_mode])
-        if not u_en:
-            args.extend(["--autobox_add", str(gnina_cfg["autobox_add"])])
 
         g_res = gnina_cfg.get("resources")
         if not isinstance(g_res, dict):
@@ -348,12 +387,11 @@ def _build_screen_args(config: Dict[str, Any], project_dir: Path) -> list:
             ]
         )
 
-        if (
-            "cnn_model" in gnina_cfg
-            and gnina_cfg["cnn_model"] is not None
-            and str(gnina_cfg["cnn_model"]).strip() != ""
-        ):
-            args.extend(["--cnn_model", str(gnina_cfg["cnn_model"]).strip()])
+        if "cnn_model" not in gnina_cfg or gnina_cfg["cnn_model"] is None:
+            raise ValueError(
+                "FATAL: 'gnina.cnn_model' key is required in gnina.yaml (use \"\" for default ensemble)!"
+            )
+        args.extend(["--cnn_model", str(gnina_cfg["cnn_model"]).strip()])
 
     if g_en:
         glide_mappings = [
@@ -399,31 +437,20 @@ def _build_screen_args(config: Dict[str, Any], project_dir: Path) -> list:
             ]
         )
 
-        grid_cfg = glide_cfg.get("grid")
-        if not grid_cfg:
-            raise ValueError("FATAL: 'glide.grid' section is required!")
-
-        for yaml_k in ["inner_box", "outer_box"]:
-            if yaml_k not in grid_cfg:
-                raise ValueError(f"FATAL: 'glide.grid.{yaml_k}' is required!")
-            val = grid_cfg[yaml_k]
-            args.extend(
-                [
-                    f"--{yaml_k}",
-                    ", ".join(map(str, val)) if isinstance(val, list) else str(val),
-                ]
-            )
-
-        lp_cfg = glide_cfg.get("ligprep", {})
-        if lp_cfg:
-            for yaml_k, nf_k in [
-                ("target_ph", "ligand_ph"),
-                ("ph_tolerance", "ligand_ph_tol"),
-                ("force_field", "ligprep_ff"),
-                ("max_states", "max_states"),
-            ]:
-                if yaml_k in lp_cfg:
-                    args.extend([f"--{nf_k}", str(lp_cfg[yaml_k])])
+        lp_cfg = glide_cfg.get("ligprep")
+        if not isinstance(lp_cfg, dict):
+            raise ValueError("FATAL: 'glide.ligprep' block is required in glide.yaml!")
+        for yaml_k, nf_k in [
+            ("target_ph", "ligand_ph"),
+            ("ph_tolerance", "ligand_ph_tol"),
+            ("force_field", "ligprep_ff"),
+            ("max_states", "max_states"),
+        ]:
+            if yaml_k not in lp_cfg or lp_cfg[yaml_k] is None:
+                raise ValueError(
+                    f"FATAL: 'glide.ligprep.{yaml_k}' is required in glide.yaml!"
+                )
+            args.extend([f"--{nf_k}", str(lp_cfg[yaml_k])])
     else:
         args.extend(["--glide_batch_size", "0"])
 
