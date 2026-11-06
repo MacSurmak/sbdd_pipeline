@@ -51,7 +51,7 @@ def main():
     else:
         cmd.extend(["--score_only", "--cnn_scoring", "rescore"])
 
-    if args.cnn_model:
+    if args.cnn_model and args.cnn_model != "default":
         cmd.extend(["--cnn", args.cnn_model])
 
     cmd.extend(["-o", args.out_sdf])

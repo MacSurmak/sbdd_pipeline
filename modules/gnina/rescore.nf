@@ -19,7 +19,6 @@ process GNINA_RESCORE {
     tuple val(meta), path("${meta.id}_${engine_tag}_rescored.log"), emit: log
 
     script:
-    def cnn_arg = cnn_model ? "--cnn_model ${cnn_model}" : ""
     """
     python3 ${projectDir}/bin/wrap_gnina.py rescore \\
         --receptor ${receptor_pdb} \\
@@ -28,7 +27,7 @@ process GNINA_RESCORE {
         --cpus ${task.cpus} \\
         --rescore_mode ${rescore_mode} \\
         --autobox_add ${autobox_add} \\
-        ${cnn_arg} \\
+        --cnn_model "${cnn_model}" \\
         --out_sdf "${meta.id}_${engine_tag}_rescored.sdf" \\
         --out_log "${meta.id}_${engine_tag}_rescored.log"
     """

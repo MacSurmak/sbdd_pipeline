@@ -797,7 +797,6 @@ def convert_prepared_mol_to_pdbqt(mol: Chem.Mol, out_pdbqt: str | Path) -> int:
         hydrate=False,
         flexible_amides=False,
         rigid_macrocycles=True,
-        keep_chorded_rings=True,
         min_ring_size=7,
         max_ring_size=33,
     )
@@ -806,8 +805,11 @@ def convert_prepared_mol_to_pdbqt(mol: Chem.Mol, out_pdbqt: str | Path) -> int:
     mol_copy.UpdatePropertyCache(strict=False)
     Chem.SanitizeMol(mol_copy)
 
-    preparator.prepare(mol_copy)
-    setup = preparator.setup[0]
+    setups = preparator.prepare(mol_copy)
+    if not setups:
+        mol_name = mol.GetProp("_Name") if mol.HasProp("_Name") else "mol"
+        raise RuntimeError(f"FATAL: Meeko returned empty setup list for '{mol_name}'!")
+    setup = setups[0]
 
     pdbqt_str, is_ok, error_msg = PDBQTWriterLegacy.write_string(setup)
     if not is_ok or not pdbqt_str:
@@ -819,7 +821,14 @@ def convert_prepared_mol_to_pdbqt(mol: Chem.Mol, out_pdbqt: str | Path) -> int:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(pdbqt_str, encoding="utf-8")
 
-    return int(setup.num_rotatable_bonds)
+    n_torsions = 0
+    for line in pdbqt_str.splitlines():
+        if line.startswith("TORSDOF"):
+            parts = line.split()
+            if len(parts) >= 2:
+                n_torsions = int(parts[1])
+            break
+    return n_torsions
 
 
 def _parse_pdbqt_atom_coords(lines: list[str]) -> list[tuple[float, float, float]]:

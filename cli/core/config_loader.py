@@ -391,7 +391,8 @@ def _build_screen_args(config: Dict[str, Any], project_dir: Path) -> list:
             raise ValueError(
                 "FATAL: 'gnina.cnn_model' key is required in gnina.yaml (use \"\" for default ensemble)!"
             )
-        args.extend(["--cnn_model", str(gnina_cfg["cnn_model"]).strip()])
+        cnn_val = str(gnina_cfg["cnn_model"]).strip()
+        args.extend(["--cnn_model", cnn_val if cnn_val else "default"])
 
     if g_en:
         glide_mappings = [
