@@ -16,7 +16,6 @@ import sys
 import tempfile
 from pathlib import Path
 from typing import Final
-from meeko import PDBQTMolecule
 from rdkit import Chem, RDLogger
 
 RDLogger.DisableLog("rdApp.*")
@@ -29,6 +28,7 @@ from cli.core.chem import (
     compute_autobox_geometry,
     convert_prepared_mol_to_pdbqt,
     convert_receptor_pdb_to_pdbqt,
+    restore_unidock_pdbqt_poses,
     transfer_coordinates_to_template,
 )
 
@@ -94,7 +94,7 @@ def main() -> None:
             rec_pdbqt = work_dir / "receptor.pdbqt"
             convert_receptor_pdb_to_pdbqt(rec_path, rec_pdbqt)
 
-        templates_by_idx: dict[int, tuple[str, Chem.Mol, int]] = {}
+        templates_by_idx: dict[int, tuple[str, Chem.Mol, Path, int]] = {}
         index_paths: list[str] = []
 
         suppl = Chem.SDMolSupplier(str(lig_path), removeHs=False, sanitize=False)
@@ -120,7 +120,7 @@ def main() -> None:
 
             single_pdbqt = in_dir / f"lig_{idx:05d}.pdbqt"
             n_torsions = convert_prepared_mol_to_pdbqt(tmpl_mol, single_pdbqt)
-            templates_by_idx[idx] = (t_name, Chem.Mol(tmpl_mol), n_torsions)
+            templates_by_idx[idx] = (t_name, Chem.Mol(tmpl_mol), single_pdbqt, n_torsions)
             index_paths.append(str(single_pdbqt))
 
         if not index_paths:
@@ -181,7 +181,7 @@ def main() -> None:
             )
             sys.exit(res.returncode)
 
-        has_flexible_ligand = any(n_tor > 0 for _, _, n_tor in templates_by_idx.values())
+        has_flexible_ligand = any(n_tor > 0 for _, _, _, n_tor in templates_by_idx.values())
         if has_flexible_ligand and "No fragment info, using rigid docking" in log_text:
             raise RuntimeError(
                 f"FATAL METHODOLOGY VIOLATION: Uni-Dock reverted to rigid docking despite flexible ligand input!\n"
@@ -191,41 +191,17 @@ def main() -> None:
 
         poses_by_title: dict[str, list[tuple[float, Chem.Mol]]] = {}
         for idx in sorted(templates_by_idx.keys()):
-            orig_title, exact_tmpl, _ = templates_by_idx[idx]
+            orig_title, exact_tmpl, in_pdbqt, _ = templates_by_idx[idx]
             out_pdbqt = out_dir / f"lig_{idx:05d}_out.pdbqt"
             out_sdf = out_dir / f"lig_{idx:05d}_out.sdf"
 
             if out_pdbqt.exists() and out_pdbqt.stat().st_size > 0:
-                pdbqt_text = out_pdbqt.read_text(encoding="utf-8", errors="ignore")
-                pdbqt_mol = PDBQTMolecule(pdbqt_text, is_dlg=False, skip_typing=True)
-                rdkit_poses = list(pdbqt_mol.export_rdkit_mols())
-                if not rdkit_poses:
-                    raise ValueError(
-                        f"FATAL: Meeko failed to extract RDKit poses from Uni-Dock output PDBQT: {out_pdbqt}"
-                    )
-                for p_idx, pose_mol in enumerate(rdkit_poses, start=1):
-                    if pose_mol is None:
-                        raise ValueError(
-                            f"FATAL: Corrupted pose index {p_idx} in Uni-Dock output PDBQT: {out_pdbqt}"
-                        )
-                    raw_e = pose_mol.GetProp("free_energy") if pose_mol.HasProp("free_energy") else None
-                    if not raw_e:
-                        raise ValueError(
-                            f"FATAL: Free energy property missing in pose {p_idx} of {out_pdbqt}!"
-                        )
-                    vina_score = float(raw_e)
-                    restored_mol = transfer_coordinates_to_template(
-                        template_mol=exact_tmpl,
-                        source_mol=pose_mol,
-                        relax_missing_hydrogens=False,
-                    )
-                    restored_mol.SetProp("_Name", orig_title)
-                    restored_mol.SetProp("s_m_title", orig_title)
-                    restored_mol.SetProp("unidock_vina_score", f"{vina_score:.3f}")
-                    restored_mol.SetProp("minimizedAffinity", f"{vina_score:.3f}")
-                    if orig_title not in poses_by_title:
-                        poses_by_title[orig_title] = []
-                    poses_by_title[orig_title].append((vina_score, restored_mol))
+                restored_pairs = restore_unidock_pdbqt_poses(
+                    exact_tmpl, in_pdbqt, out_pdbqt, orig_title
+                )
+                if orig_title not in poses_by_title:
+                    poses_by_title[orig_title] = []
+                poses_by_title[orig_title].extend(restored_pairs)
 
             elif out_sdf.exists() and out_sdf.stat().st_size > 0:
                 suppl = Chem.SDMolSupplier(str(out_sdf), removeHs=False, sanitize=False)
@@ -238,7 +214,7 @@ def main() -> None:
                     restored_mol = transfer_coordinates_to_template(
                         template_mol=exact_tmpl,
                         source_mol=pose_mol,
-                        relax_missing_hydrogens=False,
+                        relax_missing_hydrogens=True,
                     )
                     restored_mol.SetProp("_Name", orig_title)
                     restored_mol.SetProp("s_m_title", orig_title)

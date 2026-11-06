@@ -5,6 +5,7 @@ Computes Standard InChIKey and Canonical SMILES via RDKit for topological dedupl
 """
 
 import hashlib
+import math
 from pathlib import Path
 from typing import List, Tuple
 from meeko import MoleculePreparation, PDBQTWriterLegacy
@@ -819,3 +820,192 @@ def convert_prepared_mol_to_pdbqt(mol: Chem.Mol, out_pdbqt: str | Path) -> int:
     out_path.write_text(pdbqt_str, encoding="utf-8")
 
     return int(setup.num_rotatable_bonds)
+
+
+def _parse_pdbqt_atom_coords(lines: list[str]) -> list[tuple[float, float, float]]:
+    """Extracts 3D Cartesian coordinates (x, y, z) from PDBQT ATOM/HETATM records."""
+    coords: list[tuple[float, float, float]] = []
+    for line in lines:
+        if line.startswith(("ATOM  ", "HETATM")):
+            x = float(line[30:38].strip())
+            y = float(line[38:46].strip())
+            z = float(line[46:54].strip())
+            coords.append((x, y, z))
+    return coords
+
+
+def restore_unidock_pdbqt_poses(
+    exact_tmpl: Chem.Mol,
+    in_pdbqt: Path,
+    out_pdbqt: Path,
+    orig_title: str,
+) -> list[tuple[float, Chem.Mol]]:
+    """
+    Restores full-atom RDKit molecules from a Uni-Dock output PDBQT file onto the
+    canonical LigPrep template (`exact_tmpl`).
+    1. Maps each PDBQT atom line to its exact atom index in `exact_tmpl` by matching
+       the unshifted input coordinates in `in_pdbqt` (tolerance < 0.01 A).
+    2. For each docked MODEL in `out_pdbqt`, transfers the exact docked coordinates of all
+       heavy atoms and all polar hydrogens (OH, NH, SH) onto a copy of `exact_tmpl`.
+    3. Reconstructs only the merged non-polar carbon-bound hydrogens (C-H) at the new
+       docked carbon positions and validates all covalent bond lengths and chiral volumes.
+    """
+    in_lines = in_pdbqt.read_text(encoding="utf-8", errors="ignore").splitlines()
+    in_coords = _parse_pdbqt_atom_coords(in_lines)
+    if not in_coords:
+        raise ValueError(f"FATAL: Zero ATOM/HETATM records in input PDBQT: {in_pdbqt}")
+
+    tmpl_conf = exact_tmpl.GetConformer()
+    n_tmpl = exact_tmpl.GetNumAtoms()
+
+    pdbqt_to_tmpl_idx: list[int] = []
+    mapped_tmpl_indices: set[int] = set()
+    for p_idx, (px, py, pz) in enumerate(in_coords):
+        best_t_idx = -1
+        best_d2 = 1e-4
+        for t_idx in range(n_tmpl):
+            if t_idx in mapped_tmpl_indices:
+                continue
+            tp = tmpl_conf.GetAtomPosition(t_idx)
+            d2 = (tp.x - px) ** 2 + (tp.y - py) ** 2 + (tp.z - pz) ** 2
+            if d2 < best_d2:
+                best_d2 = d2
+                best_t_idx = t_idx
+        if best_t_idx < 0:
+            raise ValueError(
+                f"FATAL: Input PDBQT atom {p_idx + 1} at ({px:.3f}, {py:.3f}, {pz:.3f}) in {in_pdbqt.name} "
+                f"does not match any atom in LigPrep template '{orig_title}' within 0.01 A!"
+            )
+        pdbqt_to_tmpl_idx.append(best_t_idx)
+        mapped_tmpl_indices.add(best_t_idx)
+
+    # Identify unmapped template atoms (strictly non-polar hydrogens merged by Meeko)
+    unmapped_h_indices: list[int] = []
+    for t_idx in range(n_tmpl):
+        if t_idx not in mapped_tmpl_indices:
+            atom = exact_tmpl.GetAtomWithIdx(t_idx)
+            if atom.GetAtomicNum() != 1:
+                raise ValueError(
+                    f"FATAL: Heavy atom {atom.GetSymbol()}{t_idx + 1} of '{orig_title}' is missing from {in_pdbqt.name}!"
+                )
+            unmapped_h_indices.append(t_idx)
+
+    # Split out_pdbqt into MODEL blocks
+    out_lines = out_pdbqt.read_text(encoding="utf-8", errors="ignore").splitlines()
+    models: list[list[str]] = []
+    curr_model: list[str] = []
+    in_model = False
+    for line in out_lines:
+        if line.startswith("MODEL"):
+            in_model = True
+            curr_model = [line]
+        elif line.startswith("ENDMDL"):
+            curr_model.append(line)
+            models.append(curr_model)
+            curr_model = []
+            in_model = False
+        elif in_model:
+            curr_model.append(line)
+
+    if not models and out_lines:
+        models.append(out_lines)
+
+    restored_results: list[tuple[float, Chem.Mol]] = []
+
+    for m_idx, m_lines in enumerate(models, start=1):
+        vina_score: float | None = None
+        for line in m_lines:
+            if line.startswith("REMARK VINA RESULT:"):
+                parts = line.split()
+                if len(parts) >= 4:
+                    vina_score = float(parts[3])
+                    break
+        if vina_score is None:
+            raise ValueError(
+                f"FATAL: Missing 'REMARK VINA RESULT:' in MODEL {m_idx} of {out_pdbqt}!"
+            )
+
+        pose_coords = _parse_pdbqt_atom_coords(m_lines)
+        if len(pose_coords) != len(pdbqt_to_tmpl_idx):
+            raise ValueError(
+                f"FATAL: Atom count mismatch in MODEL {m_idx} of {out_pdbqt}: "
+                f"expected {len(pdbqt_to_tmpl_idx)}, got {len(pose_coords)}!"
+            )
+
+        res_mol = Chem.Mol(exact_tmpl)
+        res_conf = res_mol.GetConformer()
+
+        # 1. Transfer exact docked coordinates of all heavy atoms and all polar hydrogens
+        for p_i, (dx, dy, dz) in enumerate(pose_coords):
+            t_i = pdbqt_to_tmpl_idx[p_i]
+            res_conf.SetAtomPosition(t_i, [dx, dy, dz])
+
+        # 2. Reconstruct merged non-polar C-H hydrogens at the new docked carbon positions
+        if unmapped_h_indices:
+            for idx, a in enumerate(res_mol.GetAtoms()):
+                a.SetIntProp("_orig_tmpl_idx", idx)
+            heavy_only = Chem.RemoveHs(res_mol)
+            rebuilt_mol = Chem.AddHs(heavy_only, addCoords=True)
+            rebuilt_conf = rebuilt_mol.GetConformer()
+
+            heavy_orig_to_rebuilt: dict[int, int] = {}
+            for r_idx, r_atom in enumerate(rebuilt_mol.GetAtoms()):
+                if r_atom.HasProp("_orig_tmpl_idx"):
+                    heavy_orig_to_rebuilt[r_atom.GetIntProp("_orig_tmpl_idx")] = r_idx
+
+            # Group unmapped non-polar hydrogens by their parent heavy atom in exact_tmpl
+            parent_to_unmapped_hs: dict[int, list[int]] = {}
+            for h_idx in unmapped_h_indices:
+                h_atom = exact_tmpl.GetAtomWithIdx(h_idx)
+                nbrs = h_atom.GetNeighbors()
+                if not nbrs:
+                    raise ValueError(f"FATAL: Detached hydrogen atom at index {h_idx} in '{orig_title}'!")
+                p_orig = nbrs[0].GetIdx()
+                if p_orig not in parent_to_unmapped_hs:
+                    parent_to_unmapped_hs[p_orig] = []
+                parent_to_unmapped_hs[p_orig].append(h_idx)
+
+            for p_orig, h_list in parent_to_unmapped_hs.items():
+                r_parent_idx = heavy_orig_to_rebuilt[p_orig]
+                r_parent_atom = rebuilt_mol.GetAtomWithIdx(r_parent_idx)
+                r_h_indices = [
+                    nbr.GetIdx()
+                    for nbr in r_parent_atom.GetNeighbors()
+                    if nbr.GetAtomicNum() == 1
+                ]
+                if len(r_h_indices) < len(h_list):
+                    raise ValueError(
+                        f"FATAL: Rebuilt heavy atom {p_orig} has {len(r_h_indices)} H neighbors, "
+                        f"expected at least {len(h_list)}!"
+                    )
+                for k, target_h_idx in enumerate(h_list):
+                    pos_h = rebuilt_conf.GetAtomPosition(r_h_indices[k])
+                    res_conf.SetAtomPosition(target_h_idx, [pos_h.x, pos_h.y, pos_h.z])
+
+        # 3. Fail-Fast validation of all covalent bond lengths
+        for bond in res_mol.GetBonds():
+            a1 = bond.GetBeginAtom()
+            a2 = bond.GetEndAtom()
+            p1 = res_conf.GetAtomPosition(a1.GetIdx())
+            p2 = res_conf.GetAtomPosition(a2.GetIdx())
+            dist = math.sqrt((p1.x - p2.x) ** 2 + (p1.y - p2.y) ** 2 + (p1.z - p2.z) ** 2)
+            if a1.GetAtomicNum() == 1 or a2.GetAtomicNum() == 1:
+                if dist < 0.80 or dist > 1.35:
+                    raise ValueError(
+                        f"FATAL PHYSICAL VIOLATION in '{orig_title}' MODEL {m_idx}: X-H bond "
+                        f"{a1.GetSymbol()}{a1.GetIdx() + 1}-{a2.GetSymbol()}{a2.GetIdx() + 1} has length {dist:.3f} A!"
+                    )
+            else:
+                if dist < 1.00 or dist > 2.20:
+                    raise ValueError(
+                        f"FATAL PHYSICAL VIOLATION in '{orig_title}' MODEL {m_idx}: heavy bond "
+                        f"{a1.GetSymbol()}{a1.GetIdx() + 1}-{a2.GetSymbol()}{a2.GetIdx() + 1} has length {dist:.3f} A!"
+                    )
+
+        res_mol.SetProp("_Name", orig_title)
+        res_mol.SetProp("s_m_title", orig_title)
+        res_mol.SetProp("unidock_vina_score", f"{vina_score:.3f}")
+        res_mol.SetProp("minimizedAffinity", f"{vina_score:.3f}")
+        restored_results.append((vina_score, res_mol))
+
+    return restored_results

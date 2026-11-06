@@ -166,11 +166,9 @@ workflow DOCK_LIBRARY {
 
         ch_primary_poses = ch_glide_final_poses
         ch_receipts = ch_receipts.mix(
-            MERGE_GLIDE_CHUNKS.out.poses_sdf
-                .join(ch_glide_final_poses, by: 0)
-                .map { meta, sdf, final_sdf ->
-                    "${meta.id}\tglide\t${outdir}/${pub_subpath}/${meta.id}/${sdf.name}"
-                }
+            ch_glide_final_poses.map { meta, final_sdf ->
+                "${meta.id}\tglide\t${outdir}/${pub_subpath}/${meta.id}/${final_sdf.name}"
+            }
         )
     }
 
@@ -250,11 +248,9 @@ workflow DOCK_LIBRARY {
         }
 
         ch_receipts = ch_receipts.mix(
-            MERGE_UNIDOCK_CHUNKS.out.merged_sdf
-                .join(ch_unidock_final_poses, by: 0)
-                .map { meta, sdf, final_sdf ->
-                    "${meta.id}\tunidock\t${outdir}/${pub_subpath}/${meta.id}/${sdf.name}"
-                }
+            ch_unidock_final_poses.map { meta, final_sdf ->
+                "${meta.id}\tunidock\t${outdir}/${pub_subpath}/${meta.id}/${final_sdf.name}"
+            }
         )
     }
 

@@ -106,13 +106,19 @@ workflow SCREEN_WF {
         }
 
     // Validate Fail-Fast parameters before dispatching tasks
+    if (!params.autobox_add || !params.inner_box || !params.outer_box || params.gnina_enabled == null) {
+        error "FATAL: Box geometry or gnina_enabled parameters missing in configuration! Check glide.yaml, unidock.yaml, and gnina.yaml."
+    }
+    if (params.gnina_enabled.toString() == "true" && (!params.gnina_rescore_mode || params.cnn_model == null)) {
+        error "FATAL: GNINA rescoring parameters missing in configuration! Check gnina.yaml."
+    }
     if (params.dock_engine in ["glide", "both"]) {
-        if (!params.inner_box || !params.outer_box || !params.glide_forcefield || !params.glide_precision || !params.poses_per_lig || params.glide_postdock == null || !params.glide_recep_vscale || !params.glide_lig_vscale || !params.glide_recep_ccut || !params.glide_lig_ccut) {
+        if (!params.glide_forcefield || !params.glide_precision || !params.poses_per_lig || params.glide_postdock == null || !params.glide_recep_vscale || !params.glide_lig_vscale || !params.glide_recep_ccut || !params.glide_lig_ccut) {
             error "FATAL: Glide docking parameters missing in configuration! Check glide.yaml."
         }
     }
     if (params.dock_engine in ["unidock", "both"]) {
-        if (!params.unidock_search_mode || !params.unidock_scoring || params.unidock_refine_step == null || !params.unidock_num_modes || params.unidock_energy_range == null || !params.autobox_add || params.unidock_seed == null) {
+        if (!params.unidock_search_mode || !params.unidock_scoring || params.unidock_refine_step == null || !params.unidock_num_modes || params.unidock_energy_range == null || params.unidock_seed == null) {
             error "FATAL: Uni-Dock docking parameters missing in configuration! Check unidock.yaml."
         }
     }
@@ -136,15 +142,15 @@ workflow SCREEN_WF {
         params.unidock_num_modes,
         params.unidock_energy_range,
         params.unidock_seed,
-        params.autobox_add ?: 4.0,
-        params.inner_box ?: "10, 10, 10",
-        params.outer_box ?: "26, 26, 26",
+        params.autobox_add,
+        params.inner_box,
+        params.outer_box,
         params.glide_forcefield,
         params.glide_precision,
         params.poses_per_lig,
         params.gnina_enabled,
-        params.gnina_rescore_mode ?: "score_only",
-        params.cnn_model ?: "",
+        params.gnina_rescore_mode,
+        params.cnn_model,
         params.glide_postdock,
         params.glide_recep_vscale,
         params.glide_lig_vscale,
