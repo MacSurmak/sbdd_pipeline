@@ -112,9 +112,9 @@ cmd.load_cgo(outer_cgo, "{args.receptor_name}_glide_outer_box")
 inner_cgo = {cgo_box_lines(gi_min_x, gi_max_x, gi_min_y, gi_max_y, gi_min_z, gi_max_z, 0.2, 1.0, 0.3)}
 cmd.load_cgo(inner_cgo, "{args.receptor_name}_glide_inner_box")
 
-# 3. GNINA Autobox (+{auto_pad:.1f} A padding) (Orange)
-gnina_cgo = {cgo_box_lines(gn_min_x, gn_max_x, gn_min_y, gn_max_y, gn_min_z, gn_max_z, 1.0, 0.6, 0.1)}
-cmd.load_cgo(gnina_cgo, "{args.receptor_name}_gnina_autobox")
+# 3. Autobox (+{auto_pad:.1f} A padding) (Orange)
+autobox_cgo = {cgo_box_lines(gn_min_x, gn_max_x, gn_min_y, gn_max_y, gn_min_z, gn_max_z, 1.0, 0.6, 0.1)}
+cmd.load_cgo(autobox_cgo, "{args.receptor_name}_autobox")
 
 # 4. Docking Center Marker
 cmd.pseudoatom("{args.receptor_name}_docking_center", pos=[{cx:.3f}, {cy:.3f}, {cz:.3f}])

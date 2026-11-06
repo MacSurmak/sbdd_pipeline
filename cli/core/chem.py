@@ -6,9 +6,8 @@ Computes Standard InChIKey and Canonical SMILES via RDKit for topological dedupl
 
 import hashlib
 from pathlib import Path
-import sys
-from typing import List, Optional, Tuple
-import numpy as np
+from typing import List, Tuple
+from meeko import MoleculePreparation, PDBQTWriterLegacy
 from rdkit import Chem
 from rdkit.Chem import AllChem
 from rdkit.Chem.EnumerateStereoisomers import (
@@ -779,3 +778,44 @@ def convert_receptor_pdb_to_pdbqt(pdb_path: str | Path, out_pdbqt: str | Path) -
 
     out_p.parent.mkdir(parents=True, exist_ok=True)
     out_p.write_text("\n".join(out_lines) + "\n", encoding="utf-8")
+
+
+def convert_prepared_mol_to_pdbqt(mol: Chem.Mol, out_pdbqt: str | Path) -> int:
+    """
+    Translates a fully prepared, protonated LigPrep molecule into an AutoDock PDBQT string
+    with a complete torsion tree (ROOT/BRANCH/TORSDOF) using standard Meeko.
+    Preserves exact 3D coordinates, formal charges, and polar hydrogens without distortion.
+    Returns the integer count of active rotatable bonds (torsions).
+    """
+    out_path = Path(out_pdbqt).resolve()
+    if mol is None or mol.GetNumAtoms() == 0:
+        raise ValueError("FATAL: Invalid or empty Chem.Mol provided to convert_prepared_mol_to_pdbqt!")
+
+    preparator = MoleculePreparation(
+        merge_these_atom_types=["H"],
+        hydrate=False,
+        flexible_amides=False,
+        rigid_macrocycles=True,
+        keep_chorded_rings=True,
+        min_ring_size=7,
+        max_ring_size=33,
+    )
+
+    mol_copy = Chem.Mol(mol)
+    mol_copy.UpdatePropertyCache(strict=False)
+    Chem.SanitizeMol(mol_copy)
+
+    preparator.prepare(mol_copy)
+    setup = preparator.setup[0]
+
+    pdbqt_str, is_ok, error_msg = PDBQTWriterLegacy.write_string(setup)
+    if not is_ok or not pdbqt_str:
+        mol_name = mol.GetProp("_Name") if mol.HasProp("_Name") else "mol"
+        raise RuntimeError(
+            f"FATAL: Meeko failed to generate valid PDBQT for '{mol_name}': {error_msg}"
+        )
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(pdbqt_str, encoding="utf-8")
+
+    return int(setup.num_rotatable_bonds)

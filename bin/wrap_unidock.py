@@ -15,16 +15,19 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from typing import Final
+from meeko import PDBQTMolecule
 from rdkit import Chem, RDLogger
 
 RDLogger.DisableLog("rdApp.*")
 
-FRAMEWORK_DIR = Path(__file__).resolve().parent.parent
+FRAMEWORK_DIR: Final[Path] = Path(__file__).resolve().parent.parent
 if str(FRAMEWORK_DIR) not in sys.path:
     sys.path.insert(0, str(FRAMEWORK_DIR))
 
 from cli.core.chem import (
     compute_autobox_geometry,
+    convert_prepared_mol_to_pdbqt,
     convert_receptor_pdb_to_pdbqt,
     transfer_coordinates_to_template,
 )
@@ -91,12 +94,11 @@ def main() -> None:
             rec_pdbqt = work_dir / "receptor.pdbqt"
             convert_receptor_pdb_to_pdbqt(rec_path, rec_pdbqt)
 
-        templates_by_idx: dict[int, tuple[str, Chem.Mol]] = {}
+        templates_by_idx: dict[int, tuple[str, Chem.Mol, int]] = {}
         index_paths: list[str] = []
 
-        for idx, tmpl_mol in enumerate(
-            Chem.SDMolSupplier(str(lig_path), removeHs=False, sanitize=False)
-        ):
+        suppl = Chem.SDMolSupplier(str(lig_path), removeHs=False, sanitize=False)
+        for idx, tmpl_mol in enumerate(suppl):
             if tmpl_mol is None:
                 raise ValueError(
                     f"FATAL: Corrupted molecule record at index {idx} in {lig_path}!"
@@ -112,17 +114,14 @@ def main() -> None:
                 raise ValueError(
                     f"FATAL: Unnamed molecule at index {idx} in {lig_path}!"
                 )
+
             tmpl_mol.UpdatePropertyCache(strict=False)
             Chem.SanitizeMol(tmpl_mol)
-            templates_by_idx[idx] = (t_name, Chem.Mol(tmpl_mol))
 
-            single_sdf = in_dir / f"lig_{idx:05d}.sdf"
-            mol_copy = Chem.Mol(tmpl_mol)
-            mol_copy.SetProp("_Name", f"{t_name}__tmpl_{idx}")
-            with Chem.SDWriter(str(single_sdf)) as w:
-                w.SetForceV3000(False)
-                w.write(mol_copy)
-            index_paths.append(str(single_sdf))
+            single_pdbqt = in_dir / f"lig_{idx:05d}.pdbqt"
+            n_torsions = convert_prepared_mol_to_pdbqt(tmpl_mol, single_pdbqt)
+            templates_by_idx[idx] = (t_name, Chem.Mol(tmpl_mol), n_torsions)
+            index_paths.append(str(single_pdbqt))
 
         if not index_paths:
             raise ValueError(f"FATAL: Zero valid molecules found in {lig_path}!")
@@ -169,8 +168,8 @@ def main() -> None:
         with open(args.out_log, "w", encoding="utf-8") as log_f:
             res = subprocess.run(cmd, stdout=log_f, stderr=subprocess.STDOUT, check=False)
 
+        log_text = Path(args.out_log).read_text(errors="ignore") if Path(args.out_log).exists() else ""
         if res.returncode != 0:
-            log_text = Path(args.out_log).read_text(errors="ignore") if Path(args.out_log).exists() else ""
             print(
                 f"FATAL: Uni-Dock failed with exit code {res.returncode}!\n"
                 f"Command: {' '.join(cmd)}\n"
@@ -182,31 +181,76 @@ def main() -> None:
             )
             sys.exit(res.returncode)
 
-        # Group restored poses by substance title and sort modes strictly by Vina affinity
+        has_flexible_ligand = any(n_tor > 0 for _, _, n_tor in templates_by_idx.values())
+        if has_flexible_ligand and "No fragment info, using rigid docking" in log_text:
+            raise RuntimeError(
+                f"FATAL METHODOLOGY VIOLATION: Uni-Dock reverted to rigid docking despite flexible ligand input!\n"
+                f"Fragment tree was not parsed by Uni-Dock engine.\n"
+                f"--- TAIL OF LOG ---\n{log_text[-1000:]}"
+            )
+
         poses_by_title: dict[str, list[tuple[float, Chem.Mol]]] = {}
         for idx in sorted(templates_by_idx.keys()):
-            orig_title, exact_tmpl = templates_by_idx[idx]
-            out_lig_sdf = out_dir / f"lig_{idx:05d}_out.sdf"
-            if not out_lig_sdf.exists() or out_lig_sdf.stat().st_size == 0:
-                raise FileNotFoundError(
-                    f"FATAL: Uni-Dock failed to produce output SDF for record {idx} ('{orig_title}'): {out_lig_sdf}"
-                )
+            orig_title, exact_tmpl, _ = templates_by_idx[idx]
+            out_pdbqt = out_dir / f"lig_{idx:05d}_out.pdbqt"
+            out_sdf = out_dir / f"lig_{idx:05d}_out.sdf"
 
-            suppl = Chem.SDMolSupplier(str(out_lig_sdf), removeHs=False, sanitize=False)
-            for pose_mol in suppl:
-                if pose_mol is None:
-                    continue
-                vina_score = _extract_unidock_score(pose_mol)
-                restored_mol = transfer_coordinates_to_template(
-                    template_mol=exact_tmpl,
-                    source_mol=pose_mol,
-                    relax_missing_hydrogens=False,
+            if out_pdbqt.exists() and out_pdbqt.stat().st_size > 0:
+                pdbqt_text = out_pdbqt.read_text(encoding="utf-8", errors="ignore")
+                pdbqt_mol = PDBQTMolecule(pdbqt_text, is_dlg=False, skip_typing=True)
+                rdkit_poses = list(pdbqt_mol.export_rdkit_mols())
+                if not rdkit_poses:
+                    raise ValueError(
+                        f"FATAL: Meeko failed to extract RDKit poses from Uni-Dock output PDBQT: {out_pdbqt}"
+                    )
+                for p_idx, pose_mol in enumerate(rdkit_poses, start=1):
+                    if pose_mol is None:
+                        raise ValueError(
+                            f"FATAL: Corrupted pose index {p_idx} in Uni-Dock output PDBQT: {out_pdbqt}"
+                        )
+                    raw_e = pose_mol.GetProp("free_energy") if pose_mol.HasProp("free_energy") else None
+                    if not raw_e:
+                        raise ValueError(
+                            f"FATAL: Free energy property missing in pose {p_idx} of {out_pdbqt}!"
+                        )
+                    vina_score = float(raw_e)
+                    restored_mol = transfer_coordinates_to_template(
+                        template_mol=exact_tmpl,
+                        source_mol=pose_mol,
+                        relax_missing_hydrogens=False,
+                    )
+                    restored_mol.SetProp("_Name", orig_title)
+                    restored_mol.SetProp("s_m_title", orig_title)
+                    restored_mol.SetProp("unidock_vina_score", f"{vina_score:.3f}")
+                    restored_mol.SetProp("minimizedAffinity", f"{vina_score:.3f}")
+                    if orig_title not in poses_by_title:
+                        poses_by_title[orig_title] = []
+                    poses_by_title[orig_title].append((vina_score, restored_mol))
+
+            elif out_sdf.exists() and out_sdf.stat().st_size > 0:
+                suppl = Chem.SDMolSupplier(str(out_sdf), removeHs=False, sanitize=False)
+                for p_idx, pose_mol in enumerate(suppl, start=1):
+                    if pose_mol is None:
+                        raise ValueError(
+                            f"FATAL: Corrupted pose index {p_idx} in Uni-Dock output SDF: {out_sdf}"
+                        )
+                    vina_score = _extract_unidock_score(pose_mol)
+                    restored_mol = transfer_coordinates_to_template(
+                        template_mol=exact_tmpl,
+                        source_mol=pose_mol,
+                        relax_missing_hydrogens=False,
+                    )
+                    restored_mol.SetProp("_Name", orig_title)
+                    restored_mol.SetProp("s_m_title", orig_title)
+                    restored_mol.SetProp("unidock_vina_score", f"{vina_score:.3f}")
+                    restored_mol.SetProp("minimizedAffinity", f"{vina_score:.3f}")
+                    if orig_title not in poses_by_title:
+                        poses_by_title[orig_title] = []
+                    poses_by_title[orig_title].append((vina_score, restored_mol))
+            else:
+                raise FileNotFoundError(
+                    f"FATAL: Uni-Dock produced neither output PDBQT nor SDF for record {idx} ('{orig_title}') in {out_dir}!"
                 )
-                restored_mol.SetProp("_Name", orig_title)
-                restored_mol.SetProp("s_m_title", orig_title)
-                restored_mol.SetProp("unidock_vina_score", f"{vina_score:.3f}")
-                restored_mol.SetProp("minimizedAffinity", f"{vina_score:.3f}")
-                poses_by_title.setdefault(orig_title, []).append((vina_score, restored_mol))
 
         tmp_out_sdf = f"{args.out_sdf}.tmp"
         total_written = 0
