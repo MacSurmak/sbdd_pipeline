@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
 import argparse
-import sys
-import subprocess
-import shutil
-import re
-import socket
-import json
-import os
 from pathlib import Path
+import re
+import shutil
+import subprocess
+import sys
+import parmed as pmd
 
 
 def run_mdrun(cmd, task_name):
@@ -212,12 +210,47 @@ def cmd_trjconv(args):
             "-n",
             "index.ndx",
             "-o",
-            args.out_pdb,
+            "frame0_clean.gro",
             "-dump",
             "0",
         ],
         input_str=f"{args.pbc_extract}\n",
     )
+
+    has_valid_dry_top = False
+    dry_top_str = str(args.dry_top).strip()
+    if dry_top_str and dry_top_str != "NO_DRY_TOP":
+        dry_p = Path(dry_top_str).resolve()
+        if dry_p.exists() and dry_p.stat().st_size > 0:
+            dry_struct = pmd.load_file(str(dry_p))
+            gro_struct = pmd.load_file("frame0_clean.gro")
+            if len(dry_struct.atoms) == len(gro_struct.atoms):
+                dry_struct.coordinates = gro_struct.coordinates
+                dry_struct.save(args.out_pdb, overwrite=True)
+                has_valid_dry_top = True
+
+    if not has_valid_dry_top:
+        run_gmx(
+            [
+                "gmx",
+                "trjconv",
+                "-s",
+                args.tpr,
+                "-f",
+                args.out_xtc,
+                "-n",
+                "index.ndx",
+                "-o",
+                args.out_pdb,
+                "-dump",
+                "0",
+            ],
+            input_str=f"{args.pbc_extract}\n",
+        )
+
+    frame0_path = Path("frame0_clean.gro")
+    if frame0_path.exists():
+        frame0_path.unlink()
 
     if hasattr(args, "out_ndx") and args.out_ndx:
         run_gmx(
