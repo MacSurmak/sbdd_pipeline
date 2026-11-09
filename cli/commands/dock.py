@@ -751,7 +751,7 @@ def run_dock(
     overview_table.add_column("Consensus Poses (ΔRMSD ≤ 2.0 Å)", justify="center", style="bold green")
     overview_table.add_column("GlideScore (Best / Median)", justify="right")
     overview_table.add_column("UniDock Vina (Best / Median)", justify="right")
-    overview_table.add_column("Best CNNaffinity", justify="right", style="magenta")
+    overview_table.add_column("CNNscore (Best / Median)", justify="right", style="magenta")
 
     for rec in plan["receptors"]:
         f_name = rec["name"]
@@ -759,10 +759,10 @@ def run_dock(
         g_vals = [float(r["g_score"]) for r in f_rows if r["g_score"] is not None]
         u_vals = [float(r["u_vina"]) for r in f_rows if r["u_vina"] is not None]
         rmsd_vals = [float(r["pair_rmsd"]) for r in f_rows if r["pair_rmsd"] is not None]
-        cnn_vals = [
+        cnn_sc_vals = [
             float(v)
             for r in f_rows
-            for v in (r["g_cnn_aff"], r["u_cnn_aff"])
+            for v in (r["g_cnn_sc"], r["u_cnn_sc"])
             if v is not None
         ]
 
@@ -779,7 +779,11 @@ def run_dock(
         u_stat_str = (
             f"{min(u_vals):.2f} / {statistics.median(u_vals):.2f}" if u_vals else "-"
         )
-        cnn_best_str = f"{max(cnn_vals):.2f}" if cnn_vals else "-"
+        cnn_stat_str = (
+            f"{max(cnn_sc_vals):.2f} / {statistics.median(cnn_sc_vals):.2f}"
+            if cnn_sc_vals
+            else "-"
+        )
 
         overview_table.add_row(
             f_name,
@@ -787,13 +791,13 @@ def run_dock(
             consensus_str,
             g_stat_str,
             u_stat_str,
-            cnn_best_str,
+            cnn_stat_str,
         )
 
     # 2. Render Top-25 Consensus Screening Hits
     top_k = min(25, len(summary_rows))
     table = Table(
-        title=f"🎯 Top-{top_k} Consensus Hits (out of {len(summary_rows)} evaluated pairs | Total DB Records: {total_modes_saved})",
+        title=f"🎯 Top-{top_k} Orthogonal Consensus Hits (Physics + CNNscore + ΔRMSD | Total DB Records: {total_modes_saved})",
         show_header=True,
     )
     table.add_column("Rank", justify="right", style="bold")
@@ -801,22 +805,22 @@ def run_dock(
     table.add_column("Substance", style="bold")
     table.add_column("Modes (G/U)", justify="center", style="dim")
     table.add_column("Glide Score", justify="right")
-    table.add_column("Glide CNNaff (p)", justify="right")
+    table.add_column("Glide CNNscore (aff)", justify="right")
     table.add_column("UniDock Vina", justify="right")
-    table.add_column("UniDock CNNaff (p)", justify="right")
+    table.add_column("UniDock CNNscore (aff)", justify="right")
     table.add_column("Glide↔UniDock ΔRMSD (Å)", justify="center")
     table.add_column("Ultimate Score", justify="right", style="bold magenta")
 
     for rank_idx, r in enumerate(summary_rows[:top_k], start=1):
         g_cnn_str = (
-            f"{float(r['g_cnn_aff']):.2f} ({float(r['g_cnn_sc']):.2f})"
-            if (r["g_cnn_aff"] is not None and r["g_cnn_sc"] is not None)
-            else _format_metric(r["g_cnn_aff"])
+            f"{float(r['g_cnn_sc']):.2f} ({float(r['g_cnn_aff']):.2f})"
+            if (r["g_cnn_sc"] is not None and r["g_cnn_aff"] is not None)
+            else _format_metric(r["g_cnn_sc"])
         )
         u_cnn_str = (
-            f"{float(r['u_cnn_aff']):.2f} ({float(r['u_cnn_sc']):.2f})"
-            if (r["u_cnn_aff"] is not None and r["u_cnn_sc"] is not None)
-            else _format_metric(r["u_cnn_aff"])
+            f"{float(r['u_cnn_sc']):.2f} ({float(r['u_cnn_aff']):.2f})"
+            if (r["u_cnn_sc"] is not None and r["u_cnn_aff"] is not None)
+            else _format_metric(r["u_cnn_sc"])
         )
         pair_rmsd_val = float(r["pair_rmsd"]) if r["pair_rmsd"] is not None else None
         table.add_row(

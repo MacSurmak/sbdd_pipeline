@@ -9,26 +9,27 @@ and outputs complete, structured analysis CSV tables:
 3. summary.json (JSON dump of ranking)
 """
 import argparse
-import sys
 import json
-import re
 from pathlib import Path
-import pandas as pd
+import sys
+from typing import Final
 import numpy as np
+import pandas as pd
+from rdkit import Chem
 
-# Add script directory to sys.path for absolute imports
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from utils.parsers import parse_glide_csv, parse_prime_csv, parse_gnina_sdf
+SCRIPT_DIR: Final[Path] = Path(__file__).resolve().parent
+FRAMEWORK_DIR: Final[Path] = SCRIPT_DIR.parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+if str(FRAMEWORK_DIR) not in sys.path:
+    sys.path.insert(0, str(FRAMEWORK_DIR))
+
+from cli.core.chem import compute_symmetry_rmsd
+from utils.parsers import parse_glide_csv, parse_gnina_sdf, parse_prime_csv
 
 
-def compute_pose_consensus_rmsd(df: pd.DataFrame, dock_dir: Path):
-    """Calculates in-situ symmetry-aware heavy-atom RMSD between Glide and GNINA dock poses."""
-    from rdkit import Chem
-
-    framework_dir = Path(__file__).resolve().parent.parent
-    if str(framework_dir) not in sys.path:
-        sys.path.insert(0, str(framework_dir))
-    from cli.core.chem import compute_symmetry_rmsd
+def compute_pose_consensus_rmsd(df: pd.DataFrame, dock_dir: Path) -> pd.DataFrame:
+    """Calculates in-situ symmetry-aware heavy-atom RMSD between top Glide and Uni-Dock poses."""
 
     def _index_top_poses(filepath: Path) -> dict[str, Chem.Mol]:
         poses_by_title: dict[str, Chem.Mol] = {}
@@ -66,8 +67,16 @@ def compute_pose_consensus_rmsd(df: pd.DataFrame, dock_dir: Path):
         rec_id = str(row["Receptor"]).strip()
         title = str(row["Title"]).strip()
 
-        mg = glide_cache.get(rec_id, {}).get(title)
-        mu = unidock_cache.get(rec_id, {}).get(title)
+        mg = (
+            glide_cache[rec_id][title]
+            if (rec_id in glide_cache and title in glide_cache[rec_id])
+            else None
+        )
+        mu = (
+            unidock_cache[rec_id][title]
+            if (rec_id in unidock_cache and title in unidock_cache[rec_id])
+            else None
+        )
         if mg is not None and mu is not None:
             val = compute_symmetry_rmsd(mg, mu)
             rmsd_list.append(round(val, 3))
@@ -80,32 +89,49 @@ def compute_pose_consensus_rmsd(df: pd.DataFrame, dock_dir: Path):
 
 def calculate_consensus_score(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Computes symmetric Percentile Rank score (0-100) strictly from native physical scores
-    (GlideScore and UniDock_Vina, plus MMGBSA when executed), keeping GNINA CNN metrics
-    recorded as separate orthogonal columns.
+    Computes 3-axis Orthogonal Percentile Consensus Score (0-100):
+      1. PR_Physics: mean percentile rank of native physical energies (GlideScore, UniDock_Vina, MMGBSA).
+      2. PR_Validity: mean percentile rank of 3D-CNN pose plausibility (Glide_CNNscore, UniDock_CNNscore).
+      3. PR_Pose_RMSD: percentile rank of cross-engine geometric convergence (Pose_RMSD, lower is better).
     """
+    phys_cols: list[str] = []
     if "GlideScore" in df.columns and df["GlideScore"].notna().any():
         df["PR_Glide"] = df["GlideScore"].rank(ascending=False, pct=True).fillna(0.0)
+        phys_cols.append("PR_Glide")
     if "UniDock_Vina" in df.columns and df["UniDock_Vina"].notna().any():
         df["PR_UniDock"] = df["UniDock_Vina"].rank(ascending=False, pct=True).fillna(0.0)
+        phys_cols.append("PR_UniDock")
     if "MMGBSA" in df.columns and df["MMGBSA"].notna().any():
         df["PR_MMGBSA"] = df["MMGBSA"].rank(ascending=False, pct=True).fillna(0.0)
-    if "Glide_CNNaffinity" in df.columns and df["Glide_CNNaffinity"].notna().any():
-        df["PR_Glide_CNN"] = (
-            df["Glide_CNNaffinity"].rank(ascending=True, pct=True).fillna(0.0)
-        )
-    if "UniDock_CNNaffinity" in df.columns and df["UniDock_CNNaffinity"].notna().any():
-        df["PR_UniDock_CNN"] = (
-            df["UniDock_CNNaffinity"].rank(ascending=True, pct=True).fillna(0.0)
-        )
+        phys_cols.append("PR_MMGBSA")
 
-    candidate_cols = ["PR_Glide", "PR_UniDock", "PR_MMGBSA"]
-    pr_cols = [c for c in candidate_cols if c in df.columns and df[c].notna().any()]
+    val_cols: list[str] = []
+    if "Glide_CNNscore" in df.columns and df["Glide_CNNscore"].notna().any():
+        df["PR_Glide_CNNscore"] = (
+            df["Glide_CNNscore"].rank(ascending=True, pct=True).fillna(0.0)
+        )
+        val_cols.append("PR_Glide_CNNscore")
+    if "UniDock_CNNscore" in df.columns and df["UniDock_CNNscore"].notna().any():
+        df["PR_UniDock_CNNscore"] = (
+            df["UniDock_CNNscore"].rank(ascending=True, pct=True).fillna(0.0)
+        )
+        val_cols.append("PR_UniDock_CNNscore")
 
-    if not pr_cols:
+    axis_cols: list[str] = []
+    if phys_cols:
+        df["PR_Physics"] = df[phys_cols].sum(axis=1) / float(len(phys_cols))
+        axis_cols.append("PR_Physics")
+    if val_cols:
+        df["PR_Validity"] = df[val_cols].sum(axis=1) / float(len(val_cols))
+        axis_cols.append("PR_Validity")
+    if "Pose_RMSD" in df.columns and df["Pose_RMSD"].notna().any():
+        df["PR_Pose_RMSD"] = df["Pose_RMSD"].rank(ascending=False, pct=True).fillna(0.0)
+        axis_cols.append("PR_Pose_RMSD")
+
+    if not axis_cols:
         df["Ultimate_Score"] = 0.0
     else:
-        df["Ultimate_Score"] = (df[pr_cols].sum(axis=1) / len(pr_cols)) * 100.0
+        df["Ultimate_Score"] = (df[axis_cols].sum(axis=1) / float(len(axis_cols))) * 100.0
     return df
 
 
@@ -208,11 +234,14 @@ def main():
             "FATAL: No records found. Docking and/or rescoring failed entirely."
         )
 
-    # Export full raw multi-frame metrics before deduplication
+    # Compute cross-engine Pose_RMSD first so it participates in the 3-axis consensus score
+    df = compute_pose_consensus_rmsd(df, dock_dir)
+
+    # Export full raw multi-frame metrics
     df_raw = df.copy()
     df_raw.to_csv(out_dir / "docking_combined_raw.csv", index=False)
 
-    # Calculate Consensus Score
+    # Calculate 3-axis Orthogonal Consensus Score (Physics + CNNscore Validity + Pose_RMSD)
     df = calculate_consensus_score(df)
 
     # Pivot matrix: Ultimate_Score across all frames
@@ -222,21 +251,11 @@ def main():
         )
         matrix_df.to_csv(out_dir / "cross_frame_matrix.csv")
 
-    # TODO (Methodological / Conformational Selection Audit):
-    # 1. Cross-Frame Deduplication: Currently .drop_duplicates(subset=["Title", "Frame"]) retains
-    #    a separate row for EVERY receptor frame per ligand, rather than selecting the single best
-    #    conformational frame per compound (.drop_duplicates(subset="Title")) as in the legacy
-    #    conformational selection pipeline. This dilutes percentile ranks across frames.
-    # 2. Consensus Score Composition: When SUMMARIZE_DOCKING runs during 'sbdd dock' prior to
-    #    'sbdd rescore' (MM-GBSA), Ultimate_Score is computed without MM-GBSA and excludes
-    #    independent GNINA docking (PR_GNINA_Dock) whenever Glide is active.
-    # Resolved top hit per ligand (best conformational frame)
     df_resolved = (
         df.sort_values("Ultimate_Score", ascending=False)
         .drop_duplicates(subset=["Title", "Frame"])
         .copy()
     )
-    df_resolved = compute_pose_consensus_rmsd(df_resolved, dock_dir)
 
     # Read separate Glide and Uni-Dock in-situ RMSD directly from calculated CSVs
     glide_rmsd_map = {}
