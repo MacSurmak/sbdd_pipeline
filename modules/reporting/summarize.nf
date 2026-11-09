@@ -5,9 +5,7 @@
 
 process SUMMARIZE_DOCKING {
     tag "${project_name}"
-    executor 'local'
-    scratch false
-    label 'process_single'
+    label 'process_medium'
 
     input:
     val(project_name)
@@ -18,6 +16,7 @@ process SUMMARIZE_DOCKING {
 
     output:
     path("ranking.csv"), emit: ranking_csv
+    path("docking_combined_raw.csv"), emit: raw_csv
     path("cross_frame_matrix.csv"), emit: matrix_csv
     path("summary.json"), emit: summary_json
 

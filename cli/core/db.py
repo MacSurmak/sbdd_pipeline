@@ -520,7 +520,6 @@ class DockedPose(Base):
     cross_engine_rmsd = Column(Float, nullable=True)
     consensus_score = Column(Float, nullable=True)
     path_sdf = Column(String, nullable=False)
-    mol_block = Column(Text, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     docking_run = relationship("DockingRun", back_populates="docked_poses")
@@ -647,13 +646,11 @@ def _migrate_schema(engine: Engine) -> None:
 
         cursor_dp = conn.exec_driver_sql("PRAGMA table_info(docked_poses)")
         dp_cols = {row[1]: row[3] for row in cursor_dp.fetchall()}
-        if dp_cols.get("substance_state_id") == 1:
-            conn.exec_driver_sql("ALTER TABLE docked_poses RENAME TO _docked_poses_old")
+        if "substance_state_id" in dp_cols and dp_cols["substance_state_id"] == 1:
+            conn.exec_driver_sql("DROP TABLE docked_poses")
             DockedPose.__table__.create(bind=conn)
-            conn.exec_driver_sql(
-                "INSERT INTO docked_poses SELECT * FROM _docked_poses_old"
-            )
-            conn.exec_driver_sql("DROP TABLE _docked_poses_old")
+        elif "mol_block" in dp_cols:
+            conn.exec_driver_sql("ALTER TABLE docked_poses DROP COLUMN mol_block")
         if dp_cols:
             conn.exec_driver_sql(
                 "UPDATE docked_poses SET substance_state_id = NULL WHERE substance_state_id IN ("

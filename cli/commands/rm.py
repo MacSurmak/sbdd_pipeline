@@ -55,23 +55,10 @@ def remove_library_substances() -> None:
         removed_subs += 1
     session.flush()
 
-    # Re-link any DockedPose on crystal substances that pointed to a raw state back to its canonical full-H state
-    from cli.core.chem import get_microstate_identity
-    from rdkit import Chem
-
     for dp in session.query(DockedPose).all():
         st = dp.substance_state
         if st and st.state == "raw":
-            mol = Chem.MolFromMolBlock(dp.mol_block, removeHs=False, sanitize=False)
-            if mol is not None:
-                _, _, _, canon_hash, _, _ = get_microstate_identity(mol)
-                ready_st = (
-                    session.query(SubstanceState)
-                    .filter_by(substance_id=dp.substance_id, state_hash=canon_hash)
-                    .first()
-                )
-                if ready_st and ready_st.id != st.id:
-                    dp.substance_state_id = ready_st.id
+            dp.substance_state_id = None
     session.flush()
 
     # Prune any unreferenced raw SubstanceStates on remaining crystal substances

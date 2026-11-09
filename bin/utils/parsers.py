@@ -10,16 +10,26 @@ from typing import Dict, Any
 
 def parse_glide_csv(csv_path: Path) -> Dict[str, Dict[str, float]]:
     data: Dict[str, Dict[str, float]] = {}
+    counts: Dict[str, int] = {}
     if not csv_path.exists():
         return data
     with open(csv_path, "r", encoding="utf-8", errors="ignore") as f:
         reader = csv.DictReader(f)
         for row in reader:
-            title = (row.get("title") or row.get("Title") or row.get("s_m_title") or "").strip()
+            raw_t = (
+                row.get("title")
+                if row.get("title") is not None
+                else (
+                    row.get("Title")
+                    if row.get("Title") is not None
+                    else row.get("s_m_title")
+                )
+            )
+            title = raw_t.strip() if raw_t else ""
             if not title:
                 continue
 
-            score = None
+            score: float | None = None
             for k in ["r_i_docking_score", "docking_score"]:
                 if k in row and row[k]:
                     try:
@@ -28,7 +38,7 @@ def parse_glide_csv(csv_path: Path) -> Dict[str, Dict[str, float]]:
                     except ValueError as e:
                         raise ValueError(
                             f"FATAL: Unparseable GlideScore '{row[k]}' for ligand '{title}': {e}"
-                        )
+                        ) from e
             if score is None:
                 for k in ["r_i_glide_gscore", "gscore"]:
                     if k in row and row[k]:
@@ -38,11 +48,13 @@ def parse_glide_csv(csv_path: Path) -> Dict[str, Dict[str, float]]:
                         except ValueError as e:
                             raise ValueError(
                                 f"FATAL: Unparseable GScore '{row[k]}' for ligand '{title}': {e}"
-                            )
+                            ) from e
             if score is not None:
-                # Retain the most favorable (lowest) GlideScore across protomers/poses
+                counts[title] = (counts[title] + 1) if title in counts else 1
                 if title not in data or score < data[title]["GlideScore"]:
-                    data[title] = {"GlideScore": score}
+                    data[title] = {"GlideScore": score, "Glide_Modes": float(counts[title])}
+                else:
+                    data[title]["Glide_Modes"] = float(counts[title])
     return data
 
 
@@ -97,6 +109,7 @@ def parse_gnina_sdf(sdf_path: Path, prefix: str = "") -> Dict[str, Dict[str, flo
     """
     data: Dict[str, Dict[str, float]] = {}
     best_native_energy: Dict[str, float] = {}
+    mode_counts: Dict[str, int] = {}
     if not sdf_path or not sdf_path.exists():
         return data
 
@@ -146,13 +159,22 @@ def parse_gnina_sdf(sdf_path: Path, prefix: str = "") -> Dict[str, Dict[str, flo
                         native_vina = val
 
         if props and title:
+            mode_counts[title] = (mode_counts[title] + 1) if title in mode_counts else 1
             primary_e = (
                 native_glide
                 if native_glide is not None
                 else (native_vina if native_vina is not None else float("inf"))
             )
-            if title not in data or primary_e < best_native_energy.get(title, float("inf")):
+            prev_best = (
+                best_native_energy[title]
+                if title in best_native_energy
+                else float("inf")
+            )
+            if title not in data or primary_e < prev_best:
                 best_native_energy[title] = primary_e
+                props[f"{prefix}Modes"] = float(mode_counts[title])
                 data[title] = props
+            else:
+                data[title][f"{prefix}Modes"] = float(mode_counts[title])
 
     return data
