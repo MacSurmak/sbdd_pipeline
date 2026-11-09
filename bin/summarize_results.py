@@ -24,67 +24,45 @@ if str(SCRIPT_DIR) not in sys.path:
 if str(FRAMEWORK_DIR) not in sys.path:
     sys.path.insert(0, str(FRAMEWORK_DIR))
 
-from cli.core.chem import compute_symmetry_rmsd
-from utils.parsers import parse_glide_csv, parse_gnina_sdf, parse_prime_csv
+import csv
+from cli.core.clustering import (
+    DEFAULT_POSE_CLUSTER_CUTOFF_A,
+    evaluate_substance_pose_ensemble,
+    index_engine_poses_from_sdf,
+)
+from utils.parsers import parse_prime_csv
 
 
-def compute_pose_consensus_rmsd(df: pd.DataFrame, dock_dir: Path) -> pd.DataFrame:
-    """Calculates in-situ symmetry-aware heavy-atom RMSD between top Glide and Uni-Dock poses."""
-
-    def _index_top_poses(filepath: Path) -> dict[str, Chem.Mol]:
-        poses_by_title: dict[str, Chem.Mol] = {}
-        if not filepath.exists() or filepath.stat().st_size == 0:
-            return poses_by_title
-        suppl = Chem.SDMolSupplier(str(filepath), removeHs=False, sanitize=False)
-        for m in suppl:
-            if m is not None:
-                m_title = m.GetProp("_Name").strip() if m.HasProp("_Name") else ""
-                if not m_title and m.HasProp("s_m_title"):
-                    m_title = m.GetProp("s_m_title").strip()
-                if m_title and m_title not in poses_by_title:
-                    poses_by_title[m_title] = m
-        return poses_by_title
-
-    glide_cache: dict[str, dict[str, Chem.Mol]] = {}
-    unidock_cache: dict[str, dict[str, Chem.Mol]] = {}
-    for rec_val in df["Receptor"].dropna().unique():
-        r_id = str(rec_val).strip()
-        glide_sdf = (
-            dock_dir / f"{r_id}_glide_rescored.sdf"
-            if (dock_dir / f"{r_id}_glide_rescored.sdf").exists()
-            else dock_dir / f"{r_id}_dock.sdf"
-        )
-        unidock_sdf = (
-            dock_dir / f"{r_id}_unidock_rescored.sdf"
-            if (dock_dir / f"{r_id}_unidock_rescored.sdf").exists()
-            else dock_dir / f"{r_id}_unidock_dock.sdf"
-        )
-        glide_cache[r_id] = _index_top_poses(glide_sdf)
-        unidock_cache[r_id] = _index_top_poses(unidock_sdf)
-
-    rmsd_list = []
-    for _, row in df.iterrows():
-        rec_id = str(row["Receptor"]).strip()
-        title = str(row["Title"]).strip()
-
-        mg = (
-            glide_cache[rec_id][title]
-            if (rec_id in glide_cache and title in glide_cache[rec_id])
-            else None
-        )
-        mu = (
-            unidock_cache[rec_id][title]
-            if (rec_id in unidock_cache and title in unidock_cache[rec_id])
-            else None
-        )
-        if mg is not None and mu is not None:
-            val = compute_symmetry_rmsd(mg, mu)
-            rmsd_list.append(round(val, 3))
-        else:
-            rmsd_list.append(None)
-
-    df["Pose_RMSD"] = rmsd_list
-    return df
+def _load_glide_csv_score_lists(csv_path: Path) -> dict[str, list[float]]:
+    scores_by_title: dict[str, list[float]] = {}
+    if not csv_path.exists() or csv_path.stat().st_size == 0:
+        return scores_by_title
+    with open(csv_path, "r", encoding="utf-8", errors="ignore") as f:
+        for row in csv.DictReader(f):
+            raw_t = (
+                row.get("title")
+                if row.get("title") is not None
+                else (
+                    row.get("Title")
+                    if row.get("Title") is not None
+                    else row.get("s_m_title")
+                )
+            )
+            title = raw_t.strip() if raw_t else ""
+            raw_sc = (
+                row.get("r_i_docking_score")
+                if row.get("r_i_docking_score") is not None
+                else (
+                    row.get("docking_score")
+                    if row.get("docking_score") is not None
+                    else row.get("r_i_glide_gscore")
+                )
+            )
+            if title and raw_sc:
+                if title not in scores_by_title:
+                    scores_by_title[title] = []
+                scores_by_title[title].append(float(raw_sc))
+    return scores_by_title
 
 
 def calculate_consensus_score(df: pd.DataFrame) -> pd.DataFrame:
@@ -192,40 +170,74 @@ def main():
         )
 
     rows = []
+    ref_graphs: dict[str, tuple[Chem.Mol, list[tuple[int, ...]]]] = {}
+
     for rec_id in receptors_ordered:
-        g_file = dock_dir / f"{rec_id}_dock.csv"
+        g_csv_file = dock_dir / f"{rec_id}_dock.csv"
         m_file = analysis_dir / f"{rec_id}_mmgbsa-out.csv"
-        g_resc_file = dock_dir / f"{rec_id}_glide_rescored.sdf"
-        u_resc_file = (
+        g_sdf_file = (
+            dock_dir / f"{rec_id}_glide_rescored.sdf"
+            if (dock_dir / f"{rec_id}_glide_rescored.sdf").exists()
+            else dock_dir / f"{rec_id}_dock.sdf"
+        )
+        u_sdf_file = (
             dock_dir / f"{rec_id}_unidock_rescored.sdf"
             if (dock_dir / f"{rec_id}_unidock_rescored.sdf").exists()
             else dock_dir / f"{rec_id}_unidock_dock.sdf"
         )
 
-        glide_data = parse_glide_csv(g_file) if g_file.exists() else {}
+        fallback_glide_scores = _load_glide_csv_score_lists(g_csv_file)
         prime_data = parse_prime_csv(m_file) if m_file.exists() else {}
-        glide_cnn_data = (
-            parse_gnina_sdf(g_resc_file, prefix="Glide_") if g_resc_file.exists() else {}
+
+        glide_poses_map = index_engine_poses_from_sdf(
+            g_sdf_file, "glide", fallback_glide_scores, ref_graphs
         )
-        unidock_data = (
-            parse_gnina_sdf(u_resc_file, prefix="UniDock_") if u_resc_file.exists() else {}
+        unidock_poses_map = index_engine_poses_from_sdf(
+            u_sdf_file, "unidock", {}, ref_graphs
         )
 
         titles = sorted(
             list(
-                set(glide_data.keys())
+                set(glide_poses_map.keys())
+                | set(unidock_poses_map.keys())
                 | set(prime_data.keys())
-                | set(glide_cnn_data.keys())
-                | set(unidock_data.keys())
             )
         )
 
         for t in titles:
-            r = {"Title": t, "Receptor": rec_id, "Frame": rec_id}
-            r.update(glide_data.get(t, {}))
-            r.update(glide_cnn_data.get(t, {}))
-            r.update(unidock_data.get(t, {}))
-            r.update(prime_data.get(t, {}))
+            g_list = glide_poses_map[t] if t in glide_poses_map else []
+            u_list = unidock_poses_map[t] if t in unidock_poses_map else []
+            automorphisms = ref_graphs[t][1] if t in ref_graphs else [(0,)]
+
+            c_sum = evaluate_substance_pose_ensemble(
+                title=t,
+                glide_poses=g_list,
+                unidock_poses=u_list,
+                automorphisms=automorphisms,
+                cutoff_angstrom=DEFAULT_POSE_CLUSTER_CUTOFF_A,
+            )
+
+            r: dict[str, str | int | float | bool | None] = {
+                "Title": t,
+                "Receptor": rec_id,
+                "Frame": rec_id,
+                "Glide_Modes": c_sum.n_glide_modes,
+                "UniDock_Modes": c_sum.n_unidock_modes,
+                "Glide_Best_Mode": c_sum.glide_best_mode,
+                "UniDock_Best_Mode": c_sum.unidock_best_mode,
+                "Num_Clusters": c_sum.n_clusters,
+                "Cluster_Size": c_sum.winning_cluster_size,
+                "Is_Consensus_Basin": c_sum.is_consensus_basin,
+                "GlideScore": c_sum.glide_score,
+                "Glide_CNNscore": c_sum.glide_cnn_score,
+                "Glide_CNNaffinity": c_sum.glide_cnn_affinity,
+                "UniDock_Vina": c_sum.unidock_vina,
+                "UniDock_CNNscore": c_sum.unidock_cnn_score,
+                "UniDock_CNNaffinity": c_sum.unidock_cnn_affinity,
+                "Pose_RMSD": c_sum.pose_rmsd,
+            }
+            if t in prime_data:
+                r.update(prime_data[t])
             rows.append(r)
 
     df = pd.DataFrame(rows)
@@ -234,15 +246,12 @@ def main():
             "FATAL: No records found. Docking and/or rescoring failed entirely."
         )
 
-    # Compute cross-engine Pose_RMSD first so it participates in the 3-axis consensus score
-    df = compute_pose_consensus_rmsd(df, dock_dir)
-
-    # Export full raw multi-frame metrics
-    df_raw = df.copy()
-    df_raw.to_csv(out_dir / "docking_combined_raw.csv", index=False)
-
     # Calculate 3-axis Orthogonal Consensus Score (Physics + CNNscore Validity + Pose_RMSD)
     df = calculate_consensus_score(df)
+
+    # Export full multi-frame metrics (with Ultimate_Score and Pose_RMSD) for DB ingestion
+    df_raw = df.sort_values("Ultimate_Score", ascending=False).copy()
+    df_raw.to_csv(out_dir / "docking_combined_raw.csv", index=False)
 
     # Pivot matrix: Ultimate_Score across all frames
     if "Ultimate_Score" in df.columns and "Frame" in df.columns:
@@ -251,9 +260,10 @@ def main():
         )
         matrix_df.to_csv(out_dir / "cross_frame_matrix.csv")
 
+    # Select the single best conformational frame per unique substance
     df_resolved = (
         df.sort_values("Ultimate_Score", ascending=False)
-        .drop_duplicates(subset=["Title", "Frame"])
+        .drop_duplicates(subset=["Title"], keep="first")
         .copy()
     )
 
