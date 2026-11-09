@@ -69,7 +69,7 @@ def run_rescore(
         dock_summary_files.add(str(p_sdf))
 
     for f_id in frame_ids:
-        frame = session.query(ReceptorFrame).get(f_id)
+        frame = session.query(ReceptorFrame).filter(ReceptorFrame.id == f_id).first()
         if not frame:
             continue
         frame_poses = [

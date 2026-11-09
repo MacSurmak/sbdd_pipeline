@@ -258,9 +258,9 @@ def _ingest_docking_receipt(
         )
 
     substance_by_title = {
-        item.get("ligand_title", item["name"]): session.query(Substance).get(
-            item["substance_id"]
-        )
+        (
+            item["ligand_title"] if "ligand_title" in item else item["name"]
+        ): session.query(Substance).filter(Substance.id == item["substance_id"]).one()
         for item in plan["ligands"]
     }
     receipt_map: dict[tuple[str, str], Path] = {}

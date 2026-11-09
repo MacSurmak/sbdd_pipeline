@@ -1,11 +1,23 @@
 #!/usr/bin/env python3
 import argparse
+import itertools
+import os
 import subprocess
 import sys
 from pathlib import Path
+from typing import Final
+from rdkit import Chem, RDLogger
+
+RDLogger.DisableLog("rdApp.*")
+
+FRAMEWORK_DIR: Final[Path] = Path(__file__).resolve().parent.parent
+if str(FRAMEWORK_DIR) not in sys.path:
+    sys.path.insert(0, str(FRAMEWORK_DIR))
+
+from cli.core.chem import transfer_coordinates_to_template
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description="Universal GNINA 3D-CNN Pose Rescorer")
     parser.add_argument("mode", choices=["rescore"])
     parser.add_argument("--receptor", required=True)
@@ -26,11 +38,6 @@ def main():
             file=sys.stderr,
         )
         sys.exit(1)
-
-    import os
-    from rdkit import Chem, RDLogger
-
-    RDLogger.DisableLog("rdApp.*")
 
     cmd = [
         "gnina",
@@ -58,7 +65,14 @@ def main():
 
     print(f"Exec: {' '.join(cmd)}", flush=True)
     with open(args.out_log, "w", encoding="utf-8") as f:
-        res = subprocess.run(cmd, stdout=f, stderr=subprocess.STDOUT, check=False)
+        res = subprocess.run(
+            cmd,
+            stdout=f,
+            stderr=subprocess.STDOUT,
+            check=False,
+            env=os.environ.copy(),
+            timeout=14400,
+        )
 
     if res.returncode != 0:
         log_content = ""
@@ -75,26 +89,20 @@ def main():
         )
         sys.exit(res.returncode)
 
-    framework_dir = Path(__file__).resolve().parent.parent
-    if str(framework_dir) not in sys.path:
-        sys.path.insert(0, str(framework_dir))
-    from cli.core.chem import transfer_coordinates_to_template
-
-    in_mols = list(Chem.SDMolSupplier(args.ligand, removeHs=False, sanitize=False))
-    out_mols = list(Chem.SDMolSupplier(args.out_sdf, removeHs=False, sanitize=False))
-    if len(in_mols) != len(out_mols):
-        raise ValueError(
-            f"FATAL: Pose count mismatch in GNINA rescore! Input {args.ligand} had {len(in_mols)} poses, "
-            f"output {args.out_sdf} has {len(out_mols)} poses."
-        )
+    in_suppl = Chem.SDMolSupplier(args.ligand, removeHs=False, sanitize=False)
+    out_suppl = Chem.SDMolSupplier(args.out_sdf, removeHs=False, sanitize=False)
 
     tmp_sdf = f"{args.out_sdf}.tmp"
+    pose_count = 0
     with Chem.SDWriter(tmp_sdf) as w:
         w.SetForceV3000(False)
-        for idx, (orig_m, sc_m) in enumerate(zip(in_mols, out_mols), start=1):
+        for idx, (orig_m, sc_m) in enumerate(
+            itertools.zip_longest(in_suppl, out_suppl, fillvalue=None), start=1
+        ):
             if orig_m is None or sc_m is None:
                 raise ValueError(
-                    f"FATAL: Corrupted molecule record at pose index {idx} during GNINA rescoring!"
+                    f"FATAL: Pose count mismatch or corrupted molecule record at pose index {idx} "
+                    f"during GNINA rescoring of {args.ligand}!"
                 )
             if args.rescore_mode == "minimize":
                 orig_m.UpdatePropertyCache(strict=False)
@@ -109,7 +117,6 @@ def main():
             else:
                 final_m = orig_m
 
-            # Preserve original Uni-Dock Vina score if present before copying GNINA tags
             orig_unidock_score = (
                 final_m.GetProp("unidock_vina_score")
                 if final_m.HasProp("unidock_vina_score")
@@ -120,6 +127,12 @@ def main():
             if orig_unidock_score is not None:
                 final_m.SetProp("unidock_vina_score", orig_unidock_score)
             w.write(final_m)
+            pose_count += 1
+
+    if pose_count == 0:
+        raise ValueError(
+            f"FATAL: Zero poses processed during GNINA rescoring of {args.ligand}!"
+        )
 
     os.replace(tmp_sdf, args.out_sdf)
 
