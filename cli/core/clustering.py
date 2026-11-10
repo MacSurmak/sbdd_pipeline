@@ -237,7 +237,17 @@ def index_engine_poses_from_sdf(
     for title, p_list in raw_by_title.items():
         p_list.sort(key=lambda p: p.energy)
         kept = p_list[:MAX_ENSEMBLE_MODES_PER_ENGINE]
-        trimmed[title] = kept
+        trimmed[title] = [
+            PoseRecord(
+                engine=p_rec.engine,
+                mode_rank=rank_i,
+                energy=p_rec.energy,
+                cnn_score=p_rec.cnn_score,
+                cnn_affinity=p_rec.cnn_affinity,
+                coords=p_rec.coords,
+            )
+            for rank_i, p_rec in enumerate(kept, start=1)
+        ]
 
     return trimmed
 
@@ -356,9 +366,22 @@ def evaluate_substance_pose_ensemble(
             pose_rmsd=round(closest_rmsd, 3),
         )
 
-    win_pose = all_poses[0]
-    win_cid = int(labels[0])
-    win_size = sum(1 for x in labels if int(x) == win_cid)
+    e_min = min(p.energy for p in all_poses)
+    basin_candidates: list[tuple[float, int, PoseRecord]] = []
+    for cid in unique_cids:
+        c_indices = [i for i in range(n_total) if int(labels[i]) == cid]
+        best_idx = min(c_indices, key=lambda i: all_poses[i].energy)
+        leader = all_poses[best_idx]
+        if leader.energy <= e_min + 1.5:
+            cnn_bonus = (
+                2.0 * leader.cnn_score if leader.cnn_score is not None else 0.0
+            )
+            pop_bonus = 0.08 * float(len(c_indices))
+            quality = -leader.energy + cnn_bonus + pop_bonus
+            basin_candidates.append((quality, len(c_indices), leader))
+
+    basin_candidates.sort(key=lambda x: x[0], reverse=True)
+    _, win_size, win_pose = basin_candidates[0]
 
     if n_g > 0:
         return SubstanceClusterSummary(

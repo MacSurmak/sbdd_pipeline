@@ -1,5 +1,5 @@
 glide:
-  enabled: true
+  enabled: false
   precision: "SP"                    # HTVS, SP, XP
   poses_per_lig: 3
   sample_rings: true

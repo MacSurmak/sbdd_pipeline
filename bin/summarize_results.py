@@ -102,14 +102,21 @@ def calculate_consensus_score(df: pd.DataFrame) -> pd.DataFrame:
     if val_cols:
         df["PR_Validity"] = df[val_cols].sum(axis=1) / float(len(val_cols))
         axis_cols.append("PR_Validity")
-    if "Pose_RMSD" in df.columns and df["Pose_RMSD"].notna().any():
-        df["PR_Pose_RMSD"] = df["Pose_RMSD"].rank(ascending=False, pct=True).fillna(0.0)
-        axis_cols.append("PR_Pose_RMSD")
 
     if not axis_cols:
         df["Ultimate_Score"] = 0.0
+        return df
+
+    base_score = (df[axis_cols].sum(axis=1) / float(len(axis_cols))) * 100.0
+
+    if "Pose_RMSD" in df.columns and df["Pose_RMSD"].notna().any():
+        rmsd_vals = df["Pose_RMSD"].fillna(10.0).astype(float)
+        excess = np.maximum(0.0, rmsd_vals - DEFAULT_POSE_CLUSTER_CUTOFF_A)
+        conv_weight = np.exp(-0.5 * (excess**2))
+        df["PR_Pose_RMSD"] = conv_weight
+        df["Ultimate_Score"] = base_score * (0.75 + 0.25 * conv_weight)
     else:
-        df["Ultimate_Score"] = (df[axis_cols].sum(axis=1) / float(len(axis_cols))) * 100.0
+        df["Ultimate_Score"] = base_score
     return df
 
 

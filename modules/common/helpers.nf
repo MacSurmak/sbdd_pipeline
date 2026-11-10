@@ -20,7 +20,32 @@ process SPLIT_SDF {
     """
 }
 
-process BATCH_DOCK_LIGANDS {
+process BATCH_UNIDOCK_LIGANDS {
+    tag "${project_name}"
+    executor 'local'
+    scratch false
+    label 'process_single'
+
+    input:
+    val(project_name)
+    path(dock_plan_json)
+    val(unidock_batch_size)
+
+    output:
+    path("unidock_chunks_manifest.json"), emit: manifest
+    path("unidock_chunk_*.sdf"), emit: sdf_chunks
+
+    script:
+    """
+    python3 ${projectDir}/bin/batch_dock_ligands.py \\
+        --dock_plan ${dock_plan_json} \\
+        --glide_batch_size 0 \\
+        --unidock_batch_size ${unidock_batch_size} \\
+        --out_manifest unidock_chunks_manifest.json
+    """
+}
+
+process BATCH_GLIDE_LIGANDS {
     tag "${project_name}"
     executor 'local'
     scratch false
@@ -30,20 +55,18 @@ process BATCH_DOCK_LIGANDS {
     val(project_name)
     path(dock_plan_json)
     val(glide_batch_size)
-    val(unidock_batch_size)
 
     output:
-    path("chunks_manifest.json"), emit: manifest
-    path("unidock_chunk_*.sdf"), emit: sdf_chunks, optional: true
-    path("glide_chunk_*.maegz"), emit: mae_chunks, optional: true
+    path("glide_chunks_manifest.json"), emit: manifest
+    path("glide_chunk_*.maegz"), emit: mae_chunks
 
     script:
     """
     python3 ${projectDir}/bin/batch_dock_ligands.py \\
         --dock_plan ${dock_plan_json} \\
         --glide_batch_size ${glide_batch_size} \\
-        --unidock_batch_size ${unidock_batch_size} \\
-        --out_manifest chunks_manifest.json
+        --unidock_batch_size 0 \\
+        --out_manifest glide_chunks_manifest.json
     """
 }
 

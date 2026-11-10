@@ -119,8 +119,9 @@ def run_clean_traj(
     cwd = Path.cwd()
     session = get_session()
     configs = load_project_configs(cwd)
+    req_status = "raw" if resume else ""
     trajs = _query_trajectories(
-        session, systems, target, traj_names, target_status="raw"
+        session, systems, target, traj_names, target_status=req_status
     )
 
     if not trajs:

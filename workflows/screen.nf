@@ -4,9 +4,9 @@
  * Consumes pre-prepared receptors and pre-prepared ligands directly from DB plan.
  */
 
-include { DOCK_LIBRARY       } from "../subworkflows/dock_library"
-include { SUMMARIZE_DOCKING  } from "../modules/reporting/summarize"
-include { BATCH_DOCK_LIGANDS } from "../modules/common/helpers"
+include { DOCK_LIBRARY          } from "../subworkflows/dock_library"
+include { SUMMARIZE_DOCKING     } from "../modules/reporting/summarize"
+include { BATCH_UNIDOCK_LIGANDS; BATCH_GLIDE_LIGANDS } from "../modules/common/helpers"
 
 workflow SCREEN_WF {
     if (!params.dock_plan) { error "FATAL: Parameter --dock_plan (JSON) is required." }
@@ -58,52 +58,62 @@ workflow SCREEN_WF {
     ch_cof_sdfs = ch_targets.map { meta, pdb, mae, rsdf, rmae, isdf, imae, csdf, cmae -> [meta, csdf] }
     ch_cof_maes = ch_targets.map { meta, pdb, mae, rsdf, rmae, isdf, imae, csdf, cmae -> [meta, cmae] }
 
-    // 2. Batch Pre-prepared Ligands into independent chunks for Glide (.maegz) and Uni-Dock (.sdf)
+    // 2. Independently batch pre-prepared ligands for Uni-Dock (.sdf) and Glide (.maegz)
     ch_dock_plan_file = Channel.fromPath(params.dock_plan, checkIfExists: true)
-    BATCH_DOCK_LIGANDS(
-        params.project_name,
-        ch_dock_plan_file,
-        params.glide_batch_size,
-        params.unidock_batch_size
-    )
 
-    ch_glide_manifest = BATCH_DOCK_LIGANDS.out.manifest.flatMap { mf ->
-        def parsed = new groovy.json.JsonSlurperClassic().parseText(mf.text)
-        parsed.glide_chunks ?: []
-    }
-    ch_unidock_manifest = BATCH_DOCK_LIGANDS.out.manifest.flatMap { mf ->
-        def parsed = new groovy.json.JsonSlurperClassic().parseText(mf.text)
-        parsed.unidock_chunks ?: []
-    }
-
-    ch_sdf_map = BATCH_DOCK_LIGANDS.out.sdf_chunks.flatten().map { f -> [ f.name, f ] }
-    ch_mae_map = BATCH_DOCK_LIGANDS.out.mae_chunks.flatten().map { f -> [ f.name, f ] }
-
-    ch_chunks_sdf = ch_unidock_manifest
-        .map { item -> [ item.file, item ] }
-        .join(ch_sdf_map, by: 0)
-        .map { sdf_name, item, sdf_file ->
-            def chunk_meta = [
-                id: "c${item.chunk_idx}",
-                chunk_idx: item.chunk_idx,
-                receptor: item.receptor ?: "",
-                project: params.project_name
-            ]
-            [ chunk_meta, sdf_file, item.chunk_idx ]
+    if (params.dock_engine in ["unidock", "both"]) {
+        BATCH_UNIDOCK_LIGANDS(
+            params.project_name,
+            ch_dock_plan_file,
+            params.unidock_batch_size
+        )
+        ch_unidock_manifest = BATCH_UNIDOCK_LIGANDS.out.manifest.flatMap { mf ->
+            def parsed = new groovy.json.JsonSlurperClassic().parseText(mf.text)
+            parsed.unidock_chunks ?: []
         }
+        ch_sdf_map = BATCH_UNIDOCK_LIGANDS.out.sdf_chunks.flatten().map { f -> [ f.name, f ] }
+        ch_chunks_sdf = ch_unidock_manifest
+            .map { item -> [ item.file, item ] }
+            .join(ch_sdf_map, by: 0)
+            .map { sdf_name, item, sdf_file ->
+                def chunk_meta = [
+                    id: "c${item.chunk_idx}",
+                    chunk_idx: item.chunk_idx,
+                    receptor: item.receptor ?: "",
+                    project: params.project_name
+                ]
+                [ chunk_meta, sdf_file, item.chunk_idx ]
+            }
+    } else {
+        ch_chunks_sdf = Channel.empty()
+    }
 
-    ch_chunks_mae = ch_glide_manifest
-        .map { item -> [ item.file, item ] }
-        .join(ch_mae_map, by: 0)
-        .map { mae_name, item, mae_file ->
-            def chunk_meta = [
-                id: "c${item.chunk_idx}",
-                chunk_idx: item.chunk_idx,
-                receptor: item.receptor ?: "",
-                project: params.project_name
-            ]
-            [ chunk_meta, mae_file ]
+    if (params.dock_engine in ["glide", "both"]) {
+        BATCH_GLIDE_LIGANDS(
+            params.project_name,
+            ch_dock_plan_file,
+            params.glide_batch_size
+        )
+        ch_glide_manifest = BATCH_GLIDE_LIGANDS.out.manifest.flatMap { mf ->
+            def parsed = new groovy.json.JsonSlurperClassic().parseText(mf.text)
+            parsed.glide_chunks ?: []
         }
+        ch_mae_map = BATCH_GLIDE_LIGANDS.out.mae_chunks.flatten().map { f -> [ f.name, f ] }
+        ch_chunks_mae = ch_glide_manifest
+            .map { item -> [ item.file, item ] }
+            .join(ch_mae_map, by: 0)
+            .map { mae_name, item, mae_file ->
+                def chunk_meta = [
+                    id: "c${item.chunk_idx}",
+                    chunk_idx: item.chunk_idx,
+                    receptor: item.receptor ?: "",
+                    project: params.project_name
+                ]
+                [ chunk_meta, mae_file ]
+            }
+    } else {
+        ch_chunks_mae = Channel.empty()
+    }
 
     // Validate Fail-Fast parameters before dispatching tasks
     if (!params.autobox_add || !params.inner_box || !params.outer_box || params.gnina_enabled == null) {

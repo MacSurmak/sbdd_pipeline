@@ -756,17 +756,33 @@ def run_dock(
         ligands_plan=plan["ligands"],
     )
 
+    has_glide = any(r["g_score"] is not None for r in summary_rows)
+    has_unidock = any(r["u_vina"] is not None for r in summary_rows)
+    dual_engine = has_glide and has_unidock
+
     # 1. Render Campaign Overview per Receptor Frame
     overview_table = Table(
         title=f"📊 Virtual Screening Campaign Overview ('{run_name}')",
         show_header=True,
     )
     overview_table.add_column("Frame", style="bold cyan")
-    overview_table.add_column("Docked (Glide / UniDock)", justify="center")
-    overview_table.add_column("Consensus Poses (ΔRMSD ≤ 2.0 Å)", justify="center", style="bold green")
-    overview_table.add_column("GlideScore (Best / Median)", justify="right")
-    overview_table.add_column("UniDock Vina (Best / Median)", justify="right")
-    overview_table.add_column("CNNscore (Best / Median)", justify="right", style="magenta")
+    if dual_engine:
+        overview_table.add_column("Docked (Glide / UniDock)", justify="center")
+        overview_table.add_column("Consensus Poses (ΔRMSD ≤ 2.0 Å)", justify="center", style="bold green")
+        overview_table.add_column("GlideScore (Best / Median)", justify="right")
+        overview_table.add_column("UniDock Vina (Best / Median)", justify="right")
+        overview_table.add_column("CNNscore (Best / Median)", justify="right", style="magenta")
+    elif has_unidock:
+        overview_table.add_column("Substances Docked", justify="center")
+        overview_table.add_column("Converged Basins (≥ 4 poses)", justify="center", style="bold green")
+        overview_table.add_column("UniDock Vina (Best / Median)", justify="right")
+        overview_table.add_column("CNNscore (Best / Median)", justify="right", style="magenta")
+        overview_table.add_column("CNNaffinity (Best / Median)", justify="right")
+    else:
+        overview_table.add_column("Substances Docked", justify="center")
+        overview_table.add_column("Converged Basins (≥ 4 poses)", justify="center", style="bold green")
+        overview_table.add_column("GlideScore (Best / Median)", justify="right")
+        overview_table.add_column("CNNscore (Best / Median)", justify="right", style="magenta")
 
     for rec in plan["receptors"]:
         f_name = rec["name"]
@@ -780,14 +796,13 @@ def run_dock(
             for v in (r["g_cnn_sc"], r["u_cnn_sc"])
             if v is not None
         ]
+        cnn_aff_vals = [
+            float(v)
+            for r in f_rows
+            for v in (r["g_cnn_aff"], r["u_cnn_aff"])
+            if v is not None
+        ]
 
-        consensus_cnt = sum(1 for v in rmsd_vals if v <= 2.0)
-        consensus_pct = (100.0 * consensus_cnt / len(rmsd_vals)) if rmsd_vals else 0.0
-        consensus_str = (
-            f"{consensus_cnt}/{len(rmsd_vals)} ({consensus_pct:.1f}%)"
-            if rmsd_vals
-            else "-"
-        )
         g_stat_str = (
             f"{min(g_vals):.2f} / {statistics.median(g_vals):.2f}" if g_vals else "-"
         )
@@ -799,15 +814,49 @@ def run_dock(
             if cnn_sc_vals
             else "-"
         )
-
-        overview_table.add_row(
-            f_name,
-            f"{len(g_vals)} / {len(u_vals)}",
-            consensus_str,
-            g_stat_str,
-            u_stat_str,
-            cnn_stat_str,
+        aff_stat_str = (
+            f"{max(cnn_aff_vals):.2f} / {statistics.median(cnn_aff_vals):.2f}"
+            if cnn_aff_vals
+            else "-"
         )
+
+        if dual_engine:
+            consensus_cnt = sum(1 for v in rmsd_vals if v <= 2.0)
+            consensus_pct = (100.0 * consensus_cnt / len(rmsd_vals)) if rmsd_vals else 0.0
+            consensus_str = (
+                f"{consensus_cnt}/{len(rmsd_vals)} ({consensus_pct:.1f}%)"
+                if rmsd_vals
+                else "-"
+            )
+            overview_table.add_row(
+                f_name,
+                f"{len(g_vals)} / {len(u_vals)}",
+                consensus_str,
+                g_stat_str,
+                u_stat_str,
+                cnn_stat_str,
+            )
+        elif has_unidock:
+            dense_cnt = sum(1 for r in f_rows if int(r["c_size"]) >= 4)
+            dense_pct = (100.0 * dense_cnt / len(f_rows)) if f_rows else 0.0
+            overview_table.add_row(
+                f_name,
+                str(len(u_vals)),
+                f"{dense_cnt}/{len(f_rows)} ({dense_pct:.1f}%)",
+                u_stat_str,
+                cnn_stat_str,
+                aff_stat_str,
+            )
+        else:
+            dense_cnt = sum(1 for r in f_rows if int(r["c_size"]) >= 4)
+            dense_pct = (100.0 * dense_cnt / len(f_rows)) if f_rows else 0.0
+            overview_table.add_row(
+                f_name,
+                str(len(g_vals)),
+                f"{dense_cnt}/{len(f_rows)} ({dense_pct:.1f}%)",
+                g_stat_str,
+                cnn_stat_str,
+            )
 
     # 2. Deduplicate across frames: select the single best conformational frame per unique substance
     best_by_title: dict[str, dict[str, float | int | str | None]] = {}
@@ -839,43 +888,79 @@ def run_dock(
     table.add_column("Rank", justify="right", style="bold")
     table.add_column("Best Frame", style="cyan")
     table.add_column("Substance", style="bold")
-    table.add_column("Basin Modes (G/U)", justify="center", style="dim")
-    table.add_column("Glide Score", justify="right")
-    table.add_column("Glide CNNscore (aff)", justify="right")
-    table.add_column("UniDock Vina", justify="right")
-    table.add_column("UniDock CNNscore (aff)", justify="right")
-    table.add_column("Basin ΔRMSD (Å)", justify="center")
-    table.add_column("Ultimate Score", justify="right", style="bold magenta")
 
-    for rank_idx, r in enumerate(dedup_rows[:top_k], start=1):
-        g_cnn_str = (
-            f"{float(r['g_cnn_sc']):.2f} ({float(r['g_cnn_aff']):.2f})"
-            if (r["g_cnn_sc"] is not None and r["g_cnn_aff"] is not None)
-            else _format_metric(r["g_cnn_sc"])
-        )
-        u_cnn_str = (
-            f"{float(r['u_cnn_sc']):.2f} ({float(r['u_cnn_aff']):.2f})"
-            if (r["u_cnn_sc"] is not None and r["u_cnn_aff"] is not None)
-            else _format_metric(r["u_cnn_sc"])
-        )
-        pair_rmsd_val = float(r["pair_rmsd"]) if r["pair_rmsd"] is not None else None
-        modes_str = (
-            f"#{r['g_mode']}/#{r['u_mode']} ({r['c_size']}p/{r['n_clust']}c)"
-            if (int(r["n_glide"] or 0) > 0 and int(r["n_unidock"] or 0) > 0)
-            else f"{r['c_size']}p/{r['n_clust']}c"
-        )
-        table.add_row(
-            str(rank_idx),
-            str(r["frame"]),
-            str(r["title"]),
-            modes_str,
-            _format_metric(r["g_score"]),
-            g_cnn_str,
-            _format_metric(r["u_vina"]),
-            u_cnn_str,
-            _color_rmsd(pair_rmsd_val),
-            _format_metric(r["ult_score"]),
-        )
+    if dual_engine:
+        table.add_column("Basin Modes (G/U)", justify="center", style="dim")
+        table.add_column("Glide Score", justify="right")
+        table.add_column("Glide CNNscore (aff)", justify="right")
+        table.add_column("UniDock Vina", justify="right")
+        table.add_column("UniDock CNNscore (aff)", justify="right")
+        table.add_column("Basin ΔRMSD (Å)", justify="center")
+        table.add_column("Ultimate Score", justify="right", style="bold magenta")
+
+        for rank_idx, r in enumerate(dedup_rows[:top_k], start=1):
+            g_cnn_str = (
+                f"{float(r['g_cnn_sc']):.2f} ({float(r['g_cnn_aff']):.2f})"
+                if (r["g_cnn_sc"] is not None and r["g_cnn_aff"] is not None)
+                else _format_metric(r["g_cnn_sc"])
+            )
+            u_cnn_str = (
+                f"{float(r['u_cnn_sc']):.2f} ({float(r['u_cnn_aff']):.2f})"
+                if (r["u_cnn_sc"] is not None and r["u_cnn_aff"] is not None)
+                else _format_metric(r["u_cnn_sc"])
+            )
+            pair_rmsd_val = float(r["pair_rmsd"]) if r["pair_rmsd"] is not None else None
+            modes_str = f"#{r['g_mode']}/#{r['u_mode']} ({r['c_size']}p/{r['n_clust']}c)"
+            table.add_row(
+                str(rank_idx),
+                str(r["frame"]),
+                str(r["title"]),
+                modes_str,
+                _format_metric(r["g_score"]),
+                g_cnn_str,
+                _format_metric(r["u_vina"]),
+                u_cnn_str,
+                _color_rmsd(pair_rmsd_val),
+                _format_metric(r["ult_score"]),
+            )
+    elif has_unidock:
+        table.add_column("Basin Mode", justify="center", style="dim")
+        table.add_column("UniDock Vina (kcal/mol)", justify="right")
+        table.add_column("CNNscore (Validity)", justify="right", style="green")
+        table.add_column("CNNaffinity (pKd)", justify="right")
+        table.add_column("Ultimate Score", justify="right", style="bold magenta")
+
+        for rank_idx, r in enumerate(dedup_rows[:top_k], start=1):
+            modes_str = f"#{r['u_mode']} ({r['c_size']}p/{r['n_clust']}c)"
+            table.add_row(
+                str(rank_idx),
+                str(r["frame"]),
+                str(r["title"]),
+                modes_str,
+                _format_metric(r["u_vina"]),
+                _format_metric(r["u_cnn_sc"]),
+                _format_metric(r["u_cnn_aff"]),
+                _format_metric(r["ult_score"]),
+            )
+    else:
+        table.add_column("Basin Mode", justify="center", style="dim")
+        table.add_column("Glide Score (kcal/mol)", justify="right")
+        table.add_column("CNNscore (Validity)", justify="right", style="green")
+        table.add_column("CNNaffinity (pKd)", justify="right")
+        table.add_column("Ultimate Score", justify="right", style="bold magenta")
+
+        for rank_idx, r in enumerate(dedup_rows[:top_k], start=1):
+            modes_str = f"#{r['g_mode']} ({r['c_size']}p/{r['n_clust']}c)"
+            table.add_row(
+                str(rank_idx),
+                str(r["frame"]),
+                str(r["title"]),
+                modes_str,
+                _format_metric(r["g_score"]),
+                _format_metric(r["g_cnn_sc"]),
+                _format_metric(r["g_cnn_aff"]),
+                _format_metric(r["ult_score"]),
+            )
 
     session.close()
     console.print(
