@@ -83,7 +83,7 @@ def main():
         help="Path to metadata.json containing spin_multiplicity",
     )
     parser.add_argument(
-        "--nprocs", type=int, required=True, help="Processors (%pal nprocs)"
+        "--nprocs", type=int, required=True, help="Processors (%%pal nprocs)"
     )
     parser.add_argument(
         "--maxcore_mb", type=int, required=True, help="Per-core RAM in MB"

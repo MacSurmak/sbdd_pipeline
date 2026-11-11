@@ -474,7 +474,7 @@ def main():
     p_cluster.add_argument(
         "--min-population",
         type=float,
-        help="Population threshold (%) for automated basin recommendation (default: 5.0)",
+        help="Population threshold (%%) for automated basin recommendation (default: 5.0)",
     )
     p_cluster.add_argument(
         "--name",
