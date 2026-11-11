@@ -12,6 +12,7 @@ process GLIDE_DOCK {
     val(precision)
     val(poses_per_lig)
     val(forcefield)
+    val(epik_penalties)
     val(postdock)
     val(lig_vscale)
     val(lig_ccut)
@@ -29,6 +30,7 @@ process GLIDE_DOCK {
         --precision ${precision} \\
         --poses_per_lig ${poses_per_lig} \\
         --forcefield ${forcefield} \\
+        --epik_penalties "${epik_penalties}" \\
         --postdock "${postdock}" \\
         --lig_vscale ${lig_vscale} \\
         --lig_ccut ${lig_ccut} \\

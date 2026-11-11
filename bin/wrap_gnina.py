@@ -117,15 +117,19 @@ def main() -> None:
             else:
                 final_m = orig_m
 
-            orig_unidock_score = (
-                final_m.GetProp("unidock_vina_score")
-                if final_m.HasProp("unidock_vina_score")
-                else None
-            )
+            preserved_tags: dict[str, str] = {}
+            for tag_key in (
+                "unidock_vina_score",
+                "unidock_raw_vina_score",
+                "unidock_epik_penalty",
+                "r_epik_State_Penalty",
+            ):
+                if final_m.HasProp(tag_key):
+                    preserved_tags[tag_key] = final_m.GetProp(tag_key)
             for prop in sc_m.GetPropNames():
                 final_m.SetProp(prop, sc_m.GetProp(prop))
-            if orig_unidock_score is not None:
-                final_m.SetProp("unidock_vina_score", orig_unidock_score)
+            for tag_key, tag_val in preserved_tags.items():
+                final_m.SetProp(tag_key, tag_val)
             w.write(final_m)
             pose_count += 1
 

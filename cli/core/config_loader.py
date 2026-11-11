@@ -287,6 +287,7 @@ def _build_screen_args(config: Dict[str, Any], project_dir: Path) -> list:
             ("refine_step", "unidock_refine_step"),
             ("num_modes", "unidock_num_modes"),
             ("energy_range", "unidock_energy_range"),
+            ("epik_penalties", "unidock_epik_penalties"),
             ("seed", "unidock_seed"),
             ("batch_size", "unidock_batch_size"),
         ]
@@ -295,7 +296,11 @@ def _build_screen_args(config: Dict[str, Any], project_dir: Path) -> list:
                 raise ValueError(
                     f"FATAL: 'unidock.{yaml_k}' is required in unidock.yaml when Uni-Dock is enabled!"
                 )
-            args.extend([f"--{nf_k}", str(unidock_cfg[yaml_k])])
+            val = unidock_cfg[yaml_k]
+            if isinstance(val, bool):
+                args.extend([f"--{nf_k}", "true" if val else "false"])
+            else:
+                args.extend([f"--{nf_k}", str(val)])
 
         if str(unidock_cfg["search_mode"]) not in ("fast", "balance", "detail"):
             raise ValueError(
@@ -399,6 +404,7 @@ def _build_screen_args(config: Dict[str, Any], project_dir: Path) -> list:
             ("precision", "glide_precision"),
             ("poses_per_lig", "poses_per_lig"),
             ("forcefield", "glide_forcefield"),
+            ("epik_penalties", "glide_epik_penalties"),
             ("recep_vscale", "glide_recep_vscale"),
             ("lig_vscale", "glide_lig_vscale"),
             ("recep_ccut", "glide_recep_ccut"),
@@ -411,7 +417,11 @@ def _build_screen_args(config: Dict[str, Any], project_dir: Path) -> list:
                 raise ValueError(
                     f"FATAL: 'glide.{yaml_k}' is required in glide.yaml when Glide is enabled!"
                 )
-            args.extend([f"--{nf_k}", str(glide_cfg[yaml_k])])
+            val = glide_cfg[yaml_k]
+            if isinstance(val, bool):
+                args.extend([f"--{nf_k}", "true" if val else "false"])
+            else:
+                args.extend([f"--{nf_k}", str(val)])
         if int(glide_cfg["batch_size"]) <= 0:
             raise ValueError("FATAL: 'glide.batch_size' must be a positive integer!")
 

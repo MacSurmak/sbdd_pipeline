@@ -123,12 +123,12 @@ workflow SCREEN_WF {
         error "FATAL: GNINA rescoring parameters missing in configuration! Check gnina.yaml."
     }
     if (params.dock_engine in ["glide", "both"]) {
-        if (!params.glide_forcefield || !params.glide_precision || !params.poses_per_lig || params.glide_postdock == null || !params.glide_recep_vscale || !params.glide_lig_vscale || !params.glide_recep_ccut || !params.glide_lig_ccut) {
+        if (!params.glide_forcefield || !params.glide_precision || !params.poses_per_lig || params.glide_epik_penalties == null || params.glide_postdock == null || !params.glide_recep_vscale || !params.glide_lig_vscale || !params.glide_recep_ccut || !params.glide_lig_ccut) {
             error "FATAL: Glide docking parameters missing in configuration! Check glide.yaml."
         }
     }
     if (params.dock_engine in ["unidock", "both"]) {
-        if (!params.unidock_search_mode || !params.unidock_scoring || params.unidock_refine_step == null || !params.unidock_num_modes || params.unidock_energy_range == null || params.unidock_seed == null) {
+        if (!params.unidock_search_mode || !params.unidock_scoring || params.unidock_refine_step == null || !params.unidock_num_modes || params.unidock_energy_range == null || params.unidock_epik_penalties == null || params.unidock_seed == null) {
             error "FATAL: Uni-Dock docking parameters missing in configuration! Check unidock.yaml."
         }
     }
@@ -151,6 +151,7 @@ workflow SCREEN_WF {
         params.unidock_refine_step,
         params.unidock_num_modes,
         params.unidock_energy_range,
+        params.unidock_epik_penalties,
         params.unidock_seed,
         params.autobox_add,
         params.inner_box,
@@ -161,6 +162,7 @@ workflow SCREEN_WF {
         params.gnina_enabled,
         params.gnina_rescore_mode,
         params.cnn_model,
+        params.glide_epik_penalties,
         params.glide_postdock,
         params.glide_recep_vscale,
         params.glide_lig_vscale,

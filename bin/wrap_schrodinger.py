@@ -123,13 +123,16 @@ def cmd_glide_dock(args):
     postdock_val = (
         "yes" if str(args.postdock).lower() in ("true", "yes", "1") else "no"
     )
+    epik_val = (
+        "yes" if str(args.epik_penalties).lower() in ("true", "yes", "1") else "no"
+    )
     with open("dock.in", "w") as f:
         f.write(f"GRIDFILE {args.grid_zip}\n")
         f.write(f"LIGANDFILE {args.ligands_mae}\n")
         f.write(f"PRECISION {args.precision}\n")
         f.write(f"POSES_PER_LIG {args.poses_per_lig}\n")
         f.write(
-            f"POSTDOCK {postdock_val}\nEPIK_PENALTIES yes\nSAMPLE_RINGS yes\nWRITE_CSV yes\n"
+            f"POSTDOCK {postdock_val}\nEPIK_PENALTIES {epik_val}\nSAMPLE_RINGS yes\nWRITE_CSV yes\n"
         )
         f.write(f"FORCEFIELD {args.forcefield}\n")
         f.write(f"LIG_VSCALE {args.lig_vscale}\nLIG_CCUT {args.lig_ccut}\n")
@@ -509,6 +512,7 @@ def main():
     p_dock.add_argument("--precision", required=True)
     p_dock.add_argument("--poses_per_lig", required=True)
     p_dock.add_argument("--forcefield", required=True)
+    p_dock.add_argument("--epik_penalties", required=True)
     p_dock.add_argument("--postdock", required=True)
     p_dock.add_argument("--lig_vscale", required=True)
     p_dock.add_argument("--lig_ccut", required=True)

@@ -22,23 +22,25 @@ workflow DOCK_LIBRARY {
     ch_ion_maes
     ch_cof_sdfs
     ch_cof_maes
-    dock_engine         // val: "both", "unidock", "glide"
-    unidock_search_mode // val: "balance"
-    unidock_scoring     // val: "vina"
-    unidock_refine_step // val: 3
-    unidock_num_modes   // val: 9
-    unidock_energy_range // val: 5.0
-    unidock_seed        // val: 42
-    autobox_add         // val: 4.0
-    inner_box           // val: "10, 10, 10"
-    outer_box           // val: "26, 26, 26"
-    glide_forcefield    // val: "OPLS4"
-    glide_precision     // val: "SP"
-    poses_per_lig       // val: 3
-    gnina_enabled       // val: true/false
-    gnina_rescore_mode  // val: "score_only" or "minimize"
-    cnn_model           // val: ""
-    glide_postdock      // val: true/false
+    dock_engine            // val: "both", "unidock", "glide"
+    unidock_search_mode    // val: "balance"
+    unidock_scoring        // val: "vina"
+    unidock_refine_step    // val: 3
+    unidock_num_modes      // val: 9
+    unidock_energy_range   // val: 5.0
+    unidock_epik_penalties // val: true/false
+    unidock_seed           // val: 42
+    autobox_add            // val: 4.0
+    inner_box              // val: "10, 10, 10"
+    outer_box              // val: "26, 26, 26"
+    glide_forcefield       // val: "OPLS4"
+    glide_precision        // val: "SP"
+    poses_per_lig          // val: 3
+    gnina_enabled          // val: true/false
+    gnina_rescore_mode     // val: "score_only" or "minimize"
+    cnn_model              // val: ""
+    glide_epik_penalties   // val: true/false
+    glide_postdock         // val: true/false
     glide_recep_vscale  // val: 1.0
     glide_lig_vscale    // val: 1.0
     glide_recep_ccut    // val: 0.25
@@ -109,6 +111,7 @@ workflow DOCK_LIBRARY {
             glide_precision,
             poses_per_lig,
             glide_forcefield,
+            glide_epik_penalties,
             glide_postdock,
             glide_lig_vscale,
             glide_lig_ccut
@@ -197,6 +200,7 @@ workflow DOCK_LIBRARY {
             unidock_refine_step,
             unidock_num_modes,
             unidock_energy_range,
+            unidock_epik_penalties,
             autobox_add,
             unidock_seed
         )

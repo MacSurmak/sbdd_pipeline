@@ -848,6 +848,7 @@ def restore_unidock_pdbqt_poses(
     in_pdbqt: Path,
     out_pdbqt: Path,
     orig_title: str,
+    apply_epik_penalty: bool,
 ) -> list[tuple[float, Chem.Mol]]:
     """
     Restores full-atom RDKit molecules from a Uni-Dock output PDBQT file onto the
@@ -858,7 +859,28 @@ def restore_unidock_pdbqt_poses(
        heavy atoms and all polar hydrogens (OH, NH, SH) onto a copy of `exact_tmpl`.
     3. Reconstructs only the merged non-polar carbon-bound hydrogens (C-H) at the new
        docked carbon positions and validates all covalent bond lengths and chiral volumes.
+    4. When `apply_epik_penalty` is True, strictly extracts `r_epik_State_Penalty` (kcal/mol)
+       from `exact_tmpl` and adds it to the raw Vina energy so non-dominant protomers/tautomers
+       are thermodynamically penalized prior to cross-protomer ranking.
     """
+    epik_penalty: float = 0.0
+    if apply_epik_penalty:
+        if not exact_tmpl.HasProp("r_epik_State_Penalty"):
+            raise KeyError(
+                f"FATAL: 'r_epik_State_Penalty' property is missing on LigPrep template for '{orig_title}' "
+                f"({in_pdbqt.name}), but unidock.epik_penalties is enabled!"
+            )
+        raw_pen_str = exact_tmpl.GetProp("r_epik_State_Penalty").strip()
+        if not raw_pen_str:
+            raise ValueError(
+                f"FATAL: Empty 'r_epik_State_Penalty' property on LigPrep template for '{orig_title}'!"
+            )
+        epik_penalty = float(raw_pen_str)
+        if not math.isfinite(epik_penalty) or epik_penalty < -1e-4:
+            raise ValueError(
+                f"FATAL: Unphysical 'r_epik_State_Penalty' ({epik_penalty}) on LigPrep template for '{orig_title}'!"
+            )
+
     in_lines = in_pdbqt.read_text(encoding="utf-8", errors="ignore").splitlines()
     in_coords = _parse_pdbqt_atom_coords(in_lines)
     if not in_coords:
@@ -1011,10 +1033,13 @@ def restore_unidock_pdbqt_poses(
                         f"{a1.GetSymbol()}{a1.GetIdx() + 1}-{a2.GetSymbol()}{a2.GetIdx() + 1} has length {dist:.3f} A!"
                     )
 
+        total_vina_score = vina_score + epik_penalty
         res_mol.SetProp("_Name", orig_title)
         res_mol.SetProp("s_m_title", orig_title)
-        res_mol.SetProp("unidock_vina_score", f"{vina_score:.3f}")
-        res_mol.SetProp("minimizedAffinity", f"{vina_score:.3f}")
-        restored_results.append((vina_score, res_mol))
+        res_mol.SetProp("unidock_raw_vina_score", f"{vina_score:.3f}")
+        res_mol.SetProp("unidock_epik_penalty", f"{epik_penalty:.3f}")
+        res_mol.SetProp("unidock_vina_score", f"{total_vina_score:.3f}")
+        res_mol.SetProp("minimizedAffinity", f"{total_vina_score:.3f}")
+        restored_results.append((total_vina_score, res_mol))
 
     return restored_results

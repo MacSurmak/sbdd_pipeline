@@ -61,6 +61,7 @@ def main() -> None:
     parser.add_argument("--refine_step", type=int, required=True)
     parser.add_argument("--num_modes", type=int, required=True)
     parser.add_argument("--energy_range", type=float, required=True)
+    parser.add_argument("--epik_penalties", required=True, choices=["true", "false"])
     parser.add_argument("--autobox_add", type=float, required=True)
     parser.add_argument("--seed", type=int, required=True)
     parser.add_argument("--out_sdf", required=True, help="Output merged docked poses (.sdf)")
@@ -189,6 +190,7 @@ def main() -> None:
                 f"--- TAIL OF LOG ---\n{log_text[-1000:]}"
             )
 
+        apply_epik = args.epik_penalties.lower() == "true"
         poses_by_title: dict[str, list[tuple[float, Chem.Mol]]] = {}
         for idx in sorted(templates_by_idx.keys()):
             orig_title, exact_tmpl, in_pdbqt, _ = templates_by_idx[idx]
@@ -197,20 +199,29 @@ def main() -> None:
 
             if out_pdbqt.exists() and out_pdbqt.stat().st_size > 0:
                 restored_pairs = restore_unidock_pdbqt_poses(
-                    exact_tmpl, in_pdbqt, out_pdbqt, orig_title
+                    exact_tmpl, in_pdbqt, out_pdbqt, orig_title, apply_epik
                 )
                 if orig_title not in poses_by_title:
                     poses_by_title[orig_title] = []
                 poses_by_title[orig_title].extend(restored_pairs)
 
             elif out_sdf.exists() and out_sdf.stat().st_size > 0:
+                epik_pen: float = 0.0
+                if apply_epik:
+                    if not exact_tmpl.HasProp("r_epik_State_Penalty"):
+                        raise KeyError(
+                            f"FATAL: 'r_epik_State_Penalty' missing on template for '{orig_title}', "
+                            "but unidock.epik_penalties is enabled!"
+                        )
+                    epik_pen = float(exact_tmpl.GetProp("r_epik_State_Penalty").strip())
                 suppl = Chem.SDMolSupplier(str(out_sdf), removeHs=False, sanitize=False)
                 for p_idx, pose_mol in enumerate(suppl, start=1):
                     if pose_mol is None:
                         raise ValueError(
                             f"FATAL: Corrupted pose index {p_idx} in Uni-Dock output SDF: {out_sdf}"
                         )
-                    vina_score = _extract_unidock_score(pose_mol)
+                    raw_vina_score = _extract_unidock_score(pose_mol)
+                    total_vina_score = raw_vina_score + epik_pen
                     restored_mol = transfer_coordinates_to_template(
                         template_mol=exact_tmpl,
                         source_mol=pose_mol,
@@ -218,11 +229,13 @@ def main() -> None:
                     )
                     restored_mol.SetProp("_Name", orig_title)
                     restored_mol.SetProp("s_m_title", orig_title)
-                    restored_mol.SetProp("unidock_vina_score", f"{vina_score:.3f}")
-                    restored_mol.SetProp("minimizedAffinity", f"{vina_score:.3f}")
+                    restored_mol.SetProp("unidock_raw_vina_score", f"{raw_vina_score:.3f}")
+                    restored_mol.SetProp("unidock_epik_penalty", f"{epik_pen:.3f}")
+                    restored_mol.SetProp("unidock_vina_score", f"{total_vina_score:.3f}")
+                    restored_mol.SetProp("minimizedAffinity", f"{total_vina_score:.3f}")
                     if orig_title not in poses_by_title:
                         poses_by_title[orig_title] = []
-                    poses_by_title[orig_title].append((vina_score, restored_mol))
+                    poses_by_title[orig_title].append((total_vina_score, restored_mol))
             else:
                 raise FileNotFoundError(
                     f"FATAL: Uni-Dock produced neither output PDBQT nor SDF for record {idx} ('{orig_title}') in {out_dir}!"

@@ -14,6 +14,7 @@ process UNIDOCK_DOCK {
     val(refine_step)
     val(num_modes)
     val(energy_range)
+    val(epik_penalties)
     val(autobox_add)
     val(seed)
 
@@ -32,6 +33,7 @@ process UNIDOCK_DOCK {
         --refine_step ${refine_step} \\
         --num_modes ${num_modes} \\
         --energy_range ${energy_range} \\
+        --epik_penalties ${epik_penalties} \\
         --autobox_add ${autobox_add} \\
         --seed ${seed} \\
         --out_sdf unidock_dock.sdf \\
