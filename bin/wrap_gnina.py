@@ -123,6 +123,7 @@ def main() -> None:
                 "unidock_raw_vina_score",
                 "unidock_epik_penalty",
                 "r_epik_State_Penalty",
+                "minimizedAffinity",
             ):
                 if final_m.HasProp(tag_key):
                     preserved_tags[tag_key] = final_m.GetProp(tag_key)
