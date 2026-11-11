@@ -37,7 +37,13 @@ def _extract_unidock_score(mol: Chem.Mol) -> float:
     """Extracts Vina affinity (kcal/mol) from Uni-Dock output SDF properties."""
     for prop_name in mol.GetPropNames():
         p_clean = prop_name.strip()
-        if p_clean.lower() in ("uni-dock result", "energy", "affinity", "minimizedaffinity", "vina result"):
+        if p_clean.lower() in (
+            "uni-dock result",
+            "energy",
+            "affinity",
+            "minimizedaffinity",
+            "vina result",
+        ):
             raw = mol.GetProp(prop_name)
             m = re.search(r"ENERGY\s*=\s*([-+]?\d+(?:\.\d+)?)", raw, re.IGNORECASE)
             if m:
@@ -53,10 +59,16 @@ def _extract_unidock_score(mol: Chem.Mol) -> float:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Uni-Dock GPU batch docking worker")
-    parser.add_argument("--receptor", required=True, help="Input receptor (.pdbqt or .pdb)")
+    parser.add_argument(
+        "--receptor", required=True, help="Input receptor (.pdbqt or .pdb)"
+    )
     parser.add_argument("--ligand", required=True, help="Input batch ligands (.sdf)")
-    parser.add_argument("--ref_ligand", required=True, help="Reference pocket ligand (.sdf)")
-    parser.add_argument("--search_mode", required=True, choices=["fast", "balance", "detail"])
+    parser.add_argument(
+        "--ref_ligand", required=True, help="Reference pocket ligand (.sdf)"
+    )
+    parser.add_argument(
+        "--search_mode", required=True, choices=["fast", "balance", "detail"]
+    )
     parser.add_argument("--scoring", required=True, choices=["vina", "vinardo", "ad4"])
     parser.add_argument("--refine_step", type=int, required=True)
     parser.add_argument("--num_modes", type=int, required=True)
@@ -64,7 +76,9 @@ def main() -> None:
     parser.add_argument("--epik_penalties", required=True, choices=["true", "false"])
     parser.add_argument("--autobox_add", type=float, required=True)
     parser.add_argument("--seed", type=int, required=True)
-    parser.add_argument("--out_sdf", required=True, help="Output merged docked poses (.sdf)")
+    parser.add_argument(
+        "--out_sdf", required=True, help="Output merged docked poses (.sdf)"
+    )
     parser.add_argument("--out_log", required=True, help="Output execution log")
     args = parser.parse_args()
 
@@ -82,7 +96,9 @@ def main() -> None:
     sx, sy, sz = box_geom["autobox_size"]
 
     scratch_root = os.environ.get("SLURM_TMPDIR") or "/tmp"
-    with tempfile.TemporaryDirectory(prefix="unidock_work_", dir=scratch_root) as work_str:
+    with tempfile.TemporaryDirectory(
+        prefix="unidock_work_", dir=scratch_root
+    ) as work_str:
         work_dir = Path(work_str)
         in_dir = work_dir / "in_ligs"
         out_dir = work_dir / "out_ligs"
@@ -105,9 +121,7 @@ def main() -> None:
                     f"FATAL: Corrupted molecule record at index {idx} in {lig_path}!"
                 )
             t_name = (
-                tmpl_mol.GetProp("_Name").strip()
-                if tmpl_mol.HasProp("_Name")
-                else ""
+                tmpl_mol.GetProp("_Name").strip() if tmpl_mol.HasProp("_Name") else ""
             )
             if not t_name and tmpl_mol.HasProp("s_m_title"):
                 t_name = tmpl_mol.GetProp("s_m_title").strip()
@@ -121,7 +135,12 @@ def main() -> None:
 
             single_pdbqt = in_dir / f"lig_{idx:05d}.pdbqt"
             n_torsions = convert_prepared_mol_to_pdbqt(tmpl_mol, single_pdbqt)
-            templates_by_idx[idx] = (t_name, Chem.Mol(tmpl_mol), single_pdbqt, n_torsions)
+            templates_by_idx[idx] = (
+                t_name,
+                Chem.Mol(tmpl_mol),
+                single_pdbqt,
+                n_torsions,
+            )
             index_paths.append(str(single_pdbqt))
 
         if not index_paths:
@@ -167,9 +186,15 @@ def main() -> None:
 
         print(f"Exec: {' '.join(cmd)}", flush=True)
         with open(args.out_log, "w", encoding="utf-8") as log_f:
-            res = subprocess.run(cmd, stdout=log_f, stderr=subprocess.STDOUT, check=False)
+            res = subprocess.run(
+                cmd, stdout=log_f, stderr=subprocess.STDOUT, check=False
+            )
 
-        log_text = Path(args.out_log).read_text(errors="ignore") if Path(args.out_log).exists() else ""
+        log_text = (
+            Path(args.out_log).read_text(errors="ignore")
+            if Path(args.out_log).exists()
+            else ""
+        )
         if res.returncode != 0:
             print(
                 f"FATAL: Uni-Dock failed with exit code {res.returncode}!\n"
@@ -182,7 +207,9 @@ def main() -> None:
             )
             sys.exit(res.returncode)
 
-        has_flexible_ligand = any(n_tor > 0 for _, _, _, n_tor in templates_by_idx.values())
+        has_flexible_ligand = any(
+            n_tor > 0 for _, _, _, n_tor in templates_by_idx.values()
+        )
         if has_flexible_ligand and "No fragment info, using rigid docking" in log_text:
             raise RuntimeError(
                 f"FATAL METHODOLOGY VIOLATION: Uni-Dock reverted to rigid docking despite flexible ligand input!\n"
@@ -229,9 +256,13 @@ def main() -> None:
                     )
                     restored_mol.SetProp("_Name", orig_title)
                     restored_mol.SetProp("s_m_title", orig_title)
-                    restored_mol.SetProp("unidock_raw_vina_score", f"{raw_vina_score:.3f}")
+                    restored_mol.SetProp(
+                        "unidock_raw_vina_score", f"{raw_vina_score:.3f}"
+                    )
                     restored_mol.SetProp("unidock_epik_penalty", f"{epik_pen:.3f}")
-                    restored_mol.SetProp("unidock_vina_score", f"{total_vina_score:.3f}")
+                    restored_mol.SetProp(
+                        "unidock_vina_score", f"{total_vina_score:.3f}"
+                    )
                     restored_mol.SetProp("minimizedAffinity", f"{total_vina_score:.3f}")
                     if orig_title not in poses_by_title:
                         poses_by_title[orig_title] = []
@@ -248,7 +279,9 @@ def main() -> None:
             for orig_title, pose_list in poses_by_title.items():
                 # Sort modes across all protomers of the substance by best (lowest) Vina energy
                 pose_list.sort(key=lambda x: x[0])
-                for rank_idx, (_, r_mol) in enumerate(pose_list[: args.num_modes], start=1):
+                for rank_idx, (_, r_mol) in enumerate(
+                    pose_list[: args.num_modes], start=1
+                ):
                     r_mol.SetProp("unidock_mode_rank", str(rank_idx))
                     writer.write(r_mol)
                     total_written += 1

@@ -42,9 +42,7 @@ def remove_library_substances() -> None:
     session.flush()
 
     lib_subs = (
-        session.query(Substance)
-        .filter(Substance.batch_id != "crystal_extract")
-        .all()
+        session.query(Substance).filter(Substance.batch_id != "crystal_extract").all()
     )
     removed_subs = 0
     for sub in lib_subs:

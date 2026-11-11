@@ -150,7 +150,11 @@ def run_clean_traj(
         lig_code = t.system.pose.res_name if (t.system and t.system.pose) else ""
         dry_top_str = (
             str(Path(t.system.path_dry_prmtop).resolve())
-            if (t.system and t.system.path_dry_prmtop and Path(t.system.path_dry_prmtop).exists())
+            if (
+                t.system
+                and t.system.path_dry_prmtop
+                and Path(t.system.path_dry_prmtop).exists()
+            )
             else ""
         )
         plan_list.append(
@@ -381,7 +385,11 @@ def save_clustering_to_db(
             f"FATAL: Required clustering deliverables missing in {task_dir} (labels or time map)!"
         )
 
-    ex_run = session.query(ClusteringRun).filter_by(system_id=sys_obj.id, name=run_name).first()
+    ex_run = (
+        session.query(ClusteringRun)
+        .filter_by(system_id=sys_obj.id, name=run_name)
+        .first()
+    )
     if ex_run:
         if not overwrite:
             session.close()
@@ -456,7 +464,9 @@ def run_extract_medoids(
 
     matched_runs = query.all()
     if not matched_runs:
-        avail_runs = sorted(list(set(r.name for r in session.query(ClusteringRun.name).all())))
+        avail_runs = sorted(
+            list(set(r.name for r in session.query(ClusteringRun.name).all()))
+        )
         session.close()
         raise ValueError(
             f"FATAL: ClusteringRun '{clustering}' not found in database!\n"
@@ -474,7 +484,9 @@ def run_extract_medoids(
         if ranks:
             try:
                 target_ranks = [
-                    int(x.strip().replace("#", "")) for x in ranks.split(",") if x.strip()
+                    int(x.strip().replace("#", ""))
+                    for x in ranks.split(",")
+                    if x.strip()
                 ]
             except ValueError:
                 session.close()
@@ -484,7 +496,9 @@ def run_extract_medoids(
         else:
             target_ranks = [tc.cluster_rank for tc in c_run.clusters]
 
-        selected_clusters = [tc for tc in c_run.clusters if tc.cluster_rank in target_ranks]
+        selected_clusters = [
+            tc for tc in c_run.clusters if tc.cluster_rank in target_ranks
+        ]
         if not selected_clusters:
             continue
 
@@ -519,7 +533,9 @@ def run_extract_medoids(
             lig_spec = {
                 "res_name": parent_pose.res_name,
                 "inchikey": parent_pose.substance.inchikey,
-                "template_sdf": str(Path(parent_pose.substance_state.path_sdf).resolve()),
+                "template_sdf": str(
+                    Path(parent_pose.substance_state.path_sdf).resolve()
+                ),
                 "state_id": parent_pose.substance_state_id,
             }
 
@@ -555,7 +571,9 @@ def run_extract_medoids(
 
     if not plan_tasks:
         session.close()
-        console.print("[yellow]No matching systems or clusters found to extract.[/yellow]")
+        console.print(
+            "[yellow]No matching systems or clusters found to extract.[/yellow]"
+        )
         return
 
     plan_file = cwd / "extract_medoids_plan.json"
@@ -618,9 +636,26 @@ def run_extract_medoids(
     # Phase 1: Register all ReceptorFrames and flush to populate primary integer keys
     frame_cache = {}
     for parts in frame_lines:
-        _, t_name, f_name, rel_pdb, rel_mae, p_id_str, r_str, pop_str, sp_str, f_grp, a_grp, d_red = parts
+        (
+            _,
+            t_name,
+            f_name,
+            rel_pdb,
+            rel_mae,
+            p_id_str,
+            r_str,
+            pop_str,
+            sp_str,
+            f_grp,
+            a_grp,
+            d_red,
+        ) = parts
         abs_pdb = assert_permanent_path(cwd / rel_pdb, f"Receptor PDB {f_name}")
-        abs_mae = assert_permanent_path(cwd / rel_mae, f"Receptor MAE {f_name}") if rel_mae != "None" else None
+        abs_mae = (
+            assert_permanent_path(cwd / rel_mae, f"Receptor MAE {f_name}")
+            if rel_mae != "None"
+            else None
+        )
 
         t_obj = session.query(Target).filter_by(name=t_name).first()
         ex_f = session.query(ReceptorFrame).filter_by(name=f_name).first()
@@ -659,19 +694,32 @@ def run_extract_medoids(
     # Phase 2: Register all Poses linked to guaranteed ReceptorFrame IDs
     pose_cache = {}
     for parts in pose_lines:
-        _, f_name, p_name, inchikey, res_name, st_id_str, rel_sdf, rel_mae, lig_flag = parts
+        _, f_name, p_name, inchikey, res_name, st_id_str, rel_sdf, rel_mae, lig_flag = (
+            parts
+        )
         abs_sdf = assert_permanent_path(cwd / rel_sdf, f"Pose SDF {p_name}")
-        abs_mae = assert_permanent_path(cwd / rel_mae, f"Pose MAE {p_name}") if rel_mae != "None" else None
+        abs_mae = (
+            assert_permanent_path(cwd / rel_mae, f"Pose MAE {p_name}")
+            if rel_mae != "None"
+            else None
+        )
 
-        frame_obj = frame_cache.get(f_name) or session.query(ReceptorFrame).filter_by(name=f_name).first()
+        frame_obj = (
+            frame_cache.get(f_name)
+            or session.query(ReceptorFrame).filter_by(name=f_name).first()
+        )
         if not frame_obj:
             session.close()
-            raise ValueError(f"FATAL: ReceptorFrame '{f_name}' referenced by pose '{p_name}' not found!")
+            raise ValueError(
+                f"FATAL: ReceptorFrame '{f_name}' referenced by pose '{p_name}' not found!"
+            )
 
         state_obj = session.query(SubstanceState).get(int(st_id_str))
         if not state_obj:
             session.close()
-            raise ValueError(f"FATAL: SubstanceState ID {st_id_str} referenced by pose '{p_name}' not found!")
+            raise ValueError(
+                f"FATAL: SubstanceState ID {st_id_str} referenced by pose '{p_name}' not found!"
+            )
 
         ex_p = session.query(Pose).filter_by(name=p_name).first()
         if not ex_p:
@@ -703,15 +751,23 @@ def run_extract_medoids(
     for parts in system_lines:
         _, t_name, s_name, f_name, lig_pname, cof_names_str = parts
         t_obj = session.query(Target).filter_by(name=t_name).first()
-        frame_obj = frame_cache.get(f_name) or session.query(ReceptorFrame).filter_by(name=f_name).first()
+        frame_obj = (
+            frame_cache.get(f_name)
+            or session.query(ReceptorFrame).filter_by(name=f_name).first()
+        )
 
-        lig_pose = pose_cache.get(lig_pname) or (session.query(Pose).filter_by(name=lig_pname).first() if lig_pname else None)
+        lig_pose = pose_cache.get(lig_pname) or (
+            session.query(Pose).filter_by(name=lig_pname).first() if lig_pname else None
+        )
         cofactor_poses = []
         if cof_names_str:
             for cp in cof_names_str.split(","):
                 c_name_clean = cp.strip()
                 if c_name_clean:
-                    found_cof = pose_cache.get(c_name_clean) or session.query(Pose).filter_by(name=c_name_clean).first()
+                    found_cof = (
+                        pose_cache.get(c_name_clean)
+                        or session.query(Pose).filter_by(name=c_name_clean).first()
+                    )
                     if found_cof:
                         cofactor_poses.append(found_cof)
 
@@ -1036,7 +1092,9 @@ def run_cluster(
                 should_save = user_input in ["y", "yes"]
                 if should_save and not chosen_name:
                     def_name = f"{re.sub(r'[^a-zA-Z0-9_]', '_', eff_cluster).strip('_')}_{manifest['algorithm']}"
-                    name_input = input(f"Enter identifier name for this clustering run [default: {def_name}]: ").strip()
+                    name_input = input(
+                        f"Enter identifier name for this clustering run [default: {def_name}]: "
+                    ).strip()
                     chosen_name = name_input if name_input else def_name
             except (EOFError, KeyboardInterrupt):
                 console.print(
@@ -1205,7 +1263,9 @@ def run_stratify(
             .first()
         )
         if not m_run:
-            console.print(f"[yellow]Skipping '{sys_obj.name}': no MM-PBSA runs registered.[/yellow]")
+            console.print(
+                f"[yellow]Skipping '{sys_obj.name}': no MM-PBSA runs registered.[/yellow]"
+            )
             continue
 
         c_runs = (
@@ -1215,22 +1275,33 @@ def run_stratify(
             .all()
         )
         if not c_runs:
-            console.print(f"[yellow]Skipping '{sys_obj.name}': no ClusteringRun registered.[/yellow]")
+            console.print(
+                f"[yellow]Skipping '{sys_obj.name}': no ClusteringRun registered.[/yellow]"
+            )
             continue
 
         if clustering and len(target_systems) == 1:
-            target_c_run = next((cr for cr in c_runs if cr.name == clustering.strip()), None)
+            target_c_run = next(
+                (cr for cr in c_runs if cr.name == clustering.strip()), None
+            )
             if not target_c_run:
                 session.close()
-                raise ValueError(f"FATAL: ClusteringRun '{clustering}' not found for '{sys_obj.name}'!")
+                raise ValueError(
+                    f"FATAL: ClusteringRun '{clustering}' not found for '{sys_obj.name}'!"
+                )
         else:
             target_c_run = c_runs[0]
-            console.print(f"[dim]System '{sys_obj.name}': using ClusteringRun '{target_c_run.name}'[/dim]")
+            console.print(
+                f"[dim]System '{sys_obj.name}': using ClusteringRun '{target_c_run.name}'[/dim]"
+            )
 
         # Provenance verification
         if (
             abs(float(m_run.start_ns) - float(target_c_run.start_ns)) > 1e-3
-            or abs(float(m_run.sample_interval_ps) - float(target_c_run.sample_interval_ps)) > 1e-3
+            or abs(
+                float(m_run.sample_interval_ps) - float(target_c_run.sample_interval_ps)
+            )
+            > 1e-3
         ):
             session.close()
             raise ValueError(
@@ -1254,7 +1325,11 @@ def run_stratify(
         rep_manifest_data = []
         for tr in clean_trajs:
             rep_key = f"rep_{tr.replicate}"
-            mmpbsa_csv = mmpbsa_reports_dir / f"{tr.name}_rep_{tr.replicate}" / "thermodynamics_mmpbsa_pb.csv"
+            mmpbsa_csv = (
+                mmpbsa_reports_dir
+                / f"{tr.name}_rep_{tr.replicate}"
+                / "thermodynamics_mmpbsa_pb.csv"
+            )
             rmsd_csv = Path(tr.raw_dir).parent / "metrics" / "rmsd.csv"
             rep_manifest_data.append(
                 {
@@ -1264,7 +1339,9 @@ def run_stratify(
                 }
             )
         rep_manifest_file = task_dir / "stratify_replicates_manifest.json"
-        rep_manifest_file.write_text(json.dumps(rep_manifest_data, indent=2), encoding="utf-8")
+        rep_manifest_file.write_text(
+            json.dumps(rep_manifest_data, indent=2), encoding="utf-8"
+        )
 
         cmd = [
             sys.executable,
@@ -1312,7 +1389,9 @@ def run_stratify(
         boltz_total = float(strat_data["boltzmann_total_delta_g"])
         m_run.delta_g_boltzmann_total = boltz_total
 
-        cluster_stats_map = {item["cluster_id"]: item for item in strat_data.get("clusters", [])}
+        cluster_stats_map = {
+            item["cluster_id"]: item for item in strat_data.get("clusters", [])
+        }
         for tc in target_c_run.clusters:
             if tc.cluster_index in cluster_stats_map:
                 c_info = cluster_stats_map[tc.cluster_index]
@@ -1330,7 +1409,9 @@ def run_stratify(
         table.add_column("Plateau Pts", justify="right")
         table.add_column("Total Pts", justify="right")
         table.add_column("Population", justify="right")
-        table.add_column("ΔG Mean ± SEM (kcal/mol)", style="bold green", justify="center")
+        table.add_column(
+            "ΔG Mean ± SEM (kcal/mol)", style="bold green", justify="center"
+        )
         table.add_column("Std Dev (kcal/mol)", justify="right")
 
         for c_info in strat_data.get("clusters", []):
@@ -1353,7 +1434,9 @@ def run_stratify(
         console.print(f"📊 [dim]Timeseries:[/dim] {out_ts}\n")
 
     session.close()
-    console.print("[bold green]✓ All requested systems successfully stratified and synchronized with SQLite 3NF.[/bold green]")
+    console.print(
+        "[bold green]✓ All requested systems successfully stratified and synchronized with SQLite 3NF.[/bold green]"
+    )
 
 
 def _extract_mae_membrane_thickness(mae_path: Path) -> float | None:

@@ -403,7 +403,11 @@ def declash_sequential(
             "display_total": niter,
             "step_info": f"[cyan]{step_i}/{niter} it[/cyan] [dim](clashes: {n_clashes})[/dim]",
             "speed": f"{rate:>5.1f} it/s" if rate > 0 else "-- it/s",
-            "eta": f"{int((niter - step_i) / rate)}s" if rate > 0 and step_i < niter else "done",
+            "eta": (
+                f"{int((niter - step_i) / rate)}s"
+                if rate > 0 and step_i < niter
+                else "done"
+            ),
         }
         try:
             udp_sock.sendto(json.dumps(payload).encode("utf-8"), (master_ip, udp_port))
@@ -578,9 +582,7 @@ def main():
 
         n_dry_atoms = len(pmd.load_file(str(args.dry_top)).atoms)
         if n_dry_atoms <= 0:
-            raise ValueError(
-                f"FATAL: Dry topology {args.dry_top} resolved to 0 atoms!"
-            )
+            raise ValueError(f"FATAL: Dry topology {args.dry_top} resolved to 0 atoms!")
         for mid, m in enumerate(mol_ranges):
             if m.end <= n_dry_atoms:
                 mobile[mid] = False

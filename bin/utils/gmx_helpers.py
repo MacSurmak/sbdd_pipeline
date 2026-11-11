@@ -44,9 +44,7 @@ def count_dry_top_atoms(dry_top_path: Path) -> int:
 
     struct = pmd.load_file(str(dry_top_path))
     if len(struct.atoms) == 0:
-        raise ValueError(
-            f"FATAL: Dry topology {dry_top_path} resolved to 0 atoms!"
-        )
+        raise ValueError(f"FATAL: Dry topology {dry_top_path} resolved to 0 atoms!")
     return len(struct.atoms)
 
 

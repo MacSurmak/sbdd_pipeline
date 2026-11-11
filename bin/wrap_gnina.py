@@ -24,7 +24,9 @@ def main() -> None:
     parser.add_argument("--ligand", required=True)
     parser.add_argument("--ref_ligand", required=True)
     parser.add_argument("--cpus", type=int, required=True)
-    parser.add_argument("--rescore_mode", required=True, choices=["score_only", "minimize"])
+    parser.add_argument(
+        "--rescore_mode", required=True, choices=["score_only", "minimize"]
+    )
     parser.add_argument("--autobox_add", required=True, type=float)
     parser.add_argument("--cnn_model", required=True)
     parser.add_argument("--out_sdf", required=True)

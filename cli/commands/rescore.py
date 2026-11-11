@@ -34,11 +34,7 @@ def run_rescore(
     cwd = Path.cwd()
     session = init_db()
 
-    dock_run = (
-        session.query(DockingRun)
-        .order_by(DockingRun.created_at.desc())
-        .first()
-    )
+    dock_run = session.query(DockingRun).order_by(DockingRun.created_at.desc()).first()
     if not dock_run:
         session.close()
         console.print(
@@ -46,9 +42,7 @@ def run_rescore(
         )
         sys.exit(1)
 
-    frame_ids = sorted(
-        list({dp.receptor_frame_id for dp in dock_run.docked_poses})
-    )
+    frame_ids = sorted(list({dp.receptor_frame_id for dp in dock_run.docked_poses}))
     if not frame_ids:
         session.close()
         console.print(
@@ -202,11 +196,7 @@ def run_rescore(
                 if (strain_raw and strain_raw.lower() != "nan")
                 else None
             )
-            ult_val = (
-                float(ult_raw)
-                if (ult_raw and ult_raw.lower() != "nan")
-                else None
-            )
+            ult_val = float(ult_raw) if (ult_raw and ult_raw.lower() != "nan") else None
 
             r_frame = session.query(ReceptorFrame).filter_by(name=frame_name).first()
             sub_obj = session.query(Substance).filter_by(name=title).first()

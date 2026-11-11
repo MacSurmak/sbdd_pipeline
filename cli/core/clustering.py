@@ -206,7 +206,9 @@ def index_engine_poses_from_sdf(
         coords = _extract_heavy_coords(mol)
 
         if title not in ref_graphs:
-            matches = [tuple(m) for m in q_cur.GetSubstructMatches(q_cur, uniquify=False)]
+            matches = [
+                tuple(m) for m in q_cur.GetSubstructMatches(q_cur, uniquify=False)
+            ]
             if not matches:
                 matches = [tuple(range(q_cur.GetNumAtoms()))]
             ref_graphs[title] = (q_cur, matches)
@@ -295,9 +297,9 @@ def evaluate_substance_pose_ensemble(
     n_clusters = len(unique_cids)
 
     if n_g > 0 and n_u > 0:
-        consensus_candidates: list[
-            tuple[float, int, PoseRecord, PoseRecord, float]
-        ] = []
+        consensus_candidates: list[tuple[float, int, PoseRecord, PoseRecord, float]] = (
+            []
+        )
         for cid in unique_cids:
             c_indices = [i for i in range(n_total) if int(labels[i]) == cid]
             g_in_c = [i for i in c_indices if all_poses[i].engine == "glide"]
@@ -307,7 +309,9 @@ def evaluate_substance_pose_ensemble(
                 best_u_idx = min(u_in_c, key=lambda i: all_poses[i].energy)
                 sub_mat = rmsd_mat[np.ix_(g_in_c, u_in_c)]
                 min_pair_rmsd = float(np.min(sub_mat))
-                comb_energy = all_poses[best_g_idx].energy + all_poses[best_u_idx].energy
+                comb_energy = (
+                    all_poses[best_g_idx].energy + all_poses[best_u_idx].energy
+                )
                 consensus_candidates.append(
                     (
                         comb_energy,
@@ -373,9 +377,7 @@ def evaluate_substance_pose_ensemble(
         best_idx = min(c_indices, key=lambda i: all_poses[i].energy)
         leader = all_poses[best_idx]
         if leader.energy <= e_min + 1.5:
-            cnn_bonus = (
-                2.0 * leader.cnn_score if leader.cnn_score is not None else 0.0
-            )
+            cnn_bonus = 2.0 * leader.cnn_score if leader.cnn_score is not None else 0.0
             pop_bonus = 0.08 * float(len(c_indices))
             quality = -leader.energy + cnn_bonus + pop_bonus
             basin_candidates.append((quality, len(c_indices), leader))

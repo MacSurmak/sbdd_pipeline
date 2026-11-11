@@ -77,7 +77,9 @@ def calculate_consensus_score(df: pd.DataFrame) -> pd.DataFrame:
         df["PR_Glide"] = df["GlideScore"].rank(ascending=False, pct=True).fillna(0.0)
         phys_cols.append("PR_Glide")
     if "UniDock_Vina" in df.columns and df["UniDock_Vina"].notna().any():
-        df["PR_UniDock"] = df["UniDock_Vina"].rank(ascending=False, pct=True).fillna(0.0)
+        df["PR_UniDock"] = (
+            df["UniDock_Vina"].rank(ascending=False, pct=True).fillna(0.0)
+        )
         phys_cols.append("PR_UniDock")
     if "MMGBSA" in df.columns and df["MMGBSA"].notna().any():
         df["PR_MMGBSA"] = df["MMGBSA"].rank(ascending=False, pct=True).fillna(0.0)

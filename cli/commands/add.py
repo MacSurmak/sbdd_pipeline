@@ -547,7 +547,9 @@ def add_receptor(
             # Enumerate all physical residue instances matching resname in complex_file
             from Bio.PDB import PDBParser as _BioPDBParser
 
-            _st_parsed = _BioPDBParser(QUIET=True).get_structure("frame", str(complex_file))
+            _st_parsed = _BioPDBParser(QUIET=True).get_structure(
+                "frame", str(complex_file)
+            )
 
             def _process_heterogen_instances(resname: str, sub_type: str) -> list[Pose]:
                 import tempfile
@@ -557,7 +559,9 @@ def add_receptor(
                 for _chain in _st_parsed[0]:
                     for _res in _chain:
                         if _res.get_resname().strip().upper() == clean_res_name:
-                            matching_instances.append((_chain.id.strip(), int(_res.get_id()[1])))
+                            matching_instances.append(
+                                (_chain.id.strip(), int(_res.get_id()[1]))
+                            )
 
                 if not matching_instances:
                     raise ValueError(
@@ -568,7 +572,9 @@ def add_receptor(
                 multi_instance = len(matching_instances) > 1
 
                 for c_id, r_num in matching_instances:
-                    with tempfile.NamedTemporaryFile(suffix=".sdf", delete=False) as tmp_f:
+                    with tempfile.NamedTemporaryFile(
+                        suffix=".sdf", delete=False
+                    ) as tmp_f:
                         tmp_extract_sdf = Path(tmp_f.name)
 
                     spec_token = f"{c_id}:{r_num}:{clean_res_name}"
@@ -590,7 +596,9 @@ def add_receptor(
                         shutil.copy2(tmp_extract_sdf, base_sdf)
 
                     sub_entity = (
-                        session.query(Substance).filter_by(inchikey=parent_inchikey).first()
+                        session.query(Substance)
+                        .filter_by(inchikey=parent_inchikey)
+                        .first()
                     )
                     if not sub_entity:
                         sub_entity = Substance(
@@ -627,7 +635,9 @@ def add_receptor(
                         session.flush()
 
                     if multi_instance:
-                        pose_name = f"{frame_name}_{clean_res_name}_{c_id}{r_num}_crystal"
+                        pose_name = (
+                            f"{frame_name}_{clean_res_name}_{c_id}{r_num}_crystal"
+                        )
                     else:
                         pose_name = f"{frame_name}_{clean_res_name}_crystal"
 
@@ -869,9 +879,7 @@ def add_ligand(
                     w.write(mol)
 
             ex_sub = (
-                session.query(Substance)
-                .filter_by(inchikey=parent_inchikey)
-                .first()
+                session.query(Substance).filter_by(inchikey=parent_inchikey).first()
             )
             if ex_sub:
                 sub_entity = ex_sub

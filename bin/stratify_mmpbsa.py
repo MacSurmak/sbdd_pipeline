@@ -37,20 +37,30 @@ def parse_args():
     parser.add_argument(
         "--temp_k", type=float, required=True, help="Simulation temperature in Kelvin"
     )
+    parser.add_argument("--paradigm", required=True, help="Plateau detection paradigm")
     parser.add_argument(
-        "--paradigm", required=True, help="Plateau detection paradigm"
+        "--smoothing_tau_ns",
+        type=float,
+        required=True,
+        help="Zero-phase EMA decay time (ns)",
     )
     parser.add_argument(
-        "--smoothing_tau_ns", type=float, required=True, help="Zero-phase EMA decay time (ns)"
+        "--significance_z_crit",
+        type=float,
+        required=True,
+        help="Adaptive Z-score threshold",
     )
     parser.add_argument(
-        "--significance_z_crit", type=float, required=True, help="Adaptive Z-score threshold"
+        "--dilation_buffer_ns",
+        type=float,
+        required=True,
+        help="Dilation buffer (+/- delta in ns)",
     )
     parser.add_argument(
-        "--dilation_buffer_ns", type=float, required=True, help="Dilation buffer (+/- delta in ns)"
-    )
-    parser.add_argument(
-        "--min_dwell_ns", type=float, required=True, help="Minimum plateau duration (ns)"
+        "--min_dwell_ns",
+        type=float,
+        required=True,
+        help="Minimum plateau duration (ns)",
     )
     parser.add_argument(
         "--enforce_cluster_continuity",
@@ -127,7 +137,9 @@ def detect_plateaus_exclusion(
     trans_spikes = np.zeros(n, dtype=np.uint8)
 
     if paradigm in ["adaptive_zscore", "macro_step"]:
-        effective_step_thresh = (z_crit * sigma_thermal) if paradigm == "adaptive_zscore" else z_crit
+        effective_step_thresh = (
+            (z_crit * sigma_thermal) if paradigm == "adaptive_zscore" else z_crit
+        )
         stride = max(1, int(round(0.20 / dt)))
         sub_n = n // stride
         if sub_n > 4:
@@ -149,7 +161,9 @@ def detect_plateaus_exclusion(
         w_pts = max(5, int(round(6.0 / dt)))
         half_w = w_pts // 2
         for i in range(half_w, n - half_w, 2):
-            val_range = np.max(smoothed[i - half_w : i + half_w + 1]) - np.min(smoothed[i - half_w : i + half_w + 1])
+            val_range = np.max(smoothed[i - half_w : i + half_w + 1]) - np.min(
+                smoothed[i - half_w : i + half_w + 1]
+            )
             if val_range >= z_crit:
                 trans_spikes[i] = 1
     else:
@@ -234,7 +248,9 @@ def load_replicate_mmpbsa_from_manifest(
         rep_dfs[rep_key] = df_clean
 
     if not rep_dfs:
-        raise ValueError("FATAL: Zero valid MM-PBSA CSV deliverables parsed from manifest!")
+        raise ValueError(
+            "FATAL: Zero valid MM-PBSA CSV deliverables parsed from manifest!"
+        )
 
     return rep_dfs
 
@@ -272,7 +288,9 @@ def main():
 
     # 2. Load MM-PBSA samples strictly from manifest
     rep_energies = load_replicate_mmpbsa_from_manifest(manifest_records)
-    rmsd_by_rep = {rec["replicate"]: Path(rec["rmsd_csv"]).resolve() for rec in manifest_records}
+    rmsd_by_rep = {
+        rec["replicate"]: Path(rec["rmsd_csv"]).resolve() for rec in manifest_records
+    }
 
     # 3. Load full-resolution RMSD curves and compute Exclusion-First plateau masks
     replicate_plateau_masks = {}
@@ -290,12 +308,22 @@ def main():
         df_rmsd_raw = pd.read_csv(rmsd_file)
         lig_col = next((c for c in df_rmsd_raw.columns if c.startswith("Lig_")), None)
         if not lig_col:
-            lig_col = next((c for c in df_rmsd_raw.columns if "RMSD" in c and "BB" not in c), df_rmsd_raw.columns[-1])
+            lig_col = next(
+                (c for c in df_rmsd_raw.columns if "RMSD" in c and "BB" not in c),
+                df_rmsd_raw.columns[-1],
+            )
 
-        df_r_clean = pd.DataFrame({
-            "Time_ns": pd.to_numeric(df_rmsd_raw["Time_ns"], errors="coerce"),
-            "RMSD": pd.to_numeric(df_rmsd_raw[lig_col], errors="coerce")
-        }).dropna().sort_values("Time_ns").reset_index(drop=True)
+        df_r_clean = (
+            pd.DataFrame(
+                {
+                    "Time_ns": pd.to_numeric(df_rmsd_raw["Time_ns"], errors="coerce"),
+                    "RMSD": pd.to_numeric(df_rmsd_raw[lig_col], errors="coerce"),
+                }
+            )
+            .dropna()
+            .sort_values("Time_ns")
+            .reset_index(drop=True)
+        )
 
         r_times = df_r_clean["Time_ns"].values
         r_vals = df_r_clean["RMSD"].values
@@ -304,7 +332,9 @@ def main():
         df_c_r = df_coords[df_coords["replicate"] == rep_key].sort_values("time_ns")
         c_times = df_c_r["time_ns"].values
         c_labels = df_c_r["cluster_id"].values
-        nearest_idx = np.clip(np.searchsorted(c_times, r_times, side="left"), 0, len(c_labels) - 1)
+        nearest_idx = np.clip(
+            np.searchsorted(c_times, r_times, side="left"), 0, len(c_labels) - 1
+        )
         r_clusters = c_labels[nearest_idx]
 
         p_mask, sm_vals, sigma_th = detect_plateaus_exclusion(
@@ -352,7 +382,11 @@ def main():
             d_g = float(df_e_rep.iloc[idx]["delta_g"])
 
             # Exact nearest lookup in full-resolution plateau mask
-            n_pos = np.clip(np.searchsorted(r_times_full, t_sample, side="left"), 0, len(p_mask_full) - 1)
+            n_pos = np.clip(
+                np.searchsorted(r_times_full, t_sample, side="left"),
+                0,
+                len(p_mask_full) - 1,
+            )
             is_plat = bool(p_mask_full[n_pos] == 1)
 
             stratified_samples.append(
@@ -373,7 +407,10 @@ def main():
     df_strat = pd.DataFrame(stratified_samples)
     total_energy_points = len(df_strat)
     df_strat.to_csv(args.out_timeseries, sep="\t", index=False)
-    print(f"[STRATIFY] Saved complete timeseries with plateau mask -> {args.out_timeseries}", flush=True)
+    print(
+        f"[STRATIFY] Saved complete timeseries with plateau mask -> {args.out_timeseries}",
+        flush=True,
+    )
 
     # 5. Statistical Moments Calculation strictly over Quiescent Plateau Frames
     unique_clusters = sorted(list(set(df_strat["cluster_id"])))
@@ -389,7 +426,11 @@ def main():
 
         n_all = len(sub_all)
         n_plat = len(sub_plat)
-        pop_fraction = (n_plat / total_plateau_points) if total_plateau_points > 0 else (n_all / total_samples_all)
+        pop_fraction = (
+            (n_plat / total_plateau_points)
+            if total_plateau_points > 0
+            else (n_all / total_samples_all)
+        )
 
         # Free energy is evaluated strictly on stationary plateau frames
         eval_data = sub_plat if n_plat > 0 else sub_all
@@ -400,7 +441,9 @@ def main():
         if len(rep_means) > 1:
             sem_dg = float(np.std(rep_means, ddof=1) / np.sqrt(len(rep_means)))
         else:
-            sem_dg = float(std_dg / np.sqrt(len(eval_data))) if len(eval_data) > 1 else 0.0
+            sem_dg = (
+                float(std_dg / np.sqrt(len(eval_data))) if len(eval_data) > 1 else 0.0
+            )
 
         if pop_fraction > 0.0:
             boltzmann_weight = pop_fraction * np.exp(-mean_dg / (kb * temp_k))
@@ -479,7 +522,9 @@ def main():
         df_c_r = df_coords[df_coords["replicate"] == r_key].sort_values("time_ns")
         c_times = df_c_r["time_ns"].values
         c_labels = df_c_r["cluster_id"].values
-        nearest_idx = np.clip(np.searchsorted(c_times, r_times_f, side="left"), 0, len(c_labels) - 1)
+        nearest_idx = np.clip(
+            np.searchsorted(c_times, r_times_f, side="left"), 0, len(c_labels) - 1
+        )
         cluster_assigned = c_labels[nearest_idx]
 
         # 1. Shaded excluded transition regions (Red)
@@ -492,7 +537,9 @@ def main():
                 t_start = i
             elif in_t and val == 1:
                 in_t = False
-                ax.axvspan(r_times_f[t_start], r_times_f[i - 1], color="red", alpha=0.15, lw=0)
+                ax.axvspan(
+                    r_times_f[t_start], r_times_f[i - 1], color="red", alpha=0.15, lw=0
+                )
 
         # 2. Raw RMSD line in background (Muted Gray)
         ax.plot(r_times_f, r_vals_f, color="#666677", lw=0.6, alpha=0.5)
@@ -510,10 +557,22 @@ def main():
                 p_end = i
                 c_id = cluster_assigned[p_start]
                 col = color_map.get(c_id, "#00e5ff")
-                ax.plot(r_times_f[p_start:p_end], sm_vals_f[p_start:p_end], color=col, lw=2.4)
+                ax.plot(
+                    r_times_f[p_start:p_end],
+                    sm_vals_f[p_start:p_end],
+                    color=col,
+                    lw=2.4,
+                )
 
         # 4. Excluded transition smooth line (Dashed)
-        ax.plot(r_times_f[p_mask_f == 0], sm_vals_f[p_mask_f == 0], color="#ff5252", lw=1.2, ls=":", alpha=0.7)
+        ax.plot(
+            r_times_f[p_mask_f == 0],
+            sm_vals_f[p_mask_f == 0],
+            color="#ff5252",
+            lw=1.2,
+            ls=":",
+            alpha=0.7,
+        )
 
         ax.set_xlim(r_times_f.min(), r_times_f.max())
         ax.set_ylim(0.0, max(6.0, float(np.max(r_vals_f)) * 1.15))

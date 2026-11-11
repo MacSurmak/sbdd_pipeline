@@ -197,7 +197,9 @@ def run_monitor(port: int = 8088):
                         if is_sub and parent_id:
                             task_parents[t_id] = parent_id
                             task_children.setdefault(parent_id, set()).add(t_id)
-                            task_subtask_label[t_id] = payload.get("subtask_label") or t_id
+                            task_subtask_label[t_id] = (
+                                payload.get("subtask_label") or t_id
+                            )
 
                         step = payload.get("display_step", payload.get("step")) or 0
                         total = payload.get("display_total", payload.get("total")) or 1
@@ -228,9 +230,7 @@ def run_monitor(port: int = 8088):
                             task_gpus[t_id] = f"CPU ({cores}c)"
                             ram_used = hw_mem.get("ram_used_mb")
                             task_powers[t_id] = (
-                                f"{ram_used / 1024.0:>4.1f} GB"
-                                if ram_used
-                                else "-- W"
+                                f"{ram_used / 1024.0:>4.1f} GB" if ram_used else "-- W"
                             )
                         else:
                             gpu_name = hw_gpu.get("model") or "GPU"
@@ -293,7 +293,9 @@ def run_monitor(port: int = 8088):
 
                         if tool_raw not in ("mdrun", "gmx", "gromacs"):
                             tag_prefix = f"[{tool_raw.upper()}] "
-                            if not clean_name.upper().startswith(f"[{tool_raw.upper()}]"):
+                            if not clean_name.upper().startswith(
+                                f"[{tool_raw.upper()}]"
+                            ):
                                 clean_name = tag_prefix + clean_name
 
                         task_names[t_id] = clean_name
@@ -337,7 +339,9 @@ def run_monitor(port: int = 8088):
                             )
                         else:
                             interpolated_st = real_st
-                        t_str = f" [dim]({format_time_ns(interpolated_st * dt_ps)})[/dim]"
+                        t_str = (
+                            f" [dim]({format_time_ns(interpolated_st * dt_ps)})[/dim]"
+                        )
                         step_info = f"[cyan]{format_steps(interpolated_st)}/{format_steps(total_st)}[/cyan]{t_str}"
                     else:
                         interpolated_st = real_st
@@ -393,7 +397,9 @@ def run_monitor(port: int = 8088):
 
                 # Reorder progress._tasks so child tasks are strictly nested directly below their parent
                 ordered_tasks = {}
-                root_ids = [t for t in task_bars.keys() if not task_is_subtask.get(t, False)]
+                root_ids = [
+                    t for t in task_bars.keys() if not task_is_subtask.get(t, False)
+                ]
                 for r_id in root_ids:
                     if r_id in task_bars:
                         r_bar_id = task_bars[r_id]

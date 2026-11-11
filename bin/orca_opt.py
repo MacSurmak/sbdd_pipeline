@@ -116,7 +116,9 @@ def main():
         meta_p = Path(args.metadata_json).resolve()
         if not meta_p.exists():
             raise FileNotFoundError(f"FATAL: Metadata JSON not found: {meta_p}")
-        mult_val = int(json.loads(meta_p.read_text(encoding="utf-8"))["spin_multiplicity"])
+        mult_val = int(
+            json.loads(meta_p.read_text(encoding="utf-8"))["spin_multiplicity"]
+        )
 
     atoms_data = []
     mol_rdkit = None

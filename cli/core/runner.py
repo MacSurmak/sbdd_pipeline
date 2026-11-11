@@ -47,7 +47,10 @@ def _resolve_entrypoint_session_id(scratch_base: Path, entrypoint: str) -> str |
         parts = line.split("\t")
         if len(parts) >= 7 and target_token in parts[6]:
             session_id = parts[5].strip()
-            if session_id and (scratch_base / ".nextflow" / "cache" / session_id).exists():
+            if (
+                session_id
+                and (scratch_base / ".nextflow" / "cache" / session_id).exists()
+            ):
                 return session_id
     return None
 

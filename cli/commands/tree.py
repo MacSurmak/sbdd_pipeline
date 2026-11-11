@@ -69,9 +69,7 @@ def _render_detailed_substance_node(parent_node, sub: Substance, session) -> Non
 
     for st in states:
         st_color = "green" if st.state == "ready" else "yellow"
-        q_label = (
-            f"q={st.formal_charge:+d}" if st.formal_charge != 0 else "neutral"
-        )
+        q_label = f"q={st.formal_charge:+d}" if st.formal_charge != 0 else "neutral"
         param_status = _format_param_status(st, sub)
         state_node = sub_node.add(
             f"State: [magenta]{st.state_hash}[/magenta] [{st_color}]\\[{st.state}][/{st_color}] [cyan]({q_label})[/cyan]{param_status} [dim]SMILES: {st.isomeric_smiles}[/dim]"
@@ -116,7 +114,9 @@ def print_tree(
         sub_root = Tree(
             f"[bold blue]Substance Lineage Inspection: {sub_obj.name}[/bold blue] [dim]({sub_obj.inchikey})[/dim]"
         )
-        sub_root.add(f"Batch Provenance: [bold cyan]{sub_obj.batch_id or 'none'}[/bold cyan]")
+        sub_root.add(
+            f"Batch Provenance: [bold cyan]{sub_obj.batch_id or 'none'}[/bold cyan]"
+        )
         _render_detailed_substance_node(sub_root, sub_obj, session)
 
         # Show evaluation across DockingRuns
@@ -127,15 +127,27 @@ def print_tree(
             .all()
         )
         if d_poses:
-            dock_branch = sub_root.add("[bold magenta]Analytical Docking Evaluations[/bold magenta]")
+            dock_branch = sub_root.add(
+                "[bold magenta]Analytical Docking Evaluations[/bold magenta]"
+            )
             by_run = {}
             for dp in d_poses:
-                by_run.setdefault((dp.docking_run.name, dp.receptor_frame.name), []).append(dp)
+                by_run.setdefault(
+                    (dp.docking_run.name, dp.receptor_frame.name), []
+                ).append(dp)
             for (r_name, f_name), modes in by_run.items():
                 g_modes = [m for m in modes if m.engine == "glide"]
                 u_modes = [m for m in modes if m.engine in ("unidock", "gnina")]
-                g_best = f"GScore: {g_modes[0].glide_score:.2f}" if g_modes and g_modes[0].glide_score is not None else ""
-                u_best = f"Vina: {u_modes[0].vina_affinity:.2f}" if u_modes and u_modes[0].vina_affinity is not None else ""
+                g_best = (
+                    f"GScore: {g_modes[0].glide_score:.2f}"
+                    if g_modes and g_modes[0].glide_score is not None
+                    else ""
+                )
+                u_best = (
+                    f"Vina: {u_modes[0].vina_affinity:.2f}"
+                    if u_modes and u_modes[0].vina_affinity is not None
+                    else ""
+                )
                 stats_str = ", ".join(s for s in [g_best, u_best] if s)
                 stats_label = f" [dim]({stats_str})[/dim]" if stats_str else ""
                 dock_branch.add(
@@ -310,8 +322,9 @@ def print_tree(
             (Substance.batch_id == "crystal_extract")
             | (
                 Substance.id.in_(
-                    session.query(SubstanceState.substance_id)
-                    .join(Pose, Pose.substance_state_id == SubstanceState.id)
+                    session.query(SubstanceState.substance_id).join(
+                        Pose, Pose.substance_state_id == SubstanceState.id
+                    )
                 )
             )
         )
@@ -355,9 +368,11 @@ def print_tree(
             ready_cnt = int(ready_subs or 0)
             raw_cnt = int(raw_subs or 0)
             b_tag = b_name or "unspecified_batch"
-            all_ready = (ready_cnt == total_cnt and total_cnt > 0)
+            all_ready = ready_cnt == total_cnt and total_cnt > 0
             b_style = "green" if all_ready else "yellow"
-            b_status_str = f"[{b_style}]\\[{'ready' if all_ready else 'raw'}][/{b_style}]"
+            b_status_str = (
+                f"[{b_style}]\\[{'ready' if all_ready else 'raw'}][/{b_style}]"
+            )
 
             # Query docking evaluations for this batch
             docking_summary = (

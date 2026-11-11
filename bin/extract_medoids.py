@@ -25,7 +25,9 @@ from cli.core.chem import transfer_coordinates_to_template
 
 def convert_to_mae(src_path: Path, dst_path: Path):
     """Converts PDB/SDF to MAE using Schrödinger structconvert with strict Fail-Fast enforcement."""
-    structconvert_bin = shutil.which("structconvert") or "/opt/containers/bin/structconvert"
+    structconvert_bin = (
+        shutil.which("structconvert") or "/opt/containers/bin/structconvert"
+    )
     if Path(structconvert_bin).exists() or shutil.which("structconvert"):
         cmd = [structconvert_bin, str(src_path), str(dst_path)]
     elif shutil.which("schrodinger"):
@@ -44,7 +46,9 @@ def convert_to_mae(src_path: Path, dst_path: Path):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Extract medoid complexes on Slurm node")
+    parser = argparse.ArgumentParser(
+        description="Extract medoid complexes on Slurm node"
+    )
     parser.add_argument("--spec", required=True, help="Task specification JSON")
     parser.add_argument("--outdir", default=".", help="Local output scratch directory")
     args = parser.parse_args()
@@ -105,14 +109,20 @@ def main():
         convert_to_mae(rec_pdb, rec_mae)
 
         rel_rec_pdb = f"targets/{target_name}/frames/{new_frame_name}/receptor.pdb"
-        rel_rec_mae = f"targets/{target_name}/frames/{new_frame_name}/receptor.mae" if rec_mae.exists() and rec_mae.stat().st_size > 0 else "None"
+        rel_rec_mae = (
+            f"targets/{target_name}/frames/{new_frame_name}/receptor.mae"
+            if rec_mae.exists() and rec_mae.stat().st_size > 0
+            else "None"
+        )
 
         receipt_lines.append(
             f"FRAME\t{target_name}\t{new_frame_name}\t{rel_rec_pdb}\t{rel_rec_mae}\t"
             f"{parent_frame_id}\t{rank}\t{pop}\t{spread}\t{feature_group}\t{align_group}\t{dim_reduction}"
         )
 
-        def _extract_small_molecule(mol_spec: dict, is_primary_ligand: bool) -> tuple[str, str]:
+        def _extract_small_molecule(
+            mol_spec: dict, is_primary_ligand: bool
+        ) -> tuple[str, str]:
             res_clean = mol_spec["res_name"].strip().upper()
             inchikey = mol_spec["inchikey"]
             state_id = mol_spec["state_id"]
@@ -120,19 +130,28 @@ def main():
 
             mol_atoms = u.select_atoms(f"resname {res_clean}")
             if len(mol_atoms) == 0:
-                raise ValueError(f"FATAL: Molecule '{res_clean}' not found in frame {m_frame} of {system_name}!")
+                raise ValueError(
+                    f"FATAL: Molecule '{res_clean}' not found in frame {m_frame} of {system_name}!"
+                )
 
             tmpl_path = Path(mol_spec["template_sdf"]).resolve()
             suppl = Chem.SDMolSupplier(str(tmpl_path), removeHs=False, sanitize=False)
             tmpl_mol = next((m for m in suppl if m is not None), None)
             if tmpl_mol is None:
-                raise ValueError(f"FATAL: Failed to read reference SDF template from {tmpl_path}")
+                raise ValueError(
+                    f"FATAL: Failed to read reference SDF template from {tmpl_path}"
+                )
 
             raw_positions = mol_atoms.positions
             if is_ion:
                 restored_pose = Chem.Mol(tmpl_mol)
                 restored_pose.GetConformer().SetAtomPosition(
-                    0, [float(raw_positions[0][0]), float(raw_positions[0][1]), float(raw_positions[0][2])]
+                    0,
+                    [
+                        float(raw_positions[0][0]),
+                        float(raw_positions[0][1]),
+                        float(raw_positions[0][2]),
+                    ],
                 )
             else:
                 mda_elements = []
@@ -140,10 +159,14 @@ def main():
                     if hasattr(a, "element") and a.element and a.element.strip():
                         mda_elements.append(a.element.strip().capitalize())
                     else:
-                        clean_n = "".join([c for c in a.name if not c.isdigit()]).strip()
+                        clean_n = "".join(
+                            [c for c in a.name if not c.isdigit()]
+                        ).strip()
                         mda_elements.append(
                             clean_n[:2].capitalize()
-                            if len(clean_n) >= 2 and clean_n[:2].capitalize() in {"Cl", "Br", "Fe", "Mg", "Zn", "Ca", "Na"}
+                            if len(clean_n) >= 2
+                            and clean_n[:2].capitalize()
+                            in {"Cl", "Br", "Fe", "Mg", "Zn", "Ca", "Na"}
                             else clean_n[:1].upper()
                         )
 
@@ -166,7 +189,11 @@ def main():
             convert_to_mae(pose_sdf, pose_mae)
 
             rel_sdf = f"substances/{inchikey}/poses/{pose_name}/{res_clean}_pose.sdf"
-            rel_mae = f"substances/{inchikey}/poses/{pose_name}/{res_clean}_pose.mae" if pose_mae.exists() and pose_mae.stat().st_size > 0 else "None"
+            rel_mae = (
+                f"substances/{inchikey}/poses/{pose_name}/{res_clean}_pose.mae"
+                if pose_mae.exists() and pose_mae.stat().st_size > 0
+                else "None"
+            )
 
             lig_flag = "1" if is_primary_ligand else "0"
             receipt_lines.append(
@@ -177,20 +204,29 @@ def main():
         lig_pose_name = ""
         lig_res_name = ""
         if lig_spec:
-            lig_pose_name, lig_res_name = _extract_small_molecule(lig_spec, is_primary_ligand=True)
+            lig_pose_name, lig_res_name = _extract_small_molecule(
+                lig_spec, is_primary_ligand=True
+            )
 
         cof_pose_names = []
         for cof in cofactors_spec:
             c_pname, _ = _extract_small_molecule(cof, is_primary_ligand=False)
             cof_pose_names.append(c_pname)
 
-        sys_name = f"{new_frame_name}_{lig_res_name}" if lig_res_name else new_frame_name
+        sys_name = (
+            f"{new_frame_name}_{lig_res_name}" if lig_res_name else new_frame_name
+        )
         cof_str = ",".join(cof_pose_names)
-        receipt_lines.append(f"SYSTEM\t{target_name}\t{sys_name}\t{new_frame_name}\t{lig_pose_name}\t{cof_str}")
+        receipt_lines.append(
+            f"SYSTEM\t{target_name}\t{sys_name}\t{new_frame_name}\t{lig_pose_name}\t{cof_str}"
+        )
 
     out_receipt = out_base / "extract_medoids_receipt.tsv"
     out_receipt.write_text("\n".join(receipt_lines) + "\n", encoding="utf-8")
-    print(f"[EXTRACT_MEDOIDS] Successfully extracted {len(clusters)} complexes for {system_name}.", flush=True)
+    print(
+        f"[EXTRACT_MEDOIDS] Successfully extracted {len(clusters)} complexes for {system_name}.",
+        flush=True,
+    )
 
 
 if __name__ == "__main__":

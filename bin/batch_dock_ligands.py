@@ -151,9 +151,7 @@ def main() -> None:
                 )
 
     manifest = {"glide_chunks": glide_chunks, "unidock_chunks": unidock_chunks}
-    Path(args.out_manifest).write_text(
-        json.dumps(manifest, indent=2), encoding="utf-8"
-    )
+    Path(args.out_manifest).write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     print(
         f"Batched {len(ligands)} substance(s): {len(glide_chunks)} Glide chunk(s) (size={args.glide_batch_size}), "
         f"{len(unidock_chunks)} Uni-Dock chunk(s) (size={args.unidock_batch_size}) [mode={mode}]."

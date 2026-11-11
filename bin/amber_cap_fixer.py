@@ -105,7 +105,9 @@ def main():
         w.strip().upper() for w in args.water_names.split(",") if w.strip()
     ]
     if water_residues:
-        present_water = {r.name.strip().upper() for r in struct.residues} & set(water_residues)
+        present_water = {r.name.strip().upper() for r in struct.residues} & set(
+            water_residues
+        )
         if present_water:
             water_mask = ":" + ",".join(sorted(present_water))
             struct.strip(water_mask)
@@ -160,8 +162,14 @@ def main():
                 next_res = struct.residues[idx + 1]
                 res.chain = next_res.chain
                 ace_c = next((a for a in res.atoms if a.name.strip() == "C"), None)
-                next_n = next((a for a in next_res.atoms if a.name.strip() == "N"), None)
-                if ace_c is not None and next_n is not None and next_n not in ace_c.bond_partners:
+                next_n = next(
+                    (a for a in next_res.atoms if a.name.strip() == "N"), None
+                )
+                if (
+                    ace_c is not None
+                    and next_n is not None
+                    and next_n not in ace_c.bond_partners
+                ):
                     struct.bonds.append(pmd.Bond(ace_c, next_n))
 
         if idx + 1 < len(struct.residues) and struct.residues[idx + 1].name in (
@@ -178,7 +186,11 @@ def main():
             # Explicitly register peptide bond in ParmEd topology graph so PDB writer never inserts a TER card
             curr_c = next((a for a in res.atoms if a.name.strip() == "C"), None)
             cap_n = next((a for a in next_res.atoms if a.name.strip() == "N"), None)
-            if curr_c is not None and cap_n is not None and cap_n not in curr_c.bond_partners:
+            if (
+                curr_c is not None
+                and cap_n is not None
+                and cap_n not in curr_c.bond_partners
+            ):
                 struct.bonds.append(pmd.Bond(curr_c, cap_n))
 
         atom_names = {a.name.strip() for a in res.atoms}

@@ -15,10 +15,21 @@ def main():
     )
     parser.add_argument("--prmtop", required=True, help="Input Amber prmtop file")
     parser.add_argument("--inpcrd", default=None, help="Input Amber inpcrd file")
-    parser.add_argument("--out_top", default="topol.top", help="Output GROMACS top file")
-    parser.add_argument("--out_gro", default="step3_input.gro", help="Output GROMACS gro file")
-    parser.add_argument("--hmr", action="store_true", help="Enable Hydrogen Mass Repartitioning")
-    parser.add_argument("--hmr_mass", type=float, default=None, help="Target hydrogen mass in Da for HMR")
+    parser.add_argument(
+        "--out_top", default="topol.top", help="Output GROMACS top file"
+    )
+    parser.add_argument(
+        "--out_gro", default="step3_input.gro", help="Output GROMACS gro file"
+    )
+    parser.add_argument(
+        "--hmr", action="store_true", help="Enable Hydrogen Mass Repartitioning"
+    )
+    parser.add_argument(
+        "--hmr_mass",
+        type=float,
+        default=None,
+        help="Target hydrogen mass in Da for HMR",
+    )
     args = parser.parse_args()
 
     try:

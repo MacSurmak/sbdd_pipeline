@@ -159,9 +159,28 @@ def _build_prep_args(config: Dict[str, Any]) -> list:
         args.extend(["--membrane", "true"])
 
         valid_ppm_codes = {
-            "PMm", "PMp", "PMf", "Erf", "ERm", "GOL", "LYS", "END", "VAC",
-            "MOM", "MIM", "THp", "THb", "GnO", "GnI", "GpI", "ARC",
-            "LPC", "MPC", "OPC", "EPC", "MIC"
+            "PMm",
+            "PMp",
+            "PMf",
+            "Erf",
+            "ERm",
+            "GOL",
+            "LYS",
+            "END",
+            "VAC",
+            "MOM",
+            "MIM",
+            "THp",
+            "THb",
+            "GnO",
+            "GnI",
+            "GpI",
+            "ARC",
+            "LPC",
+            "MPC",
+            "OPC",
+            "EPC",
+            "MIC",
         }
         mem_type = str(mem_cfg.get("type", "")).strip()
         if mem_type not in valid_ppm_codes:
@@ -231,14 +250,18 @@ def _build_screen_args(config: Dict[str, Any], project_dir: Path) -> list:
     if not isinstance(glide_cfg, dict):
         raise ValueError("FATAL: 'glide' configuration block is missing in glide.yaml!")
     if not isinstance(unidock_cfg, dict):
-        raise ValueError("FATAL: 'unidock' configuration block is missing in unidock.yaml!")
+        raise ValueError(
+            "FATAL: 'unidock' configuration block is missing in unidock.yaml!"
+        )
     if not isinstance(gnina_cfg, dict):
         raise ValueError("FATAL: 'gnina' configuration block is missing in gnina.yaml!")
 
     if "enabled" not in glide_cfg or glide_cfg["enabled"] is None:
         raise ValueError("FATAL: 'glide.enabled' boolean is required in glide.yaml!")
     if "enabled" not in unidock_cfg or unidock_cfg["enabled"] is None:
-        raise ValueError("FATAL: 'unidock.enabled' boolean is required in unidock.yaml!")
+        raise ValueError(
+            "FATAL: 'unidock.enabled' boolean is required in unidock.yaml!"
+        )
     if "enabled" not in gnina_cfg or gnina_cfg["enabled"] is None:
         raise ValueError("FATAL: 'gnina.enabled' boolean is required in gnina.yaml!")
 
@@ -336,7 +359,7 @@ def _build_screen_args(config: Dict[str, Any], project_dir: Path) -> list:
             raise ValueError(
                 f"FATAL CONFIGURATION ERROR: 'unidock.resources.slurm_gres' is set to '{u_gres}', "
                 "but GPU sharding is strictly forbidden for Uni-Dock! "
-                "Uni-Dock requires an exclusive physical GPU allocation (set slurm_gres: \"gpu:1\" in configs/unidock.yaml)."
+                'Uni-Dock requires an exclusive physical GPU allocation (set slurm_gres: "gpu:1" in configs/unidock.yaml).'
             )
         args.extend(
             [
@@ -508,9 +531,13 @@ def _build_md_setup_args(config: Dict[str, Any]) -> list:
         args.extend([f"--{nf_k}", str(sys_build[yaml_k])])
 
     if "hmr" not in sys_build or sys_build["hmr"] is None:
-        raise ValueError("FATAL: 'md_simulation.system_build.hmr' boolean is required in md.yaml!")
+        raise ValueError(
+            "FATAL: 'md_simulation.system_build.hmr' boolean is required in md.yaml!"
+        )
     if float(sys_build["hmr_mass"]) <= 1.008:
-        raise ValueError("FATAL: 'md_simulation.system_build.hmr_mass' must be > 1.008 Da!")
+        raise ValueError(
+            "FATAL: 'md_simulation.system_build.hmr_mass' must be > 1.008 Da!"
+        )
     args.extend(["--hmr", "true" if sys_build["hmr"] else "false"])
 
     water_names = sys_build.get("water_names")
@@ -632,7 +659,11 @@ def _build_md_setup_args(config: Dict[str, Any]) -> list:
     args.extend(["--md_restraints_fc", ",".join(map(str, rf_list))])
 
     prod_cfg = md_cfg.get("production")
-    if not isinstance(prod_cfg, dict) or "restraints_fc" not in prod_cfg or prod_cfg["restraints_fc"] is None:
+    if (
+        not isinstance(prod_cfg, dict)
+        or "restraints_fc" not in prod_cfg
+        or prod_cfg["restraints_fc"] is None
+    ):
         raise ValueError(
             "FATAL: 'md_simulation.production.restraints_fc' is required in md.yaml!"
         )
@@ -704,7 +735,9 @@ def _build_dynamics_args(config: Dict[str, Any], project_dir: Path) -> list:
 
     sys_build = md_cfg.get("system_build", {})
     if "hmr" not in sys_build or sys_build["hmr"] is None:
-        raise ValueError("FATAL: 'md_simulation.system_build.hmr' is required in md.yaml!")
+        raise ValueError(
+            "FATAL: 'md_simulation.system_build.hmr' is required in md.yaml!"
+        )
 
     prod_mappings = [
         ("total_time_ns", "md_total_ns"),
@@ -1087,7 +1120,11 @@ def validate_clustering_config(config: Dict[str, Any]) -> Dict[str, Any]:
         "enforce_cluster_continuity",
     ]
     for p_key in required_plateau_keys:
-        if p_key not in plateau_cfg or plateau_cfg[p_key] is None or plateau_cfg[p_key] == "":
+        if (
+            p_key not in plateau_cfg
+            or plateau_cfg[p_key] is None
+            or plateau_cfg[p_key] == ""
+        ):
             raise ValueError(
                 f"FATAL CONFIGURATION ERROR: Missing required parameter 'md_simulation.clustering.plateau_detection.{p_key}' "
                 "in configs/md.yaml! All parameters must be explicitly specified."
@@ -1103,9 +1140,13 @@ def validate_clustering_config(config: Dict[str, Any]) -> Dict[str, Any]:
     if float(plateau_cfg["smoothing_tau_ns"]) <= 0.0:
         raise ValueError("FATAL: plateau_detection.smoothing_tau_ns must be positive!")
     if float(plateau_cfg["significance_z_crit"]) <= 0.0:
-        raise ValueError("FATAL: plateau_detection.significance_z_crit must be positive!")
+        raise ValueError(
+            "FATAL: plateau_detection.significance_z_crit must be positive!"
+        )
     if float(plateau_cfg["dilation_buffer_ns"]) < 0.0:
-        raise ValueError("FATAL: plateau_detection.dilation_buffer_ns must be non-negative!")
+        raise ValueError(
+            "FATAL: plateau_detection.dilation_buffer_ns must be non-negative!"
+        )
     if float(plateau_cfg["min_dwell_ns"]) <= 0.0:
         raise ValueError("FATAL: plateau_detection.min_dwell_ns must be positive!")
 

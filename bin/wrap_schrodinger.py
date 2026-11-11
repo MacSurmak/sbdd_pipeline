@@ -120,9 +120,7 @@ def cmd_glide_dock(args):
     tmp_dir = os.environ.get("SLURM_TMPDIR", "/tmp")
     os.environ["SCHRODINGER_JOBDB"] = f"{tmp_dir}/schrodinger_jobdb_{os.getpid()}"
     Path(os.environ["SCHRODINGER_JOBDB"]).mkdir(parents=True, exist_ok=True)
-    postdock_val = (
-        "yes" if str(args.postdock).lower() in ("true", "yes", "1") else "no"
-    )
+    postdock_val = "yes" if str(args.postdock).lower() in ("true", "yes", "1") else "no"
     epik_val = (
         "yes" if str(args.epik_penalties).lower() in ("true", "yes", "1") else "no"
     )

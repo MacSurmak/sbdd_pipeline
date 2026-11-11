@@ -262,7 +262,9 @@ def _ingest_docking_receipt(
     substance_by_title = {
         (
             item["ligand_title"] if "ligand_title" in item else item["name"]
-        ): session.query(Substance).filter(Substance.id == item["substance_id"]).one()
+        ): session.query(Substance)
+        .filter(Substance.id == item["substance_id"])
+        .one()
         for item in plan["ligands"]
     }
     receipt_map: dict[tuple[str, str], Path] = {}
@@ -461,7 +463,9 @@ def _ingest_matrix_screening_results(
 
     raw_csv = cwd / "reports" / "docking_combined_raw.csv"
     ranking_csv = cwd / "reports" / "ranking.csv"
-    source_csv = raw_csv if (raw_csv.exists() and raw_csv.stat().st_size > 0) else ranking_csv
+    source_csv = (
+        raw_csv if (raw_csv.exists() and raw_csv.stat().st_size > 0) else ranking_csv
+    )
     if not source_csv.exists() or source_csv.stat().st_size == 0:
         session.close()
         raise FileNotFoundError(
@@ -490,9 +494,9 @@ def _ingest_matrix_screening_results(
             receipt_map[(r_frame_id, r_engine)] = str(sdf_file)
 
     substance_id_by_title: dict[str, int] = {
-        str(
-            item["ligand_title"] if "ligand_title" in item else item["name"]
-        ): int(item["substance_id"])
+        str(item["ligand_title"] if "ligand_title" in item else item["name"]): int(
+            item["substance_id"]
+        )
         for item in ligands_plan
     }
     frame_id_by_name: dict[str, int] = {}
@@ -518,11 +522,15 @@ def _ingest_matrix_screening_results(
 
     with open(source_csv, "r", encoding="utf-8") as cf:
         for row in csv.DictReader(cf):
-            m_title = str(row["Title"]).strip() if "Title" in row and row["Title"] else ""
+            m_title = (
+                str(row["Title"]).strip() if "Title" in row and row["Title"] else ""
+            )
             frame_name = (
                 str(row["Receptor"]).strip()
                 if "Receptor" in row and row["Receptor"]
-                else (str(row["Frame"]).strip() if "Frame" in row and row["Frame"] else "")
+                else (
+                    str(row["Frame"]).strip() if "Frame" in row and row["Frame"] else ""
+                )
             )
             if not m_title or not frame_name:
                 continue
@@ -545,7 +553,11 @@ def _ingest_matrix_screening_results(
             g_cnn_aff = _parse_csv_float(row, "Glide_CNNaffinity")
             g_modes_f = _parse_csv_float(row, "Glide_Modes")
             g_best_m = _parse_csv_float(row, "Glide_Best_Mode")
-            n_glide = int(g_modes_f) if g_modes_f is not None else (1 if g_score is not None else 0)
+            n_glide = (
+                int(g_modes_f)
+                if g_modes_f is not None
+                else (1 if g_score is not None else 0)
+            )
             g_mode_idx = int(g_best_m) if g_best_m is not None else 1
 
             u_vina = _parse_csv_float(row, "UniDock_Vina")
@@ -553,7 +565,11 @@ def _ingest_matrix_screening_results(
             u_cnn_aff = _parse_csv_float(row, "UniDock_CNNaffinity")
             u_modes_f = _parse_csv_float(row, "UniDock_Modes")
             u_best_m = _parse_csv_float(row, "UniDock_Best_Mode")
-            n_unidock = int(u_modes_f) if u_modes_f is not None else (1 if u_vina is not None else 0)
+            n_unidock = (
+                int(u_modes_f)
+                if u_modes_f is not None
+                else (1 if u_vina is not None else 0)
+            )
             u_mode_idx = int(u_best_m) if u_best_m is not None else 1
 
             c_size_f = _parse_csv_float(row, "Cluster_Size")
@@ -648,7 +664,9 @@ def run_dock(
 
     frames = _query_ready_structural_frames(session, target, frame_names)
 
-    lig_query = session.query(Substance).filter_by(substance_type="ligand", state="ready")
+    lig_query = session.query(Substance).filter_by(
+        substance_type="ligand", state="ready"
+    )
     if batch_names:
         lig_query = lig_query.filter(Substance.batch_id.in_(batch_names))
 
@@ -662,7 +680,11 @@ def run_dock(
             )
             sys.exit(1)
     else:
-        ligands = lig_query.filter(Substance.name.in_(ligand_names)).order_by(Substance.name).all()
+        ligands = (
+            lig_query.filter(Substance.name.in_(ligand_names))
+            .order_by(Substance.name)
+            .all()
+        )
         if len(ligands) != len(set(ligand_names)):
             found = {l.name for l in ligands}
             missing = set(ligand_names) - found
@@ -768,28 +790,42 @@ def run_dock(
     overview_table.add_column("Frame", style="bold cyan")
     if dual_engine:
         overview_table.add_column("Docked (Glide / UniDock)", justify="center")
-        overview_table.add_column("Consensus Poses (ΔRMSD ≤ 2.0 Å)", justify="center", style="bold green")
+        overview_table.add_column(
+            "Consensus Poses (ΔRMSD ≤ 2.0 Å)", justify="center", style="bold green"
+        )
         overview_table.add_column("GlideScore (Best / Median)", justify="right")
         overview_table.add_column("UniDock Vina (Best / Median)", justify="right")
-        overview_table.add_column("CNNscore (Best / Median)", justify="right", style="magenta")
+        overview_table.add_column(
+            "CNNscore (Best / Median)", justify="right", style="magenta"
+        )
     elif has_unidock:
         overview_table.add_column("Substances Docked", justify="center")
-        overview_table.add_column("Converged Basins (≥ 4 poses)", justify="center", style="bold green")
+        overview_table.add_column(
+            "Converged Basins (≥ 4 poses)", justify="center", style="bold green"
+        )
         overview_table.add_column("UniDock Vina (Best / Median)", justify="right")
-        overview_table.add_column("CNNscore (Best / Median)", justify="right", style="magenta")
+        overview_table.add_column(
+            "CNNscore (Best / Median)", justify="right", style="magenta"
+        )
         overview_table.add_column("CNNaffinity (Best / Median)", justify="right")
     else:
         overview_table.add_column("Substances Docked", justify="center")
-        overview_table.add_column("Converged Basins (≥ 4 poses)", justify="center", style="bold green")
+        overview_table.add_column(
+            "Converged Basins (≥ 4 poses)", justify="center", style="bold green"
+        )
         overview_table.add_column("GlideScore (Best / Median)", justify="right")
-        overview_table.add_column("CNNscore (Best / Median)", justify="right", style="magenta")
+        overview_table.add_column(
+            "CNNscore (Best / Median)", justify="right", style="magenta"
+        )
 
     for rec in plan["receptors"]:
         f_name = rec["name"]
         f_rows = [r for r in summary_rows if r["frame"] == f_name]
         g_vals = [float(r["g_score"]) for r in f_rows if r["g_score"] is not None]
         u_vals = [float(r["u_vina"]) for r in f_rows if r["u_vina"] is not None]
-        rmsd_vals = [float(r["pair_rmsd"]) for r in f_rows if r["pair_rmsd"] is not None]
+        rmsd_vals = [
+            float(r["pair_rmsd"]) for r in f_rows if r["pair_rmsd"] is not None
+        ]
         cnn_sc_vals = [
             float(v)
             for r in f_rows
@@ -822,7 +858,9 @@ def run_dock(
 
         if dual_engine:
             consensus_cnt = sum(1 for v in rmsd_vals if v <= 2.0)
-            consensus_pct = (100.0 * consensus_cnt / len(rmsd_vals)) if rmsd_vals else 0.0
+            consensus_pct = (
+                (100.0 * consensus_cnt / len(rmsd_vals)) if rmsd_vals else 0.0
+            )
             consensus_str = (
                 f"{consensus_cnt}/{len(rmsd_vals)} ({consensus_pct:.1f}%)"
                 if rmsd_vals
@@ -909,8 +947,12 @@ def run_dock(
                 if (r["u_cnn_sc"] is not None and r["u_cnn_aff"] is not None)
                 else _format_metric(r["u_cnn_sc"])
             )
-            pair_rmsd_val = float(r["pair_rmsd"]) if r["pair_rmsd"] is not None else None
-            modes_str = f"#{r['g_mode']}/#{r['u_mode']} ({r['c_size']}p/{r['n_clust']}c)"
+            pair_rmsd_val = (
+                float(r["pair_rmsd"]) if r["pair_rmsd"] is not None else None
+            )
+            modes_str = (
+                f"#{r['g_mode']}/#{r['u_mode']} ({r['c_size']}p/{r['n_clust']}c)"
+            )
             table.add_row(
                 str(rank_idx),
                 str(r["frame"]),

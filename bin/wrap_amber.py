@@ -61,7 +61,15 @@ def build_tleap_atom_types_block(mol2_files: list[str]) -> str:
                     a_name = parts[1]
                     a_type = parts[5]
                     clean_alpha = "".join([c for c in a_name if c.isalpha()])
-                    if clean_alpha[:2].capitalize() in {"Cl", "Br", "Fe", "Mg", "Zn", "Ca", "Na"}:
+                    if clean_alpha[:2].capitalize() in {
+                        "Cl",
+                        "Br",
+                        "Fe",
+                        "Mg",
+                        "Zn",
+                        "Ca",
+                        "Na",
+                    }:
                         elem = clean_alpha[:2].capitalize()
                     else:
                         elem = clean_alpha[:1].upper() if clean_alpha else "C"
@@ -81,7 +89,10 @@ def build_tleap_atom_types_block(mol2_files: list[str]) -> str:
     if not type_map:
         return ""
 
-    entries = [f'  {{ "{atype}" "{elem}" "{hyb}" }}' for atype, (elem, hyb) in sorted(type_map.items())]
+    entries = [
+        f'  {{ "{atype}" "{elem}" "{hyb}" }}'
+        for atype, (elem, hyb) in sorted(type_map.items())
+    ]
     return "addAtomTypes {\n" + "\n".join(entries) + "\n}\n"
 
 

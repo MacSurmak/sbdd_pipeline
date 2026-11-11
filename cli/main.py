@@ -146,7 +146,9 @@ def main():
     p_rm = subparsers.add_parser(
         "rm", help="Remove an item from the database by name or wipe library ligands"
     )
-    p_rm.add_argument("target", nargs="?", default=None, help="Name of the item to remove")
+    p_rm.add_argument(
+        "target", nargs="?", default=None, help="Name of the item to remove"
+    )
     p_rm.add_argument(
         "--library",
         action="store_true",
@@ -510,7 +512,9 @@ def main():
         help="Extract 3D physical medoid receptor structures from a saved ClusteringRun for ensemble docking",
     )
     p_extract.add_argument(
-        "--clustering", required=True, help="Explicit name of the ClusteringRun in database"
+        "--clustering",
+        required=True,
+        help="Explicit name of the ClusteringRun in database",
     )
     p_extract.add_argument(
         "--system",

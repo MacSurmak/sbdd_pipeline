@@ -621,7 +621,7 @@ def compute_pairwise_symmetry_rmsd_matrix(
     for match in matches:
         perm_b = coords_b[:, match, :]
         diff = coords_a[:, np.newaxis, :, :] - perm_b[np.newaxis, :, :, :]
-        sq_dist = np.sum(diff ** 2, axis=(2, 3)) / float(n_heavy)
+        sq_dist = np.sum(diff**2, axis=(2, 3)) / float(n_heavy)
         best_sq_dist = np.minimum(best_sq_dist, sq_dist)
 
     rmsd_mat = np.sqrt(best_sq_dist)
@@ -641,15 +641,11 @@ def compute_autobox_geometry(ref_path: str | Path, autobox_add: float) -> dict:
     """
     p = Path(ref_path).resolve()
     if not p.exists() or p.stat().st_size == 0:
-        raise FileNotFoundError(
-            f"FATAL: Reference ligand file missing or empty: {p}"
-        )
+        raise FileNotFoundError(f"FATAL: Reference ligand file missing or empty: {p}")
 
     pad = float(autobox_add)
     if pad < 0.0:
-        raise ValueError(
-            f"FATAL: autobox_add must be non-negative, got: {pad}"
-        )
+        raise ValueError(f"FATAL: autobox_add must be non-negative, got: {pad}")
 
     coords: list[tuple[float, float, float]] = []
     suffix = p.suffix.lower()
@@ -790,7 +786,9 @@ def convert_prepared_mol_to_pdbqt(mol: Chem.Mol, out_pdbqt: str | Path) -> int:
     """
     out_path = Path(out_pdbqt).resolve()
     if mol is None or mol.GetNumAtoms() == 0:
-        raise ValueError("FATAL: Invalid or empty Chem.Mol provided to convert_prepared_mol_to_pdbqt!")
+        raise ValueError(
+            "FATAL: Invalid or empty Chem.Mol provided to convert_prepared_mol_to_pdbqt!"
+        )
 
     preparator = MoleculePreparation(
         merge_these_atom_types=["H"],
@@ -990,7 +988,9 @@ def restore_unidock_pdbqt_poses(
                 h_atom = exact_tmpl.GetAtomWithIdx(h_idx)
                 nbrs = h_atom.GetNeighbors()
                 if not nbrs:
-                    raise ValueError(f"FATAL: Detached hydrogen atom at index {h_idx} in '{orig_title}'!")
+                    raise ValueError(
+                        f"FATAL: Detached hydrogen atom at index {h_idx} in '{orig_title}'!"
+                    )
                 p_orig = nbrs[0].GetIdx()
                 if p_orig not in parent_to_unmapped_hs:
                     parent_to_unmapped_hs[p_orig] = []
@@ -1019,7 +1019,9 @@ def restore_unidock_pdbqt_poses(
             a2 = bond.GetEndAtom()
             p1 = res_conf.GetAtomPosition(a1.GetIdx())
             p2 = res_conf.GetAtomPosition(a2.GetIdx())
-            dist = math.sqrt((p1.x - p2.x) ** 2 + (p1.y - p2.y) ** 2 + (p1.z - p2.z) ** 2)
+            dist = math.sqrt(
+                (p1.x - p2.x) ** 2 + (p1.y - p2.y) ** 2 + (p1.z - p2.z) ** 2
+            )
             if a1.GetAtomicNum() == 1 or a2.GetAtomicNum() == 1:
                 if dist < 0.80 or dist > 1.35:
                     raise ValueError(

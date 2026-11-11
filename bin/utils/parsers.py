@@ -52,7 +52,10 @@ def parse_glide_csv(csv_path: Path) -> Dict[str, Dict[str, float]]:
             if score is not None:
                 counts[title] = (counts[title] + 1) if title in counts else 1
                 if title not in data or score < data[title]["GlideScore"]:
-                    data[title] = {"GlideScore": score, "Glide_Modes": float(counts[title])}
+                    data[title] = {
+                        "GlideScore": score,
+                        "Glide_Modes": float(counts[title]),
+                    }
                 else:
                     data[title]["Glide_Modes"] = float(counts[title])
     return data
@@ -65,7 +68,9 @@ def parse_prime_csv(csv_path: Path) -> Dict[str, Dict[str, float]]:
     with open(csv_path, "r", encoding="utf-8", errors="ignore") as f:
         reader = csv.DictReader(f)
         for row in reader:
-            title = (row.get("title") or row.get("Title") or row.get("s_m_title") or "").strip()
+            title = (
+                row.get("title") or row.get("Title") or row.get("s_m_title") or ""
+            ).strip()
             if not title:
                 continue
             props: Dict[str, float] = {}
@@ -95,7 +100,9 @@ def parse_prime_csv(csv_path: Path) -> Dict[str, Dict[str, float]]:
                         )
 
             if props:
-                if title not in data or props.get("MMGBSA", float("inf")) < data[title].get("MMGBSA", float("inf")):
+                if title not in data or props.get("MMGBSA", float("inf")) < data[
+                    title
+                ].get("MMGBSA", float("inf")):
                     data[title] = props
     return data
 
@@ -141,7 +148,12 @@ def parse_gnina_sdf(sdf_path: Path, prefix: str = "") -> Dict[str, Dict[str, flo
             elif tag_clean == "unidock_vina_score":
                 native_vina = float(raw_val.split()[0])
                 props[f"{prefix}Vina"] = native_vina
-            elif tag_clean in ("cnnscore", "cnnaffinity", "minimizedaffinity", "affinity"):
+            elif tag_clean in (
+                "cnnscore",
+                "cnnaffinity",
+                "minimizedaffinity",
+                "affinity",
+            ):
                 try:
                     val = float(raw_val.split()[0])
                 except ValueError as e:
