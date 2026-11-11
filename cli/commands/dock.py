@@ -1173,7 +1173,7 @@ def run_redock(
     table.add_column("UniDock Vina", justify="right")
     table.add_column("UniDock CNNaff (p)", justify="right")
     table.add_column("UniDock Ref RMSD (Å)", justify="center")
-    table.add_column("Glide↔UniDock ΔRMSD (Å)", justify="center")
+    table.add_column("G↔U ΔRMSD (Å)", justify="center")
     table.add_column("Verdict", justify="center")
 
     for r in summary_rows:

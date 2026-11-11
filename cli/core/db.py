@@ -7,7 +7,7 @@ Zero string-based foreign keys. Zero suffix renaming hacks.
 
 import json
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import (
     create_engine,
     event,
@@ -62,7 +62,7 @@ class Target(Base):
     name = Column(String, unique=True, index=True, nullable=False)
     reference_sequence = Column(Text, nullable=True)  # SSOT Target FASTA sequence
     description = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     frames = relationship(
         "ReceptorFrame", back_populates="target", cascade="all, delete-orphan"
@@ -119,7 +119,7 @@ class ReceptorFrame(Base):
     path_pdb = Column(
         String, nullable=True
     )  # Validated PDB deliverable for GNINA/tLEaP
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     target = relationship("Target", back_populates="frames")
     source_trajectory = relationship("Trajectory", foreign_keys=[source_trajectory_id])
@@ -158,7 +158,7 @@ class Substance(Base):
     batch_id = Column(String, nullable=True)
     path_mae = Column(String, nullable=True)  # Prepared .maegz for LigPrep
     path_sdf = Column(String, nullable=True)  # Prepared .sdf
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     states = relationship(
         "SubstanceState", back_populates="substance", cascade="all, delete-orphan"
@@ -192,7 +192,7 @@ class SubstanceState(Base):
     )  # 3D reference conformer for this specific state
     path_mol2 = Column(String, nullable=True)  # GAFF2 AM1-BCC topology
     path_frcmod = Column(String, nullable=True)  # GAFF2 force field parameters
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     substance = relationship("Substance", back_populates="states")
     poses = relationship(
@@ -231,7 +231,7 @@ class Pose(Base):
     path_sdf = Column(String, nullable=True)  # Validated SDF deliverable
     path_mae = Column(String, nullable=True)  # Validated MAE deliverable
     scores = Column(Text, default="{}", nullable=False)  # JSON dict of scoring metrics
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     substance_state = relationship("SubstanceState", back_populates="poses")
     receptor_frame = relationship("ReceptorFrame", back_populates="poses")
@@ -297,7 +297,7 @@ class System(Base):
     path_dry_prmtop = Column(
         String, nullable=True
     )  # Validated AMBER dry complex topology for MM-PBSA
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     target = relationship("Target", back_populates="systems")
     receptor_frame = relationship("ReceptorFrame", back_populates="systems")
@@ -346,7 +346,7 @@ class Trajectory(Base):
     path_clean_xtc = Column(String, nullable=True)
     path_ref_pdb = Column(String, nullable=True)
     status = Column(String, default="raw", nullable=False)  # raw, cleaned, error
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     system = relationship("System", back_populates="trajectories")
 
@@ -380,7 +380,7 @@ class ClusteringRun(Base):
     path_time_map = Column(
         String, nullable=False
     )  # Validated path to frame_time_map.json
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     system = relationship("System", back_populates="clustering_runs")
     clusters = relationship(
@@ -427,7 +427,7 @@ class TrajectoryCluster(Base):
     delta_g_mean = Column(Float, nullable=True)  # Stratified MM-PBSA mean (kcal/mol)
     delta_g_sem = Column(Float, nullable=True)  # Standard error of mean
     delta_g_std = Column(Float, nullable=True)  # Standard deviation
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     clustering_run = relationship("ClusteringRun", back_populates="clusters")
 
@@ -454,7 +454,7 @@ class MmpbsaRun(Base):
     delta_g_boltzmann_total = Column(
         Float, nullable=True
     )  # Boltzmann weighted across clusters
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     system = relationship("System", back_populates="mmpbsa_runs")
 
@@ -470,7 +470,7 @@ class DockingRun(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String, unique=True, index=True, nullable=False)
     mode = Column(String(32), nullable=False)  # 'self' or 'matrix'
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     docked_poses = relationship(
         "DockedPose", back_populates="docking_run", cascade="all, delete-orphan"
@@ -520,7 +520,7 @@ class DockedPose(Base):
     cross_engine_rmsd = Column(Float, nullable=True)
     consensus_score = Column(Float, nullable=True)
     path_sdf = Column(String, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     docking_run = relationship("DockingRun", back_populates="docked_poses")
     receptor_frame = relationship("ReceptorFrame", back_populates="docked_poses")
